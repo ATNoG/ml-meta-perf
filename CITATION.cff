@@ -1,0 +1,36 @@
+cff-version: 1.2.0
+title: metafit
+message: >-
+  If you use this software, please cite it using the metadata from this file.
+type: software
+authors:
+  - given-names: Mário
+    family-names: Antunes
+    email: mario.antunes@av.it.pt
+    affiliation: Instituto de Telecomunicações, University of Aveiro
+    orcid: 'https://orcid.org/0000-0002-6504-9441'
+repository-code: 'https://github.com/mariolpantunes/aiml-model'
+abstract: >-
+  Interpretable linear meta-models that predict the Matthews Correlation
+  Coefficient of a classifier from dataset and model meta-features. Equations
+  take the form MCC = w1*t1 + w2*t2 + ..., where each term is a simple
+  expression over one to three raw features and each weight is stated in the
+  features' own units. Terms are drawn from a filtered candidate library,
+  screened by paired Pearson and Spearman correlation, and selected by beam
+  search with ridge refitting. Two equations are contrasted: one over dataset
+  features alone, which can only predict a per-dataset constant, and one over
+  dataset and model features, isolating how much of MCC is attributable to
+  model capability. Validation is leave-one-dataset-out and leave-one-model-out;
+  the leakage induced by random k-fold splitting on grouped meta-data is
+  quantified rather than assumed away.
+keywords:
+  - meta-learning
+  - algorithm-selection
+  - symbolic-regression
+  - sparse-regression
+  - interpretability
+  - matthews-correlation-coefficient
+  - model-selection
+license: MIT
+version: 0.1.0
+date-released: '2026-08-15'
