@@ -1,0 +1,206 @@
+"""Validation protocols, baselines and the leakage they are designed to avoid."""
+
+import unittest
+
+import numpy as np
+import polars as pl
+
+from metafit.analysis import redundancy_groups, screen
+from metafit.terms import build_library
+from metafit.validate import (
+    additive_oracle,
+    baseline_group_mean,
+    cross_validate,
+    cross_validate_path,
+    leave_one_group_out,
+    random_kfold_groups,
+    ranking_report,
+    score,
+)
+
+
+def grid(n_groups: int = 6, per_group: int = 5, seed: int = 4):
+    """A small dataset-by-model grid with a known additive structure."""
+    rng = np.random.default_rng(seed)
+    outer, inner = [], []
+    for g in range(n_groups):
+        for m in range(per_group):
+            outer.append(f"d{g}")
+            inner.append(f"m{m}")
+    outer_labels = np.array(outer)
+    inner_labels = np.array(inner)
+    columns = {
+        "f1": np.array([2.0 + g for g in range(n_groups) for _ in range(per_group)]),
+        "f2": np.array([5.0 + 2 * g for g in range(n_groups) for _ in range(per_group)]),
+        "g1": np.array([1.0 + m for _ in range(n_groups) for m in range(per_group)]),
+        "g2": np.array([3.0 + 0.5 * m for _ in range(n_groups) for m in range(per_group)]),
+    }
+    target = 0.05 * columns["f1"] + 0.04 * columns["g1"] + rng.normal(0, 0.01, len(outer))
+    return columns, target, outer_labels, inner_labels
+
+
+class TestSplitters(unittest.TestCase):
+    def test_leave_one_group_out_covers_every_row_once(self) -> None:
+        labels = np.array(["a", "a", "b", "c", "c", "c"])
+        seen = np.zeros(6, dtype=int)
+        for label, train, test in leave_one_group_out(labels):
+            self.assertEqual(test.sum() + train.sum(), 6)
+            self.assertFalse(np.any(train & test))
+            self.assertTrue(np.all(labels[test] == label))
+            seen += test
+        np.testing.assert_array_equal(seen, np.ones(6, dtype=int))
+
+    def test_one_fold_per_distinct_group(self) -> None:
+        labels = np.array(["a", "a", "b", "c"])
+        self.assertEqual(len(list(leave_one_group_out(labels))), 3)
+
+    def test_random_folds_have_the_right_shape(self) -> None:
+        folds = random_kfold_groups(50, folds=5, seed=1)
+        self.assertEqual(folds.shape, (50,))
+        self.assertLessEqual(len(set(folds.tolist())), 5)
+
+    def test_random_folds_are_reproducible(self) -> None:
+        np.testing.assert_array_equal(random_kfold_groups(30, seed=9), random_kfold_groups(30, seed=9))
+
+
+class TestScores(unittest.TestCase):
+    def test_score_reports_every_metric(self) -> None:
+        truth = np.array([0.0, 0.5, 1.0])
+        result = score(truth, truth.copy())
+        self.assertAlmostEqual(result.r2, 1.0)
+        self.assertAlmostEqual(result.mae, 0.0)
+        self.assertEqual(result.n, 3)
+        self.assertIn("rmse", result.as_dict())
+
+
+class TestCrossValidation(unittest.TestCase):
+    def setUp(self) -> None:
+        self.columns, self.target, self.outer, self.inner = grid()
+        self.library = build_library(("f1", "f2"), ("g1", "g2"), self.columns)
+
+    def test_predicts_every_row(self) -> None:
+        result = cross_validate(
+            self.library, self.columns, self.target, self.outer, n_terms=2, penalty=1.0, pool_size=30
+        )
+        self.assertEqual(result.predictions.shape, self.target.shape)
+        self.assertTrue(np.all(np.isfinite(result.predictions)))
+
+    def test_predictions_respect_the_mcc_range(self) -> None:
+        result = cross_validate(
+            self.library, self.columns, self.target, self.outer, n_terms=3, penalty=1.0, pool_size=30
+        )
+        self.assertGreaterEqual(result.predictions.min(), -1.0)
+        self.assertLessEqual(result.predictions.max(), 1.0)
+
+    def test_path_returns_every_size(self) -> None:
+        path = cross_validate_path(
+            self.library, self.columns, self.target, self.outer, max_terms=4, penalty=1.0, pool_size=30
+        )
+        self.assertEqual(sorted(path), [1, 2, 3, 4])
+
+    def test_path_agrees_with_the_single_size_call(self) -> None:
+        path = cross_validate_path(
+            self.library, self.columns, self.target, self.outer, max_terms=3, penalty=1.0, pool_size=30
+        )
+        single = cross_validate(
+            self.library, self.columns, self.target, self.outer, n_terms=3, penalty=1.0, pool_size=30
+        )
+        np.testing.assert_allclose(path[3].predictions, single.predictions)
+
+    def test_records_one_fold_score_per_group(self) -> None:
+        result = cross_validate(
+            self.library, self.columns, self.target, self.outer, n_terms=2, penalty=1.0, pool_size=30
+        )
+        self.assertEqual(set(result.per_fold), set(np.unique(self.outer).tolist()))
+
+    def test_stability_counts_never_exceed_the_fold_count(self) -> None:
+        result = cross_validate(
+            self.library, self.columns, self.target, self.outer, n_terms=2, penalty=1.0, pool_size=30
+        )
+        stability = result.stability()
+        self.assertLessEqual(int(stability["folds"].max()), len(np.unique(self.outer)))  # pyright: ignore[reportArgumentType]
+        self.assertLessEqual(float(stability["frequency"].max()), 1.0)  # pyright: ignore[reportArgumentType]
+
+
+class TestBaselines(unittest.TestCase):
+    def setUp(self) -> None:
+        _, self.target, self.outer, self.inner = grid()
+
+    def test_global_mean_is_constant_within_a_fold(self) -> None:
+        predictions = baseline_group_mean(self.target, self.outer)
+        for label in np.unique(self.outer):
+            self.assertEqual(len(set(np.round(predictions[self.outer == label], 12))), 1)
+
+    def test_conditioning_on_the_inner_group_helps(self) -> None:
+        plain = baseline_group_mean(self.target, self.outer)
+        conditioned = baseline_group_mean(self.target, self.outer, self.inner)
+        self.assertLess(
+            float(np.abs(self.target - conditioned).mean()), float(np.abs(self.target - plain).mean())
+        )
+
+    def test_additive_oracle_beats_either_group_alone(self) -> None:
+        oracle = additive_oracle(self.target, self.outer, self.inner)
+        self.assertGreater(
+            float(np.corrcoef(oracle, self.target)[0, 1]),
+            float(np.corrcoef(baseline_group_mean(self.target, self.outer), self.target)[0, 1]),
+        )
+
+    def test_baselines_stay_inside_the_mcc_range(self) -> None:
+        for predictions in (
+            baseline_group_mean(self.target, self.outer),
+            additive_oracle(self.target, self.outer, self.inner),
+        ):
+            self.assertGreaterEqual(predictions.min(), -1.0)
+            self.assertLessEqual(predictions.max(), 1.0)
+
+
+class TestRanking(unittest.TestCase):
+    def test_perfect_ranking_has_no_regret(self) -> None:
+        target = np.array([0.1, 0.5, 0.9, 0.2, 0.7, 0.3])
+        groups = np.array(["a", "a", "a", "b", "b", "b"])
+        report = ranking_report(target, target.copy(), groups)
+        self.assertEqual(report.height, 2)
+        np.testing.assert_allclose(report["regret"].to_numpy(), [0.0, 0.0])
+        np.testing.assert_allclose(report["spearman"].to_numpy(), [1.0, 1.0])
+
+    def test_regret_is_the_gap_to_the_best(self) -> None:
+        target = np.array([0.1, 0.9])
+        report = ranking_report(target, np.array([1.0, 0.0]), np.array(["a", "a"]))
+        self.assertAlmostEqual(float(report["regret"][0]), 0.8)
+
+
+
+class TestAnalysis(unittest.TestCase):
+    def setUp(self) -> None:
+        self.columns, self.target, self.outer, self.inner = grid()
+        self.library = build_library(("f1", "f2"), ("g1", "g2"), self.columns)
+
+    def test_screen_returns_one_row_per_term(self) -> None:
+        table = screen(self.library, self.target)
+        self.assertEqual(table.height, len(self.library))
+        self.assertIn("pearson", table.columns)
+        self.assertIn("spearman", table.columns)
+
+    def test_screen_is_sorted_by_strength(self) -> None:
+        strengths = screen(self.library, self.target)["strength"].to_numpy()
+        self.assertTrue(np.all(np.diff(strengths) <= 1e-12))
+
+    def test_within_group_columns_appear_when_groups_are_given(self) -> None:
+        table = screen(self.library, self.target, self.outer)
+        self.assertIn("within_pearson", table.columns)
+
+    def test_within_group_screening_demotes_a_pure_group_feature(self) -> None:
+        # f1 is constant inside a dataset, so once the group mean is removed it has no
+        # variance left to correlate with -- which is the whole point of the column.
+        table = screen(self.library, self.target, self.outer)
+        row = table.filter(pl.col("term") == "f1")
+        self.assertLess(abs(float(row["within_pearson"][0])), 1e-9)
+
+    def test_redundancy_groups_cluster_duplicates(self) -> None:
+        clusters = redundancy_groups(self.library, threshold=0.999)
+        for cluster in clusters:
+            self.assertGreater(len(cluster), 1)
+
+
+if __name__ == "__main__":
+    unittest.main()
