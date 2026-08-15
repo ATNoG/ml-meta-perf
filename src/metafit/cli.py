@@ -9,6 +9,7 @@ from pathlib import Path
 import polars as pl
 
 from metafit.experiment import Report, run
+from metafit.practices import render as render_practices
 
 
 def _section(title: str) -> None:
@@ -44,7 +45,27 @@ def render(report: Report) -> None:
         print("\nterm stability across leave-one-dataset-out folds:")
         _show(report.e2.stability.head(20))
 
-    _section("E1 vs E2 on the common scale (all rows)")
+    _section("EM -- model features only (the control for 'model choice dominates')")
+    print(report.model_only.equation)
+    print(f"\nin-sample: {report.model_only.in_sample}")
+    for label, scores in report.model_only.cross_validated.items():
+        print(f"{label}: {scores}")
+
+    _section("Where the signal lives")
+    print("variance of MCC explained by identity alone (no equation involved):")
+    _show(report.decomposition)
+    print("\nshare of E2's output variance, by which features its terms use:")
+    _show(report.shares)
+
+    _section("Extracted practices")
+    print(render_practices(report.practices))
+    print("\nevidence:")
+    _show(report.practices.select("feature", "n_terms", "direction", "effect", "stability", "confidence"))
+
+    _section("What each term is worth (MCC units)")
+    _show(report.effects)
+
+    _section("E1 vs EM vs E2 on the common scale (all rows)")
     _show(report.comparison)
 
     _section("Baselines")
@@ -65,6 +86,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="metafit", description=__doc__)
     parser.add_argument("--data", default=None, help="path to meta_dataset.csv")
     parser.add_argument("--save", default=None, help="directory to write the fitted equations to")
+    parser.add_argument("--figures", default=None, help="directory to write the figure set to")
     parser.add_argument(
         "--quick",
         action="store_true",
@@ -81,6 +103,12 @@ def main(argv: list[str] | None = None) -> int:
         report.e1.equation.save(destination / "e1.json")
         report.e2.equation.save(destination / "e2.json")
         print(f"\nequations written to {destination}")
+
+    if arguments.figures:
+        from metafit.figures import generate
+
+        written = generate(report, arguments.figures)
+        print(f"\n{len(written)} figures written to {arguments.figures}")
     return 0
 
 

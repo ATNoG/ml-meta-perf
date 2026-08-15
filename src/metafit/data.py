@@ -48,6 +48,29 @@ MODEL_FEATURES: tuple[str, ...] = (
 
 ALL_FEATURES: tuple[str, ...] = DATASET_FEATURES + MODEL_FEATURES
 
+#: Plain-language readings of each feature, used when the fitted equation is turned into
+#: written guidance. Without these a "best practice" degenerates into restating a column
+#: name, which is not advice anyone can act on.
+FEATURE_GLOSSARY: dict[str, str] = {
+    "class_ent": "class entropy (how evenly the labels are spread)",
+    "eq_num_attr": "equivalent number of attributes (effective feature count)",
+    "gravity": "gravity (separation between the majority and minority class centres)",
+    "inst_to_attr": "instances per attribute",
+    "nr_attr": "number of attributes",
+    "nr_bin": "number of binary attributes",
+    "nr_class": "number of classes",
+    "nr_cor_attr": "proportion of correlated attribute pairs",
+    "nr_inst": "number of instances",
+    "nr_norm": "number of normally distributed attributes",
+    "nr_outliers": "number of attributes containing outliers",
+    "ns_ratio": "noise-to-signal ratio",
+    "Processing Units Number": "model capacity (log processing units)",
+    "Training Operations": "training cost (log operations)",
+    "Prediction Operations": "inference cost (log operations)",
+    "Active Regularization Mechanisms": "number of active regularisation mechanisms",
+    "Robust to Outliers": "built-in robustness to outliers",
+}
+
 DEFAULT_PATH = Path(__file__).resolve().parents[2] / "data" / "meta_dataset.csv"
 
 

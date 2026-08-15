@@ -6,6 +6,7 @@ worth under leave-one-dataset-out and leave-one-model-out validation.
 """
 
 from metafit.analysis import redundancy_groups, screen
+from metafit.attribution import group_shares, term_effects, variance_decomposition
 from metafit.data import (
     ALL_FEATURES,
     DATASET_COLUMN,
@@ -21,6 +22,7 @@ from metafit.data import (
 )
 from metafit.fit import FitResult, fit
 from metafit.model import Equation
+from metafit.practices import best_practices, feature_practices
 from metafit.terms import Atom, Library, Term, build_library
 from metafit.validate import (
     CrossValidation,
@@ -51,14 +53,19 @@ __all__ = [
     "additive_oracle",
     "aggregate_by_dataset",
     "baseline_group_mean",
+    "best_practices",
     "build_library",
     "columns_as_arrays",
     "cross_validate",
+    "feature_practices",
     "fit",
+    "group_shares",
     "groups",
     "load",
     "ranking_report",
     "redundancy_groups",
     "screen",
     "target",
+    "term_effects",
+    "variance_decomposition",
 ]

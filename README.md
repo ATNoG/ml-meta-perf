@@ -20,7 +20,7 @@ an equation a practitioner can inspect, argue with, and derive guidance from.
 > and 25 models (476 rows), which is small. Every number below is reported both in-sample
 > and under leave-one-out cross-validation, because on data this size the two differ a lot.
 
-## The two equations
+## The equations
 
 The study is built around a deliberate contrast.
 
@@ -34,6 +34,11 @@ measures how much of MCC is explained by *the data alone*.
 
 The gap between them is the evidence that capturing model capability matters.
 
+**EM — model features only.** The mirror of E1, added to settle whether model choice
+outweighs dataset difficulty. There are only five model features and one is constant per
+model, so EM is short by necessity rather than by design — which turns out to be the
+finding rather than a limitation.
+
 ## Results
 
 ### E1 vs E2, scored on the same 476 rows
@@ -44,14 +49,45 @@ equations on every row puts them on one scale:
 
 | | R² | MAE | Spearman |
 |---|---|---|---|
-| E1 (dataset only, 5 terms) | 0.308 | 0.226 | 0.640 |
+| E1 (dataset only, 5 terms) | 0.337 | 0.215 | 0.640 |
 | *E1's hard ceiling — the true dataset means* | *0.354* | *0.204* | *0.653* |
+| EM (model only, 9 terms) | 0.164 | 0.251 | 0.356 |
+| *EM's hard ceiling — the true model means* | *0.282* | *0.226* | *0.487* |
 | **E2 (dataset + model, 12 terms)** | **0.556** | **0.169** | **0.780** |
 | *additive oracle — true dataset + model effects* | *0.661* | *0.145* | *0.810* |
 
 E1 is capped at **0.354** no matter how good the dataset equation becomes, because
 per-dataset means explain only 35.4% of the total variance in MCC. E2 reaches 0.556.
-Model features are not a refinement here — they are most of the signal.
+Model features are not a refinement here — they are most of the *gain*.
+
+### Does model choice matter more than the dataset?
+
+Not on this meta-dataset — but the reason is more interesting than the answer.
+
+| | variance of MCC explained |
+|---|---|
+| knowing only which **dataset** it is | **0.354** |
+| knowing only which **model** it is | **0.282** |
+
+Dataset difficulty is the larger effect, and the equations widen the gap rather than
+closing it. The dataset-only equation reaches **0.337 of its 0.354 ceiling — 95%**. The
+model-only equation reaches **0.164 of its 0.282 ceiling — 58%**.
+
+So the honest reading is: **the meta-features describe datasets far better than they
+describe models.** Twelve dataset meta-features nearly exhaust what dataset identity can
+explain; five model features capture barely half of what model identity can. The
+remaining 42% of model capability is real and simply not written down anywhere in this
+data — the strongest argument in the study for richer model descriptors.
+
+Two things create the opposite impression, and both are artifacts worth knowing about:
+
+- The **correlation screening table is within-dataset centred**, which removes dataset
+  variance *by construction*. Only model terms can score well there. It is a diagnostic
+  for model effects, not a statement of relative importance.
+- **Model features carry more in combination than alone.** Adding them to E1 is worth
+  +0.219 R² (0.337 → 0.556), well beyond the 0.164 they achieve by themselves. The
+  surplus is dataset×model interaction, which is why 8 of the 16 terms in the
+  accuracy-leaning equation are mixed.
 
 The **additive oracle** row is the ceiling for this entire approach: give a model the
 *exact* per-dataset and per-model effects and let it add them, and you get R² = 0.661.
@@ -63,6 +99,7 @@ additivity buys. E2 captures 84% of it.
 | | terms | in-sample R² | LOO-dataset R² | LOO-model R² |
 |---|---|---|---|---|
 | E1 (20 dataset means) | 5 | **0.953** | 0.506 | — |
+| EM (476 rows) | 9 | 0.164 | 0.055 | — |
 | E2 (476 rows) | 12 | **0.556** | 0.371 | 0.455 |
 
 ### Accuracy versus number of terms
@@ -134,6 +171,45 @@ MCC = +0.829491
 Predictions are clipped to [-1, 1]: a linear form has no idea MCC stops at 1.0, and 17%
 of the meta-dataset sits exactly there.
 
+![Accuracy versus equation length](assets/figures/term_count_curve.png)
+
+## Extracted practices
+
+This is what the accuracy was traded for. Each statement is derived from the fitted
+equation by evaluating every term over the real data, summing contributions per raw
+feature, and measuring how much predicted MCC moves between that feature's lowest and
+highest decile. Direction comes from the rank correlation between the feature and the MCC
+it drives — not from the sign of a weight, which is wrong the moment a feature appears in
+more than one term or inside a denominator.
+
+| # | practice | confidence |
+|---|---|---|
+| 1 | Higher **effective feature count** went with **lower** MCC (≈0.53 MCC) | moderate |
+| 2 | Higher **gravity** (majority/minority centre separation) went with **lower** MCC (≈0.42) | strong |
+| 3 | Higher **model capacity** (log processing units) went with **higher** MCC (≈0.27) | moderate |
+| 4 | Higher **number of attributes** went with **higher** MCC (≈0.23) | moderate |
+| 5 | Higher **number of binary attributes** went with **higher** MCC (≈0.22) | moderate |
+| 6 | Higher **inference cost** (log operations) went with **higher** MCC (≈0.20) | strong |
+| 7 | Higher **training cost** (log operations) went with **higher** MCC (≈0.16) | moderate |
+| 8 | Higher **built-in robustness to outliers** went with **higher** MCC (≈0.13) | strong |
+| 9 | Higher **proportion of correlated attributes** went with **higher** MCC (≈0.04) | weak |
+
+![Feature effects](assets/figures/practice_effects.png)
+
+Read as: *pick a bigger, more expensive, outlier-robust model; expect trouble on data with
+a high effective feature count and well-separated class centres.*
+
+**How these are filtered.** A feature is reported only if it moves MCC by ≥0.02, its
+relationship is monotone enough for a directional sentence (|ρ| ≥ 0.15), and its terms
+survived ≥50% of the leave-one-dataset-out folds. `confidence` combines effect size with
+that fold-stability. Features failing any test are dropped rather than hedged.
+
+**What these are not.** Associations measured across 20 datasets, not causal claims.
+"Higher training cost went with higher MCC" does not mean padding a model with FLOPs
+raises MCC; it means the models that scored well here were the expensive ones. The
+`gravity` result is the one to treat most carefully — the direction is stable and strong,
+but it is a single term doing the work.
+
 ## Two things worth knowing before trusting any number like this
 
 ### Validation protocol changes the answer by more than the model does
@@ -147,6 +223,8 @@ instead of generalising to it. The **same equation**, three protocols:
 | random 10-fold | **0.514** | 0.169 |
 | leave-one-dataset-out | **0.371** | 0.199 |
 | leave-one-model-out | **0.455** | 0.191 |
+
+![Validation protocols](assets/figures/protocol_comparison.png)
 
 A reported R² near 0.5 on this data may be describing the split, not the model. This is
 why leave-one-*group*-out is the only protocol `metafit` reports as a headline.
@@ -271,7 +349,7 @@ largest. On this data the two designs select **completely disjoint** sets of 12 
 
 ## Installation
 
-Requires Python 3.12+. Dependencies are **polars** and **numpy** only.
+Requires Python 3.12+. Dependencies are **polars**, **numpy** and **matplotlib**.
 
 ```bash
 python3 -m venv venv
@@ -287,8 +365,9 @@ PYTHONPATH=src venv/bin/python -m metafit
 ```
 
 ```bash
-PYTHONPATH=src venv/bin/python -m metafit --save results   # write e1.json / e2.json
-PYTHONPATH=src venv/bin/python -m metafit --quick          # fast smoke run, not the study
+PYTHONPATH=src venv/bin/python -m metafit --save results          # write e1.json / e2.json
+PYTHONPATH=src venv/bin/python -m metafit --figures assets/figures  # write the figure set
+PYTHONPATH=src venv/bin/python -m metafit --quick                 # smoke run, not the study
 ```
 
 As a library:
@@ -309,6 +388,17 @@ equation.save("e2.json")           # round-trips exactly
 predictions = equation.predict(columns)
 ```
 
+Extracting guidance and figures from a fitted equation:
+
+```python
+from metafit.practices import best_practices, render
+from metafit.plots import practice_effects
+
+practices = best_practices(equation, columns)      # pass a stability table to rate them
+print(render(practices))
+practice_effects(practices, "practice_effects.png")
+```
+
 ## Layout
 
 ```
@@ -320,10 +410,15 @@ src/metafit/
     fit.py          standardisation, ridge solve, beam search, refinement
     model.py        the Equation object: predict, render, serialise
     validate.py     leave-one-group-out protocols, baselines, oracles
+    attribution.py  per-term effects, group shares, variance decomposition
+    practices.py    turning a fitted equation into written guidance
+    plots.py        the figures (matplotlib, Agg backend, headless)
+    figures.py      generates the whole figure set from a report
     experiment.py   the end-to-end study and its tuned configurations
     cli.py          python -m metafit
 data/               meta_dataset.csv
-tests/              137 unittest tests
+assets/figures/     generated figures
+tests/              189 unittest tests
 examples/           runnable entry point
 ```
 

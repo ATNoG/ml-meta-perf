@@ -14,6 +14,7 @@ import numpy as np
 import polars as pl
 
 from metafit.analysis import screen
+from metafit.attribution import group_shares, term_effects, variance_decomposition
 from metafit.data import (
     DATASET_COLUMN,
     DATASET_FEATURES,
@@ -27,6 +28,7 @@ from metafit.data import (
 )
 from metafit.fit import fit
 from metafit.model import Equation
+from metafit.practices import best_practices
 from metafit.stats import r2_score
 from metafit.terms import build_library
 from metafit.validate import (
@@ -63,6 +65,12 @@ SWEEP_SIZES: tuple[int, ...] = (2, 4, 6, 8, 10, 12, 14, 16)
 # (0.49 against 0.46). Both configurations are reported; the defaults above take the
 # generalising side of the trade, this one takes the fit.
 ACCURATE_E2 = Configuration(max_abs_zscore=4.0, penalty=1.0, pool_size=400, max_terms=20, headline_terms=16)
+
+# Model features only. There are five of them, so the library is tiny and the equation
+# is short by necessity rather than by choice.
+DEFAULT_MODEL_ONLY = Configuration(
+    max_abs_zscore=3.0, penalty=20.0, pool_size=100, max_terms=9, headline_terms=9
+)
 
 
 @dataclass
@@ -185,6 +193,51 @@ def run_e2(frame: pl.DataFrame, config: Configuration = DEFAULT_E2) -> EquationR
     )
 
 
+def run_model_only(frame: pl.DataFrame, config: Configuration = DEFAULT_MODEL_ONLY) -> EquationReport:
+    """Model features only -- the mirror image of E1, and the control for the claim that
+    model choice dominates dataset difficulty.
+
+    There are only five model features and one of them is constant per model, so the
+    library this can draw on is tiny. That is itself the finding: the meta-data describes
+    datasets far better than it describes models.
+    """
+    columns = columns_as_arrays(frame, MODEL_FEATURES)
+    truth = target(frame)
+    labels = groups(frame, DATASET_COLUMN)
+
+    library = build_library((), MODEL_FEATURES, columns, max_abs_zscore=config.max_abs_zscore)
+    result = fit(
+        library,
+        truth,
+        max_terms=config.max_terms,
+        penalty=config.penalty,
+        pool_size=config.pool_size,
+        beam_width=config.beam_width,
+        name="EM",
+    )
+    available = max(result.equations)
+    size = min(config.headline_terms, available)
+    path = cross_validate_path(
+        library,
+        columns,
+        truth,
+        labels,
+        max_terms=available,
+        penalty=config.penalty,
+        pool_size=config.pool_size,
+        beam_width=config.beam_width,
+    )
+    in_sample = {k: r2_score(truth, eq.predict(columns)) for k, eq in result.equations.items()}
+    equation = result.equations[size]
+    return EquationReport(
+        equation=equation,
+        in_sample=score(truth, equation.predict(columns)).as_dict(),
+        curve=_curve(tuple(sorted(result.equations)), in_sample, {"loo_dataset": path}, truth),
+        cross_validated={"loo_dataset": path[size].scores(truth).as_dict()},
+        stability=path[size].stability(),
+    )
+
+
 def correlation_analysis(frame: pl.DataFrame, config: Configuration = DEFAULT_E2, top: int = 15) -> pl.DataFrame:
     """Rank candidate terms by how they relate to MCC, linearly and monotonically.
 
@@ -271,7 +324,12 @@ def leakage_demonstration(frame: pl.DataFrame, config: Configuration = DEFAULT_E
     return pl.DataFrame(rows)
 
 
-def comparison(frame: pl.DataFrame, e1: EquationReport, e2: EquationReport) -> pl.DataFrame:
+def comparison(
+    frame: pl.DataFrame,
+    e1: EquationReport,
+    e2: EquationReport,
+    model_only: EquationReport | None = None,
+) -> pl.DataFrame:
     """E1 against E2 on the one scale where they are comparable: all rows.
 
     E1's own R2 is computed over 20 dataset means and E2's over 476 rows, so the two
@@ -287,6 +345,12 @@ def comparison(frame: pl.DataFrame, e1: EquationReport, e2: EquationReport) -> p
     for label in np.unique(datasets):
         mask = datasets == label
         dataset_ceiling[mask] = truth[mask].mean()
+    model_ceiling = np.zeros_like(truth)
+    for label in np.unique(models):
+        mask = models == label
+        model_ceiling[mask] = truth[mask].mean()
+    if model_only is None:
+        model_only = run_model_only(frame)
 
     return pl.DataFrame(
         [
@@ -294,6 +358,14 @@ def comparison(frame: pl.DataFrame, e1: EquationReport, e2: EquationReport) -> p
             {
                 "equation": "E1 ceiling (true dataset means)",
                 **score(truth, dataset_ceiling).as_dict(),
+            },
+            {
+                "equation": "EM (model only)",
+                **score(truth, model_only.equation.predict(columns)).as_dict(),
+            },
+            {
+                "equation": "EM ceiling (true model means)",
+                **score(truth, model_ceiling).as_dict(),
             },
             {"equation": "E2 (dataset + model)", **score(truth, e2.equation.predict(columns)).as_dict()},
             {
@@ -318,6 +390,11 @@ class Report:
 
     e1: EquationReport
     e2: EquationReport
+    model_only: EquationReport
+    practices: pl.DataFrame
+    effects: pl.DataFrame
+    shares: pl.DataFrame
+    decomposition: pl.DataFrame
     correlations: pl.DataFrame
     baselines: pl.DataFrame
     comparison: pl.DataFrame
@@ -338,9 +415,17 @@ def run(path: str | None = None, *, quick: bool = False) -> Report:
     config_e2 = QUICK_E2 if quick else DEFAULT_E2
     e1 = run_e1(frame, config_e1)
     e2 = run_e2(frame, config_e2)
+    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
     return Report(
         e1=e1,
         e2=e2,
+        model_only=run_model_only(frame),
+        practices=best_practices(e2.equation, columns, e2.stability),
+        effects=term_effects(e2.equation, columns, DATASET_FEATURES, MODEL_FEATURES),
+        shares=group_shares(e2.equation, columns, DATASET_FEATURES, MODEL_FEATURES),
+        decomposition=variance_decomposition(
+            target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)
+        ),
         correlations=correlation_analysis(frame, config_e2),
         baselines=baselines(frame),
         comparison=comparison(frame, e1, e2),

@@ -13,8 +13,18 @@ from pathlib import Path
 
 import numpy as np
 
+from metafit.attribution import group_shares, term_effects, variance_decomposition
 from metafit.cli import main, render
-from metafit.data import load
+from metafit.data import (
+    DATASET_COLUMN,
+    DATASET_FEATURES,
+    MODEL_COLUMN,
+    MODEL_FEATURES,
+    columns_as_arrays,
+    groups,
+    load,
+    target,
+)
 from metafit.experiment import (
     Configuration,
     Report,
@@ -25,8 +35,10 @@ from metafit.experiment import (
     model_selection,
     run_e1,
     run_e2,
+    run_model_only,
 )
 from metafit.model import Equation
+from metafit.practices import best_practices
 
 FAST_E1 = Configuration(max_abs_zscore=3.0, penalty=1.0, pool_size=40, max_terms=3, headline_terms=3)
 FAST_E2 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=40, max_terms=3, headline_terms=3)
@@ -119,6 +131,23 @@ class TestStudyTables(unittest.TestCase):
         scores = dict(zip(table["protocol"].to_list(), table["r2"].to_list(), strict=True))
         self.assertGreater(scores["random 10-fold (leaky)"], scores["leave-one-dataset-out"])
 
+    def test_model_only_equation_uses_no_dataset_feature(self) -> None:
+        report = run_model_only(self.frame, FAST_E2)
+        used = {feature for term in report.equation.terms for feature in term.features}
+        self.assertTrue(used)
+        self.assertFalse(used & set(DATASET_FEATURES))
+
+    def test_dataset_features_explain_more_than_model_features(self) -> None:
+        # The direct test of "model choice outweighs the data": on this meta-dataset it
+        # does not. Dataset identity explains more variance, and the dataset-only
+        # equation gets far closer to its own ceiling than the model-only one does.
+        table = comparison(self.frame, self.e1, self.e2)
+        scores = dict(zip(table["equation"].to_list(), table["r2"].to_list(), strict=True))
+        self.assertGreater(scores["E1 (dataset only)"], scores["EM (model only)"])
+        self.assertGreater(
+            scores["E1 ceiling (true dataset means)"], scores["EM ceiling (true model means)"]
+        )
+
     def test_model_selection_reports_every_dataset(self) -> None:
         table = model_selection(self.frame, self.e2)
         self.assertEqual(table.height, 20)
@@ -140,9 +169,17 @@ class TestCli(unittest.TestCase):
     def setUpClass(cls) -> None:
         frame = load()
         e1, e2 = run_e1(frame, FAST_E1), run_e2(frame, FAST_E2)
+        cols = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
         cls.report = Report(
             e1=e1,
             e2=e2,
+            model_only=run_model_only(frame, FAST_E2),
+            practices=best_practices(e2.equation, cols, e2.stability),
+            effects=term_effects(e2.equation, cols, DATASET_FEATURES, MODEL_FEATURES),
+            shares=group_shares(e2.equation, cols, DATASET_FEATURES, MODEL_FEATURES),
+            decomposition=variance_decomposition(
+                target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)
+            ),
             correlations=correlation_analysis(frame, FAST_E2, top=5),
             baselines=baselines(frame),
             comparison=comparison(frame, e1, e2),
@@ -155,7 +192,8 @@ class TestCli(unittest.TestCase):
         with redirect_stdout(buffer):
             render(self.report)
         printed = buffer.getvalue()
-        for expected in ("Correlation screening", "E1 --", "E2 --", "Baselines", "Model selection"):
+        for expected in ("Correlation screening", "E1 --", "E2 --", "EM --", "Where the signal lives",
+                         "Extracted practices", "Baselines", "Model selection"):
             self.assertIn(expected, printed)
 
     def test_main_writes_equations_that_load_back(self) -> None:
