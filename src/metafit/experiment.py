@@ -57,10 +57,12 @@ DEFAULT_E2 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=400, max_
 
 SWEEP_SIZES: tuple[int, ...] = (2, 4, 6, 8, 10, 12, 14, 16)
 
-# A looser library reaches a higher in-sample R2 -- 0.600 at 16 terms -- but its
-# leave-one-dataset-out R2 falls from about 0.37 to about 0.23. The trade is real and
-# the README reports both; the defaults above take the generalising side of it.
-LOOSE_E2 = Configuration(max_abs_zscore=4.0, penalty=5.0, pool_size=400, max_terms=16, headline_terms=16)
+# The accuracy-leaning alternative: a wider library and almost no shrinkage. It reaches
+# in-sample R2 = 0.619 at 16 terms and 0.647 at 20 -- comfortably past 0.6 -- and gives up
+# leave-one-dataset-out R2 (0.32 against 0.37) while actually improving leave-one-model-out
+# (0.49 against 0.46). Both configurations are reported; the defaults above take the
+# generalising side of the trade, this one takes the fit.
+ACCURATE_E2 = Configuration(max_abs_zscore=4.0, penalty=1.0, pool_size=400, max_terms=20, headline_terms=16)
 
 
 @dataclass

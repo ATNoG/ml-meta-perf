@@ -24,6 +24,9 @@ Transform = Literal["id", "log", "sqrt", "inv", "sq"]
 Operation = Literal["atom", "ratio", "product", "sum_ratio"]
 
 DENOMINATOR_FLOOR = 1e-9
+MAX_ABS_ZSCORE = 8.0
+MIN_RELATIVE_SPREAD = 1e-6
+MAX_DENOMINATOR_RANGE = 20.0
 
 _TRANSFORM_FORMAT: dict[Transform, str] = {
     "id": "{0}",
@@ -121,18 +124,68 @@ class Term:
 
 
 def _guard(denominator: np.ndarray) -> np.ndarray:
-    """Keep a denominator away from zero without changing its sign."""
+    """Keep a denominator away from zero without changing its sign.
+
+    A backstop only. Terms whose denominator can actually approach zero are never
+    generated (see ``denominator_atom``), so in a library built by ``build_library``
+    this floor is not what any published term relies on.
+    """
     return np.where(denominator >= 0.0, 1.0, -1.0) * (np.abs(denominator) + DENOMINATOR_FLOOR)
 
 
 def composition_atom(feature: str, columns: dict[str, np.ndarray]) -> Atom:
-    """The operand used when a feature appears inside a ratio, product or sum.
+    """The operand used when a feature appears as a numerator or inside a sum.
 
     Strictly positive features enter log-compressed; the rest enter raw. This is the
     single decision that keeps composite terms on a comparable scale.
     """
     values = columns[feature]
     return Atom(feature, "log" if bool(np.all(values > 0.0)) else "id")
+
+
+def denominator_atom(feature: str, columns: dict[str, np.ndarray]) -> Atom | None:
+    """The operand to divide by, or ``None`` when this feature cannot safely be one.
+
+    Division is the one operation in the vocabulary that can manufacture a term no
+    linear solver can use: as a denominator approaches zero the term's magnitude runs
+    away, one row comes to hold all of its variance, and the fitted weight becomes an
+    artefact of that row rather than a relationship. The library therefore decides
+    eligibility per feature, before any term is built, rather than generating the term
+    and screening it afterwards.
+
+    Two candidate forms are tried in order of preference and the first that qualifies is
+    used:
+
+    * ``log(f)`` -- compresses scale, but is zero at ``f == 1`` and negative below it,
+      so it is only eligible when the feature stays clear of 1;
+    * ``f`` itself -- eligible when the feature stays clear of 0.
+
+    Eligibility is a bound on **dynamic range**, ``max|d| / min|d| <=
+    MAX_DENOMINATOR_RANGE``, not merely ``min|d| > 0``. That is the criterion that
+    matches the failure: a divisor spanning three orders of magnitude makes the ratio
+    span three orders of magnitude too, so one row holds nearly all of the term's
+    variance and its fitted weight describes that row. Requiring only a non-zero
+    minimum would admit exactly those terms.
+
+    Features that qualify under neither form are never used as denominators. In this
+    meta-dataset that rules out ``nr_norm``, ``nr_bin`` and ``nr_outliers`` (which reach
+    0), the log of anything reaching 1, and wide-range counts such as ``nr_inst``
+    (165 to 7.1M) in raw form -- though ``log(nr_inst)`` qualifies comfortably, which is
+    the compression the preference order exists to find.
+    """
+    for candidate in (Atom(feature, "log"), Atom(feature, "id")):
+        if not candidate.is_defined_on(columns):
+            continue
+        with np.errstate(all="ignore"):
+            evaluated = np.abs(candidate.evaluate(columns))
+        if not np.all(np.isfinite(evaluated)):
+            continue
+        smallest = float(np.min(evaluated))
+        if smallest <= DENOMINATOR_FLOOR:
+            continue
+        if float(np.max(evaluated)) / smallest <= MAX_DENOMINATOR_RANGE:
+            return candidate
+    return None
 
 
 def unary_terms(features: tuple[str, ...], columns: dict[str, np.ndarray]) -> list[Term]:
@@ -166,9 +219,15 @@ def pairwise_terms(
         if first == second:
             continue
         a, b = composition_atom(first, columns), composition_atom(second, columns)
-        candidates = [Term("ratio", (a, b)), Term("product", (a, b))]
+        # Products are always safe; ratios only exist when the divisor is eligible.
+        candidates = [Term("product", (a, b))]
+        denominator_b = denominator_atom(second, columns)
+        if denominator_b is not None:
+            candidates.append(Term("ratio", (a, denominator_b)))
         if both_directions:
-            candidates.append(Term("ratio", (b, a)))
+            denominator_a = denominator_atom(first, columns)
+            if denominator_a is not None:
+                candidates.append(Term("ratio", (b, denominator_a)))
         for term in candidates:
             if term.name not in seen:
                 seen.add(term.name)
@@ -183,41 +242,41 @@ def sum_ratio_terms(features: tuple[str, ...], columns: dict[str, np.ndarray]) -
         for third in features:
             if third in (first, second):
                 continue
+            divisor = denominator_atom(third, columns)
+            if divisor is None:
+                continue
             operands = (
                 composition_atom(first, columns),
                 composition_atom(second, columns),
-                composition_atom(third, columns),
+                divisor,
             )
             terms.append(Term("sum_ratio", operands))
     return terms
 
 
-MAX_ABS_ZSCORE = 8.0
-MIN_RELATIVE_SPREAD = 1e-6
-MIN_DENOMINATOR_MARGIN = 0.05
-
-
 def is_admissible(values: np.ndarray, max_abs_zscore: float = MAX_ABS_ZSCORE) -> bool:
-    """Whether a term is stable enough to put in an equation.
+    """Whether a term is numerically usable as a column of a linear system.
 
-    Three rejections, each earned by a failure mode this data actually produces.
+    This is a backstop, not the main line of defence. The terms that used to fail here
+    were unstable by construction -- ratios whose denominator could reach zero -- and
+    those are no longer generated at all (see ``denominator_atom``). What remains is a
+    cheap check that a caller assembling a ``Library`` by hand, or a transform applied
+    to an unexpected feature, cannot smuggle in a column that breaks the solve.
 
-    *Not finite, or constant.* The obvious one.
+    Three rejections:
+
+    *Not finite, or constant.* A constant column is collinear with the intercept.
 
     *Effectively constant.* A term whose spread is negligible against its own magnitude
-    survives an absolute variance check but destroys the published equation: fitting
+    passes an absolute variance check but destroys the published equation: fitting
     happens on standardised terms, so folding the standardisation back into raw units
     divides the weight by that spread. One near-constant term produced a weight of
     -1.5e9 against an intercept of +1.5e9 -- algebraically fine, arithmetically fine,
     and completely unreadable, which defeats the purpose of the exercise.
 
     *Driven by one row.* A term is rejected when a single row sits more than
-    ``max_abs_zscore`` standard deviations from the mean. Several features here contain
-    exact zeros -- ``nr_norm``, ``nr_bin``, ``nr_outliers`` -- and a ratio dividing by
-    one lands on the denominator floor and spikes. Standardisation hides this while
-    fitting, since the spike simply becomes the scale, but the term then explodes on a
-    held-out dataset outside the training range. Left unfiltered these terms drive
-    leave-one-dataset-out R2 to about -1.7 while in-sample R2 still reads 0.61.
+    ``max_abs_zscore`` standard deviations from the mean, because its fitted weight
+    would describe that row rather than a relationship.
 
     The cap is sample-size dependent and has to be chosen with that in mind: a single
     outlier among ``n`` rows can reach a z-score of at most about ``sqrt(n)``, so a cap
@@ -234,27 +293,6 @@ def is_admissible(values: np.ndarray, max_abs_zscore: float = MAX_ABS_ZSCORE) ->
     return float(np.max(np.abs(values - np.mean(values)))) / spread <= max_abs_zscore
 
 
-def denominator_is_safe(term: Term, columns: dict[str, np.ndarray]) -> bool:
-    """Whether a ratio's denominator stays clear of zero across the data.
-
-    ``_guard`` keeps division finite, but finite is not the same as meaningful. A
-    denominator that approaches zero somewhere in the data -- ``log(f)`` where ``f``
-    reaches 1, or any count feature that reaches 0 -- turns the ratio into a spike whose
-    weight carries no interpretation. Requiring the smallest denominator to stand clear
-    of zero by a fraction of its own spread removes those terms up front, rather than
-    letting the selector discover them and the equation inherit them.
-    """
-    if term.operation not in ("ratio", "sum_ratio"):
-        return True
-    with np.errstate(all="ignore"):
-        denominator = term.operands[-1].evaluate(columns)
-    if not np.all(np.isfinite(denominator)):
-        return False
-    spread = float(np.std(denominator))
-    floor = MIN_DENOMINATOR_MARGIN * spread if spread > 0.0 else DENOMINATOR_FLOOR
-    return bool(np.min(np.abs(denominator)) > floor)
-
-
 class Library:
     """A set of terms together with the design matrix they produce."""
 
@@ -269,7 +307,7 @@ class Library:
         vectors: list[np.ndarray] = []
         seen: set[str] = set()
         for term in terms:
-            if term.name in seen or not denominator_is_safe(term, columns):
+            if term.name in seen:
                 continue
             with np.errstate(all="ignore"):
                 values = term.evaluate(columns)

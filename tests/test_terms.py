@@ -10,7 +10,7 @@ from metafit.terms import (
     Term,
     build_library,
     composition_atom,
-    denominator_is_safe,
+    denominator_atom,
     is_admissible,
     pairwise_terms,
     sum_ratio_terms,
@@ -122,30 +122,69 @@ class TestAdmissibility(unittest.TestCase):
         self.assertTrue(is_admissible(values, max_abs_zscore=100.0))
 
 
-class TestDenominatorSafety(unittest.TestCase):
-    def test_non_ratio_terms_are_always_safe(self) -> None:
-        self.assertTrue(denominator_is_safe(Term("atom", (Atom("a"),)), columns(a=[0.0, 1.0])))
-        self.assertTrue(
-            denominator_is_safe(Term("product", (Atom("a"), Atom("b"))), columns(a=[0.0], b=[0.0]))
-        )
+class TestDenominatorEligibility(unittest.TestCase):
+    """Unsafe divisors are never generated, rather than generated and then screened."""
 
-    def test_denominator_reaching_zero_is_rejected(self) -> None:
-        data = columns(a=[1.0, 2.0, 3.0], b=[0.0, 1.0, 2.0])
-        self.assertFalse(denominator_is_safe(Term("ratio", (Atom("a"), Atom("b"))), data))
+    def test_feature_reaching_zero_is_never_a_denominator(self) -> None:
+        self.assertIsNone(denominator_atom("b", columns(a=[1.0, 2.0, 3.0], b=[0.0, 1.0, 2.0])))
 
-    def test_denominator_clear_of_zero_is_accepted(self) -> None:
-        data = columns(a=[1.0, 2.0, 3.0], b=[10.0, 11.0, 12.0])
-        self.assertTrue(denominator_is_safe(Term("ratio", (Atom("a"), Atom("b"))), data))
+    def test_feature_clear_of_zero_uses_its_log(self) -> None:
+        atom = denominator_atom("b", columns(b=[10.0, 11.0, 12.0]))
+        self.assertIsNotNone(atom)
+        assert atom is not None
+        self.assertEqual(atom.transform, "log")
 
-    def test_log_denominator_touching_one_is_rejected(self) -> None:
-        # log(1) == 0, an easy way to divide by zero without any zero in the data.
-        data = columns(a=[5.0, 6.0, 7.0], b=[1.0, 10.0, 100.0])
-        self.assertFalse(denominator_is_safe(Term("ratio", (Atom("a"), Atom("b", "log"))), data))
+    def test_falls_back_to_the_raw_feature_when_the_log_reaches_zero(self) -> None:
+        # log(1) == 0, so log is ineligible, but the feature itself is tight around 1.
+        atom = denominator_atom("b", columns(b=[0.9, 1.0, 1.1]))
+        self.assertIsNotNone(atom)
+        assert atom is not None
+        self.assertEqual(atom.transform, "id")
+
+    def test_wide_range_divisor_is_refused_even_though_it_never_reaches_zero(self) -> None:
+        # min is 1, so a "non-zero denominator" rule would admit this. Dividing by it
+        # spans two orders of magnitude and hands one row the term's whole variance.
+        self.assertIsNone(denominator_atom("b", columns(b=[1.0, 10.0, 100.0])))
+
+    def test_log_compression_rescues_a_wide_range_feature(self) -> None:
+        # nr_inst-like: hopeless raw, comfortable once compressed.
+        atom = denominator_atom("b", columns(b=[165.0, 20000.0, 7_062_606.0]))
+        self.assertIsNotNone(atom)
+        assert atom is not None
+        self.assertEqual(atom.transform, "log")
+
+    def test_negative_feature_can_still_divide_when_clear_of_zero(self) -> None:
+        atom = denominator_atom("b", columns(b=[-5.0, -6.0, -7.0]))
+        self.assertIsNotNone(atom)
+        assert atom is not None
+        self.assertEqual(atom.transform, "id")
+
+    def test_no_generated_ratio_has_a_denominator_near_zero(self) -> None:
+        # The structural guarantee: over the real meta-dataset, every ratio the library
+        # emits has a divisor that stays clear of zero, so none of them can spike.
+        from metafit.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays, load
+
+        data = columns_as_arrays(load(), DATASET_FEATURES + MODEL_FEATURES)
+        library = build_library(DATASET_FEATURES, MODEL_FEATURES, data)
+        checked = 0
+        for term in library.terms:
+            if term.operation not in ("ratio", "sum_ratio"):
+                continue
+            checked += 1
+            divisor = term.operands[-1].evaluate(data)
+            self.assertGreater(float(np.min(np.abs(divisor))), 0.0, term.name)
+            self.assertGreater(
+                float(np.min(np.abs(divisor))), 0.05 * float(np.std(divisor)), term.name
+            )
+        self.assertGreater(checked, 0)
 
 
 class TestBuilders(unittest.TestCase):
     def setUp(self) -> None:
         self.columns = columns(p=[1.0, 2.0, 3.0, 4.0], q=[0.0, 1.0, 2.0, 3.0])
+        # Both eligible as denominators, so the direction tests measure direction and
+        # not eligibility.
+        self.divisible = columns(p=[10.0, 12.0, 14.0, 16.0], q=[20.0, 24.0, 28.0, 32.0])
 
     def test_composition_atom_compresses_only_positive_features(self) -> None:
         self.assertEqual(composition_atom("p", self.columns).transform, "log")
@@ -159,18 +198,31 @@ class TestBuilders(unittest.TestCase):
         self.assertNotIn("1/q", names)
 
     def test_pairwise_within_a_group_is_one_directional(self) -> None:
-        terms = pairwise_terms(("p", "q"), ("p", "q"), self.columns, both_directions=False)
+        terms = pairwise_terms(("p", "q"), ("p", "q"), self.divisible, both_directions=False)
         names = {term.name for term in terms}
         self.assertEqual(sum(1 for name in names if " / " in name), 1)
 
     def test_pairwise_across_groups_is_bidirectional(self) -> None:
-        terms = pairwise_terms(("p",), ("q",), self.columns, both_directions=True)
+        terms = pairwise_terms(("p",), ("q",), self.divisible, both_directions=True)
         names = {term.name for term in terms}
         self.assertEqual(sum(1 for name in names if " / " in name), 2)
 
+    def test_products_survive_even_when_no_ratio_can_be_formed(self) -> None:
+        # q reaches zero, so it cannot be divided by -- but multiplying by it is fine,
+        # and refusing the ratio must not cost the product.
+        terms = pairwise_terms(("p",), ("q",), self.columns, both_directions=True)
+        names = {term.name for term in terms}
+        self.assertEqual(sum(1 for name in names if " * " in name), 1)
+        self.assertNotIn("[log(p)] / [q]", names)
+
     def test_pairwise_never_pairs_a_feature_with_itself(self) -> None:
-        terms = pairwise_terms(("p",), ("p",), self.columns, both_directions=True)
+        terms = pairwise_terms(("p",), ("p",), self.divisible, both_directions=True)
         self.assertEqual(terms, [])
+
+    def test_sum_ratio_skips_ineligible_divisors(self) -> None:
+        data = columns(a=[1.0, 2.0], b=[3.0, 4.0], zero=[0.0, 1.0])
+        for term in sum_ratio_terms(("a", "b", "zero"), data):
+            self.assertNotEqual(term.operands[-1].feature, "zero")
 
     def test_sum_ratio_uses_three_distinct_features(self) -> None:
         data = columns(a=[1.0, 2.0], b=[3.0, 4.0], c=[5.0, 6.0])

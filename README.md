@@ -84,9 +84,21 @@ Past about 10 terms the in-sample curve is flat — the extra terms buy 0.006 R�
 12 and 16 — while the cross-validated column is still moving by more than that from fold
 noise alone. Twelve is chosen from the flat part of the curve rather than from its peak.
 
-A looser configuration (`LOOSE_E2`) pushes in-sample R² to **0.600** at 16 terms, but its
-leave-one-dataset-out R² falls to about **0.23**. That direction is available and
-documented; the defaults take the generalising side of the trade.
+### The accuracy-leaning configuration
+
+`ACCURATE_E2` (wider library, almost no shrinkage) trades the other way:
+
+| terms | in-sample R² | LOO-dataset R² | LOO-model R² |
+|---|---|---|---|
+| 12 | 0.584 | 0.270 | 0.472 |
+| **16** | **0.619** | 0.320 | 0.493 |
+| 20 | **0.647** | 0.287 | **0.533** |
+
+**This clears 0.6**, and at 20 terms reaches 0.647 against the 0.661 additive ceiling —
+98% of what any additive equation can achieve. It gives up leave-one-dataset-out R²
+(0.32 vs 0.37) but is actually *better* on leave-one-model-out (0.49 vs 0.46).
+
+Both configurations ship. The defaults take the generalising side; this one takes the fit.
 
 ### The fitted equations
 
@@ -184,21 +196,44 @@ identity does not already explain.
 `(f1+f2)/f3` combinations. Composite terms are built over log-compressed operands
 wherever the feature is strictly positive, since `gravity` alone spans 1.6 to 1e16.
 
-**3. Stability filtering.** Terms are rejected when they are effectively constant, when a
-single row dominates their variance, or when a ratio's denominator approaches zero.
-This matters more than it sounds — see below.
+**3. Denominator eligibility, decided before any term is built.** Division is the only
+operation in the vocabulary that can manufacture a column no linear solver can use, so
+eligibility is decided per feature up front rather than by screening terms afterwards. A
+feature may be divided by only if some form of it — `log(f)` preferred, else `f` — keeps
+`max|d| / min|d| <= 20`. Bounding the *dynamic range* is the criterion that matches the
+failure; merely requiring `min|d| > 0` would admit a divisor spanning three orders of
+magnitude, which hands one row the term's entire variance. Products are unconditional;
+only ratios are gated. See below for what this is worth.
 
-**4. Beam search.** Subset selection with a beam rather than greedy descent, ridge refit
-at every step, a collinearity guard, and a swap-based refinement pass. Because the beam
-records its best subset at every size, one search yields the whole term-count curve.
+**Normalisation.** Terms are standardised (per-term mean and standard deviation, learned
+on training rows only) before selection and fitting, then the standardisation is folded
+back into the weights so the published equation reads in raw feature units. This matters:
+raw term scales here span four orders of magnitude (std 1.3e-2 to 1.5e+2).
+
+**4. Subset selection by beam search — the weights are solved, not searched.** These are
+two separate problems and only one of them is hard:
+
+- *Given a set of terms, what are the best weights?* A linear problem, solved exactly by
+  `numpy.linalg.solve` on the ridge normal equations. No iteration, no evolution. This is
+  a strict advantage over genetic programming, which has to search for its coefficients.
+- *Which k of ~360 candidate terms?* Combinatorial, and not something a linear solver can
+  answer. Handing every term to `lstsq` at once gives in-sample R² 0.656 and
+  leave-one-dataset-out R² of **-5.94**; the 12-term selected equation gets 0.371.
+
+Beam search answers the second question, calling the exact solver as its scoring
+function. A beam rather than greedy descent because greedy commits to its first term
+permanently, which on a collinear library is often wrong; plus a collinearity guard and a
+swap-based refinement pass. Because the beam records its best subset at every size, one
+search yields the whole term-count curve.
 
 **5. Validation.** Leave-one-dataset-out and leave-one-model-out. Term *selection* runs
 inside each fold, not once outside it — screening against the full target and then
 cross-validating only the weights is a standard way to leak the held-out fold.
 
-### Why the stability filters exist
+### Why denominators are gated at generation time
 
-Removing them raises in-sample R² to 0.611 and drives leave-one-dataset-out R² to **-1.7**.
+Allowing unrestricted division raises in-sample R² to 0.611 and drives leave-one-dataset-out
+R² to **-1.7**.
 
 Several features contain exact zeros (`nr_norm`, `nr_bin`, `nr_outliers`) and `log(f)`
 hits zero whenever `f` reaches 1. Ratios dividing by these produce terms whose entire
@@ -208,6 +243,31 @@ range. A near-constant term causes a different failure: folding the standardisat
 into raw units divides its weight by a negligible spread, which once produced a
 coefficient of `-1.5e9` against an intercept of `+1.5e9`. Correct arithmetic, unreadable
 equation.
+
+These are prevented structurally — the terms are never generated — rather than screened
+out after the fact. `is_admissible` remains as a cheap numerical backstop for libraries
+assembled by hand, but nothing `build_library` produces depends on it. The practical
+difference shows at loose stability caps, where post-hoc screening still let unstable
+terms through: at `max_abs_zscore=6` the worst leave-one-dataset-out R² across the sweep
+improved from **-1.66** to **-0.39** once the rule became structural.
+
+### Normalisation, and what it does and does not affect
+
+Term scales span 1.3e-2 to 1.5e+2 (a ratio of 1.2e4), so this is not a cosmetic question:
+
+| | standardised | raw |
+|---|---|---|
+| same 12 terms, penalty = 0 | 0.569611 | 0.569611 |
+| same 12 terms, penalty = 20 | 0.556 | 0.559 |
+| same 12 terms, penalty = 200 | 0.461 | 0.503 |
+| **terms chosen by the search** | **0/12 overlap between the two** | |
+
+Ordinary least squares is exactly scale-invariant, so with no penalty the two agree to
+six decimals. Standardisation matters for the other two things the pipeline does: the
+ridge penalty is one number applied to every weight and is only meaningful when terms
+share a scale, and selection compares candidates by correlation with the current
+residual — on raw scales that comparison is dominated by whichever term happens to be
+largest. On this data the two designs select **completely disjoint** sets of 12 terms.
 
 ## Installation
 
