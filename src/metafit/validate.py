@@ -242,5 +242,3 @@ def ranking_report(
             }
         )
     return pl.DataFrame(rows).sort("group")
-
-
