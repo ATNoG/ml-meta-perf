@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "metafit"
+version = "0.1.0"
+authors = [
+    {name = "Mário Antunes", email = "mario.antunes@av.it.pt"}
+]
+description = "Interpretable linear meta-models that predict the MCC of a classifier from dataset and model meta-features"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "polars>=1.20.0",
+    "numpy>=2.0.0",
+]
+
+[project.urls]
+Repository = "https://github.com/mariolpantunes/aiml-model"
+Issues = "https://github.com/mariolpantunes/aiml-model/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 120
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.basedpyright]
+typeCheckingMode = "standard"
+venvPath = "."
+venv = "venv"
+include = ["src/metafit", "tests", "examples"]
+reportImportCycles = "none"
+
+[tool.vulture]
+paths = ["src/metafit", "tests", "examples"]
+min_confidence = 80
+
+[tool.coverage.run]
+source = ["src/metafit"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
