@@ -204,6 +204,41 @@ with near-duplicates and leave-one-dataset-out R² collapses to **-0.285**. The 
 The magnitude problem here is a *dynamic-range* problem, and log-compression is the
 response to it. Scaling addresses magnitude, which was never the difficulty.
 
+### Yeo-Johnson and rank transforms
+
+Two more principled options than min-max were tested, since the classical answer to
+skewed predictors is a power transform (Box & Cox, 1964; Yeo & Johnson, 2000) or a
+rank-based transform (van der Waerden).
+
+| feature transform | library | in-sample (k=14) | LOO-dataset (k=14) |
+|---|---|---|---|
+| **none (current)** | 172 | 0.5582 | **+0.443** |
+| Yeo-Johnson, λ per feature | 392 | 0.5597 | -0.124 |
+| Yeo-Johnson, shifted positive | 675 | 0.5673 | +0.203 |
+| rank → uniform [1, 2] | 1011 | 0.5500 | -0.001 |
+| rank → uniform [1, 100] | 171 | 0.5372 | +0.236 |
+
+Yeo-Johnson does exactly what it promises — it is chosen over Box-Cox here because it
+accepts zero and negative values, which six of these features have:
+
+| feature | fitted λ | skewness before | after |
+|---|---|---|---|
+| `gravity` | -0.05 | 3.97 | **0.01** |
+| `nr_inst` | +0.10 | 3.46 | 0.02 |
+| `nr_outliers` | -0.05 | 3.87 | 0.10 |
+| `ns_ratio` | -0.35 | 3.73 | -0.02 |
+
+**And the λ it chooses is ≈ 0 for every heavy-tailed feature, which is the log transform.**
+The principled method converges on what the grammar already offers. In-sample changes
+little (0.5597 against 0.5582) and transfer falls sharply, because a λ fitted to the
+observed feature distribution extrapolates poorly on a held-out dataset whose features lie
+outside that range.
+
+The distinction that matters: applying a power transform as **preprocessing** commits every
+term to one compression per feature. Keeping `log`, `sqrt` and `1/f` in the **grammar**
+lets the search decide per term whether compression helps and how much. Same functions,
+strictly more freedom, and the freedom is worth 0.24 R² of transfer.
+
 ### Reading impact off the weights
 
 The second motivation for scaling — being able to compare terms by their weights — is

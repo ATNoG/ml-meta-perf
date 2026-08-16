@@ -254,6 +254,14 @@ enumeration costs one pass and yields eight times the terms. The honest reading 
 this meta-dataset is too small **in its feature dimension** for construction to beat
 exhaustion.
 
+**Status: not used.** `metafit.construct` ships tested and is wired into no pipeline. It
+is kept because a documented negative result is worth more than a deleted one — the
+question "why not build terms by clustering instead of enumerating them?" is the first
+one a reader will ask, and the answer is measured rather than asserted. Its ideas were
+also tried as a *filter* on the enumerated library rather than a replacement for it, and
+that fails too, for the reason given above: any filter over marginal impact discards the
+weak-but-complementary terms the equation depends on.
+
 ### Nesting does not pay on this data
 
 Allowing merged terms to merge again was implemented and measured. Even with the merge
