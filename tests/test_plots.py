@@ -14,6 +14,7 @@ from metafit.plots import (
     practice_effects,
     predicted_versus_actual,
     protocol_comparison,
+    scatter_limits,
     term_count_curve,
     term_effects,
 )
@@ -91,6 +92,13 @@ class TestPlots(PlotTestCase):
             predicted_versus_actual(truth, truth + rng.normal(0, 0.1, 80), self.folder / "scatter.png")
         )
 
+    def test_scatter_of_realistic_data_is_still_a_png(self) -> None:
+        truth = np.linspace(0.0, 1.0, 40)
+        self.assertIsPng(
+            predicted_versus_actual(truth, truth * 0.9 + 0.05, self.folder / "tight.png")
+        )
+
+
     def test_term_effects(self) -> None:
         self.assertIsPng(term_effects(effects(), self.folder / "terms.png"))
 
@@ -127,6 +135,36 @@ class TestPlots(PlotTestCase):
     def test_creates_missing_directories(self) -> None:
         nested = self.folder / "a" / "b" / "curve.png"
         self.assertIsPng(term_count_curve(curve(), nested))
+
+
+class TestScatterLimits(unittest.TestCase):
+    """Axis bounds follow the data, not MCC's theoretical range."""
+
+    def test_covers_both_series(self) -> None:
+        truth = np.array([0.0, 0.8])
+        predicted = np.array([0.3, 1.0])
+        low, high = scatter_limits(truth, predicted, margin=0.05)
+        self.assertAlmostEqual(low, -0.05)
+        self.assertAlmostEqual(high, 1.05)
+
+    def test_does_not_stretch_to_minus_one(self) -> None:
+        # The meta-dataset drops runs that failed to train, so its floor is about -0.29.
+        # A fixed [-1, 1] axis would leave the bottom half of the figure empty.
+        truth = np.array([-0.29, 0.0, 1.0])
+        predicted = np.array([0.17, 0.5, 1.0])
+        low, _ = scatter_limits(truth, predicted)
+        self.assertGreater(low, -0.5)
+        self.assertAlmostEqual(low, -0.34)
+
+    def test_margin_is_applied_to_both_ends(self) -> None:
+        values = np.array([0.2, 0.6])
+        low, high = scatter_limits(values, values, margin=0.1)
+        self.assertAlmostEqual(low, 0.1)
+        self.assertAlmostEqual(high, 0.7)
+
+    def test_zero_margin_is_exact(self) -> None:
+        values = np.array([0.0, 1.0])
+        self.assertEqual(scatter_limits(values, values, margin=0.0), (0.0, 1.0))
 
 
 class TestFigureSet(PlotTestCase):

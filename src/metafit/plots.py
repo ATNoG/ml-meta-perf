@@ -88,23 +88,43 @@ def term_count_curve(
     return _finish(figure, destination)
 
 
+def scatter_limits(truth: np.ndarray, predicted: np.ndarray, margin: float = 0.05) -> tuple[float, float]:
+    """Square axis bounds covering both series, padded by ``margin``.
+
+    Deliberately not MCC's theoretical [-1, 1]. Runs that failed to train were dropped
+    from the meta-dataset, so the observed floor is about -0.29 (one row) rather than -1,
+    and a fixed [-1, 1] axis would spend half the figure on empty space.
+    """
+    lowest = float(min(truth.min(), predicted.min())) - margin
+    highest = float(max(truth.max(), predicted.max())) + margin
+    return lowest, highest
+
+
 def predicted_versus_actual(
     truth: np.ndarray,
     predicted: np.ndarray,
     destination: str | Path,
     *,
     title: str = "Predicted versus actual MCC",
+    margin: float = 0.05,
 ) -> Path:
     """A scatter against the diagonal, with the MCC ceiling made visible.
 
     17% of the meta-dataset sits at exactly MCC = 1.0. That pile-up is the single most
     important thing to see about this target, and a scatter shows it in a way no summary
     statistic does.
+
+    The axes span the observed data, not MCC's theoretical [-1, 1]. Runs that failed to
+    train were dropped from the meta-dataset, so nothing sits far below zero -- the
+    observed floor is about -0.29, from a single row. Drawing the axis down to -1 would
+    devote half the figure to a region no run occupies and squash the range where the
+    points actually are.
     """
+    limits = scatter_limits(truth, predicted, margin)
+
     figure, axes = plt.subplots(figsize=(5.4, 5.2))
-    axes.scatter(truth, predicted, s=18, alpha=0.55, color=IN_SAMPLE, edgecolor="none")
-    limits = (-1.05, 1.05)
-    axes.plot(limits, limits, color=CEILING, linewidth=1.0, linestyle="--", label="perfect")
+    axes.plot(limits, limits, color=CEILING, linewidth=1.0, linestyle="--", label="perfect", zorder=1)
+    axes.scatter(truth, predicted, s=18, alpha=0.55, color=IN_SAMPLE, edgecolor="none", zorder=2)
     axes.set_xlim(limits)
     axes.set_ylim(limits)
     axes.set_aspect("equal")

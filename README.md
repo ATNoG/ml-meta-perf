@@ -173,6 +173,21 @@ of the meta-dataset sits exactly there.
 
 ![Accuracy versus equation length](assets/figures/term_count_curve.png)
 
+### Where the equation fails
+
+![Predicted versus actual MCC](assets/figures/predicted_vs_actual.png)
+
+Runs that failed to train were dropped when the meta-dataset was assembled, so observed
+MCC runs from **-0.29** (a single row) to 1.0 rather than spanning the full [-1, 1]; the
+axes are drawn to the data for that reason.
+
+The scatter shows the equation's clearest weakness. Predictions never fall below **0.17**,
+while 38 rows sit at exactly MCC = 0.0 — an entire column of points hanging above the
+diagonal on the left. **E2 cannot identify the cases where a model will simply fail on a
+dataset.** It is a usable estimator in the range where models work and a poor detector of
+the range where they do not, which is worth stating plainly before anyone uses it to
+screen candidates.
+
 ## Extracted practices
 
 This is what the accuracy was traded for. Each statement is derived from the fitted
