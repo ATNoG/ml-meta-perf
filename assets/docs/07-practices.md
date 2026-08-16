@@ -77,7 +77,55 @@ better left unwritten.
 Read together: *pick a bigger, more expensive, outlier-robust model; expect trouble on
 data with a high effective feature count and well-separated class centres.*
 
-## What these are not
+## Are these practices a property of the data, or of the search?
+
+The sharpest test available, and the one that decides how much the guidance is worth.
+
+Two equations were fitted by methods sharing **no machinery**:
+
+| | method | terms | in-sample R² |
+|---|---|---|---|
+| A | enumerated library, beam selection | 14 | **0.5582** |
+| B | dendrogram cut, no selection at all | 6 | **0.4083** |
+
+Method B is described in [chapter 3](03-search-and-fitting.md): features are agglomerated
+until six clusters remain, and those six clusters *are* the equation's terms. It shares no
+library, no screening and no subset search with method A, and it is 0.15 R² worse.
+
+Their extracted practices were then compared with `practices.concordance`:
+
+| feature | direction (A) | direction (B) | agrees |
+|---|---|---|---|
+| `Processing Units Number` | +0.763 | +0.361 | ✓ |
+| `Robust to Outliers` | +0.972 | +0.964 | ✓ |
+| `Training Operations` | +0.244 | +0.229 | ✓ |
+| `eq_num_attr` | -0.864 | -0.269 | ✓ |
+| `gravity` | -0.976 | -0.869 | ✓ |
+| `inst_to_attr` | +0.227 | +0.150 | ✓ |
+| `nr_attr` | +0.601 | +0.861 | ✓ |
+| `nr_bin` | +0.964 | +0.915 | ✓ |
+| `ns_ratio` | -0.883 | -0.620 | ✓ |
+
+**Direction agreement: 9 of 9 — 100%.**
+
+Two structurally unrelated discovery methods, separated by 0.15 R², produce **identical
+qualitative guidance on every feature they share**. That is the strongest evidence in this
+study that the practices describe the meta-dataset rather than an artefact of one search,
+and it is the reason the accuracy gap between the two equations does not undermine them:
+the advice is stable precisely where the accuracy is not.
+
+### The caveat that must travel with it
+
+**Effect-magnitude rank correlation: -0.243.**
+
+The two equations agree on every *direction* and disagree on the *ordering of importance*.
+A short equation attributes an effect to whichever of several correlated features it
+happened to keep, so "which factor matters most" is not stable across methods even when
+"which way does it push" is.
+
+The defensible claim is therefore directional, and the tables in this chapter should be
+read as a set of signed statements rather than as a ranking. Any write-up that orders these
+practices by effect size is claiming more than the evidence supports.
 
 **Associations measured across 20 datasets, not causal claims.** "Higher training cost
 went with higher MCC" does not mean padding a model with FLOPs raises MCC; it means the

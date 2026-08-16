@@ -6,7 +6,13 @@ import numpy as np
 import polars as pl
 
 from metafit.model import Equation
-from metafit.practices import best_practices, feature_practices, render
+from metafit.practices import (
+    best_practices,
+    concordance,
+    concordance_summary,
+    feature_practices,
+    render,
+)
 from metafit.terms import Atom, Term
 
 
@@ -125,6 +131,61 @@ class TestBestPractices(unittest.TestCase):
         table = best_practices(empty, columns())
         self.assertEqual(table.height, 0)
         self.assertIn("practice", table.columns)
+
+
+class TestConcordance(unittest.TestCase):
+    """Whether two independently-discovered equations give the same advice."""
+
+    def setUp(self) -> None:
+        self.columns = columns()
+        self.a = rising_equation()
+        # A different equation over the same features, agreeing in direction but not in
+        # magnitude: this is the case the analysis is designed to detect.
+        self.b = Equation(
+            intercept=0.4,
+            terms=(Term("atom", (Atom("up"),)), Term("atom", (Atom("down"),))),
+            weights=(0.02, -0.30),
+            standardized_weights=(0.2, -0.8),
+        )
+
+    def test_agrees_when_directions_match(self) -> None:
+        table = concordance(self.a, self.b, self.columns)
+        self.assertEqual(sorted(table["feature"].to_list()), ["down", "up"])
+        self.assertTrue(table["agrees"].all())
+
+    def test_disagrees_when_a_sign_flips(self) -> None:
+        flipped = Equation(
+            intercept=0.4,
+            terms=(Term("atom", (Atom("up"),)),),
+            weights=(-0.10,),
+            standardized_weights=(-0.6,),
+        )
+        table = concordance(self.a, flipped, self.columns)
+        self.assertFalse(table["agrees"].all())
+
+    def test_only_shared_features_are_compared(self) -> None:
+        other = Equation(
+            intercept=0.0,
+            terms=(Term("atom", (Atom("up"),)),),
+            weights=(0.1,),
+            standardized_weights=(0.5,),
+        )
+        self.assertEqual(concordance(self.a, other, self.columns)["feature"].to_list(), ["up"])
+
+    def test_summary_reports_full_agreement(self) -> None:
+        summary = concordance_summary(concordance(self.a, self.b, self.columns))
+        self.assertEqual(summary["shared"], 2.0)
+        self.assertAlmostEqual(summary["direction_agreement"], 1.0)
+
+    def test_summary_of_an_empty_table(self) -> None:
+        empty = Equation(intercept=0.0, terms=(), weights=(), standardized_weights=())
+        summary = concordance_summary(concordance(empty, empty, self.columns))
+        self.assertEqual(summary["shared"], 0.0)
+
+    def test_custom_names_appear_in_the_columns(self) -> None:
+        table = concordance(self.a, self.b, self.columns, names=("enum", "cut"))
+        self.assertIn("direction_enum", table.columns)
+        self.assertIn("effect_cut", table.columns)
 
 
 class TestRender(unittest.TestCase):

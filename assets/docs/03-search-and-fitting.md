@@ -149,6 +149,49 @@ exhaustive depth-2 enumeration is *complete*, so any pair-selection heuristic ca
 return a subset of it. Selection heuristics start to pay when the space is too large to
 enumerate, which at 17 features it is not.
 
+### The dendrogram cut: clusters as the equation
+
+Taken to its conclusion, the clustering analogy removes the selection step entirely.
+`cluster_terms` merges until exactly *k* clusters remain and returns them as the equation's
+*k* terms. The cut level **is** the equation length, and least squares is left with nothing
+to do but the weights. One mechanism instead of two.
+
+| cut at | in-sample R² | max term depth |
+|---|---|---|
+| 2 | 0.267 | 4 |
+| 4 | 0.370 | 4 |
+| 6 | 0.408 | 3 |
+| 10 | 0.443 | 3 |
+| 14 | 0.471 | 2 |
+
+It fits worse than beam selection at the same length (0.471 against 0.558 at 14 terms),
+which is expected: it has no freedom to choose *which* terms, only how to group all of
+them. Its value is elsewhere — see the concordance test in
+[chapter 7](07-practices.md), where its independence from the enumerated pipeline is
+exactly what makes it useful.
+
+Deep cuts also show the readability cost directly. The four-term cut contains
+
+```
+[[log(gravity)] / [log(inst_to_attr)]] * [[[nr_cor_attr] * [nr_norm^2]] *
+    [[[1/class_ent] * [nr_bin^2]] * [[nr_outliers^2] / [log(nr_attr)]]]]
+```
+
+which is one term by the equation's accounting and unreadable by any other. Depth is
+capped for this reason, and the cap is the parameter that decides whether "short equation"
+means anything.
+
+### Nesting does not pay on this data
+
+Allowing merged terms to merge again was implemented and measured. Even with the merge
+threshold set to zero — accepting *any* improvement in linearity — only 2 of 14 constructed
+terms exceed depth 1, and in-sample R² at 8 terms moves from 0.4538 to 0.4616.
+
+The mechanism works; the data does not reward it. Composing an already-composed term
+rarely makes it more linear in MCC, which is consistent with everything else here: the
+missing structure is a rank-1 interaction ([chapter 5](05-oracles.md)), and no amount of
+nesting products and ratios of single features reproduces it.
+
 ### Every increase in expressiveness costs transfer
 
 | library | in-sample (k=14) | LOO-dataset (k=14) |

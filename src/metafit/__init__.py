@@ -7,7 +7,7 @@ worth under leave-one-dataset-out and leave-one-model-out validation.
 
 from metafit.analysis import redundancy_groups, screen
 from metafit.attribution import group_shares, term_effects, variance_decomposition
-from metafit.construct import agglomerate, constructed_library, structural_terms
+from metafit.construct import agglomerate, cluster_terms, constructed_library, structural_terms
 from metafit.data import (
     ALL_FEATURES,
     DATASET_COLUMN,
@@ -23,7 +23,7 @@ from metafit.data import (
 )
 from metafit.fit import FitResult, fit
 from metafit.model import Equation
-from metafit.practices import best_practices, feature_practices
+from metafit.practices import best_practices, concordance, concordance_summary, feature_practices
 from metafit.selection import knee_terms, pareto_front, pareto_table, recommend
 from metafit.terms import Atom, Library, Term, build_library
 from metafit.validate import (
@@ -58,7 +58,10 @@ __all__ = [
     "baseline_group_mean",
     "best_practices",
     "build_library",
+    "cluster_terms",
     "columns_as_arrays",
+    "concordance",
+    "concordance_summary",
     "constructed_library",
     "cross_validate",
     "feature_practices",

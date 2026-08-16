@@ -88,6 +88,47 @@ class TestTerm(unittest.TestCase):
             Term.from_dict({"operation": "atom", "operands": "not a list"})
 
 
+class TestNesting(unittest.TestCase):
+    """A term may take another term as an operand, so one term can be a deep expression."""
+
+    def setUp(self) -> None:
+        self.columns = columns(a=[2.0, 4.0, 8.0], b=[1.0, 2.0, 4.0], c=[3.0, 6.0, 12.0])
+        self.inner = Term("ratio", (Atom("a"), Atom("b")))
+        self.outer = Term("product", (self.inner, Atom("c")))
+
+    def test_depth_counts_nesting(self) -> None:
+        self.assertEqual(Term("atom", (Atom("a"),)).depth, 1)
+        self.assertEqual(self.inner.depth, 1)
+        self.assertEqual(self.outer.depth, 2)
+        self.assertEqual(Term("product", (self.outer, Atom("b"))).depth, 3)
+
+    def test_features_are_collected_recursively(self) -> None:
+        self.assertEqual(set(self.outer.features), {"a", "b", "c"})
+
+    def test_evaluation_recurses(self) -> None:
+        expected = (self.columns["a"] / self.columns["b"]) * self.columns["c"]
+        np.testing.assert_allclose(self.outer.evaluate(self.columns), expected, rtol=1e-6)
+
+    def test_name_shows_the_structure(self) -> None:
+        self.assertEqual(self.outer.name, "[[a] / [b]] * [c]")
+
+    def test_nested_terms_round_trip(self) -> None:
+        restored = Term.from_dict(self.outer.to_dict())
+        self.assertEqual(restored, self.outer)
+        self.assertEqual(restored.depth, 2)
+        np.testing.assert_allclose(
+            restored.evaluate(self.columns), self.outer.evaluate(self.columns)
+        )
+
+    def test_deeply_nested_round_trip(self) -> None:
+        deep = Term("ratio", (Term("product", (self.outer, Atom("b"))), Atom("c")))
+        self.assertEqual(Term.from_dict(deep.to_dict()), deep)
+
+    def test_malformed_nested_operand_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            Term.from_dict({"operation": "product", "operands": ["not an object"]})
+
+
 class TestAdmissibility(unittest.TestCase):
     def test_rejects_non_finite_and_constant(self) -> None:
         self.assertFalse(is_admissible(np.array([1.0, np.inf, 2.0])))
@@ -222,7 +263,11 @@ class TestBuilders(unittest.TestCase):
     def test_sum_ratio_skips_ineligible_divisors(self) -> None:
         data = columns(a=[1.0, 2.0], b=[3.0, 4.0], zero=[0.0, 1.0])
         for term in sum_ratio_terms(("a", "b", "zero"), data):
-            self.assertNotEqual(term.operands[-1].feature, "zero")
+            divisor = term.operands[-1]
+            # build_library only ever composes atoms; nesting comes from metafit.construct.
+            self.assertIsInstance(divisor, Atom)
+            assert isinstance(divisor, Atom)
+            self.assertNotEqual(divisor.feature, "zero")
 
     def test_sum_ratio_uses_three_distinct_features(self) -> None:
         data = columns(a=[1.0, 2.0], b=[3.0, 4.0], c=[5.0, 6.0])

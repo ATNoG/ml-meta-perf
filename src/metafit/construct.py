@@ -35,6 +35,8 @@ import numpy as np
 
 from metafit.stats import pearson, spearman
 from metafit.terms import (
+    DENOMINATOR_FLOOR,
+    MAX_DENOMINATOR_RANGE,
     TRANSFORMS,
     Atom,
     Library,
@@ -96,28 +98,63 @@ def straighten(feature: str, columns: dict[str, np.ndarray], target: np.ndarray)
     return best
 
 
-def _candidate_terms(left: Term, right: Term, columns: dict[str, np.ndarray]) -> list[Term]:
-    """Every way the grammar allows two terms to be joined.
+def is_safe_divisor(values: np.ndarray) -> bool:
+    """Whether a column can be divided by: clear of zero, bounded dynamic range.
 
-    Only atoms can be composed, because the grammar's operands are atoms -- a merged term
-    is re-entered into the pool as itself and can still be *selected*, but it cannot be
-    nested further. That ceiling is deliberate: unbounded nesting is what makes symbolic
-    regression output unreadable, and this project's premise is that the equation must be
-    readable.
+    The value-based counterpart of ``terms.denominator_atom``. A nested term has no single
+    feature whose eligibility could be looked up, so the same two conditions are checked
+    against what it actually computes.
     """
-    if left.operation != "atom" or right.operation != "atom":
+    magnitude = np.abs(values)
+    if not np.all(np.isfinite(magnitude)):
+        return False
+    smallest = float(np.min(magnitude))
+    if smallest <= DENOMINATOR_FLOOR:
+        return False
+    return float(np.max(magnitude)) / smallest <= MAX_DENOMINATOR_RANGE
+
+
+def _operand(term: Term) -> Atom | Term:
+    """Unwrap a singleton so ``atom`` terms nest as their atom rather than as a wrapper."""
+    return term.operands[0] if term.operation == "atom" else term
+
+
+def _candidate_terms(
+    left: Term,
+    right: Term,
+    columns: dict[str, np.ndarray],
+    max_depth: int = 1,
+) -> list[Term]:
+    """Every way the grammar allows two terms to be joined, up to ``max_depth`` nesting.
+
+    With ``max_depth=1`` only atoms compose and the result is flat, matching
+    ``terms.build_library``. Above that, an already-merged term may be merged again, so a
+    single term can carry a deep expression.
+
+    That is the trade this project has to make consciously. The equation's length is
+    counted in terms, so nesting buys expressiveness without lengthening the equation --
+    but unbounded nesting is exactly what makes genetic-programming output unreadable. The
+    cap is the control, and the depth that actually pays is measured rather than assumed.
+    """
+    # Bound the depth of the *result*, not of the operands. An "atom" term unwraps to a
+    # bare Atom and adds no depth; anything else contributes its own.
+    nested = [term.depth for term in (left, right) if term.operation != "atom"]
+    if 1 + max(nested, default=0) > max_depth:
         return []
-    a, b = left.operands[0], right.operands[0]
-    if a.feature == b.feature:
+    if set(left.features) & set(right.features):
         return []
 
+    a, b = _operand(left), _operand(right)
     candidates = [Term("product", (a, b))]
-    divisor_b = denominator_atom(b.feature, columns)
-    if divisor_b is not None:
-        candidates.append(Term("ratio", (a, divisor_b)))
-    divisor_a = denominator_atom(a.feature, columns)
-    if divisor_a is not None:
-        candidates.append(Term("ratio", (b, divisor_a)))
+    for numerator, divisor_term, divisor in ((a, right, b), (b, left, a)):
+        if divisor_term.operation == "atom":
+            eligible = denominator_atom(divisor_term.operands[0].feature, columns)  # pyright: ignore[reportAttributeAccessIssue]
+            if eligible is not None:
+                candidates.append(Term("ratio", (numerator, eligible)))
+        else:
+            with np.errstate(all="ignore"):
+                if is_safe_divisor(divisor_term.evaluate(columns)):
+                    candidates.append(Term("ratio", (numerator, divisor)))
     return candidates
 
 
@@ -128,6 +165,8 @@ def agglomerate(
     *,
     min_gain: float = MIN_MERGE_GAIN,
     per_round: bool = True,
+    max_depth: int = 1,
+    rounds: int = 1,
 ) -> list[Term]:
     """Merge features pairwise by linearity gain, keeping everything the process builds.
 
@@ -152,7 +191,7 @@ def agglomerate(
             best: Merge | None = None
             for i, j in itertools.combinations(range(len(active)), 2):
                 floor = max(scores[i], scores[j])
-                for candidate in _candidate_terms(active[i], active[j], columns):
+                for candidate in _candidate_terms(active[i], active[j], columns, max_depth):
                     gain = _gain(candidate, columns, target, floor)
                     if gain is not None and gain > min_gain and (best is None or gain > best.gain):
                         best = Merge(candidate, gain, (i, j))
@@ -166,21 +205,27 @@ def agglomerate(
             scores.append(linearity(best.term.evaluate(columns), target))
         return list(produced.values())
 
-    merged: list[Term] = []
-    for i in range(len(active)):
-        best_for_i: Merge | None = None
-        for j in range(len(active)):
-            if i == j:
-                continue
-            floor = max(scores[i], scores[j])
-            for candidate in _candidate_terms(active[i], active[j], columns):
-                gain = _gain(candidate, columns, target, floor)
-                if gain is not None and gain > min_gain and (best_for_i is None or gain > best_for_i.gain):
-                    best_for_i = Merge(candidate, gain, (i, j))
-        if best_for_i is not None:
-            merged.append(best_for_i.term)
-    for term in merged:
-        produced.setdefault(term.name, term)
+    for _ in range(rounds):
+        merged: list[Term] = []
+        for i in range(len(active)):
+            best_for_i: Merge | None = None
+            for j in range(len(active)):
+                if i == j:
+                    continue
+                floor = max(scores[i], scores[j])
+                for candidate in _candidate_terms(active[i], active[j], columns, max_depth):
+                    gain = _gain(candidate, columns, target, floor)
+                    if gain is not None and gain > min_gain and (best_for_i is None or gain > best_for_i.gain):
+                        best_for_i = Merge(candidate, gain, (i, j))
+            if best_for_i is not None:
+                merged.append(best_for_i.term)
+        fresh = [term for term in merged if term.name not in produced]
+        if not fresh:
+            break
+        for term in fresh:
+            produced[term.name] = term
+        active = active + fresh
+        scores = scores + [linearity(term.evaluate(columns), target) for term in fresh]
     return list(produced.values())
 
 
@@ -191,6 +236,55 @@ def _gain(term: Term, columns: dict[str, np.ndarray], target: np.ndarray, floor:
     if not is_admissible(values):
         return None
     return linearity(values, target) - floor
+
+
+def cluster_terms(
+    features: tuple[str, ...],
+    columns: dict[str, np.ndarray],
+    target: np.ndarray,
+    n_terms: int,
+    *,
+    max_depth: int = 3,
+) -> list[Term]:
+    """Cut the dendrogram at ``n_terms`` clusters and return them as the equation's terms.
+
+    This is the idea in its purest form. Strict agglomeration builds a dendrogram over the
+    features; stopping the merge when ``n_terms`` clusters remain and reading those
+    clusters off *is* the equation. There is no subset selection afterwards -- the cut
+    level is the equation length, and each surviving cluster is one term.
+
+    It is a different division of labour from the rest of this package, where a library is
+    proposed and a beam search picks from it. Here the construction chooses, and the only
+    thing left for least squares is the weights. That makes the result far cheaper and
+    arguably easier to defend -- there is one mechanism rather than two -- and whether it
+    is also *better* is measured rather than assumed.
+
+    Merging continues past the point where linearity stops improving when it has to, since
+    the cut level is fixed by ``n_terms`` rather than by a gain threshold. A cluster that
+    no longer improves is still merged with its least-bad partner, which is the price of
+    letting the caller choose the equation length.
+    """
+    active: list[Term] = [Term("atom", (straighten(feature, columns, target),)) for feature in features]
+    if n_terms >= len(active):
+        return active
+
+    scores = [linearity(term.evaluate(columns), target) for term in active]
+    while len(active) > n_terms:
+        best: Merge | None = None
+        for i, j in itertools.combinations(range(len(active)), 2):
+            floor = max(scores[i], scores[j])
+            for candidate in _candidate_terms(active[i], active[j], columns, max_depth):
+                gain = _gain(candidate, columns, target, floor)
+                if gain is not None and (best is None or gain > best.gain):
+                    best = Merge(candidate, gain, (i, j))
+        if best is None:
+            break
+        for position in sorted(best.parents, reverse=True):
+            del active[position]
+            del scores[position]
+        active.append(best.term)
+        scores.append(linearity(best.term.evaluate(columns), target))
+    return active
 
 
 def structural_terms(
@@ -244,6 +338,8 @@ def constructed_library(
     *,
     min_gain: float = MIN_MERGE_GAIN,
     max_abs_zscore: float = 3.0,
+    max_depth: int = 1,
+    rounds: int = 1,
 ) -> Library:
     """A library built by agglomeration rather than enumeration.
 
@@ -252,8 +348,9 @@ def constructed_library(
     the groups -- the cross terms are where E2's lift comes from, but they are also the
     ones most able to overfit, so they are not the first thing tried.
     """
-    terms = agglomerate(dataset_features, columns, target, min_gain=min_gain)
+    kwargs = {"min_gain": min_gain, "max_depth": max_depth, "rounds": rounds}
+    terms = agglomerate(dataset_features, columns, target, **kwargs)
     if model_features:
-        terms += agglomerate(model_features, columns, target, min_gain=min_gain)
-        terms += agglomerate(dataset_features + model_features, columns, target, min_gain=min_gain)
+        terms += agglomerate(model_features, columns, target, **kwargs)
+        terms += agglomerate(dataset_features + model_features, columns, target, **kwargs)
     return Library(terms, columns, max_abs_zscore=max_abs_zscore)

@@ -6,8 +6,10 @@ import numpy as np
 
 from metafit.construct import (
     agglomerate,
+    cluster_terms,
     constructed_library,
     curvature,
+    is_safe_divisor,
     linearity,
     straighten,
     structural_terms,
@@ -88,6 +90,84 @@ class TestAgglomerate(unittest.TestCase):
     def test_every_term_evaluates_finitely(self) -> None:
         for term in agglomerate(("a", "b", "c"), self.columns, self.target):
             self.assertTrue(np.all(np.isfinite(term.evaluate(self.columns))))
+
+
+class TestNestedAgglomeration(unittest.TestCase):
+    def setUp(self) -> None:
+        rng = np.random.default_rng(7)
+        self.columns = {name: rng.uniform(2.0, 20.0, 90) for name in ("a", "b", "c", "d")}
+        self.target = (self.columns["a"] / self.columns["b"]) * np.log(self.columns["c"])
+
+    def test_depth_one_stays_flat(self) -> None:
+        terms = agglomerate(("a", "b", "c", "d"), self.columns, self.target, max_depth=1, rounds=3)
+        self.assertTrue(all(term.depth == 1 for term in terms))
+
+    def test_greater_depth_is_permitted(self) -> None:
+        terms = agglomerate(
+            ("a", "b", "c", "d"), self.columns, self.target, max_depth=3, rounds=3, min_gain=0.0
+        )
+        self.assertLessEqual(max(term.depth for term in terms), 3)
+
+    def test_nested_terms_never_reuse_a_feature(self) -> None:
+        terms = agglomerate(
+            ("a", "b", "c", "d"), self.columns, self.target, max_depth=3, rounds=3, min_gain=0.0
+        )
+        for term in terms:
+            self.assertEqual(len(term.features), len(set(term.features)))
+
+    def test_every_nested_term_is_finite(self) -> None:
+        terms = agglomerate(
+            ("a", "b", "c", "d"), self.columns, self.target, max_depth=3, rounds=3, min_gain=0.0
+        )
+        for term in terms:
+            self.assertTrue(np.all(np.isfinite(term.evaluate(self.columns))))
+
+
+class TestClusterTerms(unittest.TestCase):
+    """The dendrogram cut: k clusters are the k terms, with no selection step."""
+
+    def setUp(self) -> None:
+        rng = np.random.default_rng(11)
+        self.columns = {name: rng.uniform(2.0, 20.0, 90) for name in ("a", "b", "c", "d", "e")}
+        self.target = self.columns["a"] / self.columns["b"]
+
+    def test_returns_exactly_the_requested_count(self) -> None:
+        for k in (1, 2, 3, 4):
+            self.assertEqual(len(cluster_terms(("a", "b", "c", "d", "e"), self.columns, self.target, k)), k)
+
+    def test_asking_for_more_than_the_features_returns_the_singletons(self) -> None:
+        terms = cluster_terms(("a", "b"), self.columns, self.target, 5)
+        self.assertEqual(len(terms), 2)
+        self.assertTrue(all(term.operation == "atom" for term in terms))
+
+    def test_every_feature_is_used_exactly_once(self) -> None:
+        features = ("a", "b", "c", "d", "e")
+        used: list[str] = []
+        for term in cluster_terms(features, self.columns, self.target, 2):
+            used.extend(term.features)
+        self.assertEqual(sorted(used), sorted(features))
+
+    def test_respects_the_depth_cap(self) -> None:
+        terms = cluster_terms(("a", "b", "c", "d", "e"), self.columns, self.target, 2, max_depth=2)
+        self.assertLessEqual(max(term.depth for term in terms), 2)
+
+    def test_terms_evaluate_finitely(self) -> None:
+        for term in cluster_terms(("a", "b", "c", "d", "e"), self.columns, self.target, 3):
+            self.assertTrue(np.all(np.isfinite(term.evaluate(self.columns))))
+
+
+class TestSafeDivisor(unittest.TestCase):
+    def test_rejects_a_column_reaching_zero(self) -> None:
+        self.assertFalse(is_safe_divisor(np.array([0.0, 1.0, 2.0])))
+
+    def test_rejects_a_wide_dynamic_range(self) -> None:
+        self.assertFalse(is_safe_divisor(np.array([1.0, 10.0, 1000.0])))
+
+    def test_accepts_a_tight_column(self) -> None:
+        self.assertTrue(is_safe_divisor(np.array([10.0, 11.0, 12.0])))
+
+    def test_rejects_non_finite(self) -> None:
+        self.assertFalse(is_safe_divisor(np.array([1.0, np.inf])))
 
 
 class TestStructuralTerms(unittest.TestCase):

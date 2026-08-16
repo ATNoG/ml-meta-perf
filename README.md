@@ -47,6 +47,10 @@ Three findings the documentation develops:
   [chapter 6](assets/docs/06-results.md).
 - **One interaction component is worth +0.122 R²** and the equation captures none of it —
   the clearest direction for future work. See [chapter 5](assets/docs/05-oracles.md).
+- **The extracted practices survive changing the discovery method.** A 14-term enumerated
+  equation (R² 0.558) and a 6-term dendrogram-cut equation (R² 0.408), sharing no
+  machinery, agree on the direction of **9 of 9** shared features. The guidance is a
+  property of the data, not of the search. See [chapter 7](assets/docs/07-practices.md).
 
 ## Documentation
 
@@ -159,6 +163,7 @@ src/metafit/
     validate.py     leave-one-group-out protocols, baselines, oracles
     selection.py    knee detection and Pareto fronts over equation length
     attribution.py  per-term effects, group shares, variance decomposition
+    construct.py    agglomerative term building and the dendrogram cut
     practices.py    turning a fitted equation into written guidance
     plots.py        the figures (matplotlib, Agg, headless, no embedded text)
     figures.py      the figure set and suggested LaTeX captions
@@ -167,7 +172,7 @@ src/metafit/
 assets/docs/        the study chapters
 assets/figures/     generated figures
 data/               meta_dataset.csv
-tests/              242 unittest tests
+tests/              288 unittest tests
 examples/           runnable entry points
 ```
 

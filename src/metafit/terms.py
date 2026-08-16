@@ -80,10 +80,17 @@ class Atom:
 
 @dataclass(frozen=True)
 class Term:
-    """A named expression over one to three atoms."""
+    """A named expression over one to three operands.
+
+    An operand is an `Atom` or, when the term is nested, another `Term`. Nesting lets one
+    term carry a deep expression -- ``([log(a)] / [b]) * [log(c)]`` -- which matters
+    because the equation's length is counted in *terms*, not in operations. A short
+    equation over deep terms can be easier to read than a long one over shallow terms,
+    and ``depth`` is what keeps that trade under control.
+    """
 
     operation: Operation
-    operands: tuple[Atom, ...]
+    operands: tuple[Atom | Term, ...]
 
     @property
     def name(self) -> str:
@@ -100,7 +107,19 @@ class Term:
 
     @property
     def features(self) -> tuple[str, ...]:
-        return tuple(operand.feature for operand in self.operands)
+        collected: list[str] = []
+        for operand in self.operands:
+            if isinstance(operand, Term):
+                collected.extend(operand.features)
+            else:
+                collected.append(operand.feature)
+        return tuple(collected)
+
+    @property
+    def depth(self) -> int:
+        """1 for a term over atoms, one more for each level of nesting."""
+        nested = [operand.depth for operand in self.operands if isinstance(operand, Term)]
+        return 1 + max(nested, default=0)
 
     def evaluate(self, columns: dict[str, np.ndarray]) -> np.ndarray:
         values = [operand.evaluate(columns) for operand in self.operands]
@@ -117,7 +136,12 @@ class Term:
     def to_dict(self) -> dict[str, object]:
         return {
             "operation": self.operation,
-            "operands": [{"feature": a.feature, "transform": a.transform} for a in self.operands],
+            "operands": [
+                operand.to_dict()
+                if isinstance(operand, Term)
+                else {"feature": operand.feature, "transform": operand.transform}
+                for operand in self.operands
+            ],
         }
 
     @classmethod
@@ -125,8 +149,15 @@ class Term:
         operands = payload["operands"]
         if not isinstance(operands, list):
             raise ValueError("term payload has no operand list")
-        atoms = tuple(Atom(str(item["feature"]), item["transform"]) for item in operands)  # pyright: ignore[reportIndexIssue, reportArgumentType, reportUnknownArgumentType]
-        return cls(payload["operation"], atoms)  # pyright: ignore[reportArgumentType]
+        restored: list[Atom | Term] = []
+        for item in operands:  # pyright: ignore[reportUnknownVariableType]
+            if not isinstance(item, dict):
+                raise ValueError("term operand is not an object")
+            if "operation" in item:
+                restored.append(cls.from_dict(item))  # pyright: ignore[reportUnknownArgumentType]
+            else:
+                restored.append(Atom(str(item["feature"]), item["transform"]))  # pyright: ignore[reportArgumentType]
+        return cls(payload["operation"], tuple(restored))  # pyright: ignore[reportArgumentType]
 
 
 def _guard(denominator: np.ndarray) -> np.ndarray:

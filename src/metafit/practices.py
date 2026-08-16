@@ -168,6 +168,64 @@ def best_practices(
     )
 
 
+def concordance(
+    first: Equation,
+    second: Equation,
+    columns: dict[str, np.ndarray],
+    *,
+    names: tuple[str, str] = ("first", "second"),
+) -> pl.DataFrame:
+    """Do two independently-discovered equations give the same advice?
+
+    This is the question that decides whether the extracted practices describe *the data*
+    or merely describe *one search*. Fit two equations by methods that share no machinery
+    -- an enumerated library with beam selection, and a dendrogram cut with no selection
+    at all -- then compare the guidance rather than the R2.
+
+    Agreement on **direction** is the claim that matters. If a short, less accurate
+    equation and a long, more accurate one both say that higher class-centre separation
+    goes with lower MCC, that statement is a property of the meta-dataset, and the
+    accuracy gap between the two equations is beside the point.
+
+    Agreement on **effect magnitude** is a separate and weaker claim, reported alongside
+    so the two are not conflated. Two equations can agree on every direction while
+    disagreeing on which effect is largest.
+    """
+    left = {row["feature"]: row for row in feature_practices(first, columns).iter_rows(named=True)}
+    right = {row["feature"]: row for row in feature_practices(second, columns).iter_rows(named=True)}
+
+    rows: list[dict[str, object]] = []
+    for feature in sorted(set(left) & set(right)):
+        a, b = left[feature], right[feature]
+        rows.append(
+            {
+                "feature": feature,
+                f"direction_{names[0]}": a["direction"],
+                f"direction_{names[1]}": b["direction"],
+                "agrees": bool(np.sign(a["direction"]) == np.sign(b["direction"])),
+                f"effect_{names[0]}": a["effect"],
+                f"effect_{names[1]}": b["effect"],
+            }
+        )
+    if not rows:
+        return pl.DataFrame(schema={"feature": pl.String, "agrees": pl.Boolean})
+    return pl.DataFrame(rows)
+
+
+def concordance_summary(table: pl.DataFrame, names: tuple[str, str] = ("first", "second")) -> dict[str, float]:
+    """Headline numbers from a concordance table: agreement rate and effect-rank correlation."""
+    if table.height == 0 or "agrees" not in table.columns:
+        return {"shared": 0.0, "direction_agreement": float("nan"), "effect_rank_correlation": float("nan")}
+    agreement = float(table["agrees"].sum()) / table.height
+    left = np.abs(table[f"effect_{names[0]}"].to_numpy())
+    right = np.abs(table[f"effect_{names[1]}"].to_numpy())
+    return {
+        "shared": float(table.height),
+        "direction_agreement": agreement,
+        "effect_rank_correlation": spearman(left, right),
+    }
+
+
 def render(practices: pl.DataFrame) -> str:
     """The practices as a numbered, readable list."""
     if practices.height == 0:
