@@ -390,6 +390,7 @@ class Report:
 
     e1: EquationReport
     e2: EquationReport
+    e2_accurate: EquationReport
     model_only: EquationReport
     practices: pl.DataFrame
     effects: pl.DataFrame
@@ -406,6 +407,9 @@ class Report:
 # not for reporting: the equations it produces are far shorter than the studied ones.
 QUICK_E1 = Configuration(max_abs_zscore=3.0, penalty=1.0, pool_size=40, max_terms=3, headline_terms=3)
 QUICK_E2 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=40, max_terms=3, headline_terms=3)
+QUICK_ACCURATE = Configuration(
+    max_abs_zscore=4.0, penalty=1.0, pool_size=40, max_terms=4, headline_terms=4
+)
 
 
 def run(path: str | None = None, *, quick: bool = False) -> Report:
@@ -413,12 +417,14 @@ def run(path: str | None = None, *, quick: bool = False) -> Report:
     frame = load(path)
     config_e1 = QUICK_E1 if quick else DEFAULT_E1
     config_e2 = QUICK_E2 if quick else DEFAULT_E2
+    config_accurate = QUICK_ACCURATE if quick else ACCURATE_E2
     e1 = run_e1(frame, config_e1)
     e2 = run_e2(frame, config_e2)
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
     return Report(
         e1=e1,
         e2=e2,
+        e2_accurate=run_e2(frame, config_accurate),
         model_only=run_model_only(frame),
         practices=best_practices(e2.equation, columns, e2.stability),
         effects=term_effects(e2.equation, columns, DATASET_FEATURES, MODEL_FEATURES),

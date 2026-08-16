@@ -45,6 +45,14 @@ def render(report: Report) -> None:
         print("\nterm stability across leave-one-dataset-out folds:")
         _show(report.e2.stability.head(20))
 
+    _section("E2 accurate -- the same equation family tuned for fit rather than transfer")
+    print(report.e2_accurate.equation)
+    print(f"\nin-sample: {report.e2_accurate.in_sample}")
+    for label, scores in report.e2_accurate.cross_validated.items():
+        print(f"{label}: {scores}")
+    print("\naccuracy vs number of terms:")
+    _show(report.e2_accurate.curve)
+
     _section("EM -- model features only (the control for 'model choice dominates')")
     print(report.model_only.equation)
     print(f"\nin-sample: {report.model_only.in_sample}")

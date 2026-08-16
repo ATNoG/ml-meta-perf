@@ -10,6 +10,7 @@ import polars as pl
 from metafit.model import Equation
 from metafit.plots import (
     contribution_sources,
+    count_below_floor,
     equation_summary,
     practice_effects,
     predicted_versus_actual,
@@ -98,6 +99,12 @@ class TestPlots(PlotTestCase):
             predicted_versus_actual(truth, truth * 0.9 + 0.05, self.folder / "tight.png")
         )
 
+    def test_scatter_renders_with_points_below_the_floor(self) -> None:
+        # The out-of-range point falls outside the axes; rendering must not crash.
+        truth = np.concatenate([np.array([-0.29]), np.linspace(0.0, 1.0, 30)])
+        predicted = np.concatenate([np.array([0.5]), np.linspace(0.2, 1.0, 30)])
+        self.assertIsPng(predicted_versus_actual(truth, predicted, self.folder / "clipped.png"))
+
 
     def test_term_effects(self) -> None:
         self.assertIsPng(term_effects(effects(), self.folder / "terms.png"))
@@ -140,23 +147,26 @@ class TestPlots(PlotTestCase):
 class TestScatterLimits(unittest.TestCase):
     """Axis bounds follow the data, not MCC's theoretical range."""
 
-    def test_covers_both_series(self) -> None:
-        truth = np.array([0.0, 0.8])
-        predicted = np.array([0.3, 1.0])
-        low, high = scatter_limits(truth, predicted, margin=0.05)
-        self.assertAlmostEqual(low, -0.05)
+    def test_upper_bound_covers_both_series(self) -> None:
+        low, high = scatter_limits(np.array([0.0, 0.8]), np.array([0.3, 1.0]), margin=0.05)
+        self.assertAlmostEqual(low, 0.0)
         self.assertAlmostEqual(high, 1.05)
 
-    def test_does_not_stretch_to_minus_one(self) -> None:
-        # The meta-dataset drops runs that failed to train, so its floor is about -0.29.
-        # A fixed [-1, 1] axis would leave the bottom half of the figure empty.
+    def test_floor_stops_the_axis_at_zero(self) -> None:
+        # The sub-zero region holds only degenerate results with no linear structure;
+        # including it compresses the range where the relationship actually lives.
         truth = np.array([-0.29, 0.0, 1.0])
         predicted = np.array([0.17, 0.5, 1.0])
         low, _ = scatter_limits(truth, predicted)
-        self.assertGreater(low, -0.5)
+        self.assertEqual(low, 0.0)
+
+    def test_floor_is_configurable(self) -> None:
+        truth = np.array([-0.29, 1.0])
+        predicted = np.array([0.17, 1.0])
+        low, _ = scatter_limits(truth, predicted, floor=-1.0)
         self.assertAlmostEqual(low, -0.34)
 
-    def test_margin_is_applied_to_both_ends(self) -> None:
+    def test_margin_applies_when_it_does_not_cross_the_floor(self) -> None:
         values = np.array([0.2, 0.6])
         low, high = scatter_limits(values, values, margin=0.1)
         self.assertAlmostEqual(low, 0.1)
@@ -165,6 +175,24 @@ class TestScatterLimits(unittest.TestCase):
     def test_zero_margin_is_exact(self) -> None:
         values = np.array([0.0, 1.0])
         self.assertEqual(scatter_limits(values, values, margin=0.0), (0.0, 1.0))
+
+    def test_counts_points_below_the_floor(self) -> None:
+        truth = np.array([-0.29, 0.0, 0.5, 1.0])
+        predicted = np.array([0.5, 0.2, 0.6, 1.0])
+        self.assertEqual(count_below_floor(truth, predicted), 1)
+
+    def test_counts_zero_when_everything_is_in_range(self) -> None:
+        values = np.array([0.0, 0.5, 1.0])
+        self.assertEqual(count_below_floor(values, values), 0)
+
+    def test_count_respects_a_custom_floor(self) -> None:
+        values = np.array([0.1, 0.5, 1.0])
+        self.assertEqual(count_below_floor(values, values, floor=0.4), 1)
+
+    def test_never_returns_an_inverted_range(self) -> None:
+        values = np.array([0.1, 0.9])
+        low, high = scatter_limits(values, values)
+        self.assertLess(low, high)
 
 
 class TestFigureSet(PlotTestCase):

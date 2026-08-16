@@ -135,7 +135,8 @@ noise alone. Twelve is chosen from the flat part of the curve rather than from i
 98% of what any additive equation can achieve. It gives up leave-one-dataset-out R²
 (0.32 vs 0.37) but is actually *better* on leave-one-model-out (0.49 vs 0.46).
 
-Both configurations ship. The defaults take the generalising side; this one takes the fit.
+Both configurations are fitted and reported by every run of the study, so the two sit
+side by side in the output rather than one being quoted from the README.
 
 ### The fitted equations
 
@@ -177,16 +178,21 @@ of the meta-dataset sits exactly there.
 
 ![Predicted versus actual MCC](assets/figures/predicted_vs_actual.png)
 
-Runs that failed to train were dropped when the meta-dataset was assembled, so observed
-MCC runs from **-0.29** (a single row) to 1.0 rather than spanning the full [-1, 1]; the
-axes are drawn to the data for that reason.
+The axes span 0 to 1 rather than MCC's theoretical [-1, 1]. Two kinds of failure sit at
+the low end, and neither carries linear structure for the diagonal to be read against:
+
+- **38 rows at exactly MCC = 0.0** — degenerate predictors, chance-level or single-class
+  output.
+- **One negative row**, NSL-KDD/SGD at -0.29: a model that converged *anti-correlated*
+  with the labels, worse than guessing. A legitimate measurement, kept in the data; it
+  falls outside the axes. `plots.count_below_floor()` returns the number for a caption —
+  the figure carries no text of its own.
 
 The scatter shows the equation's clearest weakness. Predictions never fall below **0.17**,
-while 38 rows sit at exactly MCC = 0.0 — an entire column of points hanging above the
-diagonal on the left. **E2 cannot identify the cases where a model will simply fail on a
-dataset.** It is a usable estimator in the range where models work and a poor detector of
-the range where they do not, which is worth stating plainly before anyone uses it to
-screen candidates.
+while those 38 zeros form a column of points hanging well above the diagonal on the left.
+**E2 cannot identify the cases where a model will simply fail on a dataset.** It is a
+usable estimator in the range where models work and a poor detector of the range where
+they do not, which is worth stating plainly before anyone uses it to screen candidates.
 
 ## Extracted practices
 

@@ -173,6 +173,7 @@ class TestCli(unittest.TestCase):
         cls.report = Report(
             e1=e1,
             e2=e2,
+            e2_accurate=e2,
             model_only=run_model_only(frame, FAST_E2),
             practices=best_practices(e2.equation, cols, e2.stability),
             effects=term_effects(e2.equation, cols, DATASET_FEATURES, MODEL_FEATURES),
@@ -192,7 +193,7 @@ class TestCli(unittest.TestCase):
         with redirect_stdout(buffer):
             render(self.report)
         printed = buffer.getvalue()
-        for expected in ("Correlation screening", "E1 --", "E2 --", "EM --", "Where the signal lives",
+        for expected in ("Correlation screening", "E1 --", "E2 --", "E2 accurate --", "EM --", "Where the signal lives",
                          "Extracted practices", "Baselines", "Model selection"):
             self.assertIn(expected, printed)
 

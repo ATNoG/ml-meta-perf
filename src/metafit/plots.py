@@ -88,16 +88,41 @@ def term_count_curve(
     return _finish(figure, destination)
 
 
-def scatter_limits(truth: np.ndarray, predicted: np.ndarray, margin: float = 0.05) -> tuple[float, float]:
-    """Square axis bounds covering both series, padded by ``margin``.
+def scatter_limits(
+    truth: np.ndarray,
+    predicted: np.ndarray,
+    margin: float = 0.05,
+    floor: float = 0.0,
+) -> tuple[float, float]:
+    """Square axis bounds covering both series, padded by ``margin`` and stopping at ``floor``.
 
-    Deliberately not MCC's theoretical [-1, 1]. Runs that failed to train were dropped
-    from the meta-dataset, so the observed floor is about -0.29 (one row) rather than -1,
-    and a fixed [-1, 1] axis would spend half the figure on empty space.
+    Deliberately not MCC's theoretical [-1, 1]. Two separate reasons.
+
+    Nothing in this meta-dataset approaches -1 -- the observed minimum is -0.29, from a
+    single row -- so a [-1, 1] axis would spend its bottom half on an empty region.
+
+    The interval below zero is worse than empty, it is uninformative. Around MCC = 0 sit
+    38 degenerate results and one anti-correlated one, and they carry no linear structure
+    for the diagonal to be read against; including them compresses the range where the
+    relationship actually lives. ``floor`` therefore defaults to 0, and points beneath it
+    fall outside the axes -- which the caller is expected to disclose rather than hide.
     """
-    lowest = float(min(truth.min(), predicted.min())) - margin
+    lowest = max(float(min(truth.min(), predicted.min())) - margin, floor)
     highest = float(max(truth.max(), predicted.max())) + margin
     return lowest, highest
+
+
+def count_below_floor(
+    truth: np.ndarray,
+    predicted: np.ndarray,
+    floor: float = 0.0,
+) -> int:
+    """How many points ``predicted_versus_actual`` leaves outside its axes.
+
+    Kept separate from the figure so the disclosure can go in a LaTeX caption rather than
+    being rendered into the image, where it cannot be restyled or translated.
+    """
+    return int(np.sum((truth < floor) | (predicted < floor)))
 
 
 def predicted_versus_actual(
@@ -107,6 +132,7 @@ def predicted_versus_actual(
     *,
     title: str = "Predicted versus actual MCC",
     margin: float = 0.05,
+    floor: float = 0.0,
 ) -> Path:
     """A scatter against the diagonal, with the MCC ceiling made visible.
 
@@ -114,13 +140,15 @@ def predicted_versus_actual(
     important thing to see about this target, and a scatter shows it in a way no summary
     statistic does.
 
-    The axes span the observed data, not MCC's theoretical [-1, 1]. Runs that failed to
-    train were dropped from the meta-dataset, so nothing sits far below zero -- the
-    observed floor is about -0.29, from a single row. Drawing the axis down to -1 would
-    devote half the figure to a region no run occupies and squash the range where the
-    points actually are.
+    The axes start at ``floor`` (0 by default) rather than at -1: the sub-zero region
+    holds only degenerate results with no linear structure, and including it squashes the
+    range where the relationship lives.
+
+    Points below the floor are not drawn, and the figure carries no note saying so --
+    that belongs in the caption, not burned into the image. ``count_below_floor`` returns
+    the number for whoever writes it.
     """
-    limits = scatter_limits(truth, predicted, margin)
+    limits = scatter_limits(truth, predicted, margin, floor)
 
     figure, axes = plt.subplots(figsize=(5.4, 5.2))
     axes.plot(limits, limits, color=CEILING, linewidth=1.0, linestyle="--", label="perfect", zorder=1)
