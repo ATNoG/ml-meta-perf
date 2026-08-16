@@ -254,7 +254,7 @@ enumeration costs one pass and yields eight times the terms. The honest reading 
 this meta-dataset is too small **in its feature dimension** for construction to beat
 exhaustion.
 
-**Status: not used.** `metafit.construct` ships tested and is wired into no pipeline. It
+**Status: not used, and not part of the reported study.** `metafit.construct` ships tested and is wired into no pipeline. It
 is kept because a documented negative result is worth more than a deleted one — the
 question "why not build terms by clustering instead of enumerating them?" is the first
 one a reader will ask, and the answer is measured rather than asserted. Its ideas were

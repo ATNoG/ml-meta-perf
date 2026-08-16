@@ -153,6 +153,53 @@ anyone uses it to screen candidates.
 The axes start at 0; the single negative row falls outside them and
 `plots.count_below_floor()` returns the count for a caption.
 
+## What was tried to push past 0.558, and failed
+
+The default configuration's in-sample R² of 0.558 was attacked from six directions. All
+of them keep the equation form `MCC = Σ wᵢtᵢ` intact, and none beats it:
+
+| attempt | in-sample R² |
+|---|---|
+| **baseline (ordinary least squares, uniform weights)** | **0.5582** |
+| downweight the rows at MCC ∈ {0, 1} by 0.5 | 0.5380 |
+| downweight them by 0.25 | 0.4147 |
+| Huber IRLS, 8 iterations | 0.5526 |
+| equal weight per dataset | 0.5509 |
+| two-stage: 7 dataset terms, then 7 on the residual | 0.5532 |
+| adding `f^3`, `1/sqrt(f)`, `f^0.25` to the vocabulary | 0.5582 (unchanged) |
+
+Widening the operator set deserves its own note, since `f^2` and `sqrt(f)` are **already**
+in the vocabulary. Adding `f^3`, `1/sqrt(f)` and `f^0.25` grows the library from 172 terms
+to 182 — most of the 51 new candidates fail admissibility — and the beam then selects
+**none of the ten that survive**. In-sample R² is identical to four decimal places at both
+8, 14 and 20 terms. Under the accuracy-leaning configuration the same extension is
+actively harmful, dropping 20-term R² from 0.647 to 0.632. Higher powers are
+near-duplicates of the ones already present, and the collinearity guard treats them as
+such.
+
+Reweighting was the most promising idea and is the clearest failure: R² is reported on all
+476 rows with uniform weight, so any reweighting optimises a *different* objective and
+necessarily scores worse on the one being reported. Downweighting the saturated rows in
+particular removes 118 of 476 observations' worth of influence — the pile-ups at 0 and 1
+are a third of the data, not outliers to be discounted.
+
+Together with the earlier negatives — search strength ([chapter 3](03-search-and-fitting.md)),
+transform vocabulary and feature scaling ([chapter 2](02-equation-form.md)), agglomerative
+construction, and marginal-impact filtering — the additive form at this configuration is
+exhausted.
+
+**Two things do work, and both are already reported.** Loosening the library and the
+shrinkage reaches **0.647** (`ACCURATE_E2`, 20 terms), at a cost of 0.156 in transfer. And
+the interaction the equation cannot reach is worth **+0.122** on its own
+([chapter 5](05-oracles.md)).
+
+For that last gap the literature points at **GA2M / Explainable Boosting Machines** —
+generalised additive models with explicit pairwise interaction terms (Lou et al., 2013;
+GAMI-Net, arXiv:2003.07132) — which are exactly the model class that adds interaction while
+staying inspectable. Billa et al. (arXiv:2601.00428) find EBMs and symbolic regression
+dominate interpretable tabular regression. The trade is real: an EBM is a set of shape
+functions rather than a closed-form equation, so it can be plotted but not written down.
+
 ## Flexible models do worse, not better
 
 Standard regressors on the same raw features, under the same protocols:

@@ -77,49 +77,6 @@ better left unwritten.
 Read together: *pick a bigger, more expensive, outlier-robust model; expect trouble on
 data with a high effective feature count and well-separated class centres.*
 
-## Are these practices a property of the data, or of the search?
-
-The sharpest test available. Fit equations by methods that share no machinery, then
-compare the *guidance* rather than the R2.
-
-**Admissibility must be held constant for this to mean anything.** Construction and
-enumeration each apply a `max_abs_zscore` cap, and comparing a library built under a loose
-cap with one built under a strict cap measures the caps, not the methods. Every row below
-uses the same cap on both sides.
-
-At `max_abs_zscore = 3`, against the enumerated 14-term equation (in-sample R2 0.5582):
-
-| method | terms | in-sample R2 | shared | direction agreement | effect-rank rho |
-|---|---|---|---|---|---|
-| hybrid — dendrogram shortlist, then selection | 14 | **0.5344** | 12 | **91.7%** | **+0.699** |
-| parameter-free — merge until linear enough | 12 | 0.4600 | 13 | 61.5% | +0.440 |
-| dendrogram cut, no selection | 6 | 0.4251 | 14 | 64.3% | +0.565 |
-
-At `max_abs_zscore = 8` the ordering holds and agreement runs 58–69%.
-
-### What this does and does not support
-
-**Supported:** a method that fits comparably agrees substantially. The hybrid reaches
-0.5344 against the enumerated 0.5582 — from a pool of **23 terms rather than 172** — and
-agrees on the direction of 11 of 12 shared features, with effect magnitudes correlating at
-+0.70. Two genuinely different searches, nearly equal accuracy, nearly the same advice.
-
-**Not supported:** that the practices are independent of the search *in general*.
-Concordance tracks accuracy. The methods that fit substantially worse (0.43–0.46) agree on
-only 58–69% of directions — better than the 50% a coin would give, but not the robustness
-a strong claim would need.
-
-The honest statement is conditional: **among equations that fit about as well, the
-extracted directions are largely stable; among equations that fit materially worse, they
-are not.** That is weaker than method-independence, and it is what the data shows.
-
-> **Correction.** An earlier version of this chapter reported 100% agreement (9 of 9)
-> between the enumerated equation and a 6-term dendrogram cut. That comparison was invalid:
-> the cut was constructed under the default cap of 8 and then fitted with admissibility
-> effectively disabled, while the enumerated library used a cap of 3. Under matched caps
-> the same comparison gives 64.3%. The construction functions now take `max_abs_zscore`
-> explicitly so the mismatch cannot recur silently.
-
 ## What these are not
 
 The defensible claim is directional, and the tables in this chapter should be read as a
