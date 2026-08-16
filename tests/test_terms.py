@@ -12,7 +12,9 @@ from metafit.terms import (
     composition_atom,
     denominator_atom,
     is_admissible,
+    is_trivial,
     pairwise_terms,
+    simplify,
     sum_ratio_terms,
     unary_terms,
 )
@@ -127,6 +129,50 @@ class TestNesting(unittest.TestCase):
     def test_malformed_nested_operand_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             Term.from_dict({"operation": "product", "operands": ["not an object"]})
+
+
+class TestSimplify(unittest.TestCase):
+    """Algebraic identities, so a term prints in its shortest equivalent form."""
+
+    def setUp(self) -> None:
+        self.a, self.b, self.c = Atom("a"), Atom("b"), Atom("c")
+        self.columns = columns(a=[2.0, 4.0, 8.0], b=[1.0, 2.0, 4.0], c=[3.0, 5.0, 7.0])
+
+    def test_cancels_a_divisor_against_a_factor(self) -> None:
+        term = Term("product", (Term("ratio", (self.a, self.b)), self.b))
+        self.assertEqual(simplify(term).name, "a")
+
+    def test_cancels_in_either_order(self) -> None:
+        term = Term("product", (self.b, Term("ratio", (self.a, self.b))))
+        self.assertEqual(simplify(term).name, "a")
+
+    def test_cancels_a_factor_against_a_divisor(self) -> None:
+        self.assertEqual(simplify(Term("ratio", (Term("product", (self.a, self.b)), self.b))).name, "a")
+        self.assertEqual(simplify(Term("ratio", (Term("product", (self.b, self.a)), self.b))).name, "a")
+
+    def test_leaves_an_already_minimal_term_alone(self) -> None:
+        term = Term("product", (self.a, self.b))
+        self.assertEqual(simplify(term), term)
+
+    def test_does_not_cancel_when_the_operands_differ(self) -> None:
+        term = Term("product", (Term("ratio", (self.a, self.b)), self.c))
+        self.assertEqual(simplify(term), term)
+
+    def test_simplification_preserves_the_values(self) -> None:
+        term = Term("product", (Term("ratio", (self.a, self.b)), self.b))
+        np.testing.assert_allclose(
+            simplify(term).evaluate(self.columns), term.evaluate(self.columns), rtol=1e-6
+        )
+
+    def test_recurses_into_nested_operands(self) -> None:
+        inner = Term("product", (Term("ratio", (self.a, self.b)), self.b))
+        outer = Term("product", (inner, self.c))
+        self.assertEqual(simplify(outer).name, "[a] * [c]")
+
+    def test_is_trivial_detects_a_constant_ratio(self) -> None:
+        self.assertTrue(is_trivial(Term("ratio", (self.a, self.a))))
+        self.assertFalse(is_trivial(Term("ratio", (self.a, self.b))))
+        self.assertFalse(is_trivial(Term("atom", (self.a,))))
 
 
 class TestAdmissibility(unittest.TestCase):

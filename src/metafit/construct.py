@@ -17,10 +17,18 @@ strongly curved contributes badly to that sum no matter what weight it gets, whi
 that is linear in MCC contributes perfectly with weight 1. So "how linear is this term in
 the target" is not a proxy for term quality here -- it is the definition of it.
 
-Pearson and Spearman are both used, and their disagreement drives the unary step:
-Spearman much larger than Pearson means the relation is monotone but curved, which is
-precisely the situation a transform repairs. The agglomeration handles pairs; the unary
-step handles the curvature of a single feature.
+**What this does and does not do.** The linkage is Pearson only. Every pair is tried under
+every admissible operation and the largest gain wins, so the merge is a brute-force search
+with a gain threshold rather than a guided one. ``curvature`` exposes the Spearman-Pearson
+gap and is *not* used by any merge: a guided variant would use it to decide which pairs are
+worth trying at all, which is the version that would earn its keep by shrinking the search
+rather than merely reordering it. That variant is not implemented.
+
+A consequence worth knowing before using this: the merge produces few terms. Seventeen
+features give a dendrogram of at most ``2n - 1 = 33`` nodes, 23 of them admissible here,
+against the enumerated library's 172. A beam search choosing 14 of 23 is barely choosing,
+which is why the hybrid underperforms enumeration at every length rather than only at
+some -- it is a weaker search space, not a weaker search.
 
 Study chapter: [3. Search and fitting](../../assets/docs/03-search-and-fitting.md) -- the
 rationale, in prose, with the figures.

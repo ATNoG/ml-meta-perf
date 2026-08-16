@@ -160,6 +160,54 @@ class Term:
         return cls(payload["operation"], tuple(restored))  # pyright: ignore[reportArgumentType]
 
 
+def simplify(term: Term) -> Term:
+    """Apply algebraic identities so a term prints in its shortest equivalent form.
+
+    Nesting produces expressions that are correct but redundant: ``([a] / [b]) * [b]``
+    computes ``a`` and says so in six symbols instead of one. Since the whole claim of
+    this project is that the equation can be read, a term that is longer than it needs to
+    be is a defect, not a cosmetic issue.
+
+    Only exact identities are applied -- cancellation of a matching factor against a
+    matching divisor, and division of a term by itself. Nothing is dropped on numerical
+    grounds here; that is ``fit.prune``'s job, and keeping the two separate means this
+    function never changes what a term computes.
+    """
+    operands = tuple(simplify(operand) if isinstance(operand, Term) else operand for operand in term.operands)
+    term = Term(term.operation, operands)
+
+    if term.operation == "product":
+        left, right = term.operands
+        # (x / y) * y  ->  x
+        for numerator_side, other in ((left, right), (right, left)):
+            if isinstance(numerator_side, Term) and numerator_side.operation == "ratio":
+                inner_numerator, inner_divisor = numerator_side.operands
+                if inner_divisor == other:
+                    return _as_term(inner_numerator)
+    elif term.operation == "ratio":
+        numerator, divisor = term.operands
+        # x / x  ->  1, which is collinear with the intercept and carries no information
+        if numerator == divisor:
+            return term
+        # (x * y) / y  ->  x
+        if isinstance(numerator, Term) and numerator.operation == "product":
+            first, second = numerator.operands
+            if second == divisor:
+                return _as_term(first)
+            if first == divisor:
+                return _as_term(second)
+    return term
+
+
+def is_trivial(term: Term) -> bool:
+    """Whether a term reduces to a constant, and so duplicates the intercept."""
+    return term.operation == "ratio" and term.operands[0] == term.operands[1]
+
+
+def _as_term(operand: Atom | Term) -> Term:
+    return operand if isinstance(operand, Term) else Term("atom", (operand,))
+
+
 def _guard(denominator: np.ndarray) -> np.ndarray:
     """Keep a denominator away from zero without changing its sign.
 

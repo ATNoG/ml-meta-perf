@@ -29,7 +29,7 @@ from metafit.data import (
     load,
     target,
 )
-from metafit.fit import fit
+from metafit.fit import fit, prune
 from metafit.model import Equation
 from metafit.practices import best_practices
 from metafit.selection import pareto_table, recommend
@@ -155,7 +155,7 @@ def run_e1(frame: pl.DataFrame, config: Configuration = DEFAULT_E1) -> EquationR
     )
     sizes = tuple(size for size in range(1, config.max_terms + 1))
     in_sample = {size: score(truth, eq.predict(columns)) for size, eq in result.equations.items()}
-    equation = result.equations[config.headline_terms]
+    equation = prune(result.equations[config.headline_terms], columns, truth, penalty=config.penalty)
 
     return EquationReport(
         equation=equation,
@@ -199,7 +199,7 @@ def run_e2(frame: pl.DataFrame, config: Configuration = DEFAULT_E2) -> EquationR
         for label, labels in (("loo_dataset", datasets), ("loo_model", models))
     }
     in_sample = {size: score(truth, eq.predict(columns)) for size, eq in result.equations.items()}
-    equation = result.equations[config.headline_terms]
+    equation = prune(result.equations[config.headline_terms], columns, truth, penalty=config.penalty)
 
     return EquationReport(
         equation=equation,
@@ -247,7 +247,7 @@ def run_model_only(frame: pl.DataFrame, config: Configuration = DEFAULT_MODEL_ON
         beam_width=config.beam_width,
     )
     in_sample = {k: score(truth, eq.predict(columns)) for k, eq in result.equations.items()}
-    equation = result.equations[size]
+    equation = prune(result.equations[size], columns, truth, penalty=config.penalty)
     return EquationReport(
         equation=equation,
         in_sample=score(truth, equation.predict(columns)).as_dict(),

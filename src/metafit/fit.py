@@ -32,7 +32,7 @@ import numpy as np
 
 from metafit.model import Equation
 from metafit.stats import pearson, spearman
-from metafit.terms import Library, Term
+from metafit.terms import Library, Term, is_trivial, simplify
 
 RIDGE_DEFAULT = 10.0
 BEAM_WIDTH_DEFAULT = 6
@@ -328,6 +328,68 @@ def fit(
         for size, subset in subsets.items()
     }
     return FitResult(equations=equations, pool_size=len(pool))
+
+
+#: A term whose contribution never moves predicted MCC by this much across the data is
+#: not doing work worth printing. The default is deliberately well below the resolution
+#: anyone reads MCC at.
+MIN_CONTRIBUTION = 0.002
+
+
+def prune(
+    equation: Equation,
+    columns: dict[str, np.ndarray],
+    target: np.ndarray,
+    *,
+    penalty: float = RIDGE_DEFAULT,
+    min_contribution: float = MIN_CONTRIBUTION,
+) -> Equation:
+    """Drop terms that do no work, simplify what remains, and refit the weights.
+
+    Two things make a published equation longer than it needs to be.
+
+    A term can survive selection and then contribute nothing: beam search adds terms while
+    residual sum of squares falls, and the last few can fall by amounts invisible in the
+    output. One dendrogram-cut equation carried a term weighted -3.7e-15 -- a full
+    expression over six features, contributing zero.
+
+    A term can also be algebraically redundant, computing ``a`` while printing
+    ``([a] / [b]) * [b]``. ``terms.simplify`` handles that, and terms that reduce to a
+    constant are removed outright since they duplicate the intercept.
+
+    Weights are refitted after pruning rather than carried over. Dropping a term changes
+    what the others should be, and keeping stale weights would leave an equation that is
+    shorter but no longer the best fit of its own remaining terms.
+    """
+    if not equation.terms:
+        return equation
+
+    contributions = np.column_stack(
+        [weight * term.evaluate(columns) for term, weight in zip(equation.terms, equation.weights, strict=True)]
+    )
+    keep: list[Term] = []
+    seen: set[str] = set()
+    for index, term in enumerate(equation.terms):
+        column = contributions[:, index]
+        low, high = np.percentile(column, [1.0, 99.0])
+        if float(high - low) < min_contribution:
+            continue
+        reduced = simplify(term)
+        if is_trivial(reduced) or reduced.name in seen:
+            continue
+        seen.add(reduced.name)
+        keep.append(reduced)
+
+    if not keep:
+        return Equation(
+            intercept=float(target.mean()), terms=(), weights=(), standardized_weights=(), name=equation.name
+        )
+
+    library = Library(keep, columns)
+    standardizer = Standardizer.fit(library.matrix)
+    selector = Selector(standardizer.apply(library.matrix), target, penalty)
+    subset = selector._evaluate(tuple(range(len(library))))
+    return to_equation(library, subset, standardizer, selector.offset, equation.name)
 
 
 def selected_terms(equation: Equation) -> list[Term]:

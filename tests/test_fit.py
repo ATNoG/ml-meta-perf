@@ -11,11 +11,13 @@ from metafit.fit import (
     Subset,
     fit,
     guided_screen,
+    prune,
     ridge_solve,
     selected_terms,
     to_equation,
     transform_gap,
 )
+from metafit.model import Equation
 from metafit.terms import build_library
 
 
@@ -200,6 +202,48 @@ class TestFit(unittest.TestCase):
         result = fit(self.library, self.target, max_terms=3, penalty=1.0, pool_size=60)
         terms = selected_terms(result.equations[3])
         self.assertEqual(len(terms), 3)
+
+
+class TestPrune(unittest.TestCase):
+    """Dropping terms that do no work, and refitting what remains."""
+
+    def setUp(self) -> None:
+        self.columns = synthetic_columns(120, seed=21)
+        self.library = build_library(("f1", "f2"), ("f3", "f4"), self.columns)
+        self.target = 0.4 * np.log(self.columns["f1"]) - 0.02 * self.columns["f3"] + 0.3
+        self.equation = fit(self.library, self.target, max_terms=6, penalty=1.0, pool_size=60).equations[6]
+
+    def test_a_generous_threshold_shortens_the_equation(self) -> None:
+        pruned = prune(self.equation, self.columns, self.target, penalty=1.0, min_contribution=10.0)
+        self.assertLess(pruned.n_terms, self.equation.n_terms)
+
+    def test_a_tiny_threshold_keeps_everything(self) -> None:
+        pruned = prune(self.equation, self.columns, self.target, penalty=1.0, min_contribution=1e-12)
+        self.assertEqual(pruned.n_terms, self.equation.n_terms)
+
+    def test_weights_are_refitted_not_carried_over(self) -> None:
+        pruned = prune(self.equation, self.columns, self.target, penalty=1.0, min_contribution=10.0)
+        if pruned.n_terms and pruned.n_terms < self.equation.n_terms:
+            survivors = {t.name: w for t, w in zip(self.equation.terms, self.equation.weights, strict=True)}
+            changed = [
+                abs(w - survivors[t.name]) > 1e-12
+                for t, w in zip(pruned.terms, pruned.weights, strict=True)
+                if t.name in survivors
+            ]
+            self.assertTrue(any(changed))
+
+    def test_an_empty_equation_is_returned_unchanged(self) -> None:
+        empty = Equation(intercept=0.5, terms=(), weights=(), standardized_weights=())
+        self.assertEqual(prune(empty, self.columns, self.target).n_terms, 0)
+
+    def test_dropping_everything_leaves_the_mean(self) -> None:
+        pruned = prune(self.equation, self.columns, self.target, penalty=1.0, min_contribution=1e9)
+        self.assertEqual(pruned.n_terms, 0)
+        self.assertAlmostEqual(pruned.intercept, float(self.target.mean()))
+
+    def test_prediction_stays_finite(self) -> None:
+        pruned = prune(self.equation, self.columns, self.target, penalty=1.0, min_contribution=0.01)
+        self.assertTrue(np.all(np.isfinite(pruned.predict(self.columns))))
 
 
 if __name__ == "__main__":
