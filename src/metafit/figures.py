@@ -17,7 +17,9 @@ from metafit.plots import (
     contribution_shares,
     count_below_floor,
     equation_comparison,
+    error_curve,
     identity_ceilings,
+    oracle_ladder,
     per_group_quality,
     practice_effects,
     predicted_versus_actual,
@@ -41,6 +43,12 @@ def _oracle(report: Report) -> float | None:
     return float(matched["r2"][0]) if matched.height else None
 
 
+def _knee(report: Report) -> int | None:
+    """The knee of the in-sample curve, as the run's own selection table reports it."""
+    matched = report.term_choice.filter(pl.col("rule") == "knee (in-sample)")
+    return int(matched["n_terms"][0]) if matched.height else None
+
+
 def generate(report: Report, destination: str | Path) -> list[Path]:
     """Write every figure and return the paths, in the order they appear in the README."""
     folder = Path(destination)
@@ -60,11 +68,30 @@ def generate(report: Report, destination: str | Path) -> list[Path]:
         ),
         term_count_curve(report.e1.curve, folder / "term_count_curve_e1.png"),
         predicted_versus_actual(truth, predicted, folder / "predicted_vs_actual.png", groups=truth),
+        error_curve(
+            report.e2.curve,
+            folder / "error_curve_mae.png",
+            metric="mae",
+            marker=_knee(report),
+            comparison=report.e2_accurate.curve,
+        ),
+        error_curve(
+            report.e2.curve,
+            folder / "error_curve_smape.png",
+            metric="smape",
+            marker=_knee(report),
+            comparison=report.e2_accurate.curve,
+        ),
         term_effects(report.effects, folder / "term_effects.png"),
         practice_effects(report.practices, folder / "practice_effects.png"),
         protocol_comparison(report.leakage, folder / "protocol_comparison.png"),
         contribution_shares(report.shares, folder / "contribution_shares.png"),
         identity_ceilings(report.decomposition, folder / "identity_ceilings.png"),
+        oracle_ladder(
+            report.oracles,
+            folder / "oracle_ladder.png",
+            achieved=float(report.e2.in_sample["r2"]),
+        ),
         per_group_quality(report.selection, folder / "per_group_quality.png"),
     ]
     if report.e2.stability is not None:
@@ -100,6 +127,14 @@ def captions(report: Report) -> dict[str, str]:
             f"distribution of the target. Axes start at 0; {hidden} point below that is "
             "not shown. Predictions never fall below 0.17 while 38 rows sit at exactly 0."
         ),
+        "error_curve_mae.png": (
+            "Mean absolute error in MCC against equation length, under both protocols. "
+            "The vertical line marks the knee of the in-sample curve."
+        ),
+        "error_curve_smape.png": (
+            "SMAPE against equation length. On a target passing through zero SMAPE is "
+            "dominated by the 38 rows at exactly MCC = 0; MAE is the honest headline."
+        ),
         "term_effects.png": (
             "Per-term effect on predicted MCC, measured as the swing between the term's "
             "10th and 90th percentile. Sign follows the fitted weight."
@@ -120,6 +155,11 @@ def captions(report: Report) -> dict[str, str]:
         "identity_ceilings.png": (
             "Variance of MCC explained by knowing only which dataset, or only which "
             "model, a row refers to. Measured on the target, independent of any equation."
+        ),
+        "oracle_ladder.png": (
+            "Ceiling as interaction components are added to the additive oracle (AMMI). "
+            "Rank 0 is the additive oracle; the first component alone is worth +0.12 R2, "
+            "which the fitted equation does not reach."
         ),
         "per_group_quality.png": (
             "Rank correlation and top-1 regret for each held-out dataset under "

@@ -15,7 +15,6 @@ import polars as pl
 
 from metafit.analysis import screen
 from metafit.attribution import group_shares, term_effects, variance_decomposition
-from metafit.benchmarks import reference_models
 from metafit.data import (
     DATASET_COLUMN,
     DATASET_FEATURES,
@@ -30,13 +29,15 @@ from metafit.data import (
 from metafit.fit import fit
 from metafit.model import Equation
 from metafit.practices import best_practices
-from metafit.stats import r2_score
+from metafit.selection import recommend
 from metafit.terms import build_library
 from metafit.validate import (
     CrossValidation,
+    Scores,
     additive_oracle,
     baseline_group_mean,
     cross_validate_path,
+    oracle_ladder,
     random_kfold_groups,
     ranking_report,
     score,
@@ -56,16 +57,17 @@ class Configuration:
 
 
 DEFAULT_E1 = Configuration(max_abs_zscore=3.0, penalty=1.0, pool_size=200, max_terms=6, headline_terms=5)
-DEFAULT_E2 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=400, max_terms=16, headline_terms=12)
+DEFAULT_E2 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=400, max_terms=32, headline_terms=14)
 
-SWEEP_SIZES: tuple[int, ...] = (2, 4, 6, 8, 10, 12, 14, 16)
+SWEEP_SIZES: tuple[int, ...] = (2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 24, 28, 32)
 
-# The accuracy-leaning alternative: a wider library and almost no shrinkage. It reaches
-# in-sample R2 = 0.619 at 16 terms and 0.647 at 20 -- comfortably past 0.6 -- and gives up
-# leave-one-dataset-out R2 (0.32 against 0.37) while actually improving leave-one-model-out
-# (0.49 against 0.46). Both configurations are reported; the defaults above take the
+# The accuracy-leaning alternative: a wider library and almost no shrinkage. Twenty terms
+# is the agreed budget -- comfortably above the 17 raw features, since terms are
+# combinations rather than features. It reaches in-sample R2 = 0.647 there, 98% of the
+# additive ceiling, and gives up leave-one-dataset-out R2 while improving
+# leave-one-model-out. Both configurations are reported; the defaults above take the
 # generalising side of the trade, this one takes the fit.
-ACCURATE_E2 = Configuration(max_abs_zscore=4.0, penalty=1.0, pool_size=400, max_terms=20, headline_terms=16)
+ACCURATE_E2 = Configuration(max_abs_zscore=4.0, penalty=1.0, pool_size=400, max_terms=32, headline_terms=20)
 
 # Model features only. There are five of them, so the library is tiny and the equation
 # is short by necessity rather than by choice.
@@ -87,18 +89,31 @@ class EquationReport:
 
 def _curve(
     sizes: tuple[int, ...],
-    in_sample: dict[int, float],
+    in_sample: dict[int, Scores],
     paths: dict[str, dict[int, CrossValidation]],
     truth: np.ndarray,
 ) -> pl.DataFrame:
+    """One row per equation length, carrying every metric under every protocol.
+
+    In-sample gets the same three metrics as the cross-validated columns, not just R2:
+    an error curve that omits the in-sample line cannot show how far apart fit and
+    transfer run, which is the whole point of plotting them together.
+    """
     rows: list[dict[str, object]] = []
     for size in sizes:
         if size not in in_sample:
             continue
-        row: dict[str, object] = {"n_terms": size, "r2_in_sample": in_sample[size]}
+        row: dict[str, object] = {
+            "n_terms": size,
+            "r2_in_sample": in_sample[size].r2,
+            "mae_in_sample": in_sample[size].mae,
+            "smape_in_sample": in_sample[size].smape,
+        }
         for label, path in paths.items():
-            row[f"r2_{label}"] = path[size].scores(truth).r2
-            row[f"mae_{label}"] = path[size].scores(truth).mae
+            scores = path[size].scores(truth)
+            row[f"r2_{label}"] = scores.r2
+            row[f"mae_{label}"] = scores.mae
+            row[f"smape_{label}"] = scores.smape
         rows.append(row)
     return pl.DataFrame(rows)
 
@@ -136,7 +151,7 @@ def run_e1(frame: pl.DataFrame, config: Configuration = DEFAULT_E1) -> EquationR
         beam_width=config.beam_width,
     )
     sizes = tuple(size for size in range(1, config.max_terms + 1))
-    in_sample = {size: r2_score(truth, eq.predict(columns)) for size, eq in result.equations.items()}
+    in_sample = {size: score(truth, eq.predict(columns)) for size, eq in result.equations.items()}
     equation = result.equations[config.headline_terms]
 
     return EquationReport(
@@ -180,7 +195,7 @@ def run_e2(frame: pl.DataFrame, config: Configuration = DEFAULT_E2) -> EquationR
         )
         for label, labels in (("loo_dataset", datasets), ("loo_model", models))
     }
-    in_sample = {size: r2_score(truth, eq.predict(columns)) for size, eq in result.equations.items()}
+    in_sample = {size: score(truth, eq.predict(columns)) for size, eq in result.equations.items()}
     equation = result.equations[config.headline_terms]
 
     return EquationReport(
@@ -228,7 +243,7 @@ def run_model_only(frame: pl.DataFrame, config: Configuration = DEFAULT_MODEL_ON
         pool_size=config.pool_size,
         beam_width=config.beam_width,
     )
-    in_sample = {k: r2_score(truth, eq.predict(columns)) for k, eq in result.equations.items()}
+    in_sample = {k: score(truth, eq.predict(columns)) for k, eq in result.equations.items()}
     equation = result.equations[size]
     return EquationReport(
         equation=equation,
@@ -402,7 +417,8 @@ class Report:
     comparison: pl.DataFrame
     leakage: pl.DataFrame
     selection: pl.DataFrame
-    reference: pl.DataFrame
+    term_choice: pl.DataFrame
+    oracles: pl.DataFrame
 
 
 # Small enough to run in a couple of seconds. Intended for smoke-testing the wiring,
@@ -439,7 +455,8 @@ def run(path: str | None = None, *, quick: bool = False) -> Report:
         comparison=comparison(frame, e1, e2),
         leakage=leakage_demonstration(frame, config_e2),
         selection=model_selection(frame, e2),
-        reference=reference_models(frame, only=("RidgeCV (linear)",), trees=25)
-        if quick
-        else reference_models(frame),
+        term_choice=recommend(e2.curve),
+        oracles=oracle_ladder(
+            target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)
+        ),
     )

@@ -61,3 +61,21 @@ def mae(truth: np.ndarray, prediction: np.ndarray) -> float:
 def rmse(truth: np.ndarray, prediction: np.ndarray) -> float:
     """Root mean squared error, in MCC units."""
     return float(np.sqrt(float(((truth - prediction) ** 2).mean())))
+
+
+def smape(truth: np.ndarray, prediction: np.ndarray) -> float:
+    """Symmetric mean absolute percentage error, as a percentage in [0, 200].
+
+    **Read this one with care on MCC.** SMAPE divides by ``|truth| + |prediction|``, and
+    38 of the 476 rows here have MCC exactly 0. Every one of those contributes the full
+    200% unless the prediction is also exactly 0, so the metric is dominated by the rows
+    the equation is already known to handle worst rather than by its typical error. It is
+    reported because it was asked for and because it is scale-free, but MAE is the
+    honest headline for a target that legitimately passes through zero.
+
+    Rows where both truth and prediction are zero contribute 0, not a division by zero.
+    """
+    denominator = np.abs(truth) + np.abs(prediction)
+    safe = np.where(denominator > 0.0, denominator, 1.0)
+    ratio = np.where(denominator > 0.0, 2.0 * np.abs(truth - prediction) / safe, 0.0)
+    return float(100.0 * ratio.mean())

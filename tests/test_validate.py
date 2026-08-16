@@ -1,5 +1,6 @@
 """Validation protocols, baselines and the leakage they are designed to avoid."""
 
+import itertools
 import unittest
 
 import numpy as np
@@ -12,7 +13,9 @@ from metafit.validate import (
     baseline_group_mean,
     cross_validate,
     cross_validate_path,
+    interaction_oracle,
     leave_one_group_out,
+    oracle_ladder,
     random_kfold_groups,
     ranking_report,
     score,
@@ -152,6 +155,64 @@ class TestBaselines(unittest.TestCase):
         ):
             self.assertGreaterEqual(predictions.min(), -1.0)
             self.assertLessEqual(predictions.max(), 1.0)
+
+
+class TestInteractionOracle(unittest.TestCase):
+    def setUp(self) -> None:
+        _, self.target, self.outer, self.inner = grid()
+
+    def test_rank_zero_equals_the_additive_oracle(self) -> None:
+        np.testing.assert_allclose(
+            interaction_oracle(self.target, self.outer, self.inner, 0),
+            additive_oracle(self.target, self.outer, self.inner),
+            atol=1e-9,
+        )
+
+    def test_more_components_never_fit_worse(self) -> None:
+        from metafit.stats import r2_score
+
+        scores = [
+            r2_score(self.target, interaction_oracle(self.target, self.outer, self.inner, rank))
+            for rank in range(5)
+        ]
+        for earlier, later in itertools.pairwise(scores):
+            self.assertGreaterEqual(later, earlier - 1e-9)
+
+    def test_full_rank_reproduces_every_cell(self) -> None:
+        from metafit.stats import r2_score
+
+        full = min(np.unique(self.outer).shape[0], np.unique(self.inner).shape[0])
+        value = r2_score(self.target, interaction_oracle(self.target, self.outer, self.inner, full))
+        self.assertGreater(value, 0.999)
+
+    def test_stays_inside_the_mcc_range(self) -> None:
+        prediction = interaction_oracle(self.target, self.outer, self.inner, 2)
+        self.assertGreaterEqual(prediction.min(), -1.0)
+        self.assertLessEqual(prediction.max(), 1.0)
+
+    def test_handles_missing_cells(self) -> None:
+        # 24 of the 500 dataset-by-model cells are absent in the real meta-dataset.
+        mask = np.ones(self.target.shape[0], dtype=bool)
+        mask[3] = False
+        prediction = interaction_oracle(self.target[mask], self.outer[mask], self.inner[mask], 2)
+        self.assertTrue(np.all(np.isfinite(prediction)))
+
+
+class TestOracleLadder(unittest.TestCase):
+    def setUp(self) -> None:
+        _, self.target, self.outer, self.inner = grid()
+
+    def test_one_row_per_rank(self) -> None:
+        table = oracle_ladder(self.target, self.outer, self.inner, ranks=(0, 1, 2))
+        self.assertEqual(table["interaction_rank"].to_list(), [0, 1, 2])
+
+    def test_gain_is_undefined_for_the_first_rung(self) -> None:
+        table = oracle_ladder(self.target, self.outer, self.inner, ranks=(0, 1))
+        self.assertNotEqual(table["gain"][0], table["gain"][0])  # NaN
+
+    def test_r2_is_non_decreasing(self) -> None:
+        scores = oracle_ladder(self.target, self.outer, self.inner, ranks=(0, 1, 2, 3))["r2"].to_numpy()
+        self.assertTrue((np.diff(scores) >= -1e-9).all())
 
 
 class TestRanking(unittest.TestCase):

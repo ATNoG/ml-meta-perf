@@ -1,0 +1,105 @@
+"""Knee detection and the Pareto front over equation length."""
+
+import unittest
+
+import numpy as np
+import polars as pl
+
+from metafit.selection import knee_index, knee_terms, pareto_front, recommend
+
+
+def curve(
+    sizes: list[int],
+    in_sample: list[float],
+    loo: list[float] | None = None,
+) -> pl.DataFrame:
+    data: dict[str, list[float] | list[int]] = {"n_terms": sizes, "r2_in_sample": in_sample}
+    if loo is not None:
+        data["r2_loo_dataset"] = loo
+    return pl.DataFrame(data)
+
+
+class TestKneeIndex(unittest.TestCase):
+    def test_finds_the_bend_of_a_saturating_curve(self) -> None:
+        sizes = np.array([1, 2, 3, 4, 5, 6, 7, 8], dtype=float)
+        scores = np.array([0.1, 0.4, 0.6, 0.68, 0.70, 0.71, 0.715, 0.717])
+        index = knee_index(sizes, scores)
+        # The bend is somewhere in the early-middle, not at either extreme.
+        self.assertGreater(index, 0)
+        self.assertLess(index, len(sizes) - 1)
+
+    def test_short_curves_fall_back_to_the_last_point(self) -> None:
+        self.assertEqual(knee_index(np.array([1.0, 2.0]), np.array([0.1, 0.5])), 1)
+
+    def test_single_point(self) -> None:
+        self.assertEqual(knee_index(np.array([1.0]), np.array([0.5])), 0)
+
+    def test_returns_a_valid_index(self) -> None:
+        sizes = np.arange(2.0, 20.0, 2.0)
+        scores = 1.0 - np.exp(-sizes / 4.0)
+        index = knee_index(sizes, scores)
+        self.assertTrue(0 <= index < len(sizes))
+
+
+class TestKneeTerms(unittest.TestCase):
+    def test_maps_the_index_back_to_a_term_count(self) -> None:
+        table = curve([2, 4, 6, 8, 10, 12], [0.2, 0.45, 0.55, 0.58, 0.585, 0.587])
+        chosen = knee_terms(table)
+        self.assertIn(chosen, [2, 4, 6, 8, 10, 12])
+
+    def test_reads_the_requested_column(self) -> None:
+        table = curve([2, 4, 6, 8], [0.2, 0.5, 0.55, 0.56], [0.1, 0.3, 0.32, 0.33])
+        self.assertIn(knee_terms(table, "r2_loo_dataset"), [2, 4, 6, 8])
+
+
+class TestParetoFront(unittest.TestCase):
+    def test_keeps_only_lengths_nothing_shorter_beats(self) -> None:
+        table = curve([2, 4, 6, 8], [0.0] * 4, [0.10, 0.30, 0.20, 0.40])
+        # 6 scores 0.20, worse than 4's 0.30, so it is dominated by a shorter equation.
+        self.assertEqual(pareto_front(table)["n_terms"].to_list(), [2, 4, 8])
+
+    def test_a_monotone_curve_is_entirely_on_the_front(self) -> None:
+        table = curve([2, 4, 6], [0.0] * 3, [0.1, 0.2, 0.3])
+        self.assertEqual(pareto_front(table)["n_terms"].to_list(), [2, 4, 6])
+
+    def test_a_decreasing_curve_keeps_only_the_shortest(self) -> None:
+        table = curve([2, 4, 6], [0.0] * 3, [0.3, 0.2, 0.1])
+        self.assertEqual(pareto_front(table)["n_terms"].to_list(), [2])
+
+    def test_front_is_never_empty(self) -> None:
+        table = curve([2, 4], [0.0, 0.0], [0.5, 0.5])
+        self.assertGreater(pareto_front(table).height, 0)
+
+
+class TestRecommend(unittest.TestCase):
+    def setUp(self) -> None:
+        self.table = curve(
+            [2, 4, 6, 8, 10, 12, 14],
+            [0.20, 0.45, 0.52, 0.55, 0.560, 0.564, 0.566],
+            [0.05, 0.22, 0.26, 0.31, 0.330, 0.372, 0.441],
+        )
+
+    def test_reports_every_rule(self) -> None:
+        rules = recommend(self.table)["rule"].to_list()
+        self.assertIn("knee (in-sample)", rules)
+        self.assertIn("knee (loo-dataset)", rules)
+        self.assertIn("best loo-dataset", rules)
+
+    def test_best_rule_picks_the_maximum(self) -> None:
+        rows = {row["rule"]: row for row in recommend(self.table).iter_rows(named=True)}
+        self.assertEqual(rows["best loo-dataset"]["n_terms"], 14)
+        self.assertAlmostEqual(rows["best loo-dataset"]["r2_loo_dataset"], 0.441)
+
+    def test_every_recommendation_is_a_length_on_the_curve(self) -> None:
+        available = set(self.table["n_terms"].to_list())
+        for value in recommend(self.table)["n_terms"].to_list():
+            self.assertIn(value, available)
+
+    def test_works_without_a_cross_validated_column(self) -> None:
+        plain = curve([2, 4, 6, 8], [0.2, 0.45, 0.52, 0.55])
+        table = recommend(plain)
+        self.assertEqual(table["rule"].to_list(), ["knee (in-sample)"])
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -12,7 +12,9 @@ from metafit.plots import (
     contribution_shares,
     count_below_floor,
     equation_comparison,
+    error_curve,
     identity_ceilings,
+    oracle_ladder,
     per_group_quality,
     practice_effects,
     predicted_versus_actual,
@@ -113,6 +115,27 @@ class TestPlots(PlotTestCase):
         predicted = np.concatenate([np.array([0.5]), np.linspace(0.2, 1.0, 30)])
         self.assertIsPng(predicted_versus_actual(truth, predicted, self.folder / "clipped.png"))
 
+
+    def test_error_curve_mae(self) -> None:
+        self.assertIsPng(error_curve(curve(), self.folder / "mae.png", metric="mae"))
+
+    def test_error_curve_smape_with_a_knee_marker(self) -> None:
+        table = curve().with_columns(
+            pl.Series("smape_loo_dataset", [60.0, 50.0, 45.0, 42.0]),
+            pl.Series("smape_loo_model", [55.0, 48.0, 44.0, 41.0]),
+        )
+        self.assertIsPng(error_curve(table, self.folder / "smape.png", metric="smape", marker=6))
+
+    def test_oracle_ladder(self) -> None:
+        ladder = pl.DataFrame(
+            {"interaction_rank": [0, 1, 2, 3], "r2": [0.66, 0.78, 0.85, 0.90],
+             "gain": [float("nan"), 0.12, 0.07, 0.05]}
+        )
+        self.assertIsPng(oracle_ladder(ladder, self.folder / "ladder.png", achieved=0.556))
+
+    def test_oracle_ladder_without_an_achieved_line(self) -> None:
+        ladder = pl.DataFrame({"interaction_rank": [0, 1], "r2": [0.66, 0.78], "gain": [float("nan"), 0.12]})
+        self.assertIsPng(oracle_ladder(ladder, self.folder / "ladder2.png"))
 
     def test_term_effects(self) -> None:
         self.assertIsPng(term_effects(effects(), self.folder / "terms.png"))

@@ -106,6 +106,59 @@ def term_count_curve(
     return _finish(figure, destination)
 
 
+def error_curve(
+    curve: pl.DataFrame,
+    destination: str | Path,
+    *,
+    metric: str = "mae",
+    marker: int | None = None,
+    comparison: pl.DataFrame | None = None,
+) -> Path:
+    """Error against equation length, in the target's own units.
+
+    R2 answers "how much variance is explained", which is a relative question. MAE answers
+    "how far off is a prediction, in MCC", which is the one a practitioner asks. SMAPE is
+    included as the scale-free alternative, with the caveat that on a target passing
+    through zero it is dominated by the 38 rows at exactly MCC = 0.
+
+    Both configurations appear on every curve: ``curve`` supplies all three protocols and
+    ``comparison`` overlays the accuracy-leaning configuration's in-sample line, so fit
+    and transfer for both tunings are read from one figure.
+
+    ``marker`` draws a vertical line at a chosen equation length -- the knee, typically --
+    as a labelled line rather than an annotation.
+    """
+    label = {"mae": "mean absolute error (MCC)", "smape": "SMAPE (%)"}.get(metric, metric)
+    figure, axes = plt.subplots(figsize=(7.0, 4.2))
+    sizes = curve["n_terms"].to_numpy()
+
+    for column, colour, style, name in (
+        (f"{metric}_in_sample", IN_SAMPLE, "o-", "in-sample"),
+        (f"{metric}_loo_dataset", LOO_DATASET, "s--", "leave-one-dataset-out"),
+        (f"{metric}_loo_model", LOO_MODEL, "^:", "leave-one-model-out"),
+    ):
+        if column in curve.columns:
+            axes.plot(sizes, curve[column].to_numpy(), style, color=colour, label=name, linewidth=2)
+    if comparison is not None and f"{metric}_in_sample" in comparison.columns:
+        axes.plot(
+            comparison["n_terms"].to_numpy(),
+            comparison[f"{metric}_in_sample"].to_numpy(),
+            "D-.",
+            color=COMPARISON,
+            label="in-sample (accuracy-leaning)",
+            markersize=4,
+        )
+    if marker is not None:
+        axes.axvline(marker, color=CEILING, linestyle="-.", linewidth=1.2, label=f"knee ({marker} terms)")
+
+    axes.set_xlabel("number of terms")
+    axes.set_ylabel(label)
+    axes.set_xticks(sizes)
+    axes.grid(alpha=0.25, linestyle=":")
+    axes.legend(frameon=False, fontsize=9)
+    return _finish(figure, destination)
+
+
 def scatter_limits(
     truth: np.ndarray,
     predicted: np.ndarray,
@@ -203,6 +256,30 @@ def equation_comparison(comparison: pl.DataFrame, destination: str | Path) -> Pa
     solid = Rectangle((0, 0), 1, 1, facecolor=IN_SAMPLE, alpha=0.85)
     hatched = Rectangle((0, 0), 1, 1, facecolor=CEILING, alpha=0.85, hatch="//")
     axes.legend([solid, hatched], ["fitted equation", "ceiling"], frameon=False, fontsize=9)
+    return _finish(figure, destination)
+
+
+def oracle_ladder(ladder: pl.DataFrame, destination: str | Path, *, achieved: float | None = None) -> Path:
+    """How fast the ceiling climbs as interaction components are added.
+
+    Rank 0 is the additive oracle. Each further component is one more pattern of "this
+    kind of model suits this kind of dataset", and the steepness of the first step is the
+    measure of how much interaction structure the data holds. With ``achieved`` supplied
+    the equation's own score is drawn as a line, showing which rung it has reached.
+    """
+    ranks = ladder["interaction_rank"].to_numpy()
+    figure, axes = plt.subplots(figsize=(6.4, 4.0))
+    axes.plot(ranks, ladder["r2"].to_numpy(), "o-", color=CEILING, linewidth=2, label="oracle ceiling")
+    if achieved is not None:
+        axes.axhline(
+            achieved, color=IN_SAMPLE, linestyle="--", linewidth=1.4,
+            label=f"fitted equation ({achieved:.3f})",
+        )
+    axes.set_xlabel("rank of the interaction added to the additive oracle")
+    axes.set_ylabel("$R^2$")
+    axes.set_xticks(ranks)
+    axes.grid(alpha=0.25, linestyle=":")
+    axes.legend(frameon=False, fontsize=9, loc="lower right")
     return _finish(figure, destination)
 
 

@@ -53,7 +53,7 @@ equations on every row puts them on one scale:
 | *E1's hard ceiling — the true dataset means* | *0.354* | *0.204* | *0.653* |
 | EM (model only, 9 terms) | 0.164 | 0.251 | 0.356 |
 | *EM's hard ceiling — the true model means* | *0.282* | *0.226* | *0.487* |
-| **E2 (dataset + model, 12 terms)** | **0.556** | **0.169** | **0.780** |
+| **E2 (dataset + model, 14 terms)** | **0.558** | **0.167** | **0.775** |
 | *additive oracle — true dataset + model effects* | *0.661* | *0.145* | *0.810* |
 
 ![Equations against their ceilings](assets/figures/equation_comparison.png)
@@ -91,10 +91,57 @@ Two things create the opposite impression, and both are artifacts worth knowing 
   surplus is dataset×model interaction, which is why 8 of the 16 terms in the
   accuracy-leaning equation are mixed.
 
-The **additive oracle** row is the ceiling for this entire approach: give a model the
-*exact* per-dataset and per-model effects and let it add them, and you get R² = 0.661.
-No equation of the form `w1*t1 + w2*t2 + ...` can beat that, because that is what
-additivity buys. E2 captures 84% of it.
+### The oracle ladder — a better ceiling
+
+The additive oracle is not the only reference available, and on its own it is a weak one.
+Its residual is a (dataset × model) matrix of *interactions*, and interaction matrices are
+usually dominated by a few components. Decomposing that residual by SVD and adding its
+leading components back gives a ladder of ceilings — the AMMI model (additive main
+effects, multiplicative interaction) long used for genotype-by-environment trials, which
+is structurally the same problem:
+
+| interaction rank | R² | gain |
+|---|---|---|
+| 0 (additive oracle) | 0.6605 | — |
+| 1 | **0.7828** | **+0.122** |
+| 2 | 0.8537 | +0.071 |
+| 3 | 0.8968 | +0.043 |
+| 4 | 0.9278 | +0.031 |
+| 8 | 0.9842 | +0.019 |
+| 20 (full) | 1.0000 | — |
+
+![Oracle ladder](assets/figures/oracle_ladder.png)
+
+**The first interaction component alone is worth +0.122 R².** That is more than the
+difference between a 2-term and a 12-term equation, and E2 captures essentially none of
+it — 0.556 sits below even rank 0. So the headline number is not limited by term
+engineering within the additive family; it is limited by there being one strong
+interaction pattern in this data that the equation never reaches.
+
+That is the single most actionable result for future work here.
+
+### What the additive oracle does and does not bound
+
+Give a model the **exact** per-dataset and per-model mean MCC — taken from the labels
+themselves — and let it add them: R² = **0.6605**. It uses no features and predicts
+nothing; it is an algebraic reference, not a model.
+
+It bounds a **two-way additive** form, `grand mean + dataset effect + model effect`. It
+does **not** bound E2. Half of E2's terms are *mixed* — products and ratios pairing a
+dataset feature with a model feature — and those express exactly the dataset×model
+interaction the two-way form cannot. Given enough terms, E2 crosses it:
+
+| terms | in-sample R² | LOO-dataset R² |
+|---|---|---|
+| 24 | 0.653 | 0.280 |
+| 28 | **0.661** | **-0.283** |
+| 32 | **0.663** | **-0.591** |
+
+But look at the second column. E2 passes the oracle at exactly the point its
+cross-validated score collapses. The crossing is not interaction being captured, it is
+interaction being invented — and the oracle turns out to mark, quite closely, the level
+past which apparent gains stop transferring at all. That makes it a useful line to draw
+even though it is not a hard ceiling.
 
 ### On their own scales
 
@@ -102,40 +149,88 @@ additivity buys. E2 captures 84% of it.
 |---|---|---|---|---|
 | E1 (20 dataset means) | 5 | **0.953** | 0.506 | — |
 | EM (476 rows) | 9 | 0.164 | 0.055 | — |
-| E2 (476 rows) | 12 | **0.556** | 0.371 | 0.455 |
+| E2 (476 rows) | 14 | **0.558** | **0.443** | 0.456 |
 
 ### Accuracy versus number of terms
 
-The explainability trade, made explicit rather than settled by taste. E2:
+The explainability trade, made explicit rather than settled by taste. The term budget runs
+to **32**, well above the 17 available features, since terms are combinations of one to
+three features rather than features themselves.
 
-| terms | in-sample R² | LOO-dataset R² | LOO-model R² |
+Three rules pick a length, and the study reports all three rather than asserting one.
+Knee detection uses [kneeliverse](https://github.com/mariolpantunes/knee)'s `autoelbow`,
+which takes no threshold or smoothing window, so the answer is a property of the curve
+rather than of a parameter chosen to produce it:
+
+| rule | terms | in-sample R² | LOO-dataset R² |
 |---|---|---|---|
-| 2 | 0.353 | 0.199 | 0.333 |
-| 4 | 0.467 | 0.288 | 0.433 |
-| 6 | 0.502 | 0.232 | 0.448 |
-| 8 | 0.533 | 0.303 | 0.426 |
-| 10 | 0.550 | 0.327 | 0.467 |
-| **12** | **0.556** | **0.371** | **0.455** |
-| 14 | 0.558 | 0.443 | 0.457 |
-| 16 | 0.562 | 0.436 | 0.461 |
+| knee of the in-sample curve | **8** | 0.533 | 0.303 |
+| knee of the cross-validated curve | **12** | 0.556 | 0.371 |
+| best cross-validated | **14** | 0.558 | 0.443 |
 
-Past about 10 terms the in-sample curve is flat — the extra terms buy 0.006 R² between
-12 and 16 — while the cross-validated column is still moving by more than that from fold
-noise alone. Twelve is chosen from the flat part of the curve rather than from its peak.
+Pareto front over (length, LOO-dataset R²): **2, 4, 8, 10, 12, 14** — no equation longer
+than 14 terms is worth its length on transfer.
+
+**Does it plateau?** Yes, and the budget was pushed to 64 to check. The default
+configuration gains 0.003 R² between 24 and 64 terms (0.5673 → 0.5704) — flat. The
+accuracy-leaning one keeps creeping in-sample (0.653 → 0.668) while its
+leave-one-dataset-out R² falls to between -0.3 and -0.7, so the creep is entirely
+overfitting. The sweep stops at 32 because nothing past it is real.
+
+E2:
+
+The term budget runs to **20**, above the 17 available features — terms are combinations
+of one to three features, so the feature count is not the limit.
+
+| terms | in-sample R² | LOO-dataset R² |
+|---|---|---|
+| 2 | 0.353 | 0.199 |
+| 4 | 0.467 | 0.288 |
+| 6 | 0.502 | 0.232 |
+| 8 | 0.533 | 0.303 |
+| 10 | 0.550 | 0.327 |
+| 12 | 0.556 | 0.371 |
+| **14** | **0.558** | **0.443** |
+| 16 | 0.562 | 0.436 |
+| 18 | 0.564 | 0.423 |
+| 20 | 0.566 | 0.406 |
+
+**Fourteen terms is the headline**, and two independent metrics agree on it: it is both
+the maximum of leave-one-dataset-out R² (0.443) and the minimum of leave-one-dataset-out
+MAE (0.1884). Past 14 the in-sample curve is flat — 14 to 32 buys 0.010 R² — while
+transfer gets slightly *worse*.
+
+![Mean absolute error against equation length](assets/figures/error_curve_mae.png)
+
+Every curve carries all four series: in-sample and both cross-validation protocols for the
+default configuration, plus the accuracy-leaning configuration's in-sample line. The gap
+between the blue and violet lines is what the looser tuning buys on fit; the gap between
+either and the red line is what it costs on transfer.
 
 ### The accuracy-leaning configuration
 
-`ACCURATE_E2` (wider library, almost no shrinkage) trades the other way:
+`DEFAULT_E2` and `ACCURATE_E2` are the *same equation family* — same term vocabulary, same
+beam search, same solver. They differ in two tuning knobs:
+
+| | `max_abs_zscore` | `penalty` | headline terms |
+|---|---|---|---|
+| `DEFAULT_E2` | 3.0 (tighter term filter, 172-term library) | 20 (more shrinkage) | 14 |
+| `ACCURATE_E2` | 4.0 (looser filter, 360-term library) | 1 (almost none) | 20 |
+
+A looser filter admits more terms to choose from and less shrinkage lets their weights
+grow, so the equation fits the observed rows harder. It trades the other way:
 
 | terms | in-sample R² | LOO-dataset R² | LOO-model R² |
 |---|---|---|---|
 | 12 | 0.584 | 0.270 | 0.472 |
-| **16** | **0.619** | 0.320 | 0.493 |
-| 20 | **0.647** | 0.287 | **0.533** |
+| 16 | 0.619 | 0.320 | 0.493 |
+| 18 | 0.640 | 0.341 | — |
+| **20** | **0.647** | 0.287 | **0.533** |
 
-**This clears 0.6**, and at 20 terms reaches 0.647 against the 0.661 additive ceiling —
-98% of what any additive equation can achieve. It gives up leave-one-dataset-out R²
-(0.32 vs 0.37) but is actually *better* on leave-one-model-out (0.49 vs 0.46).
+**This clears 0.6 from 14 terms onward**, and at the full 20-term budget reaches 0.647
+against the 0.6605 additive ceiling — **98% of what any additive equation can achieve**.
+It gives up leave-one-dataset-out R² (0.29 vs 0.37) but is clearly better on
+leave-one-model-out (0.53 vs 0.46).
 
 Both configurations are fitted and reported by every run of the study, so the two sit
 side by side in the output rather than one being quoted from the README.
@@ -153,10 +248,10 @@ MCC = +1.21681
       +0.000217397* [log(inst_to_attr)] * [nr_norm]
 ```
 
-E2, on all 476 rows:
+E2, on all 476 rows (14 terms):
 
 ```
-MCC = +0.829491
+MCC = +0.950554
       -0.130089   * [log(eq_num_attr)] * [log(nr_class)]
       -0.0372985  * [log(gravity)] / [log(Training Operations)]
       -0.177795   * [nr_cor_attr] * [nr_norm]
@@ -254,18 +349,30 @@ why leave-one-*group*-out is the only protocol `metafit` reports as a headline.
 
 ### Flexible models do *worse* here, not better
 
-Under leave-one-dataset-out, on the same features:
+Standard regressors on the same raw features, under the same protocols:
 
-| model | LOO-dataset R² |
-|---|---|
-| RandomForest (400 trees) | 0.067 |
-| GradientBoosting | 0.049 |
-| **metafit E2 (12-term equation)** | **0.371** |
+| model | in-sample R² | LOO-dataset R² | LOO-model R² |
+|---|---|---|---|
+| RidgeCV (linear, all 17 features) | 0.418 | **-2.002** | 0.328 |
+| RandomForest (300 trees) | **0.910** | **0.067** | 0.465 |
+| GradientBoosting | 0.820 | 0.049 | 0.354 |
+| **metafit E2 (12-term equation)** | 0.556 | **0.371** | 0.455 |
 
-With 20 dataset groups, flexible learners memorise dataset identity and generalise
-poorly to an unseen dataset. The sparse equation is not a concession to interpretability
-on this data — it is the better predictor. (Measured with scikit-learn during
-exploration; it is not a dependency of this package.)
+Read the RandomForest row across: **0.910 in-sample, 0.067 on an unseen dataset.** With
+20 dataset groups a forest memorises dataset identity almost perfectly and then transfers
+worse than a 12-term equation. The equation's own gap — 0.556 to 0.371 — is a fraction of
+that.
+
+This is also the likely provenance of the R² ≈ 0.9 figures reported for opaque
+meta-models in the literature: an in-sample or randomly-split forest reproduces them
+exactly, and the same forest is near-useless on a dataset it has not seen. The sparse
+equation is not a concession to interpretability on this data — it is the better
+predictor.
+
+> Measured with scikit-learn during exploration. It is **not** a dependency: the equation
+> pipeline needs polars and numpy only, and the additive oracle already supplies the
+> ceiling the study is argued against. Reproducing this table needs
+> `pip install scikit-learn` and a few lines against `metafit.validate.leave_one_group_out`.
 
 ## Baselines
 

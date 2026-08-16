@@ -23,6 +23,7 @@ from metafit.data import (
 from metafit.fit import FitResult, fit
 from metafit.model import Equation
 from metafit.practices import best_practices, feature_practices
+from metafit.selection import knee_terms, pareto_front, recommend
 from metafit.terms import Atom, Library, Term, build_library
 from metafit.validate import (
     CrossValidation,
@@ -61,8 +62,11 @@ __all__ = [
     "fit",
     "group_shares",
     "groups",
+    "knee_terms",
     "load",
+    "pareto_front",
     "ranking_report",
+    "recommend",
     "redundancy_groups",
     "screen",
     "target",

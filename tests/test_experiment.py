@@ -12,7 +12,6 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 import numpy as np
-import polars as pl
 
 from metafit.attribution import group_shares, term_effects, variance_decomposition
 from metafit.cli import main, render
@@ -40,6 +39,8 @@ from metafit.experiment import (
 )
 from metafit.model import Equation
 from metafit.practices import best_practices
+from metafit.selection import recommend
+from metafit.validate import oracle_ladder
 
 FAST_E1 = Configuration(max_abs_zscore=3.0, penalty=1.0, pool_size=40, max_terms=3, headline_terms=3)
 FAST_E2 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=40, max_terms=3, headline_terms=3)
@@ -187,7 +188,10 @@ class TestCli(unittest.TestCase):
             comparison=comparison(frame, e1, e2),
             leakage=leakage_demonstration(frame, FAST_E2),
             selection=model_selection(frame, e2),
-            reference=pl.DataFrame({'model': ['stub'], 'r2_in_sample': [0.5]}),
+            term_choice=recommend(e2.curve),
+            oracles=oracle_ladder(
+                target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN), ranks=(0, 1)
+            ),
         )
 
     def test_render_prints_every_section(self) -> None:

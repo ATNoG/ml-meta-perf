@@ -73,20 +73,20 @@ def render(report: Report) -> None:
     _section("What each term is worth (MCC units)")
     _show(report.effects)
 
+    _section("How many terms? (knee detection and Pareto front)")
+    _show(report.term_choice)
+
     _section("E1 vs EM vs E2 on the common scale (all rows)")
     _show(report.comparison)
+
+    _section("Oracle ladder -- what each interaction component would be worth")
+    _show(report.oracles)
 
     _section("Baselines")
     _show(report.baselines)
 
     _section("Validation protocol matters (same equation, different splits)")
     _show(report.leakage)
-
-    _section("Reference models on the raw features (scikit-learn, not a metafit dependency)")
-    if report.reference.height:
-        _show(report.reference)
-    else:
-        print("scikit-learn not installed; skipped")
 
     _section("Model selection on held-out datasets")
     _show(report.selection)

@@ -26,7 +26,7 @@ import polars as pl
 
 from metafit.fit import Selector, Standardizer, guided_screen, to_equation
 from metafit.model import MCC_LOWER, MCC_UPPER
-from metafit.stats import mae, r2_score, rmse, spearman
+from metafit.stats import mae, r2_score, rmse, smape, spearman
 from metafit.terms import Library
 
 
@@ -49,11 +49,19 @@ class Scores:
     r2: float
     mae: float
     rmse: float
+    smape: float
     spearman: float
     n: int
 
     def as_dict(self) -> dict[str, float | int]:
-        return {"r2": self.r2, "mae": self.mae, "rmse": self.rmse, "spearman": self.spearman, "n": self.n}
+        return {
+            "r2": self.r2,
+            "mae": self.mae,
+            "rmse": self.rmse,
+            "smape": self.smape,
+            "spearman": self.spearman,
+            "n": self.n,
+        }
 
 
 def score(truth: np.ndarray, prediction: np.ndarray) -> Scores:
@@ -61,6 +69,7 @@ def score(truth: np.ndarray, prediction: np.ndarray) -> Scores:
         r2=r2_score(truth, prediction),
         mae=mae(truth, prediction),
         rmse=rmse(truth, prediction),
+        smape=smape(truth, prediction),
         spearman=spearman(truth, prediction),
         n=int(truth.shape[0]),
     )
@@ -218,6 +227,81 @@ def additive_oracle(target: np.ndarray, first: np.ndarray, second: np.ndarray) -
             mask = group == label
             prediction[mask] += float(target[mask].mean()) - grand
     return np.clip(prediction, MCC_LOWER, MCC_UPPER)
+
+
+def interaction_oracle(
+    target: np.ndarray,
+    first: np.ndarray,
+    second: np.ndarray,
+    rank: int,
+) -> np.ndarray:
+    """The additive oracle plus the best rank-``rank`` approximation of what it misses.
+
+    ``additive_oracle`` answers "how much of MCC is dataset effect plus model effect".
+    The obvious next question is what the leftover looks like, and the leftover is not
+    noise: it is a (dataset x model) matrix of interactions, and interaction matrices are
+    usually dominated by a few components.
+
+    So the residual is decomposed by SVD and its leading components added back. This is
+    the AMMI model -- additive main effects, multiplicative interaction -- long used for
+    genotype-by-environment trials, which is structurally the same problem: a grid of
+    subjects crossed with conditions where some pairings suit each other.
+
+    The result is a *ladder* rather than a single ceiling. ``rank=0`` is the additive
+    oracle; each further component is one more pattern of "this kind of model suits this
+    kind of dataset". At full rank it reproduces every observed cell and R2 is 1, which is
+    why the interesting question is how fast the ladder climbs, not where it ends.
+
+    Like ``additive_oracle`` this is fitted with the true values and predicts nothing.
+    Unobserved cells (24 of the 500 here) contribute zero residual, so they neither
+    distort the decomposition nor are counted in any score.
+    """
+    rows = np.unique(first)
+    columns = np.unique(second)
+    row_index = {label: position for position, label in enumerate(rows)}
+    column_index = {label: position for position, label in enumerate(columns)}
+
+    grid = np.full((rows.shape[0], columns.shape[0]), np.nan)
+    for value, row, column in zip(target, first, second, strict=True):
+        grid[row_index[row], column_index[column]] = value
+    observed = ~np.isnan(grid)
+
+    grand = float(np.nanmean(grid))
+    row_effect = np.nanmean(grid, axis=1) - grand
+    column_effect = np.nanmean(grid, axis=0) - grand
+    additive = grand + row_effect[:, None] + column_effect[None, :]
+
+    if rank > 0:
+        residual = np.where(observed, grid - additive, 0.0)
+        left, values, right = np.linalg.svd(residual, full_matrices=False)
+        additive = additive + (left[:, :rank] * values[:rank]) @ right[:rank]
+
+    prediction = np.array(
+        [additive[row_index[row], column_index[column]] for row, column in zip(first, second, strict=True)]
+    )
+    return np.clip(prediction, MCC_LOWER, MCC_UPPER)
+
+
+def oracle_ladder(
+    target: np.ndarray,
+    first: np.ndarray,
+    second: np.ndarray,
+    ranks: tuple[int, ...] = (0, 1, 2, 3, 4, 6, 8),
+) -> pl.DataFrame:
+    """How much each additional interaction component would be worth."""
+    rows: list[dict[str, object]] = []
+    previous: float | None = None
+    for rank in ranks:
+        value = r2_score(target, interaction_oracle(target, first, second, rank))
+        rows.append(
+            {
+                "interaction_rank": rank,
+                "r2": value,
+                "gain": value - previous if previous is not None else float("nan"),
+            }
+        )
+        previous = value
+    return pl.DataFrame(rows)
 
 
 def ranking_report(

@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 
-from metafit.stats import mae, pearson, r2_score, rankdata, rmse, spearman
+from metafit.stats import mae, pearson, r2_score, rankdata, rmse, smape, spearman
 
 
 class TestRankdata(unittest.TestCase):
@@ -72,6 +72,33 @@ class TestErrorMetrics(unittest.TestCase):
         truth = np.zeros(4)
         prediction = np.array([0.0, 0.0, 0.0, 4.0])
         self.assertGreater(rmse(truth, prediction), mae(truth, prediction))
+
+
+class TestSmape(unittest.TestCase):
+    def test_perfect_prediction_is_zero(self) -> None:
+        values = np.array([0.2, 0.6, 1.0])
+        self.assertAlmostEqual(smape(values, values.copy()), 0.0)
+
+    def test_both_zero_contributes_nothing(self) -> None:
+        self.assertAlmostEqual(smape(np.zeros(3), np.zeros(3)), 0.0)
+
+    def test_zero_truth_against_nonzero_prediction_saturates(self) -> None:
+        # The reason SMAPE is a poor headline here: 38 of 476 rows have MCC exactly 0,
+        # and each contributes the full 200% however small the prediction is.
+        self.assertAlmostEqual(smape(np.zeros(1), np.array([0.01])), 200.0)
+
+    def test_is_bounded_at_two_hundred(self) -> None:
+        rng = np.random.default_rng(0)
+        truth = rng.uniform(-1.0, 1.0, 200)
+        prediction = rng.uniform(-1.0, 1.0, 200)
+        value = smape(truth, prediction)
+        self.assertGreaterEqual(value, 0.0)
+        self.assertLessEqual(value, 200.0)
+
+    def test_is_symmetric_in_its_arguments(self) -> None:
+        a = np.array([0.2, 0.8, 0.5])
+        b = np.array([0.3, 0.6, 0.9])
+        self.assertAlmostEqual(smape(a, b), smape(b, a))
 
 
 if __name__ == "__main__":

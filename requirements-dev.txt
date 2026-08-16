@@ -4,5 +4,3 @@ ruff>=0.9
 basedpyright>=1.24
 vulture>=2.14
 pre-commit>=4.0
-# Reference models only (metafit.benchmarks). Not needed to fit equations.
-scikit-learn>=1.5
