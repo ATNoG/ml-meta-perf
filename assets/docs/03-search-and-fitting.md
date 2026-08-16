@@ -164,11 +164,29 @@ to do but the weights. One mechanism instead of two.
 | 10 | 0.443 | 3 |
 | 14 | 0.471 | 2 |
 
-It fits worse than beam selection at the same length (0.471 against 0.558 at 14 terms),
-which is expected: it has no freedom to choose *which* terms, only how to group all of
-them. Its value is elsewhere — see the concordance test in
-[chapter 7](07-practices.md), where its independence from the enumerated pipeline is
-exactly what makes it useful.
+It fits worse than beam selection at the same length, which is expected: it has no freedom
+to choose *which* terms, only how to group all of them.
+
+**The hybrid is the version that works.** `dendrogram_terms` runs the merge all the way to
+a single cluster and keeps every intermediate node as a candidate — `2n - 1` nodes, so a
+shortlist of about 23 admissible terms against the enumerated library's 172. Beam search
+then selects from that shortlist:
+
+| library | terms available | in-sample R² (k=14) | LOO-dataset |
+|---|---|---|---|
+| enumerated | 172 | 0.5582 | +0.4429 |
+| **dendrogram shortlist** | **23** | **0.5344** | +0.3659 |
+
+A pool an eighth the size reaches within 0.024 R² of it. Construction proposes, selection
+disposes, and the shortlist has a reason behind every entry.
+
+**Match the admissibility cap when comparing.** Construction applies `max_abs_zscore` while
+building, and enumeration applies it while filtering; comparing a library built under one
+cap against a library built under another measures the caps rather than the methods. All
+construction functions take the parameter explicitly for this reason — an earlier version
+of this chapter compared a cap-8 construction against a cap-3 enumeration and drew a
+conclusion from it that did not survive matching them (see the correction in
+[chapter 7](07-practices.md)).
 
 Deep cuts also show the readability cost directly. The four-term cut contains
 

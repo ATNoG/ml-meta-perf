@@ -36,6 +36,7 @@ import numpy as np
 from metafit.stats import pearson, spearman
 from metafit.terms import (
     DENOMINATOR_FLOOR,
+    MAX_ABS_ZSCORE,
     MAX_DENOMINATOR_RANGE,
     TRANSFORMS,
     Atom,
@@ -75,7 +76,12 @@ class Merge:
     parents: tuple[int, int]
 
 
-def straighten(feature: str, columns: dict[str, np.ndarray], target: np.ndarray) -> Atom:
+def straighten(
+    feature: str,
+    columns: dict[str, np.ndarray],
+    target: np.ndarray,
+    max_abs_zscore: float = MAX_ABS_ZSCORE,
+) -> Atom:
     """The transform of ``feature`` that is most linear in the target.
 
     This is the unary half of the idea. A feature whose Spearman correlation far exceeds
@@ -90,7 +96,7 @@ def straighten(feature: str, columns: dict[str, np.ndarray], target: np.ndarray)
             continue
         with np.errstate(all="ignore"):
             values = atom.evaluate(columns)
-        if not is_admissible(values):
+        if not is_admissible(values, max_abs_zscore):
             continue
         score = linearity(values, target)
         if score > best_score:
@@ -167,6 +173,7 @@ def agglomerate(
     per_round: bool = True,
     max_depth: int = 1,
     rounds: int = 1,
+    max_abs_zscore: float = MAX_ABS_ZSCORE,
 ) -> list[Term]:
     """Merge features pairwise by linearity gain, keeping everything the process builds.
 
@@ -182,7 +189,7 @@ def agglomerate(
     same stopping rule, but it produces a pool rather than a tree, which is what the
     selector downstream actually needs.
     """
-    active: list[Term] = [Term("atom", (straighten(feature, columns, target),)) for feature in features]
+    active: list[Term] = [Term("atom", (straighten(feature, columns, target, max_abs_zscore),)) for feature in features]
     produced: dict[str, Term] = {term.name: term for term in active}
     scores = [linearity(term.evaluate(columns), target) for term in active]
 
@@ -192,7 +199,7 @@ def agglomerate(
             for i, j in itertools.combinations(range(len(active)), 2):
                 floor = max(scores[i], scores[j])
                 for candidate in _candidate_terms(active[i], active[j], columns, max_depth):
-                    gain = _gain(candidate, columns, target, floor)
+                    gain = _gain(candidate, columns, target, floor, max_abs_zscore)
                     if gain is not None and gain > min_gain and (best is None or gain > best.gain):
                         best = Merge(candidate, gain, (i, j))
             if best is None:
@@ -214,7 +221,7 @@ def agglomerate(
                     continue
                 floor = max(scores[i], scores[j])
                 for candidate in _candidate_terms(active[i], active[j], columns, max_depth):
-                    gain = _gain(candidate, columns, target, floor)
+                    gain = _gain(candidate, columns, target, floor, max_abs_zscore)
                     if gain is not None and gain > min_gain and (best_for_i is None or gain > best_for_i.gain):
                         best_for_i = Merge(candidate, gain, (i, j))
             if best_for_i is not None:
@@ -229,11 +236,23 @@ def agglomerate(
     return list(produced.values())
 
 
-def _gain(term: Term, columns: dict[str, np.ndarray], target: np.ndarray, floor: float) -> float | None:
-    """Linearity gained over the better parent, or ``None`` if the term is unusable."""
+def _gain(
+    term: Term,
+    columns: dict[str, np.ndarray],
+    target: np.ndarray,
+    floor: float,
+    max_abs_zscore: float = MAX_ABS_ZSCORE,
+) -> float | None:
+    """Linearity gained over the better parent, or ``None`` if the term is unusable.
+
+    ``max_abs_zscore`` must match whatever the resulting library will be built with.
+    Constructing under a loose cap and then filtering under a strict one silently discards
+    most of what was built, and comparing such a library against an enumerated one is not
+    a comparison of methods but of admissibility settings.
+    """
     with np.errstate(all="ignore"):
         values = term.evaluate(columns)
-    if not is_admissible(values):
+    if not is_admissible(values, max_abs_zscore):
         return None
     return linearity(values, target) - floor
 
@@ -245,6 +264,7 @@ def cluster_terms(
     n_terms: int,
     *,
     max_depth: int = 3,
+    max_abs_zscore: float = MAX_ABS_ZSCORE,
 ) -> list[Term]:
     """Cut the dendrogram at ``n_terms`` clusters and return them as the equation's terms.
 
@@ -264,7 +284,7 @@ def cluster_terms(
     no longer improves is still merged with its least-bad partner, which is the price of
     letting the caller choose the equation length.
     """
-    active: list[Term] = [Term("atom", (straighten(feature, columns, target),)) for feature in features]
+    active: list[Term] = [Term("atom", (straighten(feature, columns, target, max_abs_zscore),)) for feature in features]
     if n_terms >= len(active):
         return active
 
@@ -274,10 +294,106 @@ def cluster_terms(
         for i, j in itertools.combinations(range(len(active)), 2):
             floor = max(scores[i], scores[j])
             for candidate in _candidate_terms(active[i], active[j], columns, max_depth):
-                gain = _gain(candidate, columns, target, floor)
+                gain = _gain(candidate, columns, target, floor, max_abs_zscore)
                 if gain is not None and (best is None or gain > best.gain):
                     best = Merge(candidate, gain, (i, j))
         if best is None:
+            break
+        for position in sorted(best.parents, reverse=True):
+            del active[position]
+            del scores[position]
+        active.append(best.term)
+        scores.append(linearity(best.term.evaluate(columns), target))
+    return active
+
+
+def dendrogram_terms(
+    features: tuple[str, ...],
+    columns: dict[str, np.ndarray],
+    target: np.ndarray,
+    *,
+    max_depth: int = 3,
+    max_abs_zscore: float = MAX_ABS_ZSCORE,
+) -> list[Term]:
+    """Every node of the full dendrogram: the leaves and each merge that was accepted.
+
+    The hybrid. ``cluster_terms`` stops the merge at a chosen height and hands those
+    clusters over as the equation; this instead runs the merge all the way to a single
+    cluster and keeps **every intermediate node** as a candidate. Construction then
+    proposes and selection disposes -- the dendrogram supplies a small, structured pool
+    and the beam search picks the ``k`` that fit best together.
+
+    That division is worth having because the two mechanisms fail differently.
+    Agglomeration is greedy and pairwise: it can commit early to a merge that is good on
+    its own and redundant beside the rest of the equation. Selection over the whole
+    dendrogram can decline the merge and keep its parent instead, which a fixed cut
+    cannot. The pool stays small -- ``2n - 1`` nodes for ``n`` features, so 33 here
+    against the enumerated library's 172 -- which is the point: it is a *shortlist* with a
+    reason behind every entry.
+    """
+    active: list[Term] = [Term("atom", (straighten(feature, columns, target, max_abs_zscore),)) for feature in features]
+    produced: dict[str, Term] = {term.name: term for term in active}
+    scores = [linearity(term.evaluate(columns), target) for term in active]
+
+    while len(active) > 1:
+        best: Merge | None = None
+        for i, j in itertools.combinations(range(len(active)), 2):
+            floor = max(scores[i], scores[j])
+            for candidate in _candidate_terms(active[i], active[j], columns, max_depth):
+                gain = _gain(candidate, columns, target, floor, max_abs_zscore)
+                if gain is not None and (best is None or gain > best.gain):
+                    best = Merge(candidate, gain, (i, j))
+        if best is None:
+            break
+        produced.setdefault(best.term.name, best.term)
+        for position in sorted(best.parents, reverse=True):
+            del active[position]
+            del scores[position]
+        active.append(best.term)
+        scores.append(linearity(best.term.evaluate(columns), target))
+    return list(produced.values())
+
+
+def merge_until_linear(
+    features: tuple[str, ...],
+    columns: dict[str, np.ndarray],
+    target: np.ndarray,
+    *,
+    min_linearity: float = 0.45,
+    slack: float = 0.005,
+    max_depth: int = 4,
+    max_abs_zscore: float = MAX_ABS_ZSCORE,
+) -> list[Term]:
+    """Merge until every surviving cluster is linear enough in MCC, or nothing helps.
+
+    The parameter-free variant, in the sense that matters: there is no equation length to
+    choose. Merging continues while some cluster still falls short of ``min_linearity``
+    **and** a merge would improve the worst offender by more than ``slack``. The number of
+    terms is then whatever the data leaves standing.
+
+    ``slack`` is a tolerance rather than a target -- it says how much improvement is worth
+    a merge, not how many terms to end with -- which is the substantive difference from
+    ``cluster_terms``. Setting ``min_linearity`` above what any term achieves degenerates
+    to merging everything into one cluster, so the stopping rule is really the conjunction
+    of the two conditions rather than the threshold alone.
+    """
+    active: list[Term] = [Term("atom", (straighten(feature, columns, target, max_abs_zscore),)) for feature in features]
+    scores = [linearity(term.evaluate(columns), target) for term in active]
+
+    while len(active) > 1 and min(scores) < min_linearity:
+        weakest = int(np.argmin(scores))
+        best: Merge | None = None
+        for other in range(len(active)):
+            if other == weakest:
+                continue
+            floor = max(scores[weakest], scores[other])
+            for candidate in _candidate_terms(active[weakest], active[other], columns, max_depth):
+                gain = _gain(candidate, columns, target, floor, max_abs_zscore)
+                if gain is not None and gain > slack and (best is None or gain > best.gain):
+                    best = Merge(candidate, gain, (weakest, other))
+        if best is None:
+            # The weakest cluster cannot be improved; nothing else will improve it either,
+            # so leave it isolated and stop rather than merging for its own sake.
             break
         for position in sorted(best.parents, reverse=True):
             del active[position]
@@ -348,7 +464,12 @@ def constructed_library(
     the groups -- the cross terms are where E2's lift comes from, but they are also the
     ones most able to overfit, so they are not the first thing tried.
     """
-    kwargs = {"min_gain": min_gain, "max_depth": max_depth, "rounds": rounds}
+    kwargs = {
+        "min_gain": min_gain,
+        "max_depth": max_depth,
+        "rounds": rounds,
+        "max_abs_zscore": max_abs_zscore,
+    }
     terms = agglomerate(dataset_features, columns, target, **kwargs)
     if model_features:
         terms += agglomerate(model_features, columns, target, **kwargs)

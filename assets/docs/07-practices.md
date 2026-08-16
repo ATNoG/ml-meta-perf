@@ -79,52 +79,51 @@ data with a high effective feature count and well-separated class centres.*
 
 ## Are these practices a property of the data, or of the search?
 
-The sharpest test available, and the one that decides how much the guidance is worth.
+The sharpest test available. Fit equations by methods that share no machinery, then
+compare the *guidance* rather than the R2.
 
-Two equations were fitted by methods sharing **no machinery**:
+**Admissibility must be held constant for this to mean anything.** Construction and
+enumeration each apply a `max_abs_zscore` cap, and comparing a library built under a loose
+cap with one built under a strict cap measures the caps, not the methods. Every row below
+uses the same cap on both sides.
 
-| | method | terms | in-sample R² |
-|---|---|---|---|
-| A | enumerated library, beam selection | 14 | **0.5582** |
-| B | dendrogram cut, no selection at all | 6 | **0.4083** |
+At `max_abs_zscore = 3`, against the enumerated 14-term equation (in-sample R2 0.5582):
 
-Method B is described in [chapter 3](03-search-and-fitting.md): features are agglomerated
-until six clusters remain, and those six clusters *are* the equation's terms. It shares no
-library, no screening and no subset search with method A, and it is 0.15 R² worse.
+| method | terms | in-sample R2 | shared | direction agreement | effect-rank rho |
+|---|---|---|---|---|---|
+| hybrid — dendrogram shortlist, then selection | 14 | **0.5344** | 12 | **91.7%** | **+0.699** |
+| parameter-free — merge until linear enough | 12 | 0.4600 | 13 | 61.5% | +0.440 |
+| dendrogram cut, no selection | 6 | 0.4251 | 14 | 64.3% | +0.565 |
 
-Their extracted practices were then compared with `practices.concordance`:
+At `max_abs_zscore = 8` the ordering holds and agreement runs 58–69%.
 
-| feature | direction (A) | direction (B) | agrees |
-|---|---|---|---|
-| `Processing Units Number` | +0.763 | +0.361 | ✓ |
-| `Robust to Outliers` | +0.972 | +0.964 | ✓ |
-| `Training Operations` | +0.244 | +0.229 | ✓ |
-| `eq_num_attr` | -0.864 | -0.269 | ✓ |
-| `gravity` | -0.976 | -0.869 | ✓ |
-| `inst_to_attr` | +0.227 | +0.150 | ✓ |
-| `nr_attr` | +0.601 | +0.861 | ✓ |
-| `nr_bin` | +0.964 | +0.915 | ✓ |
-| `ns_ratio` | -0.883 | -0.620 | ✓ |
+### What this does and does not support
 
-**Direction agreement: 9 of 9 — 100%.**
+**Supported:** a method that fits comparably agrees substantially. The hybrid reaches
+0.5344 against the enumerated 0.5582 — from a pool of **23 terms rather than 172** — and
+agrees on the direction of 11 of 12 shared features, with effect magnitudes correlating at
++0.70. Two genuinely different searches, nearly equal accuracy, nearly the same advice.
 
-Two structurally unrelated discovery methods, separated by 0.15 R², produce **identical
-qualitative guidance on every feature they share**. That is the strongest evidence in this
-study that the practices describe the meta-dataset rather than an artefact of one search,
-and it is the reason the accuracy gap between the two equations does not undermine them:
-the advice is stable precisely where the accuracy is not.
+**Not supported:** that the practices are independent of the search *in general*.
+Concordance tracks accuracy. The methods that fit substantially worse (0.43–0.46) agree on
+only 58–69% of directions — better than the 50% a coin would give, but not the robustness
+a strong claim would need.
 
-### The caveat that must travel with it
+The honest statement is conditional: **among equations that fit about as well, the
+extracted directions are largely stable; among equations that fit materially worse, they
+are not.** That is weaker than method-independence, and it is what the data shows.
 
-**Effect-magnitude rank correlation: -0.243.**
+> **Correction.** An earlier version of this chapter reported 100% agreement (9 of 9)
+> between the enumerated equation and a 6-term dendrogram cut. That comparison was invalid:
+> the cut was constructed under the default cap of 8 and then fitted with admissibility
+> effectively disabled, while the enumerated library used a cap of 3. Under matched caps
+> the same comparison gives 64.3%. The construction functions now take `max_abs_zscore`
+> explicitly so the mismatch cannot recur silently.
 
-The two equations agree on every *direction* and disagree on the *ordering of importance*.
-A short equation attributes an effect to whichever of several correlated features it
-happened to keep, so "which factor matters most" is not stable across methods even when
-"which way does it push" is.
+## What these are not
 
-The defensible claim is therefore directional, and the tables in this chapter should be
-read as a set of signed statements rather than as a ranking. Any write-up that orders these
+The defensible claim is directional, and the tables in this chapter should be read as a
+set of signed statements rather than as a ranking. Any write-up that orders these
 practices by effect size is claiming more than the evidence supports.
 
 **Associations measured across 20 datasets, not causal claims.** "Higher training cost
