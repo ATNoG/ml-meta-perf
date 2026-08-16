@@ -9,4 +9,4 @@ htmlcov/
 .ruff_cache/
 .pytest_cache/
 results/
-docs/
+/docs/
