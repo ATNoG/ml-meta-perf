@@ -199,6 +199,39 @@ which is one term by the equation's accounting and unreadable by any other. Dept
 capped for this reason, and the cap is the parameter that decides whether "short equation"
 means anything.
 
+### A guided merge: cheaper, and worse
+
+If a merge step is itself a search, it has not reduced the work the beam search has to do
+— it has moved it. `guided_merge` is the version that decides in advance rather than
+searching: **which** terms are worth merging (Spearman with MCC above a floor, since a
+monotone relationship is one a merge can straighten), **which pairs** (ranked by
+`co_movement`, the correlation between the two terms in log space), and **which operation**
+— one per pair, ratio when the pair shares a growth component and a division has something
+to cancel, product when it does not.
+
+It works as designed and it is cheaper:
+
+| pool builder | candidate evaluations | pool size | in-sample (k=14) | LOO-dataset |
+|---|---|---|---|---|
+| brute-force dendrogram | 1328 | 23 | 0.534 | +0.366 |
+| **guided** | **200** (6.6× fewer) | 17 | 0.486 | +0.167 |
+| guided + feature reuse | 536 | 19 | 0.486 | +0.170 |
+| enumeration | 0 (one pass over the grammar) | 172 | **0.558** | **+0.443** |
+
+**It is cheaper and worse, and the reason is that the search was never the bottleneck.**
+Picking one operation per pair evaluates a third as many candidates, but when the chosen
+operation is the wrong one the merge is lost rather than merely delayed. The pool shrinks
+from 23 to 17, and pool size is the binding constraint here — enumeration wins with 172.
+
+Allowing features to be reused across merges (`reuse_features=True`) grows the pool from 17
+to 19 and changes the results by less than fold noise. The ceiling is arithmetic: *n*
+features give O(*n*) merge products, against O(*n*² · transforms) for enumeration. At
+*n* = 17 that is not a close contest.
+
+Guiding a merge would pay where enumeration is infeasible — many more features, or a deeper
+grammar. It does not pay here, and the honest reading is that this dataset is too small in
+its *feature* dimension for construction to beat exhaustion.
+
 ### Nesting does not pay on this data
 
 Allowing merged terms to merge again was implemented and measured. Even with the merge

@@ -315,6 +315,133 @@ def cluster_terms(
     return active
 
 
+def co_movement(left: np.ndarray, right: np.ndarray) -> float:
+    """How much two columns share a common growth component, in [0, 1].
+
+    Measured on logs where both are strictly positive, because these meta-features grow
+    multiplicatively -- ``nr_inst`` spans 165 to 7.1 million -- and a correlation on raw
+    values would mostly report that both are large.
+
+    High co-movement is the signal that a **ratio** is the right operation: the two carry
+    the same underlying scale, and dividing cancels it and leaves whatever distinguishes
+    them. Low co-movement says the two carry different information, so a **product** is
+    the operation that combines them.
+    """
+    if np.all(left > 0.0) and np.all(right > 0.0):
+        with np.errstate(all="ignore"):
+            return abs(pearson(np.log(left), np.log(right)))
+    return abs(pearson(left, right))
+
+
+def guided_merge(
+    features: tuple[str, ...],
+    columns: dict[str, np.ndarray],
+    target: np.ndarray,
+    *,
+    min_gain: float = MIN_MERGE_GAIN,
+    min_monotone: float = 0.10,
+    co_movement_threshold: float = 0.5,
+    max_depth: int = 2,
+    reuse_features: bool = False,
+    max_abs_zscore: float = MAX_ABS_ZSCORE,
+) -> list[Term]:
+    """Agglomerate with the pair *and* the operation chosen in advance, not searched.
+
+    ``agglomerate`` tries every pair under every operation and keeps the best gain. That
+    is a search, and if a merge step is itself a search then it has not reduced the work
+    the beam search downstream has to do -- it has only moved it. This is the guided
+    version, and it decides three things before evaluating anything:
+
+    **Which terms are worth merging** -- those whose Spearman correlation with MCC exceeds
+    ``min_monotone``. A monotone relationship is one the equation can exploit once it is
+    straightened; a term with no monotone relationship has nothing for a merge to work
+    with. Spearman rather than Pearson, because the point is to catch relationships a
+    straight line currently misses.
+
+    **Which pairs** -- ranked by ``co_movement`` between the two terms. Pairs sharing a
+    growth component are where a ratio has something to cancel.
+
+    **Which operation** -- one per pair, from that same co-movement: ratio above
+    ``co_movement_threshold``, product below it. This is the step that removes the search:
+    ``agglomerate`` evaluates three candidates per pair, this evaluates one.
+
+    A merge is still only accepted if it actually improves linearity by ``min_gain``, so
+    the guidance narrows what is tried without deciding the outcome.
+    """
+    active: list[Term] = [Term("atom", (straighten(feature, columns, target, max_abs_zscore),)) for feature in features]
+    values = [term.evaluate(columns) for term in active]
+    produced: dict[str, Term] = {term.name: term for term in active}
+    evaluations = 0
+
+    while True:
+        monotone = [
+            index for index, column in enumerate(values) if abs(spearman(column, target)) >= min_monotone
+        ]
+        best: Merge | None = None
+        for i, j in itertools.combinations(monotone, 2):
+            if not reuse_features and set(active[i].features) & set(active[j].features):
+                continue
+            shared = co_movement(values[i], values[j])
+            operation = "ratio" if shared >= co_movement_threshold else "product"
+            candidate = _one_candidate(active[i], active[j], columns, operation, max_depth)
+            if candidate is None or candidate.name in produced:
+                # Already built. Skipping it here rather than after choosing the best is
+                # what lets ``reuse_features`` accumulate: with parents retained the same
+                # pair wins every round, so a loop that only stopped on a repeat would
+                # terminate after one merge.
+                continue
+            evaluations += 1
+            floor = max(linearity(values[i], target), linearity(values[j], target))
+            gain = _gain(candidate, columns, target, floor, max_abs_zscore)
+            if gain is not None and gain > min_gain and (best is None or gain > best.gain):
+                best = Merge(candidate, gain, (i, j))
+        if best is None:
+            break
+
+        produced[best.term.name] = best.term
+        if reuse_features:
+            # Parents stay available, so a feature can take part in several merges and the
+            # pool the beam search sees grows instead of shrinking.
+            active.append(best.term)
+            values.append(best.term.evaluate(columns))
+        else:
+            for position in sorted(best.parents, reverse=True):
+                del active[position]
+                del values[position]
+            active.append(best.term)
+            values.append(best.term.evaluate(columns))
+        if len(active) < 2:
+            break
+
+    _LAST_EVALUATIONS[0] = evaluations
+    return list(produced.values())
+
+
+#: Candidate evaluations performed by the most recent ``guided_merge``. Module state is
+#: ugly, but the alternative is a return type nobody wants for a diagnostic that only the
+#: benchmark reads.
+_LAST_EVALUATIONS = [0]
+
+
+def evaluation_count() -> int:
+    """How many candidates the last ``guided_merge`` evaluated."""
+    return _LAST_EVALUATIONS[0]
+
+
+def _one_candidate(
+    left: Term,
+    right: Term,
+    columns: dict[str, np.ndarray],
+    operation: str,
+    max_depth: int,
+) -> Term | None:
+    """The single term the guidance chose, or ``None`` if the grammar forbids it."""
+    for candidate in _candidate_terms(left, right, columns, max_depth):
+        if candidate.operation == operation:
+            return candidate
+    return None
+
+
 def dendrogram_terms(
     features: tuple[str, ...],
     columns: dict[str, np.ndarray],

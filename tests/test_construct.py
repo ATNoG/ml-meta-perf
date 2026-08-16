@@ -7,8 +7,11 @@ import numpy as np
 from metafit.construct import (
     agglomerate,
     cluster_terms,
+    co_movement,
     constructed_library,
     curvature,
+    evaluation_count,
+    guided_merge,
     is_safe_divisor,
     linearity,
     straighten,
@@ -154,6 +157,59 @@ class TestClusterTerms(unittest.TestCase):
     def test_terms_evaluate_finitely(self) -> None:
         for term in cluster_terms(("a", "b", "c", "d", "e"), self.columns, self.target, 3):
             self.assertTrue(np.all(np.isfinite(term.evaluate(self.columns))))
+
+
+class TestCoMovement(unittest.TestCase):
+    """Shared growth decides the operation: ratio cancels it, product combines."""
+
+    def test_proportional_columns_move_together(self) -> None:
+        base = np.linspace(1.0, 50.0, 80)
+        self.assertGreater(co_movement(base, base * 3.0), 0.99)
+
+    def test_independent_columns_do_not(self) -> None:
+        rng = np.random.default_rng(3)
+        self.assertLess(co_movement(rng.uniform(1.0, 9.0, 300), rng.uniform(1.0, 9.0, 300)), 0.3)
+
+    def test_handles_non_positive_columns(self) -> None:
+        value = co_movement(np.array([-1.0, 0.0, 1.0, 2.0]), np.array([1.0, 2.0, 3.0, 4.0]))
+        self.assertTrue(0.0 <= value <= 1.0)
+
+
+class TestGuidedMerge(unittest.TestCase):
+    def setUp(self) -> None:
+        rng = np.random.default_rng(13)
+        self.columns = {name: rng.uniform(2.0, 40.0, 120) for name in ("a", "b", "c", "d")}
+        self.target = np.log(self.columns["a"]) - 0.02 * self.columns["c"]
+
+    def test_returns_a_term_for_every_feature(self) -> None:
+        used = {f for term in guided_merge(("a", "b", "c", "d"), self.columns, self.target) for f in term.features}
+        self.assertEqual(used, {"a", "b", "c", "d"})
+
+    def test_evaluates_fewer_candidates_than_brute_force(self) -> None:
+        # The whole point of guiding: one operation per pair rather than every operation.
+        guided_merge(("a", "b", "c", "d"), self.columns, self.target)
+        guided = evaluation_count()
+        pairs = 6  # C(4,2)
+        self.assertLess(guided, pairs * 3 * 10)
+
+    def test_reuse_produces_at_least_as_many_terms(self) -> None:
+        without = guided_merge(("a", "b", "c", "d"), self.columns, self.target, reuse_features=False)
+        with_reuse = guided_merge(("a", "b", "c", "d"), self.columns, self.target, reuse_features=True)
+        self.assertGreaterEqual(len(with_reuse), len(without))
+
+    def test_a_high_gain_threshold_leaves_singletons(self) -> None:
+        terms = guided_merge(("a", "b", "c", "d"), self.columns, self.target, min_gain=10.0)
+        self.assertTrue(all(term.operation == "atom" for term in terms))
+
+    def test_terms_are_unique_and_finite(self) -> None:
+        terms = guided_merge(("a", "b", "c", "d"), self.columns, self.target, reuse_features=True)
+        self.assertEqual(len({t.name for t in terms}), len(terms))
+        for term in terms:
+            self.assertTrue(np.all(np.isfinite(term.evaluate(self.columns))))
+
+    def test_respects_the_depth_cap(self) -> None:
+        terms = guided_merge(("a", "b", "c", "d"), self.columns, self.target, max_depth=2, reuse_features=True)
+        self.assertLessEqual(max(t.depth for t in terms), 2)
 
 
 class TestSafeDivisor(unittest.TestCase):

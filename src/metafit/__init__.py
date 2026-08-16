@@ -7,7 +7,13 @@ worth under leave-one-dataset-out and leave-one-model-out validation.
 
 from metafit.analysis import redundancy_groups, screen
 from metafit.attribution import group_shares, term_effects, variance_decomposition
-from metafit.construct import agglomerate, cluster_terms, constructed_library, structural_terms
+from metafit.construct import (
+    agglomerate,
+    cluster_terms,
+    constructed_library,
+    guided_merge,
+    structural_terms,
+)
 from metafit.data import (
     ALL_FEATURES,
     DATASET_COLUMN,
@@ -68,6 +74,7 @@ __all__ = [
     "fit",
     "group_shares",
     "groups",
+    "guided_merge",
     "knee_terms",
     "load",
     "pareto_front",

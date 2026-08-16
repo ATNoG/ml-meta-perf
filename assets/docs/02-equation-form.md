@@ -167,6 +167,57 @@ The additional transforms are high-variance, score well under screening, and dis
 better terms. The vocabulary is not under-powered; [chapter 5](05-oracles.md) locates the
 real limit.
 
+## Why the raw features are not scaled first
+
+An obvious alternative to log-compressing operands and capping term stability is to scale
+every feature column up front. It was tested, at the same admissibility cap throughout:
+
+| feature scaling | library | in-sample (k=14) | LOO-dataset (k=14) |
+|---|---|---|---|
+| **none (current)** | 172 | 0.5582 | **+0.443** |
+| divide by max (multiplicative) | 120 | 0.5668 | +0.384 |
+| min-max to [1, 2] (affine) | 544 | 0.5230 | **-0.285** |
+| min-max to [1, 10] (affine) | 571 | 0.5578 | -0.093 |
+| standard scaler (mean 0, sd 1) | 97 | 0.5168 | +0.037 |
+
+Three separate reasons it does not help.
+
+**Standard scaling destroys the vocabulary.** Centring makes **all 17 features take
+non-positive values**, so `log`, `sqrt` and `1/f` become undefined for every one of them.
+The library collapses from 172 terms to 97 — only identity, squares and products survive.
+The transforms doing most of the work are precisely the ones that require positivity.
+
+**Multiplicative scaling cannot fix dynamic range, because dynamic range is invariant to
+it.** `gravity` has a max/min ratio of 6.24e15, and dividing the column by its maximum
+leaves that ratio at 6.24e15 exactly. Since the admissibility rules are about *ratios*
+rather than magnitudes, a constant factor changes nothing they test. (It does shift the
+library, from 172 terms to 120, because `log` turns a constant factor into an additive
+shift and the denominator rule is not shift-invariant — but that is a side effect, not a
+fix.)
+
+**Affine scaling fixes dynamic range by removing the signal.** Squeezing every feature into
+[1, 2] does make everything admissible — the library grows to 544 terms — but over that
+range `log`, `sqrt` and the identity are nearly the same function, so the library fills
+with near-duplicates and leave-one-dataset-out R² collapses to **-0.285**. The compression
+`log` was providing is exactly what the scaling removed.
+
+The magnitude problem here is a *dynamic-range* problem, and log-compression is the
+response to it. Scaling addresses magnitude, which was never the difficulty.
+
+### Reading impact off the weights
+
+The second motivation for scaling — being able to compare terms by their weights — is
+already met without it. Selection runs on standardised terms and both weight vectors are
+kept, so every printed equation carries the standardised weight beside the raw one:
+
+```
+-0.0398193 * [log(gravity)] / [log(Training Operations)]   # beta=-0.1371
+```
+
+The raw weight is what you evaluate; `beta` is what you compare. `attribution.term_effects`
+goes further and reports each term's effect in MCC units, which is comparable across terms
+*and* against the target.
+
 ## Standardisation
 
 Terms are standardised (per-term mean and standard deviation, learned on **training rows
