@@ -73,8 +73,10 @@ def render(report: Report) -> None:
     _section("What each term is worth (MCC units)")
     _show(report.effects)
 
-    _section("How many terms? (knee detection and Pareto front)")
+    _section("How many terms? (knee detection and Pareto fronts)")
     _show(report.term_choice)
+    print("\nper-length Pareto membership, in-sample and cross-validated:")
+    _show(report.pareto)
 
     _section("E1 vs EM vs E2 on the common scale (all rows)")
     _show(report.comparison)

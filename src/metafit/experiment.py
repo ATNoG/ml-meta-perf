@@ -29,7 +29,7 @@ from metafit.data import (
 from metafit.fit import fit
 from metafit.model import Equation
 from metafit.practices import best_practices
-from metafit.selection import recommend
+from metafit.selection import pareto_table, recommend
 from metafit.terms import build_library
 from metafit.validate import (
     CrossValidation,
@@ -418,6 +418,7 @@ class Report:
     leakage: pl.DataFrame
     selection: pl.DataFrame
     term_choice: pl.DataFrame
+    pareto: pl.DataFrame
     oracles: pl.DataFrame
 
 
@@ -456,6 +457,7 @@ def run(path: str | None = None, *, quick: bool = False) -> Report:
         leakage=leakage_demonstration(frame, config_e2),
         selection=model_selection(frame, e2),
         term_choice=recommend(e2.curve),
+        pareto=pareto_table(e2.curve),
         oracles=oracle_ladder(
             target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)
         ),

@@ -39,7 +39,7 @@ from metafit.experiment import (
 )
 from metafit.model import Equation
 from metafit.practices import best_practices
-from metafit.selection import recommend
+from metafit.selection import pareto_table, recommend
 from metafit.validate import oracle_ladder
 
 FAST_E1 = Configuration(max_abs_zscore=3.0, penalty=1.0, pool_size=40, max_terms=3, headline_terms=3)
@@ -189,6 +189,7 @@ class TestCli(unittest.TestCase):
             leakage=leakage_demonstration(frame, FAST_E2),
             selection=model_selection(frame, e2),
             term_choice=recommend(e2.curve),
+            pareto=pareto_table(e2.curve),
             oracles=oracle_ladder(
                 target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN), ranks=(0, 1)
             ),

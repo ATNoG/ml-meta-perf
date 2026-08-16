@@ -168,8 +168,11 @@ rather than of a parameter chosen to produce it:
 | knee of the cross-validated curve | **12** | 0.556 | 0.371 |
 | best cross-validated | **14** | 0.558 | 0.443 |
 
-Pareto front over (length, LOO-dataset R²): **2, 4, 8, 10, 12, 14** — no equation longer
-than 14 terms is worth its length on transfer.
+Both Pareto fronts are reported. Over (length, LOO-dataset R²) the front is **2, 4, 8, 10,
+12, 14** — no equation longer than 14 terms is worth its length on transfer. Over
+(length, in-sample R²) *every* length is on the front, because fit is monotone in terms
+and so nothing is ever dominated. That is exactly why the in-sample curve cannot choose a
+length on its own and the knee detector is needed for it.
 
 **Does it plateau?** Yes, and the budget was pushed to 64 to check. The default
 configuration gains 0.003 R² between 24 and 64 terms (0.5673 → 0.5704) — flat. The

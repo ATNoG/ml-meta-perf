@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 import polars as pl
 
-from metafit.selection import knee_index, knee_terms, pareto_front, recommend
+from metafit.selection import knee_index, knee_terms, pareto_front, pareto_table, recommend
 
 
 def curve(
@@ -69,6 +69,22 @@ class TestParetoFront(unittest.TestCase):
     def test_front_is_never_empty(self) -> None:
         table = curve([2, 4], [0.0, 0.0], [0.5, 0.5])
         self.assertGreater(pareto_front(table).height, 0)
+
+
+class TestParetoTable(unittest.TestCase):
+    def test_flags_both_fronts(self) -> None:
+        table = pareto_table(curve([2, 4, 6], [0.2, 0.5, 0.6], [0.1, 0.3, 0.2]))
+        self.assertEqual(table["front_in_sample"].to_list(), [True, True, True])
+        self.assertEqual(table["front_loo_dataset"].to_list(), [True, True, False])
+
+    def test_in_sample_only_curve_gets_one_front(self) -> None:
+        table = pareto_table(curve([2, 4], [0.2, 0.5]))
+        self.assertIn("front_in_sample", table.columns)
+        self.assertNotIn("front_loo_dataset", table.columns)
+
+    def test_one_row_per_length(self) -> None:
+        table = pareto_table(curve([2, 4, 6, 8], [0.1, 0.2, 0.3, 0.4], [0.1, 0.2, 0.3, 0.4]))
+        self.assertEqual(table["n_terms"].to_list(), [2, 4, 6, 8])
 
 
 class TestRecommend(unittest.TestCase):

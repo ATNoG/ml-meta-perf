@@ -68,12 +68,19 @@ def ridge_solve(gram: np.ndarray, rhs: np.ndarray, penalty: float) -> np.ndarray
     Centring both sides removes the intercept from the system, so no penalty is ever
     applied to it -- shrinking an intercept toward zero would bias every prediction
     toward MCC = 0, which is not a value this data goes anywhere near.
+
+    The penalty is added along the diagonal of a copy rather than by building
+    ``penalty * np.eye(k)``. This runs several hundred thousand times in a full sweep and
+    the identity matrix was pure allocation.
     """
-    size = gram.shape[0]
+    system = gram.copy()
+    if penalty:
+        diagonal = np.arange(system.shape[0])
+        system[diagonal, diagonal] += penalty
     try:
-        return np.linalg.solve(gram + penalty * np.eye(size), rhs)
+        return np.linalg.solve(system, rhs)
     except np.linalg.LinAlgError:
-        return np.linalg.lstsq(gram + penalty * np.eye(size), rhs, rcond=None)[0]
+        return np.linalg.lstsq(system, rhs, rcond=None)[0]
 
 
 def transform_gap(values: np.ndarray, target: np.ndarray) -> float:
@@ -138,25 +145,48 @@ class Selector:
         self.projection = design.T @ self.centered
         self.total = float(self.centered @ self.centered)
         self.normalizer = float(design.shape[0])
+        self._cache: dict[tuple[int, ...], Subset] = {}
 
     def _evaluate(self, indices: tuple[int, ...]) -> Subset:
+        """Fit one subset. Memoised, because the refinement pass revisits subsets.
+
+        The residual sum of squares uses an identity rather than a second quadratic form.
+        Since ``(G + lambda I) w = b``, we have ``w'Gw = w'b - lambda w'w``, so
+
+            rss = total - 2 w'b + w'Gw = total - w'b - lambda w'w
+
+        which removes a matrix-vector product from the inner loop. The two are equal to
+        floating-point tolerance whenever the solve succeeded, which ``test_fit`` checks
+        directly against the literal definition.
+        """
+        cached = self._cache.get(indices)
+        if cached is not None:
+            return cached
+
         order = np.array(indices, dtype=int)
-        weights = ridge_solve(self.gram[np.ix_(order, order)], self.projection[order], self.penalty)
-        rss = self.total - 2.0 * float(weights @ self.projection[order]) + float(
-            weights @ self.gram[np.ix_(order, order)] @ weights
-        )
-        return Subset(indices, weights, rss)
+        block = self.gram[np.ix_(order, order)]
+        rhs = self.projection[order]
+        weights = ridge_solve(block, rhs, self.penalty)
+        rss = self.total - float(weights @ rhs) - self.penalty * float(weights @ weights)
+        subset = Subset(indices, weights, rss)
+        self._cache[indices] = subset
+        return subset
 
     def _residual_scores(self, subset: Subset) -> np.ndarray:
         order = np.array(subset.indices, dtype=int)
         return np.abs(self.projection - self.gram[:, order] @ subset.weights)
 
-    def _too_collinear(self, candidate: int, indices: tuple[int, ...]) -> bool:
+    def _blocked(self, indices: tuple[int, ...]) -> np.ndarray | None:
+        """Which candidates are too collinear with ``indices``, as one boolean mask.
+
+        Computed per parent rather than per candidate. The per-candidate form rebuilt an
+        index array and took a max on every one of several hundred thousand calls; this
+        does the same work as a single vectorised reduction over the Gram matrix.
+        """
         if not indices:
-            return False
+            return None
         order = np.array(indices, dtype=int)
-        correlations = np.abs(self.gram[candidate, order]) / self.normalizer
-        return bool(np.max(correlations) > COLLINEARITY_LIMIT)
+        return (np.abs(self.gram[:, order]) / self.normalizer > COLLINEARITY_LIMIT).any(axis=1)
 
     def search(
         self,
@@ -177,12 +207,13 @@ class Selector:
             for parent in beam:
                 scores = self._residual_scores(parent)
                 ranked = available[np.argsort(scores[available])[::-1]]
+                blocked = self._blocked(parent.indices)
                 taken = 0
                 for candidate in ranked:
                     if taken >= candidates:
                         break
                     index = int(candidate)
-                    if index in parent.indices or self._too_collinear(index, parent.indices):
+                    if index in parent.indices or (blocked is not None and blocked[index]):
                         continue
                     child = tuple(sorted((*parent.indices, index)))
                     if child in seen:
@@ -214,9 +245,10 @@ class Selector:
                 probe = self._evaluate(remaining) if remaining else Subset((), np.zeros(0), self.total)
                 scores = self._residual_scores(probe) if remaining else np.abs(self.projection)
                 ranked = available[np.argsort(scores[available])[::-1]][:CANDIDATE_POOL_DEFAULT]
+                blocked = self._blocked(remaining)
                 for candidate in ranked:
                     index = int(candidate)
-                    if index in remaining or self._too_collinear(index, remaining):
+                    if index in remaining or (blocked is not None and blocked[index]):
                         continue
                     trial = self._evaluate(tuple(sorted((*remaining, index))))
                     if trial.rss < current.rss - 1e-12:

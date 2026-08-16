@@ -60,6 +60,29 @@ def pareto_front(curve: pl.DataFrame, column: str = "r2_loo_dataset") -> pl.Data
     return table[keep]
 
 
+def pareto_table(curve: pl.DataFrame) -> pl.DataFrame:
+    """Per-length flags for whether a length is on the in-sample or transfer front.
+
+    Both fronts are reported because they answer the two halves of the trade. The
+    in-sample front asks "what is the shortest equation achieving this quality of fit",
+    which is the explainability question; the cross-validated front asks the same about
+    transfer. A length on both is defensible under either priority, and on this data the
+    in-sample front is every length -- fit is monotone in terms, so nothing is ever
+    dominated -- which is itself the reason the in-sample curve alone cannot choose a
+    length and the knee is needed.
+    """
+    table = curve.sort("n_terms")
+    columns = [column for column in ("r2_in_sample", "r2_loo_dataset") if column in table.columns]
+    flags: dict[str, list[bool]] = {}
+    for column in columns:
+        scores = table[column].to_numpy()
+        front = {index for index in range(len(scores)) if not np.any(scores[:index] >= scores[index])}
+        flags[f"front_{column.removeprefix('r2_')}"] = [index in front for index in range(len(scores))]
+    return table.select("n_terms", *columns).with_columns(
+        **{name: pl.Series(name, values) for name, values in flags.items()}
+    )
+
+
 def recommend(curve: pl.DataFrame) -> pl.DataFrame:
     """Both recommendations plus the evidence, as one small table."""
     rows: list[dict[str, object]] = []
