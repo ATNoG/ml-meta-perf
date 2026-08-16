@@ -7,6 +7,7 @@ worth under leave-one-dataset-out and leave-one-model-out validation.
 
 from metafit.analysis import redundancy_groups, screen
 from metafit.attribution import group_shares, term_effects, variance_decomposition
+from metafit.construct import agglomerate, constructed_library, structural_terms
 from metafit.data import (
     ALL_FEATURES,
     DATASET_COLUMN,
@@ -52,11 +53,13 @@ __all__ = [
     "Term",
     "__version__",
     "additive_oracle",
+    "agglomerate",
     "aggregate_by_dataset",
     "baseline_group_mean",
     "best_practices",
     "build_library",
     "columns_as_arrays",
+    "constructed_library",
     "cross_validate",
     "feature_practices",
     "fit",
@@ -70,6 +73,7 @@ __all__ = [
     "recommend",
     "redundancy_groups",
     "screen",
+    "structural_terms",
     "target",
     "term_effects",
     "variance_decomposition",

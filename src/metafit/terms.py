@@ -31,6 +31,9 @@ MAX_ABS_ZSCORE = 8.0
 MIN_RELATIVE_SPREAD = 1e-6
 MAX_DENOMINATOR_RANGE = 20.0
 
+#: Every elementary transform a unary term may use.
+TRANSFORMS: tuple[Transform, ...] = ("id", "log", "sqrt", "inv", "sq")
+
 _TRANSFORM_FORMAT: dict[Transform, str] = {
     "id": "{0}",
     "log": "log({0})",
@@ -195,7 +198,7 @@ def unary_terms(features: tuple[str, ...], columns: dict[str, np.ndarray]) -> li
     """``f``, ``log(f)``, ``sqrt(f)``, ``1/f`` and ``f^2`` for each feature that admits them."""
     terms: list[Term] = []
     for feature in features:
-        for transform in ("id", "log", "sqrt", "inv", "sq"):
+        for transform in TRANSFORMS:
             atom = Atom(feature, transform)
             if atom.is_defined_on(columns):
                 terms.append(Term("atom", (atom,)))
