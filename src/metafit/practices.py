@@ -13,6 +13,9 @@ every term's contribution is evaluated over the real data, contributions are sum
 feature, and the direction is the rank correlation between the feature and the total it
 drives. That answers "what does this equation actually do as this feature rises", which
 is the question a practitioner is asking.
+
+Study chapter: [7. From equation to practice](../../assets/docs/07-practices.md) -- the rationale, in
+prose, with the figures.
 """
 
 from __future__ import annotations

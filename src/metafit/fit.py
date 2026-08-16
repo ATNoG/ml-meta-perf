@@ -19,6 +19,9 @@ subset at every size, one run yields the whole accuracy-versus-number-of-terms c
 *Gram-matrix arithmetic.* Every candidate refit is a k-by-k solve against a precomputed
 Gram matrix rather than a least-squares call against the full design, which is what
 makes an exhaustive sweep inside 20 cross-validation folds tractable.
+
+Study chapter: [3. Search and fitting](../../assets/docs/03-search-and-fitting.md) -- the rationale, in
+prose, with the figures.
 """
 
 from __future__ import annotations
@@ -35,6 +38,7 @@ RIDGE_DEFAULT = 10.0
 BEAM_WIDTH_DEFAULT = 6
 CANDIDATE_POOL_DEFAULT = 24
 COLLINEARITY_LIMIT = 0.95
+REFINE_ROUNDS_DEFAULT = 2
 
 
 @dataclass(frozen=True)
@@ -195,6 +199,7 @@ class Selector:
         *,
         beam_width: int = BEAM_WIDTH_DEFAULT,
         candidates: int = CANDIDATE_POOL_DEFAULT,
+        refine_rounds: int = REFINE_ROUNDS_DEFAULT,
     ) -> dict[int, Subset]:
         """Return the best subset found at every size from 1 to ``max_terms``."""
         available = np.array(pool)
@@ -225,12 +230,18 @@ class Selector:
                 break
             generated.sort(key=lambda item: item.rss)
             beam = generated[:beam_width]
-            best[size] = self._refine(beam[0], available)
+            best[size] = self._refine(beam[0], available, refine_rounds, candidates)
             if best[size].rss < beam[0].rss:
                 beam[0] = best[size]
         return best
 
-    def _refine(self, subset: Subset, available: np.ndarray, rounds: int = 2) -> Subset:
+    def _refine(
+        self,
+        subset: Subset,
+        available: np.ndarray,
+        rounds: int = REFINE_ROUNDS_DEFAULT,
+        candidates: int = CANDIDATE_POOL_DEFAULT,
+    ) -> Subset:
         """Local search: try replacing each chosen term with a better one.
 
         Beam search still fixes early choices under a narrow width. Swapping one term at
@@ -244,7 +255,7 @@ class Selector:
                 remaining = tuple(x for i, x in enumerate(current.indices) if i != position)
                 probe = self._evaluate(remaining) if remaining else Subset((), np.zeros(0), self.total)
                 scores = self._residual_scores(probe) if remaining else np.abs(self.projection)
-                ranked = available[np.argsort(scores[available])[::-1]][:CANDIDATE_POOL_DEFAULT]
+                ranked = available[np.argsort(scores[available])[::-1]][:candidates]
                 blocked = self._blocked(remaining)
                 for candidate in ranked:
                     index = int(candidate)
@@ -300,6 +311,8 @@ def fit(
     penalty: float = RIDGE_DEFAULT,
     pool_size: int = 250,
     beam_width: int = BEAM_WIDTH_DEFAULT,
+    candidates: int = CANDIDATE_POOL_DEFAULT,
+    refine_rounds: int = REFINE_ROUNDS_DEFAULT,
     name: str = "equation",
 ) -> FitResult:
     """Fit equations of every size up to ``max_terms`` over the given library."""
@@ -307,7 +320,9 @@ def fit(
     design = standardizer.apply(library.matrix)
     pool = guided_screen(library, target, keep=pool_size)
     selector = Selector(design, target, penalty)
-    subsets = selector.search(pool, max_terms, beam_width=beam_width)
+    subsets = selector.search(
+        pool, max_terms, beam_width=beam_width, candidates=candidates, refine_rounds=refine_rounds
+    )
     equations = {
         size: to_equation(library, subset, standardizer, selector.offset, f"{name}_k{size}")
         for size, subset in subsets.items()

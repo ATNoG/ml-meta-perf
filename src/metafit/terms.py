@@ -10,6 +10,9 @@ The raw features span wildly different magnitudes -- ``gravity`` runs from 1.6 t
 so composite terms are built over log-compressed operands wherever the feature is
 strictly positive. Dividing raw ``gravity`` by anything produces a term whose weight is
 1e-16 and whose meaning is unreadable.
+
+Study chapter: [2. Equation form and term vocabulary](../../assets/docs/02-equation-form.md) -- the rationale, in
+prose, with the figures.
 """
 
 from __future__ import annotations

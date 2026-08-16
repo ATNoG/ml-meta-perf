@@ -15,6 +15,9 @@ Two answers are offered because they ask different questions:
 ``kneeliverse`` supplies the detector. Its ``autoelbow`` takes no threshold, sensitivity
 or smoothing window, so the chosen length is a property of the curve rather than of a
 parameter someone picked to get the answer they wanted.
+
+Study chapter: [3. Search and fitting](../../assets/docs/03-search-and-fitting.md) -- the rationale, in
+prose, with the figures.
 """
 
 from __future__ import annotations

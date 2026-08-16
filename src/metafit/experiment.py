@@ -4,6 +4,9 @@ The defaults below are not arbitrary. They are the configuration that survived a
 over the term stability cap, the ridge penalty and the equation length, scored on
 leave-one-dataset-out rather than on fit. The sweep is reproducible through
 ``sweep_configurations``; ``DEFAULT_E1`` and ``DEFAULT_E2`` are simply where it landed.
+
+Study chapter: [6. Results](../../assets/docs/06-results.md) -- the rationale, in
+prose, with the figures.
 """
 
 from __future__ import annotations

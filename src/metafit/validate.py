@@ -14,6 +14,9 @@ dataset features constant across a dataset's rows, a random split puts the same 
 on both sides of the fold and the equation can memorise dataset identity; measured on
 this data that inflates R2 from 0.28 to 0.50 without changing the model at all.
 ``random_kfold_groups`` exists so that the README can show that gap, not to score with.
+
+Study chapter: [4. Evaluation methodology](../../assets/docs/04-evaluation.md) -- the rationale, in
+prose, with the figures.
 """
 
 from __future__ import annotations

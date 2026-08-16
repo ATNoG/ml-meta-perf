@@ -12,6 +12,9 @@ makes one term's importance comparable with another's and with the target itself
 labelled by the features they use -- dataset-only, model-only, or mixed -- so the split
 between "how hard is this data" and "how capable is this model" can be read off the
 fitted equation rather than assumed.
+
+Study chapter: [7. From equation to practice](../../assets/docs/07-practices.md) -- the rationale, in
+prose, with the figures.
 """
 
 from __future__ import annotations

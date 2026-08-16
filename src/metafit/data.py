@@ -10,6 +10,9 @@ and they behave very differently, which is why they are named separately here:
 
 That asymmetry is the whole point of the two-equation comparison, so the split is
 part of the public API rather than something each caller re-derives.
+
+Study chapter: [1. The problem and the data](../../assets/docs/01-problem.md) -- the rationale, in
+prose, with the figures.
 """
 
 from __future__ import annotations
