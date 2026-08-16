@@ -14,6 +14,7 @@ from metafit.terms import (
     is_admissible,
     is_trivial,
     pairwise_terms,
+    ratio_of_sums_terms,
     simplify,
     sum_ratio_terms,
     unary_terms,
@@ -319,6 +320,74 @@ class TestBuilders(unittest.TestCase):
         data = columns(a=[1.0, 2.0], b=[3.0, 4.0], c=[5.0, 6.0])
         for term in sum_ratio_terms(("a", "b", "c"), data):
             self.assertEqual(len(set(term.features)), 3)
+
+
+class TestArity(unittest.TestCase):
+    """How many distinct raw features one term may combine."""
+
+    def setUp(self) -> None:
+        rng = np.random.default_rng(31)
+        self.columns = {name: rng.uniform(2.0, 30.0, 60) for name in ("d1", "d2", "d3", "m1", "m2")}
+        self.dataset = ("d1", "d2", "d3")
+        self.model = ("m1", "m2")
+
+    def _arities(self, max_arity: int) -> set[int]:
+        library = build_library(self.dataset, self.model, self.columns, max_arity=max_arity)
+        return {len(set(term.features)) for term in library.terms}
+
+    def test_arity_two_has_no_three_feature_terms(self) -> None:
+        self.assertEqual(max(self._arities(2)), 2)
+
+    def test_arity_three_admits_sum_ratio(self) -> None:
+        self.assertEqual(max(self._arities(3)), 3)
+
+    def test_arity_four_admits_ratio_of_sums(self) -> None:
+        self.assertEqual(max(self._arities(4)), 4)
+
+    def test_a_wider_grammar_is_a_superset(self) -> None:
+        names = [
+            {t.name for t in build_library(self.dataset, self.model, self.columns, max_arity=a).terms}
+            for a in (2, 3, 4)
+        ]
+        self.assertTrue(names[0] <= names[1] <= names[2])
+
+    def test_three_feature_terms_can_mix_dataset_and_model(self) -> None:
+        # The asymmetry this fixes: sum_ratio was previously built from dataset features
+        # alone, making the highest-arity operation the only one unable to cross groups.
+        library = build_library(self.dataset, self.model, self.columns, max_arity=3)
+        three = [t for t in library.terms if len(set(t.features)) == 3]
+        mixed = [t for t in three if set(t.features) & set(self.model)]
+        self.assertGreater(len(mixed), 0)
+
+
+class TestRatioOfSums(unittest.TestCase):
+    def setUp(self) -> None:
+        rng = np.random.default_rng(17)
+        self.columns = {name: rng.uniform(3.0, 12.0, 50) for name in ("a", "b", "c", "d")}
+
+    def test_uses_four_distinct_features(self) -> None:
+        for term in ratio_of_sums_terms(("a", "b", "c", "d"), self.columns):
+            self.assertEqual(len(set(term.features)), 4)
+
+    def test_arithmetic(self) -> None:
+        terms = ratio_of_sums_terms(("a", "b", "c", "d"), self.columns)
+        self.assertGreater(len(terms), 0)
+        term = terms[0]
+        values = [operand.evaluate(self.columns) for operand in term.operands]
+        expected = (values[0] + values[1]) / (values[2] + values[3])
+        np.testing.assert_allclose(term.evaluate(self.columns), expected, rtol=1e-6)
+
+    def test_name_shows_both_sums(self) -> None:
+        term = ratio_of_sums_terms(("a", "b", "c", "d"), self.columns)[0]
+        self.assertIn(") / (", term.name)
+
+    def test_round_trips(self) -> None:
+        for term in ratio_of_sums_terms(("a", "b", "c", "d"), self.columns)[:5]:
+            self.assertEqual(Term.from_dict(term.to_dict()), term)
+
+    def test_every_term_is_finite(self) -> None:
+        for term in ratio_of_sums_terms(("a", "b", "c", "d"), self.columns):
+            self.assertTrue(np.all(np.isfinite(term.evaluate(self.columns))))
 
 
 class TestLibrary(unittest.TestCase):

@@ -24,7 +24,7 @@ from typing import Literal
 import numpy as np
 
 Transform = Literal["id", "log", "sqrt", "inv", "sq"]
-Operation = Literal["atom", "ratio", "product", "sum_ratio"]
+Operation = Literal["atom", "ratio", "product", "sum_ratio", "ratio_of_sums"]
 
 DENOMINATOR_FLOOR = 1e-9
 MAX_ABS_ZSCORE = 8.0
@@ -104,6 +104,8 @@ class Term:
                 return f"[{parts[0]}] * [{parts[1]}]"
             case "sum_ratio":
                 return f"([{parts[0]}] + [{parts[1]}]) / [{parts[2]}]"
+            case "ratio_of_sums":
+                return f"([{parts[0]}] + [{parts[1]}]) / ([{parts[2]}] + [{parts[3]}])"
 
     @property
     def features(self) -> tuple[str, ...]:
@@ -132,6 +134,8 @@ class Term:
                 return values[0] * values[1]
             case "sum_ratio":
                 return (values[0] + values[1]) / _guard(values[2])
+            case "ratio_of_sums":
+                return (values[0] + values[1]) / _guard(values[2] + values[3])
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -321,7 +325,13 @@ def pairwise_terms(
 
 
 def sum_ratio_terms(features: tuple[str, ...], columns: dict[str, np.ndarray]) -> list[Term]:
-    """``(f1 + f2) / f3`` over distinct features, with ``f1`` and ``f2`` unordered."""
+    """``(f1 + f2) / f3`` over distinct features, with ``f1`` and ``f2`` unordered.
+
+    Pass **every** feature, not one group. An earlier version was called with the dataset
+    features alone, which silently made the highest-arity operation the only one unable to
+    mix a dataset feature with a model one -- precisely the combination that carries E2's
+    entire lift over E1.
+    """
     terms: list[Term] = []
     for first, second in itertools.combinations(features, 2):
         for third in features:
@@ -337,6 +347,43 @@ def sum_ratio_terms(features: tuple[str, ...], columns: dict[str, np.ndarray]) -
             )
             terms.append(Term("sum_ratio", operands))
     return terms
+
+
+def ratio_of_sums_terms(features: tuple[str, ...], columns: dict[str, np.ndarray]) -> list[Term]:
+    """``(f1 + f2) / (f3 + f4)`` -- the four-feature operation.
+
+    Included so that "three features per term is enough" can be **measured** rather than
+    assumed. A sum is a safe divisor far more often than a single feature is, since adding
+    two log-compressed operands moves the result away from zero, so this reaches
+    combinations ``sum_ratio`` cannot.
+    """
+    terms: list[Term] = []
+    for numerator in itertools.combinations(features, 2):
+        rest = [feature for feature in features if feature not in numerator]
+        for divisor in itertools.combinations(rest, 2):
+            operands = (
+                composition_atom(numerator[0], columns),
+                composition_atom(numerator[1], columns),
+                composition_atom(divisor[0], columns),
+                composition_atom(divisor[1], columns),
+            )
+            with np.errstate(all="ignore"):
+                bottom = operands[2].evaluate(columns) + operands[3].evaluate(columns)
+            if not _is_safe_sum(bottom):
+                continue
+            terms.append(Term("ratio_of_sums", operands))
+    return terms
+
+
+def _is_safe_sum(values: np.ndarray) -> bool:
+    """Whether a summed divisor stays clear of zero with a bounded dynamic range."""
+    magnitude = np.abs(values)
+    if not np.all(np.isfinite(magnitude)):
+        return False
+    smallest = float(np.min(magnitude))
+    if smallest <= DENOMINATOR_FLOOR:
+        return False
+    return float(np.max(magnitude)) / smallest <= MAX_DENOMINATOR_RANGE
 
 
 def is_admissible(values: np.ndarray, max_abs_zscore: float = MAX_ABS_ZSCORE) -> bool:
@@ -425,6 +472,7 @@ def build_library(
     columns: dict[str, np.ndarray],
     *,
     include_sum_ratio: bool = True,
+    max_arity: int = 3,
     max_abs_zscore: float = MAX_ABS_ZSCORE,
 ) -> Library:
     """Assemble the full candidate vocabulary.
@@ -433,6 +481,11 @@ def build_library(
     dataset features plus their internal ratios, products and sums. With model features
     supplied it additionally yields the cross terms, which is where E2 gets its lift --
     dataset features alone cannot express anything that varies within a dataset.
+
+    ``max_arity`` caps how many distinct raw features one term may combine: 2 for atoms,
+    ratios and products only, 3 to add ``(f1+f2)/f3``, 4 to add ``(f1+f2)/(f3+f4)``. It is
+    a parameter rather than a constant because "three is enough" is a claim that has to be
+    measured, and measuring it means being able to build the alternatives.
     """
     features = dataset_features + model_features
     terms = unary_terms(features, columns)
@@ -440,6 +493,10 @@ def build_library(
     if model_features:
         terms += pairwise_terms(model_features, model_features, columns, both_directions=False)
         terms += pairwise_terms(dataset_features, model_features, columns, both_directions=True)
-    if include_sum_ratio:
-        terms += sum_ratio_terms(dataset_features, columns)
+    if include_sum_ratio and max_arity >= 3:
+        # Every feature, not just the dataset ones: the highest-arity operation must be
+        # able to mix the two groups like every other operation can.
+        terms += sum_ratio_terms(features, columns)
+    if max_arity >= 4:
+        terms += ratio_of_sums_terms(features, columns)
     return Library(terms, columns, max_abs_zscore=max_abs_zscore)

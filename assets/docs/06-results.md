@@ -31,7 +31,7 @@ equations are evaluated on **every row**:
 | *E1's ceiling — the true dataset means* | *0.354* | *0.204* | *0.653* |
 | EM (model only, 9 terms) | 0.164 | 0.251 | 0.356 |
 | *EM's ceiling — the true model means* | *0.282* | *0.226* | *0.487* |
-| **E2 (dataset + model, 14 terms)** | **0.558** | **0.167** | **0.775** |
+| **E2 (dataset + model, 26 terms)** | **0.603** | **0.158** | **0.794** |
 | *additive oracle* | *0.6605* | *0.145* | *0.810* |
 
 ![Equations against their ceilings](../figures/equation_comparison.png)
@@ -42,7 +42,7 @@ equations are evaluated on **every row**:
 |---|---|---|---|---|
 | E1 (20 dataset means) | 5 | 0.953 | 0.506 | — |
 | EM (476 rows) | 9 | 0.164 | 0.055 | — |
-| **E2 (476 rows)** | **14** | **0.558** | **0.443** | **0.456** |
+| **E2 (476 rows)** | **26** | **0.603** | **0.458** | **0.484** |
 
 E1's in-sample R² of 0.953 on 20 points is a fit statistic on 20 observations with 5
 parameters and should be read as such; its cross-validated 0.506 is the meaningful number,
@@ -73,7 +73,7 @@ are artefacts:
   by construction. Only model terms can score well there. It is a diagnostic for model
   effects, not a statement of relative importance.
 - **Model features carry more in combination than alone.** Adding them to E1 is worth
-  +0.221 R² (0.337 → 0.558), well beyond the 0.164 they achieve by themselves. The surplus
+  +0.266 R² (0.337 → 0.603), well beyond the 0.164 they achieve by themselves. The surplus
   is dataset×model interaction, which is why 10 of the accuracy-leaning equation's 20 terms
   are mixed.
 
@@ -84,26 +84,34 @@ are artefacts:
 `DEFAULT_E2` and `ACCURATE_E2` are the *same equation family* — same vocabulary, same
 search, same solver — differing in two knobs:
 
-| | `max_abs_zscore` | `penalty` | headline terms |
+| | `max_arity` | `max_abs_zscore` | `penalty` | headline terms |
+|---|---|---|---|---|
+| `DEFAULT_E2` | 3 (281-term library) | 3.0 | 5 | 26 |
+| `ACCURATE_E2` | 4 (4610-term library) | 4.0 | 5 | 32 |
+
+| configuration | terms | in-sample R² | LOO-dataset | LOO-model |
+|---|---|---|---|---|
+| `DEFAULT_E2` | 26 | **0.6033** | **0.4582** | **0.4843** |
+| `ACCURATE_E2` | 32 | **0.6677** | 0.2863 | 0.4714 |
+
+The default now clears 0.6 *and* holds the best transfer figure in the study. That is not
+the trade the earlier configurations offered, and the reason is the grammar fix rather
+than the tuning: symmetric `sum_ratio` gave the search 126 mixed dataset×model terms
+where it previously had 19.
+
+Both are fitted and reported by every run.
+
+**Why 26 terms and not 14?** Fourteen was the optimum of the *old* grammar and stopped
+being one. Re-sweeping arity, penalty and length together over 54 configurations puts the
+joint optimum at 26 terms, and the previous headline is now dominated on every axis:
+
+| | in-sample | LOO-dataset | LOO-model |
 |---|---|---|---|
-| `DEFAULT_E2` | 3.0 (172-term library) | 20 | 14 |
-| `ACCURATE_E2` | 4.0 (360-term library) | 1 | 20 |
+| old (arity 2 implicit, 14 terms, λ=20) | 0.5582 | 0.4429 | 0.4561 |
+| **new (arity 3, 26 terms, λ=5)** | **0.6033** | **0.4582** | **0.4843** |
 
-| terms | `ACCURATE_E2` in-sample R² | LOO-dataset R² | LOO-model R² |
-|---|---|---|---|
-| 12 | 0.584 | 0.270 | 0.472 |
-| 16 | 0.619 | 0.320 | 0.493 |
-| 18 | 0.640 | 0.341 | — |
-| **20** | **0.647** | 0.287 | **0.533** |
-
-The accuracy-leaning configuration clears 0.6 from 14 terms onward and reaches 0.647 at
-20. Both are fitted and reported by every run.
-
-**Does it plateau?** The budget was pushed to 64 to check. The default gains 0.003 R²
-between 24 and 64 terms (0.5673 → 0.5704) — flat. The accuracy-leaning one keeps creeping
-in-sample (0.653 → 0.668) while its leave-one-dataset-out R² falls to between -0.3 and
--0.7, so the creep is entirely overfitting. The sweep stops at 32 because nothing past it
-is real.
+The length was re-derived rather than carried over, which is the general lesson: a term
+budget tuned against one grammar is not evidence about another.
 
 ## The fitted equations
 
@@ -155,8 +163,13 @@ The axes start at 0; the single negative row falls outside them and
 
 ## What was tried to push past 0.558, and failed
 
-The default configuration's in-sample R² of 0.558 was attacked from six directions. All
-of them keep the equation form `MCC = Σ wᵢtᵢ` intact, and none beats it:
+> **These were measured against the previous grammar**, whose default reached 0.5582 —
+> before `sum_ratio` was made symmetric and the term budget re-tuned. They are reported
+> unchanged rather than silently rebased, because none of them was re-run afterwards. What
+> did beat 0.5582 was the grammar fix, not any of the six.
+
+That earlier default was attacked from six directions. All keep the equation form
+`MCC = Σ wᵢtᵢ` intact, and none beats it:
 
 | attempt | in-sample R² |
 |---|---|
@@ -209,7 +222,7 @@ Standard regressors on the same raw features, under the same protocols:
 | RidgeCV (linear, 17 features) | 0.418 | **-2.002** | 0.328 |
 | RandomForest (300 trees) | **0.910** | **0.067** | 0.465 |
 | GradientBoosting | 0.820 | 0.049 | 0.354 |
-| **metafit E2 (14 terms)** | 0.558 | **0.443** | 0.456 |
+| **metafit E2 (26 terms)** | 0.603 | **0.458** | 0.484 |
 
 Read the RandomForest row across. With 20 dataset groups a forest memorises dataset
 identity almost perfectly and then transfers worse than a 14-term equation. This is also

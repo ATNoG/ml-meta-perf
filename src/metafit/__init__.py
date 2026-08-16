@@ -31,7 +31,7 @@ from metafit.fit import FitResult, fit, prune
 from metafit.model import Equation
 from metafit.practices import best_practices, concordance, concordance_summary, feature_practices
 from metafit.selection import knee_terms, pareto_front, pareto_table, recommend
-from metafit.terms import Atom, Library, Term, build_library, simplify
+from metafit.terms import Atom, Library, Term, build_library, ratio_of_sums_terms, simplify
 from metafit.validate import (
     CrossValidation,
     Scores,
@@ -81,6 +81,7 @@ __all__ = [
     "pareto_table",
     "prune",
     "ranking_report",
+    "ratio_of_sums_terms",
     "recommend",
     "redundancy_groups",
     "screen",

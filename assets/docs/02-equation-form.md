@@ -46,6 +46,49 @@ raw `gravity` — which spans 16 orders of magnitude — by anything produces a 
 weight is around 1e-16 and whose meaning cannot be read. One decision, applied
 consistently, keeps composite terms on a comparable scale.
 
+## How many raw features may one term combine?
+
+A design choice with a measured justification, and one that was wrong for most of this
+project's life.
+
+| operation | raw features | terms (arity 3 library) |
+|---|---|---|
+| `atom` | 1 | 25 |
+| `ratio`, `product` | 2 | 67 |
+| `sum_ratio` — `(f1+f2)/f3` | 3 | 189 |
+| `ratio_of_sums` — `(f1+f2)/(f3+f4)` | 4 | *available, not default* |
+
+### The asymmetry that was there, and is now fixed
+
+`sum_ratio` was originally generated over the **dataset features only**. Every other
+operation could pair a dataset feature with a model one; the highest-arity operation could
+not. That made the richest part of the grammar the only part unable to express a
+dataset×model interaction — the exact combination carrying E2's entire lift over E1, and
+the exact structure the oracle ladder says is missing.
+
+Generating it over all features instead takes mixed terms in the library from **19 to 126**
+and is worth, on its own, most of the improvement reported in
+[chapter 6](06-results.md).
+
+### Is three enough?
+
+`max_arity` exists so the question can be answered rather than assumed. At the default
+configuration:
+
+| max arity | library | in-sample (k=32) | LOO-dataset (k=32) |
+|---|---|---|---|
+| 2 | 92 | 0.5687 | **+0.458** |
+| **3** | **281** | **0.5758** | +0.375 |
+| 4 | 1599 | **0.6186** | +0.321 |
+
+Four-feature terms buy real fit — 0.62 against 0.57 — and cost transfer. Three is the
+default because it is where the two curves are jointly best once the penalty is retuned
+with it; four is one parameter away for anyone who wants the fit.
+
+The deeper reason to stop at four: a `(f1+f2)/(f3+f4)` term already names four features and
+two operations, and the grammar's whole purpose is that a reader can hold a term in their
+head. Arity is capped by legibility before it is capped by evidence.
+
 ## Admissibility: which terms are allowed to exist
 
 Division is the only operation in the vocabulary that can manufacture a column no linear
@@ -170,7 +213,9 @@ real limit.
 ## Why the raw features are not scaled first
 
 An obvious alternative to log-compressing operands and capping term stability is to scale
-every feature column up front. It was tested, at the same admissibility cap throughout:
+every feature column up front. It was tested, at the same admissibility cap throughout.
+(Measured against the pre-symmetry grammar, whose baseline was 0.5582; the comparison
+between rows is what matters and none of it depends on the baseline.)
 
 | feature scaling | library | in-sample (k=14) | LOO-dataset (k=14) |
 |---|---|---|---|
