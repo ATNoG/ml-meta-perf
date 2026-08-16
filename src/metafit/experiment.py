@@ -62,7 +62,7 @@ class Configuration:
 
 DEFAULT_E1 = Configuration(max_abs_zscore=3.0, penalty=1.0, pool_size=200, max_terms=6, headline_terms=5)
 DEFAULT_E2 = Configuration(
-    max_abs_zscore=3.0, penalty=5.0, pool_size=600, max_terms=32, headline_terms=26, max_arity=3
+    max_abs_zscore=3.0, penalty=5.0, pool_size=600, max_terms=32, headline_terms=24, max_arity=3
 )
 
 SWEEP_SIZES: tuple[int, ...] = (2, 4, 8, 12, 16, 20, 24, 26, 28, 32)
@@ -71,6 +71,9 @@ SWEEP_SIZES: tuple[int, ...] = (2, 4, 8, 12, 16, 20, 24, 26, 28, 32)
 # reaches in-sample R2 = 0.668 and gives up most of the transfer to get there. Both
 # configurations are reported; the default above happens to win on *both* axes against
 # every earlier setting, so the trade is no longer symmetric -- this one buys fit only.
+#
+# A 4610-term library was briefly unaffordable: a full study took 12.5 minutes until the
+# duplicate check in ``guided_screen`` was vectorised, and now takes about four.
 ACCURATE_E2 = Configuration(
     max_abs_zscore=4.0, penalty=5.0, pool_size=2000, max_terms=40, headline_terms=32, max_arity=4
 )

@@ -28,11 +28,11 @@ equation a practitioner can inspect, argue with, and derive guidance from.
 | *ceiling: the true dataset means* | *0.354* |
 | EM — model features only, 9 terms | 0.164 |
 | *ceiling: the true model means* | *0.282* |
-| **E2 — dataset + model, 26 terms** | **0.603** |
+| **E2 — dataset + model, 24 terms** | **0.600** |
 | *additive oracle* | *0.6605* |
 | *additive + rank-1 interaction* | *0.7828* |
 
-Leave-one-dataset-out R² for E2 is **0.458**; leave-one-model-out **0.484**. An
+Leave-one-dataset-out R² for E2 is **0.466**; leave-one-model-out **0.489**. An
 accuracy-leaning configuration reaches **0.668 in-sample** at 32 terms.
 
 ![Equations against their ceilings](assets/figures/equation_comparison.png)

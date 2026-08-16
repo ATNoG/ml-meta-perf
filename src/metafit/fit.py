@@ -126,13 +126,23 @@ def guided_screen(
     scored.sort(key=lambda item: item[0], reverse=True)
 
     standardized = Standardizer.fit(matrix).apply(matrix)
+    rows = float(standardized.shape[0])
+
+    # The duplicate check is one matrix-vector product against the columns kept so far,
+    # not a Python loop of dot products over them. At 1599 candidates keeping 1200 the
+    # loop form ran 17 million times and accounted for over half the total runtime of a
+    # cross-validated sweep; this is the same arithmetic in one BLAS call per candidate.
+    accepted = np.empty((standardized.shape[0], min(keep, standardized.shape[1])))
     kept: list[int] = []
     for _, index in scored:
         if len(kept) >= keep:
             break
         column = standardized[:, index]
-        if any(abs(float(column @ standardized[:, other]) / column.shape[0]) > 0.995 for other in kept):
-            continue
+        if kept:
+            correlations = np.abs(column @ accepted[:, : len(kept)]) / rows
+            if float(correlations.max()) > 0.995:
+                continue
+        accepted[:, len(kept)] = column
         kept.append(index)
     return kept
 

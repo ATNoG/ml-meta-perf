@@ -39,8 +39,8 @@ Their central result is directly relevant and worth quoting in full:
 > guidance."
 
 **Relevance.** This is independent corroboration of the central measurement here. Our
-leave-one-dataset-out R² of ~0.46 for a classification metric (MCC), against an in-sample
-0.603, is not a failure of the method — it reflects a documented property of classifier
+leave-one-dataset-out R² of ~0.47 for a classification metric (MCC), against an in-sample
+0.600, is not a failure of the method — it reflects a documented property of classifier
 performance prediction. The paper also names the **"interpretability tax"**: methods
 optimising for structural sparsity pay significantly in training time. `metafit` pays a
 different tax — accuracy — and quantifies it explicitly through the term-count curve.
@@ -177,7 +177,7 @@ random k-fold as a diagnostic for leakage rather than a result.
 | | prior work | `metafit` |
 |---|---|---|
 | Model class | opaque regressors (RF, GBM, NN); or GP-evolved long expressions | fixed additive form, linear in the weights |
-| Reported R² | ~0.9 (opaque), >0.7 (GP) | 0.603 in-sample, 0.458 LOO-dataset |
+| Reported R² | ~0.9 (opaque), >0.7 (GP) | 0.600 in-sample, 0.466 LOO-dataset |
 | Validation | often random k-fold | leave-one-dataset-out and leave-one-model-out |
 | Extractable guidance | little | each weight reads directly in feature units |
 | Ceiling stated | rarely | additive oracle at 0.6605, rank-1 at 0.783, E1 capped at 0.354 |
@@ -201,5 +201,5 @@ quantified.
 - **More datasets.** Twenty is the binding constraint on every cross-validated number
   here; OpenML-scale meta-data would settle whether the 0.6605 additive ceiling is a
   property of this sample or of the approach.
-- **Interaction structure.** The gap between E2 (0.603) and the rank-1 oracle (0.783)
+- **Interaction structure.** The gap between E2 (0.600) and the rank-1 oracle (0.783)
   is entirely dataset×model interaction the current term vocabulary does not reach.
