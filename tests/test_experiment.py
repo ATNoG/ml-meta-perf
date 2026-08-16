@@ -12,6 +12,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 import numpy as np
+import polars as pl
 
 from metafit.attribution import group_shares, term_effects, variance_decomposition
 from metafit.cli import main, render
@@ -186,6 +187,7 @@ class TestCli(unittest.TestCase):
             comparison=comparison(frame, e1, e2),
             leakage=leakage_demonstration(frame, FAST_E2),
             selection=model_selection(frame, e2),
+            reference=pl.DataFrame({'model': ['stub'], 'r2_in_sample': [0.5]}),
         )
 
     def test_render_prints_every_section(self) -> None:

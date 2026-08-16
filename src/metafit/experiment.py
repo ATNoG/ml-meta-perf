@@ -15,6 +15,7 @@ import polars as pl
 
 from metafit.analysis import screen
 from metafit.attribution import group_shares, term_effects, variance_decomposition
+from metafit.benchmarks import reference_models
 from metafit.data import (
     DATASET_COLUMN,
     DATASET_FEATURES,
@@ -401,6 +402,7 @@ class Report:
     comparison: pl.DataFrame
     leakage: pl.DataFrame
     selection: pl.DataFrame
+    reference: pl.DataFrame
 
 
 # Small enough to run in a couple of seconds. Intended for smoke-testing the wiring,
@@ -437,4 +439,7 @@ def run(path: str | None = None, *, quick: bool = False) -> Report:
         comparison=comparison(frame, e1, e2),
         leakage=leakage_demonstration(frame, config_e2),
         selection=model_selection(frame, e2),
+        reference=reference_models(frame, only=("RidgeCV (linear)",), trees=25)
+        if quick
+        else reference_models(frame),
     )

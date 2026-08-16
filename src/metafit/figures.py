@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import polars as pl
+
 from metafit.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays, load, target
 from metafit.experiment import Report
 from metafit.plots import (
@@ -25,7 +27,18 @@ from metafit.plots import (
     term_stability,
 )
 
-ADDITIVE_ORACLE = 0.661
+ORACLE_ROW = "additive oracle (ceiling)"
+
+
+def _oracle(report: Report) -> float | None:
+    """The additive ceiling as this run computed it.
+
+    Read from the report rather than hardcoded: the ceiling is a property of the data,
+    so a literal here would silently drift out of step with the comparison table the
+    moment the meta-dataset changed.
+    """
+    matched = report.comparison.filter(pl.col("equation") == ORACLE_ROW)
+    return float(matched["r2"][0]) if matched.height else None
 
 
 def generate(report: Report, destination: str | Path) -> list[Path]:
@@ -42,7 +55,7 @@ def generate(report: Report, destination: str | Path) -> list[Path]:
         term_count_curve(
             report.e2.curve,
             folder / "term_count_curve.png",
-            oracle=ADDITIVE_ORACLE,
+            oracle=_oracle(report),
             comparison=report.e2_accurate.curve,
         ),
         term_count_curve(report.e1.curve, folder / "term_count_curve_e1.png"),

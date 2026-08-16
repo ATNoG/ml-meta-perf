@@ -82,6 +82,12 @@ def render(report: Report) -> None:
     _section("Validation protocol matters (same equation, different splits)")
     _show(report.leakage)
 
+    _section("Reference models on the raw features (scikit-learn, not a metafit dependency)")
+    if report.reference.height:
+        _show(report.reference)
+    else:
+        print("scikit-learn not installed; skipped")
+
     _section("Model selection on held-out datasets")
     _show(report.selection)
     print(

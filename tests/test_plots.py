@@ -3,6 +3,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import polars as pl
@@ -224,6 +225,26 @@ class TestScatterLimits(unittest.TestCase):
         values = np.array([0.1, 0.9])
         low, high = scatter_limits(values, values)
         self.assertLess(low, high)
+
+
+class TestOracleLookup(unittest.TestCase):
+    """The ceiling drawn on the curve must be the one the run computed."""
+
+    def test_reads_the_oracle_from_the_comparison_table(self) -> None:
+        from metafit.figures import ORACLE_ROW, _oracle
+
+        report = SimpleNamespace(
+            comparison=pl.DataFrame({"equation": ["E2 (dataset + model)", ORACLE_ROW], "r2": [0.556, 0.6605]})
+        )
+        value = _oracle(report)  # pyright: ignore[reportArgumentType]
+        assert value is not None
+        self.assertAlmostEqual(value, 0.6605)
+
+    def test_returns_none_when_the_row_is_absent(self) -> None:
+        from metafit.figures import _oracle
+
+        report = SimpleNamespace(comparison=pl.DataFrame({"equation": ["E2"], "r2": [0.5]}))
+        self.assertIsNone(_oracle(report))  # pyright: ignore[reportArgumentType]
 
 
 class TestFigureSet(PlotTestCase):
