@@ -211,6 +211,21 @@ class TestGuidedMerge(unittest.TestCase):
         terms = guided_merge(("a", "b", "c", "d"), self.columns, self.target, max_depth=2, reuse_features=True)
         self.assertLessEqual(max(t.depth for t in terms), 2)
 
+    def test_accepting_every_improving_merge_costs_fewer_evaluations(self) -> None:
+        # Less greedy reaches the same terms sooner rather than finding more of them.
+        guided_merge(("a", "b", "c", "d"), self.columns, self.target, merges_per_round=1)
+        greedy = evaluation_count()
+        guided_merge(("a", "b", "c", "d"), self.columns, self.target, merges_per_round=None)
+        self.assertLessEqual(evaluation_count(), greedy)
+
+    def test_merges_are_bounded_by_the_feature_count(self) -> None:
+        # A merge path over n items has at most n-1 joins, whatever the linkage rule.
+        # This is the structural ceiling that no tuning lifts.
+        features = ("a", "b", "c", "d")
+        terms = guided_merge(features, self.columns, self.target, merges_per_round=None)
+        merges = [term for term in terms if term.operation != "atom"]
+        self.assertLessEqual(len(merges), len(features) - 1)
+
 
 class TestSafeDivisor(unittest.TestCase):
     def test_rejects_a_column_reaching_zero(self) -> None:

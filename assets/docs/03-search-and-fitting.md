@@ -218,19 +218,41 @@ It works as designed and it is cheaper:
 | guided + feature reuse | 536 | 19 | 0.486 | +0.170 |
 | enumeration | 0 (one pass over the grammar) | 172 | **0.558** | **+0.443** |
 
-**It is cheaper and worse, and the reason is that the search was never the bottleneck.**
-Picking one operation per pair evaluates a third as many candidates, but when the chosen
-operation is the wrong one the merge is lost rather than merely delayed. The pool shrinks
-from 23 to 17, and pool size is the binding constraint here — enumeration wins with 172.
+**It is cheaper and worse, and the reason is not the search at all — it is what each method
+generates.**
 
-Allowing features to be reused across merges (`reuse_features=True`) grows the pool from 17
-to 19 and changes the results by less than fold noise. The ceiling is arithmetic: *n*
-features give O(*n*) merge products, against O(*n*² · transforms) for enumeration. At
-*n* = 17 that is not a close contest.
+| | terms *generated* | admissible | how it scales |
+|---|---|---|---|
+| enumeration | **564** | 172 | O(*n*² × operations) |
+| guided merge | **22** (17 leaves + 5 merges) | 22 | O(*n*) |
 
-Guiding a merge would pay where enumeration is infeasible — many more features, or a deeper
-grammar. It does not pay here, and the honest reading is that this dataset is too small in
-its *feature* dimension for construction to beat exhaustion.
+Enumeration writes down *every* expression the grammar allows and then filters. A merge
+only ever produces terms along its merge path, and a path over *n* items has at most
+*n − 1* joins before everything is one cluster. **Seventeen features can yield at most
+sixteen merges, whatever the linkage rule, however it is tuned.** The two methods are not
+searching the same space differently; one enumerates the space and the other walks a path
+through it.
+
+Three tuning attempts confirm the ceiling is structural rather than a parameter choice:
+
+| variant | evaluations | pool | in-sample (k=14) |
+|---|---|---|---|
+| greedy, one merge per round | 200 | 17 | 0.4865 |
+| **all improving merges per round** | **100** | 17 | 0.4865 |
+| greedy + feature reuse | 536 | 19 | 0.4865 |
+| all improving + feature reuse | 180 | 19 | 0.4865 |
+
+Accepting every improving merge rather than only the best **halves the evaluations and
+changes nothing else** — it reaches the same terms sooner. Retaining parents so a feature
+can join several merges adds exactly two terms, and *neither is ever selected*: the fitted
+equation is byte-identical. Being less greedy and reusing features both help in principle,
+and neither can lift an O(*n*) generator to an O(*n*²) one.
+
+Guiding a merge would pay where enumeration is infeasible — hundreds of features, or a
+grammar deep enough that writing every expression down is impossible. At *n* = 17,
+enumeration costs one pass and yields eight times the terms. The honest reading is that
+this meta-dataset is too small **in its feature dimension** for construction to beat
+exhaustion.
 
 ### Nesting does not pay on this data
 

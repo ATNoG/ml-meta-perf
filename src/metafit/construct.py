@@ -343,6 +343,7 @@ def guided_merge(
     co_movement_threshold: float = 0.5,
     max_depth: int = 2,
     reuse_features: bool = False,
+    merges_per_round: int | None = 1,
     max_abs_zscore: float = MAX_ABS_ZSCORE,
 ) -> list[Term]:
     """Agglomerate with the pair *and* the operation chosen in advance, not searched.
@@ -367,8 +368,16 @@ def guided_merge(
 
     A merge is still only accepted if it actually improves linearity by ``min_gain``, so
     the guidance narrows what is tried without deciding the outcome.
+
+    ``merges_per_round`` controls greed. At 1 only the single best merge is taken each
+    round, which is hierarchical clustering's usual rule and produces very few terms.
+    Setting it to ``None`` accepts *every* pair whose merge improves linearity, which is
+    the right choice when the pool -- not the search -- is what limits the result, as it
+    is here.
     """
-    active: list[Term] = [Term("atom", (straighten(feature, columns, target, max_abs_zscore),)) for feature in features]
+    active: list[Term] = [
+        Term("atom", (straighten(feature, columns, target, max_abs_zscore),)) for feature in features
+    ]
     values = [term.evaluate(columns) for term in active]
     produced: dict[str, Term] = {term.name: term for term in active}
     evaluations = 0
@@ -377,7 +386,7 @@ def guided_merge(
         monotone = [
             index for index, column in enumerate(values) if abs(spearman(column, target)) >= min_monotone
         ]
-        best: Merge | None = None
+        found: list[Merge] = []
         for i, j in itertools.combinations(monotone, 2):
             if not reuse_features and set(active[i].features) & set(active[j].features):
                 continue
@@ -385,31 +394,45 @@ def guided_merge(
             operation = "ratio" if shared >= co_movement_threshold else "product"
             candidate = _one_candidate(active[i], active[j], columns, operation, max_depth)
             if candidate is None or candidate.name in produced:
-                # Already built. Skipping it here rather than after choosing the best is
-                # what lets ``reuse_features`` accumulate: with parents retained the same
-                # pair wins every round, so a loop that only stopped on a repeat would
-                # terminate after one merge.
+                # Already built. Skipping here rather than after choosing is what lets
+                # ``reuse_features`` accumulate: with parents retained the same pair wins
+                # every round, so a loop stopping on a repeat would end after one merge.
                 continue
             evaluations += 1
             floor = max(linearity(values[i], target), linearity(values[j], target))
             gain = _gain(candidate, columns, target, floor, max_abs_zscore)
-            if gain is not None and gain > min_gain and (best is None or gain > best.gain):
-                best = Merge(candidate, gain, (i, j))
-        if best is None:
+            if gain is not None and gain > min_gain:
+                found.append(Merge(candidate, gain, (i, j)))
+        if not found:
             break
 
-        produced[best.term.name] = best.term
+        found.sort(key=lambda merge: merge.gain, reverse=True)
+        accepted = found if merges_per_round is None else found[:merges_per_round]
+
         if reuse_features:
             # Parents stay available, so a feature can take part in several merges and the
-            # pool the beam search sees grows instead of shrinking.
-            active.append(best.term)
-            values.append(best.term.evaluate(columns))
+            # pool grows instead of shrinking.
+            for merge in accepted:
+                produced[merge.term.name] = merge.term
+                active.append(merge.term)
+                values.append(merge.term.evaluate(columns))
         else:
-            for position in sorted(best.parents, reverse=True):
+            # Consuming parents means only disjoint merges can be applied together.
+            claimed: set[int] = set()
+            applied: list[Merge] = []
+            for merge in accepted:
+                if set(merge.parents) & claimed:
+                    continue
+                claimed.update(merge.parents)
+                applied.append(merge)
+            for merge in applied:
+                produced[merge.term.name] = merge.term
+            for position in sorted(claimed, reverse=True):
                 del active[position]
                 del values[position]
-            active.append(best.term)
-            values.append(best.term.evaluate(columns))
+            for merge in applied:
+                active.append(merge.term)
+                values.append(merge.term.evaluate(columns))
         if len(active) < 2:
             break
 
