@@ -5,9 +5,18 @@ ssh, without a display. Every function takes a destination path, writes one figu
 returns that path, so the caller decides where output lands and nothing is written as a
 side effect of importing.
 
-The palette is colour-blind safe and each series is also distinguished by marker or line
-style, so the figures survive being printed in greyscale -- which, for a paper, they will
-be.
+**No titles and no annotations.** These figures are written for a LaTeX document where
+the caption carries the description, and a title rendered into the PNG would duplicate it
+in a font the document cannot restyle. What stays is the part a caption cannot replace:
+axis labels, tick labels, and legends identifying the series. Anything a reader would
+otherwise have to be *told* is instead drawn -- a reference level becomes a line with a
+legend entry, not a sentence.
+
+Each figure is one axes with one message, so each gets its own caption. Panels sharing a
+figure would need panel titles to be distinguishable, which is the thing being avoided.
+
+The palette is colour-blind safe and every series is distinguished by marker or line
+style as well as colour, so the figures survive being printed in greyscale.
 """
 
 from __future__ import annotations
@@ -22,12 +31,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 from matplotlib.figure import Figure
-
-from metafit.model import Equation
+from matplotlib.patches import Rectangle
 
 IN_SAMPLE = "#1b6ca8"
 LOO_DATASET = "#d1495b"
 LOO_MODEL = "#00798c"
+COMPARISON = "#8b5cf6"
 CEILING = "#6b7280"
 POSITIVE = "#00798c"
 NEGATIVE = "#d1495b"
@@ -49,13 +58,17 @@ def term_count_curve(
     destination: str | Path,
     *,
     oracle: float | None = None,
-    title: str = "Accuracy versus equation length",
+    comparison: pl.DataFrame | None = None,
+    comparison_label: str = "in-sample (accuracy-leaning)",
 ) -> Path:
-    """The accuracy-versus-explainability trade, with the additive ceiling drawn on.
+    """Accuracy against equation length: the explainability trade.
 
-    The ceiling is the point of the figure: without it a reader sees a curve still
-    climbing and assumes more terms would keep paying, when in fact the whole approach
-    is bounded well below 1.
+    The oracle line is the point of the figure. Without it a reader sees a curve still
+    climbing and assumes more terms would keep paying, when the whole approach is bounded
+    well below 1. It is drawn as a labelled line rather than described in text.
+
+    ``comparison`` overlays a second configuration's in-sample curve, so the cost of
+    tuning for fit rather than transfer is visible in one figure instead of two.
     """
     figure, axes = plt.subplots(figsize=(7.0, 4.4))
     sizes = curve["n_terms"].to_numpy()
@@ -69,19 +82,24 @@ def term_count_curve(
         axes.plot(
             sizes, curve["r2_loo_model"].to_numpy(), "^:", color=LOO_MODEL, label="leave-one-model-out"
         )
+    if comparison is not None:
+        axes.plot(
+            comparison["n_terms"].to_numpy(),
+            comparison["r2_in_sample"].to_numpy(),
+            "D-.",
+            color=COMPARISON,
+            label=comparison_label,
+            markersize=4,
+        )
     if oracle is not None:
-        axes.axhline(oracle, color=CEILING, linestyle="-.", linewidth=1.2)
-        # Below the line, not above: above it collides with the axis frame once the
-        # y-limit is only a little past the ceiling.
-        axes.text(
-            sizes.max(), oracle - 0.014, f"additive ceiling {oracle:.3f}",
-            ha="right", va="top", fontsize=8, color=CEILING,
+        axes.axhline(
+            oracle, color=CEILING, linestyle="-.", linewidth=1.2,
+            label=f"additive ceiling ({oracle:.3f})",
         )
         axes.set_ylim(top=oracle + 0.05)
 
     axes.set_xlabel("number of terms")
     axes.set_ylabel("$R^2$")
-    axes.set_title(title)
     axes.set_xticks(sizes)
     axes.grid(alpha=0.25, linestyle=":")
     axes.legend(frameon=False, loc="lower right", fontsize=9)
@@ -96,31 +114,22 @@ def scatter_limits(
 ) -> tuple[float, float]:
     """Square axis bounds covering both series, padded by ``margin`` and stopping at ``floor``.
 
-    Deliberately not MCC's theoretical [-1, 1]. Two separate reasons.
-
-    Nothing in this meta-dataset approaches -1 -- the observed minimum is -0.29, from a
-    single row -- so a [-1, 1] axis would spend its bottom half on an empty region.
-
-    The interval below zero is worse than empty, it is uninformative. Around MCC = 0 sit
-    38 degenerate results and one anti-correlated one, and they carry no linear structure
-    for the diagonal to be read against; including them compresses the range where the
-    relationship actually lives. ``floor`` therefore defaults to 0, and points beneath it
-    fall outside the axes -- which the caller is expected to disclose rather than hide.
+    Deliberately not MCC's theoretical [-1, 1]. Nothing here approaches -1 -- the observed
+    minimum is -0.29, one row -- and the interval below zero is worse than empty, it is
+    uninformative: around MCC = 0 sit 38 degenerate results and one anti-correlated one,
+    carrying no linear structure for the diagonal to be read against. Including them only
+    compresses the range where the relationship lives.
     """
     lowest = max(float(min(truth.min(), predicted.min())) - margin, floor)
     highest = float(max(truth.max(), predicted.max())) + margin
     return lowest, highest
 
 
-def count_below_floor(
-    truth: np.ndarray,
-    predicted: np.ndarray,
-    floor: float = 0.0,
-) -> int:
+def count_below_floor(truth: np.ndarray, predicted: np.ndarray, floor: float = 0.0) -> int:
     """How many points ``predicted_versus_actual`` leaves outside its axes.
 
-    Kept separate from the figure so the disclosure can go in a LaTeX caption rather than
-    being rendered into the image, where it cannot be restyled or translated.
+    Kept separate from the figure so the disclosure goes in the caption rather than being
+    rendered into the image, where it could not be restyled or edited.
     """
     return int(np.sum((truth < floor) | (predicted < floor)))
 
@@ -130,37 +139,70 @@ def predicted_versus_actual(
     predicted: np.ndarray,
     destination: str | Path,
     *,
-    title: str = "Predicted versus actual MCC",
     margin: float = 0.05,
     floor: float = 0.0,
+    groups: np.ndarray | None = None,
 ) -> Path:
-    """A scatter against the diagonal, with the MCC ceiling made visible.
+    """A scatter against the diagonal.
 
-    17% of the meta-dataset sits at exactly MCC = 1.0. That pile-up is the single most
-    important thing to see about this target, and a scatter shows it in a way no summary
-    statistic does.
+    17% of the meta-dataset sits at exactly MCC = 1.0 and 8% at exactly 0.0. Both pile-ups
+    are the most important thing to see about this target, and a scatter shows them in a
+    way no summary statistic does.
 
-    The axes start at ``floor`` (0 by default) rather than at -1: the sub-zero region
-    holds only degenerate results with no linear structure, and including it squashes the
-    range where the relationship lives.
-
-    Points below the floor are not drawn, and the figure carries no note saying so --
-    that belongs in the caption, not burned into the image. ``count_below_floor`` returns
-    the number for whoever writes it.
+    With ``groups`` supplied the marginal distribution of the truth is drawn as a rug
+    along the bottom axis, which makes those pile-ups countable rather than merely visible
+    as overplotted dots.
     """
     limits = scatter_limits(truth, predicted, margin, floor)
 
-    figure, axes = plt.subplots(figsize=(5.4, 5.2))
+    figure, axes = plt.subplots(figsize=(5.6, 5.4))
     axes.plot(limits, limits, color=CEILING, linewidth=1.0, linestyle="--", label="perfect", zorder=1)
     axes.scatter(truth, predicted, s=18, alpha=0.55, color=IN_SAMPLE, edgecolor="none", zorder=2)
+    if groups is not None:
+        axes.plot(
+            truth, np.full_like(truth, limits[0]), "|", color=IN_SAMPLE, alpha=0.35,
+            markersize=6, zorder=1,
+        )
     axes.set_xlim(limits)
     axes.set_ylim(limits)
     axes.set_aspect("equal")
     axes.set_xlabel("actual MCC")
     axes.set_ylabel("predicted MCC")
-    axes.set_title(title)
     axes.grid(alpha=0.25, linestyle=":")
     axes.legend(frameon=False, loc="upper left", fontsize=9)
+    return _finish(figure, destination)
+
+
+def equation_comparison(comparison: pl.DataFrame, destination: str | Path) -> Path:
+    """Every equation and every ceiling on one scale.
+
+    The headline result of the study. Equations are drawn solid and the ceilings they are
+    bounded by are drawn hatched immediately beside them, so the gap each equation leaves
+    against its own limit is read directly off the figure instead of computed by the
+    reader from a table.
+    """
+    labels = comparison["equation"].to_list()
+    values = comparison["r2"].to_numpy()
+    is_ceiling = [("ceiling" in label) or ("oracle" in label) for label in labels]
+
+    figure, axes = plt.subplots(figsize=(8.6, 4.2))
+    positions = np.arange(len(labels))
+    axes.bar(
+        positions,
+        values,
+        color=[CEILING if ceiling else IN_SAMPLE for ceiling in is_ceiling],
+        hatch=["//" if ceiling else "" for ceiling in is_ceiling],
+        alpha=0.85,
+        edgecolor="white",
+    )
+    axes.set_xticks(positions)
+    axes.set_xticklabels([_wrap(label) for label in labels], fontsize=8)
+    axes.set_ylabel("$R^2$ on all 476 rows")
+    axes.grid(axis="y", alpha=0.25, linestyle=":")
+
+    solid = Rectangle((0, 0), 1, 1, facecolor=IN_SAMPLE, alpha=0.85)
+    hatched = Rectangle((0, 0), 1, 1, facecolor=CEILING, alpha=0.85, hatch="//")
+    axes.legend([solid, hatched], ["fitted equation", "ceiling"], frameon=False, fontsize=9)
     return _finish(figure, destination)
 
 
@@ -170,7 +212,7 @@ def term_effects(effects: pl.DataFrame, destination: str | Path, *, top: int = 1
     labels = [_shorten(name) for name in table["term"].to_list()]
     values = table["effect"].to_numpy() * np.sign(table["beta"].to_numpy())
 
-    figure, axes = plt.subplots(figsize=(8.2, 0.42 * len(labels) + 1.4))
+    figure, axes = plt.subplots(figsize=(8.2, 0.42 * len(labels) + 1.2))
     axes.barh(
         range(len(labels)),
         values,
@@ -181,75 +223,136 @@ def term_effects(effects: pl.DataFrame, destination: str | Path, *, top: int = 1
     axes.set_yticklabels(labels, fontsize=8)
     axes.axvline(0.0, color="black", linewidth=0.8)
     axes.set_xlabel("effect on predicted MCC (10th to 90th percentile swing)")
-    axes.set_title("What each term is worth")
     axes.grid(axis="x", alpha=0.25, linestyle=":")
     return _finish(figure, destination)
 
 
 def practice_effects(practices: pl.DataFrame, destination: str | Path) -> Path:
-    """Per-feature effects, the form the written practices are derived from."""
+    """Per-feature effects, the form the written practices are derived from.
+
+    Bars are shaded by the confidence the practice was rated at, so effect size and
+    evidential weight are visible together -- a large effect from an unstable term looks
+    different from a large effect from a stable one.
+    """
     table = practices.reverse()
     labels = table["feature"].to_list()
     values = table["effect"].to_numpy()
+    alphas = _confidence_alpha(table)
 
-    figure, axes = plt.subplots(figsize=(7.6, 0.42 * len(labels) + 1.4))
-    axes.barh(
-        range(len(labels)),
-        values,
-        color=[POSITIVE if value > 0 else NEGATIVE for value in values],
-        alpha=0.85,
-    )
+    figure, axes = plt.subplots(figsize=(7.8, 0.42 * len(labels) + 1.2))
+    for index, (value, alpha) in enumerate(zip(values, alphas, strict=True)):
+        axes.barh(index, value, color=POSITIVE if value > 0 else NEGATIVE, alpha=alpha)
     axes.set_yticks(range(len(labels)))
     axes.set_yticklabels(labels, fontsize=9)
     axes.axvline(0.0, color="black", linewidth=0.8)
     axes.set_xlabel("MCC change from the feature's lowest decile to its highest")
-    axes.set_title("Feature effects behind the extracted practices")
     axes.grid(axis="x", alpha=0.25, linestyle=":")
+
+    if "confidence" in table.columns:
+        handles = [
+            Rectangle((0, 0), 1, 1, facecolor=CEILING, alpha=alpha)
+            for alpha in (0.95, 0.6, 0.3)
+        ]
+        axes.legend(handles, ["strong", "moderate", "weak"], frameon=False, fontsize=8, loc="lower right")
     return _finish(figure, destination)
+
+
+def _confidence_alpha(table: pl.DataFrame) -> list[float]:
+    scale = {"strong": 0.95, "moderate": 0.6, "weak": 0.3, "unrated": 0.6}
+    if "confidence" not in table.columns:
+        return [0.85] * table.height
+    return [scale.get(str(value), 0.6) for value in table["confidence"].to_list()]
 
 
 def protocol_comparison(leakage: pl.DataFrame, destination: str | Path) -> Path:
     """The same equation under three splits -- the leakage figure."""
     labels = leakage["protocol"].to_list()
     values = leakage["r2"].to_numpy()
-    colors = [LOO_DATASET if "random" in label else IN_SAMPLE for label in labels]
 
-    figure, axes = plt.subplots(figsize=(6.6, 3.6))
-    bars = axes.bar(range(len(labels)), values, color=colors, alpha=0.85)
-    for bar, value in zip(bars, values, strict=True):
-        axes.text(
-            bar.get_x() + bar.get_width() / 2, value + 0.012, f"{value:.3f}",
-            ha="center", va="bottom", fontsize=9,
-        )
+    figure, axes = plt.subplots(figsize=(6.4, 3.8))
+    axes.bar(
+        range(len(labels)),
+        values,
+        color=[LOO_DATASET if "random" in label else IN_SAMPLE for label in labels],
+        alpha=0.85,
+    )
     axes.set_xticks(range(len(labels)))
-    axes.set_xticklabels([label.replace(" (leaky)", "\n(leaky)") for label in labels], fontsize=9)
+    axes.set_xticklabels([_wrap(label) for label in labels], fontsize=9)
     axes.set_ylabel("$R^2$")
-    axes.set_title("Same equation, three validation protocols")
     axes.grid(axis="y", alpha=0.25, linestyle=":")
     return _finish(figure, destination)
 
 
-def contribution_sources(shares: pl.DataFrame, decomposition: pl.DataFrame, destination: str | Path) -> Path:
-    """Where the signal comes from: the equation's terms, and the target's own structure."""
-    figure, (left, right) = plt.subplots(1, 2, figsize=(10.0, 3.8))
-
+def contribution_shares(shares: pl.DataFrame, destination: str | Path) -> Path:
+    """Which feature groups drive the equation's output variance."""
     groups = shares["group"].to_list()
-    left.bar(range(len(groups)), shares["share"].to_numpy(), color=IN_SAMPLE, alpha=0.85)
-    left.set_xticks(range(len(groups)))
-    left.set_xticklabels(groups)
-    left.set_ylabel("share of the equation's output variance")
-    left.set_title("Which terms drive the equation")
-    left.axhline(0.0, color="black", linewidth=0.8)
-    left.grid(axis="y", alpha=0.25, linestyle=":")
+    figure, axes = plt.subplots(figsize=(5.0, 3.6))
+    axes.bar(range(len(groups)), shares["share"].to_numpy(), color=IN_SAMPLE, alpha=0.85)
+    axes.set_xticks(range(len(groups)))
+    axes.set_xticklabels(groups)
+    axes.set_xlabel("features the term uses")
+    axes.set_ylabel("share of the equation's output variance")
+    axes.axhline(0.0, color="black", linewidth=0.8)
+    axes.grid(axis="y", alpha=0.25, linestyle=":")
+    return _finish(figure, destination)
 
+
+def identity_ceilings(decomposition: pl.DataFrame, destination: str | Path) -> Path:
+    """Variance of MCC explained by dataset identity and by model identity alone."""
     names = decomposition["knowing only"].to_list()
-    right.bar(range(len(names)), decomposition["variance_explained"].to_numpy(), color=LOO_MODEL, alpha=0.85)
-    right.set_xticks(range(len(names)))
-    right.set_xticklabels([name.replace(" ", "\n") for name in names])
-    right.set_ylabel("variance of MCC explained")
-    right.set_title("Ceiling from identity alone")
-    right.grid(axis="y", alpha=0.25, linestyle=":")
+    figure, axes = plt.subplots(figsize=(5.0, 3.6))
+    axes.bar(
+        range(len(names)), decomposition["variance_explained"].to_numpy(), color=LOO_MODEL, alpha=0.85
+    )
+    axes.set_xticks(range(len(names)))
+    axes.set_xticklabels([_wrap(name) for name in names])
+    axes.set_ylabel("variance of MCC explained")
+    axes.grid(axis="y", alpha=0.25, linestyle=":")
+    return _finish(figure, destination)
 
+
+def term_stability(stability: pl.DataFrame, destination: str | Path, *, top: int = 16) -> Path:
+    """How often each term survived the leave-one-dataset-out folds.
+
+    The companion to any published equation. A term chosen in 19 of 20 folds is a finding;
+    one chosen in 3 is an artefact of which datasets landed in the training split, and the
+    fitted equation alone presents the two identically.
+    """
+    table = stability.head(top).reverse()
+    labels = [_shorten(name) for name in table["term"].to_list()]
+    values = table["frequency"].to_numpy()
+
+    figure, axes = plt.subplots(figsize=(8.2, 0.38 * len(labels) + 1.2))
+    axes.barh(range(len(labels)), values, color=IN_SAMPLE, alpha=0.85)
+    axes.set_yticks(range(len(labels)))
+    axes.set_yticklabels(labels, fontsize=8)
+    axes.set_xlim(0.0, 1.0)
+    axes.set_xlabel("fraction of leave-one-dataset-out folds selecting the term")
+    axes.grid(axis="x", alpha=0.25, linestyle=":")
+    return _finish(figure, destination)
+
+
+def per_group_quality(report: pl.DataFrame, destination: str | Path) -> Path:
+    """Rank correlation and top-1 regret for each held-out dataset.
+
+    Averages hide that the equation ranks some datasets almost perfectly and others no
+    better than chance. Plotting every fold shows the spread a mean cannot.
+    """
+    table = report.sort("spearman")
+    labels = table["group"].to_list()
+    positions = np.arange(len(labels))
+
+    figure, axes = plt.subplots(figsize=(7.4, 0.34 * len(labels) + 1.4))
+    axes.barh(positions, table["spearman"].to_numpy(), color=IN_SAMPLE, alpha=0.85, label="Spearman")
+    axes.plot(
+        table["regret"].to_numpy(), positions, "o", color=NEGATIVE, markersize=5, label="top-1 regret"
+    )
+    axes.set_yticks(positions)
+    axes.set_yticklabels(labels, fontsize=8)
+    axes.axvline(0.0, color="black", linewidth=0.8)
+    axes.set_xlabel("Spearman correlation / MCC lost by picking the top-ranked model")
+    axes.grid(axis="x", alpha=0.25, linestyle=":")
+    axes.legend(frameon=False, fontsize=9, loc="lower right")
     return _finish(figure, destination)
 
 
@@ -257,16 +360,17 @@ def _shorten(name: str, limit: int = 46) -> str:
     return name if len(name) <= limit else name[: limit - 1] + "…"
 
 
-def equation_summary(equation: Equation, destination: str | Path) -> Path:
-    """The equation itself, rendered as a figure for slides."""
-    lines = [f"MCC = {equation.intercept:+.4g}"]
-    for term, weight, _ in equation.ranked_terms():
-        lines.append(f"   {weight:+.4g} · {_shorten(term.name, 54)}")
-
-    figure, axes = plt.subplots(figsize=(9.0, 0.32 * len(lines) + 0.9))
-    axes.axis("off")
-    axes.text(
-        0.01, 0.98, "\n".join(lines), va="top", ha="left",
-        family="monospace", fontsize=9.5, transform=axes.transAxes,
-    )
-    return _finish(figure, destination)
+def _wrap(label: str, width: int = 18) -> str:
+    words = label.split()
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        if len(candidate) > width and current:
+            lines.append(current)
+            current = word
+        else:
+            current = candidate
+    if current:
+        lines.append(current)
+    return "\n".join(lines)

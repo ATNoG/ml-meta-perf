@@ -56,6 +56,8 @@ equations on every row puts them on one scale:
 | **E2 (dataset + model, 12 terms)** | **0.556** | **0.169** | **0.780** |
 | *additive oracle — true dataset + model effects* | *0.661* | *0.145* | *0.810* |
 
+![Equations against their ceilings](assets/figures/equation_comparison.png)
+
 E1 is capped at **0.354** no matter how good the dataset equation becomes, because
 per-dataset means explain only 35.4% of the total variance in MCC. E2 reaches 0.556.
 Model features are not a refinement here — they are most of the *gain*.
@@ -280,6 +282,33 @@ E2 beats all four on its respective protocol. **One honest caveat:** for *rankin
 on a new dataset, the trivial "average MCC of this model elsewhere" baseline achieves a
 higher mean per-dataset Spearman (0.70) than E2 (0.61), at comparable top-1 regret.
 E2 wins on predicting the MCC *value*; it does not dominate on ranking.
+
+## Figures
+
+Eleven figures are written by `--figures <dir>`. **None carries a title or an
+annotation** — they are made for LaTeX `figure` environments where the caption does that
+work, and text baked into a PNG cannot be restyled or translated by the document.
+`metafit.figures.captions()` returns a suggested caption per file, including the
+disclosures deliberately kept out of the images (such as how many points fall outside the
+scatter's axes).
+
+What is left in each figure is what a caption cannot replace: axis labels, tick labels
+and legends. Reference levels are drawn as labelled lines rather than described, so the
+additive ceiling appears as a line in the legend rather than as floating text.
+
+| figure | shows |
+|---|---|
+| `equation_comparison` | every equation against the ceiling that bounds it |
+| `term_count_curve` | accuracy vs length, both protocols, both configurations |
+| `term_count_curve_e1` | the same for E1, on 20 dataset means |
+| `predicted_vs_actual` | the scatter, with a rug for the target's marginal distribution |
+| `term_effects` | what each term is worth in MCC units |
+| `practice_effects` | per-feature effects, shaded by confidence |
+| `term_stability` | how often each term survived the folds |
+| `protocol_comparison` | the leakage figure |
+| `contribution_shares` | which feature groups drive the equation |
+| `identity_ceilings` | variance explained by dataset vs model identity |
+| `per_group_quality` | rank correlation and regret per held-out dataset |
 
 ## Method
 

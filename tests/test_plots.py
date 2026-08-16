@@ -7,19 +7,20 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
-from metafit.model import Equation
 from metafit.plots import (
-    contribution_sources,
+    contribution_shares,
     count_below_floor,
-    equation_summary,
+    equation_comparison,
+    identity_ceilings,
+    per_group_quality,
     practice_effects,
     predicted_versus_actual,
     protocol_comparison,
     scatter_limits,
     term_count_curve,
     term_effects,
+    term_stability,
 )
-from metafit.terms import Atom, Term
 
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
@@ -93,6 +94,12 @@ class TestPlots(PlotTestCase):
             predicted_versus_actual(truth, truth + rng.normal(0, 0.1, 80), self.folder / "scatter.png")
         )
 
+    def test_scatter_with_a_rug(self) -> None:
+        truth = np.linspace(0.0, 1.0, 40)
+        self.assertIsPng(
+            predicted_versus_actual(truth, truth * 0.9, self.folder / "rug.png", groups=truth)
+        )
+
     def test_scatter_of_realistic_data_is_still_a_png(self) -> None:
         truth = np.linspace(0.0, 1.0, 40)
         self.assertIsPng(
@@ -121,23 +128,47 @@ class TestPlots(PlotTestCase):
         )
         self.assertIsPng(protocol_comparison(leakage, self.folder / "protocols.png"))
 
-    def test_contribution_sources(self) -> None:
+    def test_contribution_shares(self) -> None:
         shares = pl.DataFrame(
             {"group": ["dataset", "model", "mixed"], "n_terms": [5, 4, 3], "share": [0.52, 0.28, 0.20]}
         )
+        self.assertIsPng(contribution_shares(shares, self.folder / "shares.png"))
+
+    def test_identity_ceilings(self) -> None:
         decomposition = pl.DataFrame(
             {"knowing only": ["dataset identity", "model identity"], "variance_explained": [0.354, 0.282]}
         )
-        self.assertIsPng(contribution_sources(shares, decomposition, self.folder / "sources.png"))
+        self.assertIsPng(identity_ceilings(decomposition, self.folder / "ceilings.png"))
 
-    def test_equation_summary(self) -> None:
-        equation = Equation(
-            intercept=0.83,
-            terms=(Term("atom", (Atom("a"),)), Term("ratio", (Atom("b"), Atom("c")))),
-            weights=(0.1, -0.2),
-            standardized_weights=(0.3, -0.5),
+    def test_equation_comparison(self) -> None:
+        table = pl.DataFrame(
+            {
+                "equation": ["E1 (dataset only)", "E1 ceiling (true dataset means)", "E2 (dataset + model)"],
+                "r2": [0.337, 0.354, 0.556],
+            }
         )
-        self.assertIsPng(equation_summary(equation, self.folder / "equation.png"))
+        self.assertIsPng(equation_comparison(table, self.folder / "comparison.png"))
+
+    def test_term_stability(self) -> None:
+        table = pl.DataFrame(
+            {"term": ["a", "[b] / [log(c)]", "d"], "folds": [20, 14, 3], "frequency": [1.0, 0.7, 0.15]}
+        )
+        self.assertIsPng(term_stability(table, self.folder / "stability.png"))
+
+    def test_per_group_quality(self) -> None:
+        table = pl.DataFrame(
+            {"group": ["alpha", "beta", "gamma"], "spearman": [0.8, 0.2, 0.6], "regret": [0.0, 0.1, 0.02]}
+        )
+        self.assertIsPng(per_group_quality(table, self.folder / "quality.png"))
+
+    def test_term_count_curve_with_a_comparison_overlay(self) -> None:
+        self.assertIsPng(
+            term_count_curve(curve(), self.folder / "overlay.png", oracle=0.661, comparison=curve())
+        )
+
+    def test_practice_effects_without_confidence(self) -> None:
+        plain = practices().drop("confidence")
+        self.assertIsPng(practice_effects(plain, self.folder / "plain_practices.png"))
 
     def test_creates_missing_directories(self) -> None:
         nested = self.folder / "a" / "b" / "curve.png"
