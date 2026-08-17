@@ -30,6 +30,13 @@ from metafit.data import (
 from metafit.fit import FitResult, fit, prune
 from metafit.model import Equation
 from metafit.practices import best_practices, concordance, concordance_summary, feature_practices
+from metafit.report import (
+    coverage,
+    marginal_versus_conditional,
+    term_importance,
+    term_sentences,
+    unstable_majors,
+)
 from metafit.selection import knee_index, knee_terms, pareto_front, pareto_table, recommend, simplify_curve
 from metafit.terms import Atom, Library, Term, build_library, ratio_of_sums_terms, simplify
 from metafit.validate import (
@@ -70,6 +77,7 @@ __all__ = [
     "concordance",
     "concordance_summary",
     "constructed_library",
+    "coverage",
     "cross_validate",
     "decision_report",
     "feature_practices",
@@ -80,6 +88,7 @@ __all__ = [
     "knee_index",
     "knee_terms",
     "load",
+    "marginal_versus_conditional",
     "pareto_front",
     "pareto_table",
     "prune",
@@ -93,5 +102,8 @@ __all__ = [
     "structural_terms",
     "target",
     "term_effects",
+    "term_importance",
+    "term_sentences",
+    "unstable_majors",
     "variance_decomposition",
 ]

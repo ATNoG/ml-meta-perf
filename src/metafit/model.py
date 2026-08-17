@@ -68,7 +68,10 @@ class Equation:
     def __str__(self) -> str:
         lines = [f"MCC = {self.intercept:+.6g}"]
         for term, weight, standardized in self.ranked_terms():
-            lines.append(f"      {weight:+.6g} * {term.name}".ljust(64) + f"# beta={standardized:+.4f}")
+            # Long terms overflow the column rather than being truncated, so the padding
+            # has to keep a separator of its own -- ljust alone glues the comment to a
+            # name that is already past the stop.
+            lines.append(f"      {weight:+.6g} * {term.name}".ljust(64) + f"  # beta={standardized:+.4f}")
         return "\n".join(lines)
 
     def to_latex(self) -> str:

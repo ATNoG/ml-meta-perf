@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 
 from metafit.attribution import group_shares, term_effects, variance_decomposition
-from metafit.cli import main, render
+from metafit.cli import build_parser, configurations, main, render
 from metafit.data import (
     DATASET_COLUMN,
     DATASET_FEATURES,
@@ -26,6 +26,7 @@ from metafit.data import (
     target,
 )
 from metafit.experiment import (
+    DEFAULT_E2,
     Configuration,
     Report,
     baselines,
@@ -95,6 +96,24 @@ class TestEquationReports(unittest.TestCase):
         self.assertIsNotNone(self.e2.stability)
         assert self.e2.stability is not None
         self.assertIn("frequency", self.e2.stability.columns)
+
+    def test_published_equations_are_already_simplified(self) -> None:
+        # A published term that ``simplify`` can still shorten is a defect: the whole
+        # claim is that the equation can be read, and ``([a] / [b]) * [b]`` says ``a`` in
+        # six symbols. ``prune`` applies it, and this is the check that it stuck.
+        from metafit.terms import simplify
+
+        for equation in (self.e1.equation, self.e2.equation):
+            for term in equation.terms:
+                self.assertEqual(simplify(term), term, f"{term.name} is still reducible")
+
+    def test_published_equations_carry_no_duplicate_terms(self) -> None:
+        # Two terms that simplify to the same expression are collinear, so the weights
+        # they get are arbitrary and the pair reads as two pieces of evidence when it is
+        # one.
+        for equation in (self.e1.equation, self.e2.equation):
+            names = [term.name for term in equation.terms]
+            self.assertEqual(len(names), len(set(names)))
 
 
 class TestStudyTables(unittest.TestCase):
@@ -212,16 +231,50 @@ class TestCli(unittest.TestCase):
                          "Extracted practices", "Baselines", "Model selection"):
             self.assertIn(expected, printed)
 
-    def test_main_writes_equations_that_load_back(self) -> None:
+    def test_main_writes_equations_tables_and_report(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             buffer = io.StringIO()
             with redirect_stdout(buffer):
-                code = main(["--quick", "--save", directory])
+                code = main(
+                    [
+                        "--quick",
+                        "--quiet",
+                        "--no-figures",
+                        "--output", directory,
+                        "--report", str(Path(directory) / "report.md"),
+                    ]
+                )
             self.assertEqual(code, 0)
-            for name in ("e1.json", "e2.json"):
+            for name in ("e1.json", "e2.json", "em.json", "e2_accurate.json"):
                 path = Path(directory) / name
                 self.assertTrue(path.is_file())
                 self.assertGreater(Equation.load(path).n_terms, 0)
+            self.assertTrue((Path(directory) / "report.md").is_file())
+            self.assertTrue((Path(directory) / "curve_e2.csv").is_file())
+
+    def test_phase_selection_limits_what_is_printed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                main(["--quick", "--no-figures", "--no-report", "--phase", "screen", "--output", directory])
+            printed = buffer.getvalue()
+        self.assertIn("Correlation screening", printed)
+        self.assertNotIn("Oracle ladder", printed)
+
+    def test_flags_override_the_tuned_configuration(self) -> None:
+        parser = build_parser()
+        _, e2, _ = configurations(parser.parse_args(["--penalty", "3", "--arity", "2", "--terms", "40"]))
+        self.assertEqual(e2.penalty, 3.0)
+        self.assertEqual(e2.max_arity, 2)
+        self.assertEqual(e2.headline_terms, 40)
+        # A headline longer than the search would silently be truncated, so the search
+        # was raised to meet it.
+        self.assertGreaterEqual(e2.max_terms, 40)
+
+    def test_unmentioned_flags_keep_their_tuned_values(self) -> None:
+        parser = build_parser()
+        _, e2, _ = configurations(parser.parse_args([]))
+        self.assertEqual(e2, DEFAULT_E2)
 
 
 if __name__ == "__main__":

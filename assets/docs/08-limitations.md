@@ -39,10 +39,12 @@ model that is about to fail outright.
 
 ## Ranking is not dominated
 
-For selecting a model on a new dataset, the trivial per-model-mean baseline out-ranks E2
-(mean Spearman 0.70 vs 0.61) at comparable top-1 regret. E2 wins on predicting the MCC
-value. A learning-to-rank objective rather than squared error is the natural next step and
-has not been tried.
+For selecting a model on a new dataset, the trivial per-model-mean baseline out-ranks E2 on
+both measures — mean Spearman 0.703 against 0.648, mean top-1 regret 0.011 against 0.019.
+E2 wins on predicting the MCC *value* (0.466 against 0.201), which is a different question:
+knowing which models are generally good is enough to order them, while knowing how well one
+will do on *this* data is what needs the meta-features. A learning-to-rank objective rather
+than squared error is the natural next step and has not been tried.
 
 ## Model descriptors are thin
 

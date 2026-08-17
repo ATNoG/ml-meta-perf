@@ -1,6 +1,6 @@
 # 7. From equation to practice
 
-*Implemented in `metafit.attribution` and `metafit.practices`.*
+*Implemented in `metafit.attribution`, `metafit.practices` and `metafit.report`.*
 
 This is what the accuracy was traded for. An equation nobody can turn into guidance has
 bought nothing over a black box.
@@ -60,22 +60,25 @@ better left unwritten.
 
 ## The extracted practices
 
+Reproduced from the published 24-term E2; [chapter 9](09-report.md) is the generated
+version and is regenerated with the equation, so it is the one to trust if the two ever
+disagree.
+
 | # | practice | effect (MCC) | confidence |
 |---|---|---|---|
-| 1 | Higher **effective feature count** → **lower** MCC | 0.53 | moderate |
-| 2 | Higher **gravity** (class-centre separation) → **lower** MCC | 0.42 | strong |
-| 3 | Higher **model capacity** (log processing units) → **higher** MCC | 0.27 | moderate |
-| 4 | Higher **number of attributes** → **higher** MCC | 0.23 | moderate |
-| 5 | Higher **number of binary attributes** → **higher** MCC | 0.22 | moderate |
-| 6 | Higher **inference cost** (log operations) → **higher** MCC | 0.20 | strong |
-| 7 | Higher **training cost** (log operations) → **higher** MCC | 0.16 | moderate |
-| 8 | Higher **built-in outlier robustness** → **higher** MCC | 0.13 | strong |
-| 9 | Higher **proportion of correlated attributes** → **higher** MCC | 0.04 | weak |
+| 1 | Higher **built-in outlier robustness** → **higher** MCC | 0.42 | moderate |
+| 2 | Higher **training cost** (log operations) → **lower** MCC | 0.38 | moderate |
+| 3 | Higher **number of normally distributed attributes** → **lower** MCC | 0.33 | moderate |
+| 4 | Higher **class entropy** → **lower** MCC | 0.24 | moderate |
+| 5 | Higher **noise-to-signal ratio** → **lower** MCC | 0.17 | moderate |
+| 6 | Higher **proportion of correlated attributes** → **higher** MCC | 0.02 | weak |
+| 7 | Higher **number of instances** → **lower** MCC | 0.02 | weak |
 
 ![Feature effects](../figures/practice_effects.png)
 
-Read together: *pick a bigger, more expensive, outlier-robust model; expect trouble on
-data with a high effective feature count and well-separated class centres.*
+Read together: *prefer an outlier-robust model; expect trouble on noisy data, on data
+whose labels are evenly spread across many classes, and on data whose attributes are
+mostly well-behaved normal ones.*
 
 ## What these are not
 
@@ -84,15 +87,82 @@ set of signed statements rather than as a ranking. Any write-up that orders thes
 practices by effect size is claiming more than the evidence supports.
 
 **Associations measured across 20 datasets, not causal claims.** "Higher training cost
-went with higher MCC" does not mean padding a model with FLOPs raises MCC; it means the
-models that scored well here were the expensive ones. Training cost is a proxy for model
-capacity, and capacity is what is doing the work.
+went with lower MCC" does not mean that cheaper models are better; it means that among the
+models run here, the expensive ones were not the ones that scored well on the datasets
+where they were expensive — and training cost is partly a function of dataset size, so it
+is carrying data difficulty as well as model capacity.
 
-The `gravity` result deserves the most caution: the direction is stable and the effect
-large, but a single term carries it.
+### A direction that flipped, and what it means
+
+`Training Operations` is worth dwelling on. An earlier, shorter equation (14 terms, R²
+0.558) put it at *higher* MCC with moderate confidence; the published 24-term equation puts
+it at *lower* MCC, also with moderate confidence, and with more than twice the effect. Same
+data, same method, different equation length.
+
+This is not a defect in the extraction — both readings are correct descriptions of their
+own equation. It is a statement about the feature: `Training Operations` is not a clean
+signal in this meta-data. It rises with model capacity, which helps, and it also rises with
+dataset size, which is where the hard datasets are. Which of the two an equation ends up
+expressing depends on what else it has available to soak up the other. **A practice whose
+sign depends on the equation it was extracted from is not a practice**, and this one is
+reported here mainly as the worked example of why the confidence column is not enough on
+its own.
+
+### These are conditional statements, not marginal ones
+
+A practice states what the *equation* does as a feature rises, with every other term
+present. That is not the same as what the feature does on its own, and on this data the two
+mostly disagree. Rank correlation of each raw feature against MCC, against the direction
+its practice states:
+
+| feature | marginal ρ with MCC | practice says | agree |
+|---|---|---|---|
+| built-in outlier robustness | +0.298 | higher | ✓ |
+| noise-to-signal ratio | -0.395 | lower | ✓ |
+| training cost | +0.205 | lower | ✗ |
+| class entropy | +0.089 | lower | ✗ |
+| normally distributed attributes | +0.054 | lower | ✗ |
+| correlated attribute pairs | -0.197 | higher | ✗ |
+| number of instances | +0.056 | lower | ✗ |
+
+**Two of seven agree.** This is not a contradiction and not a bug — it is what conditioning
+does. A feature's marginal correlation mixes its own effect with everything it travels
+with; inside a fitted equation, the terms that carry those companions are already present,
+so what is left for this feature is what it adds beyond them. Class entropy is the clearest
+case: on its own it is faintly positive, but in the equation it appears in ratios against
+`log(Processing Units Number)`, so what its practice describes is entropy *relative to the
+capacity thrown at it*, and that is negative.
+
+The consequence for a reader is concrete. **These statements are advice about what to
+expect once the other factors are accounted for, not about what a scatter plot of that one
+feature will show.** Where the two disagree, the marginal view is the one a practitioner
+will accidentally verify against, and be confused by. Both numbers are printed above for
+exactly that reason.
 
 Twenty datasets from one domain is a narrow evidential base. Every statement above should
 be read as a hypothesis this data is consistent with, not a finding established by it.
+
+## What the weights say about the equation itself
+
+Two properties of the published equation are visible only in the importance table, and
+both temper what the practices above are worth.
+
+**The equation is flat.** Its 24 weights behave like **20.2 equally-weighted terms**
+(inverse Simpson index of the standardised-weight shares, $1/\sum_i s_i^2$), and the
+largest single term carries 8.9% of the mass. Sixteen terms are needed to reach 80%. This
+is a weaker kind of explanation than a short equation with one dominant term: the guidance
+rests on many small contributions, none of which is individually load-bearing. It is
+directly what the accuracy at this length costs, and it is the honest answer to "which term
+should I pay attention to" — mostly, none of them alone.
+
+**Four of the sixteen major terms were selected by fewer than half of the folds**,
+including the very largest. A large standardised weight with a low selection frequency
+means the term is doing its work for *this* training set and would be replaced on another;
+printed as a coefficient it looks exactly like a stable one. `report.unstable_majors`
+extracts them so they cannot be quietly read as findings. On the published equation the
+rank-1 term — `(log(gravity) + log(ns_ratio)) / log(Training Operations)`, 8.9% of the mass
+— appears in only 20% of folds, which is why no practice in the table above rests on
+`gravity`.
 
 ## Reading a single prediction
 
@@ -112,3 +182,34 @@ contribution breakdown:
      +0.2032   sqrt(Prediction Operations)
      ...
 ```
+
+## The analysis is generated, not authored
+
+There is a failure mode this chapter has to avoid. If the fitted equation is printed and
+somebody then sits down to explain which terms matter and what they imply, the explanation
+is the product and the equation is only its raw material — and the claim "this model is
+interpretable" quietly becomes "this model was interpreted by an expert, once".
+
+So `metafit.report` derives the written analysis arithmetically, and
+[chapter 9](09-report.md) is its output. The same equation always produces the same
+sentences, and every sentence maps onto a row of a table printed next to it.
+
+**Terms are ranked by standardised weight.** The target is centred but never scaled during
+fitting, so a standardised weight `beta` is already in MCC units: how far predicted MCC
+moves when that term moves by one standard deviation of itself. That is what makes a term
+over instance counts comparable with a term over class entropy. Ranking on the raw weights
+instead would rank the terms by the size of their units.
+
+**Major terms are the leading ones carrying 80% of the weight mass.** `term_importance`
+reports each term's `|beta|` as a share of the total and the running sum down the ranking,
+so the threshold is visible rather than buried; a reader who wants a different cut can read
+one off the `cumulative` column. The term that crosses the line is kept, so the flagged
+group always accounts for at least the stated mass.
+
+**Effect is reported next to every weight**, because a large weight on a term that barely
+varies is not important. The two disagree often enough to be worth printing together: a
+term can rank third by `beta` and first by `effect`.
+
+**The sentences make no claim about the features inside a term**, only about the term. A
+feature's direction depends on every term it appears in, and is `best_practices`' job —
+derived empirically, as the section above describes, rather than read off a sign.

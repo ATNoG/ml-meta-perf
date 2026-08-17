@@ -1,4 +1,4 @@
-.PHONY: docs figures study test lint clean
+.PHONY: docs figures study report quick test lint clean
 
 VENV := venv
 PY := PYTHONPATH=src $(VENV)/bin/python
@@ -16,13 +16,21 @@ docs:
 	cp -r assets docs/assets
 	@echo "API reference in docs/, study chapters in docs/assets/docs/"
 
-## Re-run the study and rewrite every figure.
-figures:
-	$(PY) -m metafit --figures assets/figures --save results
-
-## Print the full study to stdout.
+## The whole study: equations, validation, practices, CSV tables, report and figures.
 study:
 	$(PY) -m metafit
+
+## The same run without the figures, when only the numbers are wanted.
+report:
+	$(PY) -m metafit --no-figures
+
+## Figures only, from a fresh run.
+figures:
+	$(PY) -m metafit --quiet --no-tables --no-report
+
+## Seconds rather than minutes; checks the wiring, not the numbers.
+quick:
+	$(PY) -m metafit --quick --no-figures --output /tmp/metafit-quick
 
 test:
 	$(PY) -m unittest discover -s tests

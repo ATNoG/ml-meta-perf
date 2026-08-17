@@ -126,15 +126,12 @@ structurally identical problem.
   arXiv:1709.02280 (2017).
 - Lesoil et al., "The Interaction between Inputs and Configurations fed to Software
   Systems", arXiv:2112.07279 (2021).
-- Gong & Chen, "Predicting Software Performance with Divide-and-Learn", arXiv:2306.06651
-  (2023).
 
 **Why the analogy is tight.** Their configuration options map to our features, their
 software system to our classifier, and their *workload* to our dataset. Lesoil et al. study
 input×configuration interaction, which is our dataset×model interaction under another name.
 Jamshidi et al. transfer a performance model across environments, which is our
-leave-one-dataset-out question. Gong & Chen's "divide-and-learn" responds to sparsity by
-partitioning samples into groups and fitting per group — our grouped structure exactly.
+leave-one-dataset-out question.
 
 **What this community already knows that is worth borrowing.** Interaction terms are the
 standard remedy and are included by default rather than discovered, which is consistent

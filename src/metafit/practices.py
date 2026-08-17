@@ -147,7 +147,17 @@ def best_practices(
         return table.with_columns(pl.lit("").alias("practice"), pl.lit("").alias("confidence"))
 
     kept = table.filter(
-        (pl.col("effect").abs() >= min_effect) & (pl.col("direction").abs() >= min_direction)
+        (pl.col("effect").abs() >= min_effect)
+        & (pl.col("direction").abs() >= min_direction)
+        # The two measurements have to agree on the sign, and occasionally they do not.
+        # ``direction`` is a rank correlation over the whole range; ``effect`` compares
+        # the top decile against the bottom. A feature can be monotonically negative
+        # overall and still contribute more MCC in its top decile than its bottom -- and
+        # the sentence would then say "went with lower MCC" while quoting a positive
+        # decile difference as its evidence, which is worse than saying nothing. On the
+        # published equation this drops exactly one feature, inference cost, whose
+        # direction is -0.17 against a decile difference of +0.03.
+        & (pl.col("direction").sign() == pl.col("effect").sign())
     )
     if stability is not None:
         kept = kept.filter(pl.col("stability").is_nan() | (pl.col("stability") >= min_stability))

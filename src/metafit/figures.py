@@ -49,11 +49,16 @@ def _knee(report: Report) -> int | None:
     return int(matched["n_terms"][0]) if matched.height else None
 
 
-def generate(report: Report, destination: str | Path) -> list[Path]:
-    """Write every figure and return the paths, in the order they appear in the README."""
+def generate(report: Report, destination: str | Path, data: str | Path | None = None) -> list[Path]:
+    """Write every figure and return the paths, in the order they appear in the README.
+
+    ``data`` must be the meta-dataset the report was fitted on. Defaulting it to the
+    packaged one is only safe because that is the usual case; a caller who fitted on
+    another file and does not pass it here would get figures drawn from the wrong rows.
+    """
     folder = Path(destination)
     folder.mkdir(parents=True, exist_ok=True)
-    frame = load()
+    frame = load(data)
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
     truth = target(frame)
     predicted = report.e2.equation.predict(columns)
@@ -99,9 +104,9 @@ def generate(report: Report, destination: str | Path) -> list[Path]:
     return written
 
 
-def captions(report: Report) -> dict[str, str]:
+def captions(report: Report, data: str | Path | None = None) -> dict[str, str]:
     """Suggested LaTeX captions, carrying the disclosures kept out of the images."""
-    frame = load()
+    frame = load(data)
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
     truth = target(frame)
     hidden = count_below_floor(truth, report.e2.equation.predict(columns))

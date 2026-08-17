@@ -12,7 +12,7 @@
 
 In-sample is reported as a first-class result rather than dismissed. Term count is capped
 and terms are drawn from a screened pool, so this is **equation fitting, not model
-fitting**: the capacity to memorise 476 rows with 14 terms is limited, and the gap between
+fitting**: the capacity to memorise 476 rows with 24 terms is limited, and the gap between
 in-sample and cross-validated columns is itself the diagnostic. For contrast, a
 RandomForest reaches 0.910 in-sample and 0.067 leave-one-dataset-out on the same features.
 
@@ -27,6 +27,12 @@ standardiser, the screening pool, the beam search and the weights are all recomp
 the training rows of each fold. Only the term *vocabulary* — which is a function of the
 feature columns, not the target — is shared.
 
+Sharing it is not a concession, it is required. The vocabulary is target-free, so building
+it from every row leaks nothing; but rebuilding it per fold would make a term that is
+*admissible* on the training rows — one whose denominator stays away from zero there —
+undefined on the held-out rows, and the fold would score `NaN` rather than score badly.
+Admissibility is a property of the feature columns and has to be decided once, globally.
+
 ## Random k-fold is a leak, not a protocol
 
 Dataset meta-features are **constant across a dataset's 25 rows**. A random split
@@ -37,9 +43,9 @@ The **same equation**, three protocols:
 
 | protocol | R² | MAE |
 |---|---|---|
-| random 10-fold | **0.514** | 0.169 |
-| leave-one-dataset-out | **0.371** | 0.199 |
-| leave-one-model-out | **0.455** | 0.191 |
+| random 10-fold | **0.540** | 0.165 |
+| leave-one-dataset-out | **0.466** | 0.183 |
+| leave-one-model-out | **0.489** | 0.177 |
 
 ![Validation protocols](../figures/protocol_comparison.png)
 
@@ -85,7 +91,7 @@ ranks first.
 
 ![Per-dataset ranking quality](../figures/per_group_quality.png)
 
-The mean hides a wide spread: IoT-APD ranks at 0.88, DeepSlice at 0.03.
+The mean (0.648) hides a wide spread: IoT-APD ranks at 0.90, DeepSlice at 0.09.
 
 ## Baselines
 
@@ -98,10 +104,24 @@ An equation earns its place only by beating the obvious alternatives:
 | global mean (loo-model) | -0.024 | 0.290 |
 | per-dataset mean (loo-model) | 0.296 | 0.213 |
 
-E2 beats all four on its respective protocol. **One honest caveat:** for *ranking* models
-on a new dataset, the trivial "average MCC of this model elsewhere" baseline achieves a
-higher mean per-dataset Spearman (0.70) than E2 (0.61) at comparable top-1 regret. E2 wins
-on predicting the MCC *value*; it does not dominate on ranking.
+E2 beats all four on its respective protocol.
+
+**One honest caveat, and it is not a small one.** For *ranking* models on a new dataset,
+the trivial "average MCC of this model elsewhere" baseline beats E2 on both ranking
+measures:
+
+| | mean per-dataset Spearman | mean top-1 regret |
+|---|---|---|
+| per-model mean (leave-one-dataset-out) | **0.703** | **0.011** |
+| E2 | 0.648 | 0.019 |
+
+E2 wins clearly on predicting the MCC *value* — 0.466 against the baseline's 0.201 — and
+loses on ordering models within a dataset. The two are not in tension: knowing which models
+are generally good is enough to rank them, and is most of what ranking needs; knowing *how
+well* a particular model will do on a particular dataset is what needs the meta-features,
+and is what the equation supplies. Anyone whose actual question is "which of these 25
+models should I run" should use the baseline. Anyone asking "will this reach MCC 0.8 on my
+data" cannot, because the baseline has nothing to say about *their* data.
 
 ## Term stability
 

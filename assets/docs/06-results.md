@@ -74,8 +74,8 @@ are artefacts:
   effects, not a statement of relative importance.
 - **Model features carry more in combination than alone.** Adding them to E1 is worth
   +0.263 R² (0.337 → 0.600), well beyond the 0.164 they achieve by themselves. The surplus
-  is dataset×model interaction, which is why 10 of the accuracy-leaning equation's 20 terms
-  are mixed.
+  is dataset×model interaction, which is why mixed terms dominate both equations: 12 of the
+  default's 24 terms and **24 of the accuracy-leaning equation's 32**.
 
 ![Contribution shares](../figures/contribution_shares.png)
 
@@ -101,9 +101,10 @@ where it previously had 19.
 
 Both are fitted and reported by every run.
 
-**Why 26 terms and not 14?** Fourteen was the optimum of the *old* grammar and stopped
-being one. Re-sweeping arity, penalty and length together over 54 configurations puts the
-joint optimum at 26 terms, and the previous headline is now dominated on every axis:
+**Why 24 terms and not 14?** Fourteen was the optimum of the *old* grammar and stopped
+being one. Re-sweeping arity, penalty and length together over 54 configurations moves the
+joint optimum into the mid-twenties, and the previous headline is now dominated on every
+axis:
 
 | | in-sample | LOO-dataset | LOO-model |
 |---|---|---|---|
@@ -130,25 +131,17 @@ MCC = +1.21681
       +0.000217397* [log(inst_to_attr)] * [nr_norm]
 ```
 
-E2, on all 476 rows (14 terms):
+E2, on all 476 rows, is 24 terms and is **not reproduced here**. It is printed in full,
+with its term-importance table and its analysis, in [chapter 9](09-report.md) — which is
+regenerated with the equation on every run, so it cannot drift out of step with the code
+the way a copy in this chapter would. An earlier draft of this chapter carried a 14-term
+E2 that had stopped being the published equation several configurations earlier, which is
+why the listing now lives on the generated side.
 
-```
-MCC = +0.950554
-      -0.0398193   * [log(gravity)] / [log(Training Operations)]
-      -0.0948144   * [log(eq_num_attr)] * [log(nr_class)]
-      -0.18391     * [nr_cor_attr] * [nr_norm]
-      +0.013162    * ([nr_bin] + [nr_norm]) / [log(nr_attr)]
-      +0.0959242   * sqrt(Prediction Operations)
-      -0.248633    * [log(eq_num_attr)] / [log(Training Operations)]
-      +0.0312015   * [log(Processing Units Number)] * [Robust to Outliers]
-      -0.0408016   * [log(Prediction Operations)] * [Robust to Outliers]
-      +0.0123365   * Training Operations
-      -0.0253954   * [log(nr_inst)] / [log(Processing Units Number)]
-      -0.0254359   * ([nr_cor_attr] + [log(ns_ratio)]) / [log(nr_class)]
-      +0.00439947  * [log(nr_inst)] * [Robust to Outliers]
-      +0.000852048 * [log(inst_to_attr)] * [nr_norm]
-      +0.134305    * [nr_cor_attr] * [log(Training Operations)]
-```
+The shape of it, from that chapter: 12 of the 24 terms mix dataset and model features and
+drive **76%** of the output variance; 7 are model-only (14%) and 5 are dataset-only (10%).
+The weights are flat — they behave like **20.2 equally-weighted terms**, and the largest
+carries under 9% of the mass.
 
 ![What each term is worth](../figures/term_effects.png)
 
@@ -217,42 +210,6 @@ staying inspectable. Billa et al. (arXiv:2601.00428) find EBMs and symbolic regr
 dominate interpretable tabular regression. The trade is real: an EBM is a set of shape
 functions rather than a closed-form equation, so it can be plotted but not written down.
 
-## Divide-and-Learn, tested and rejected
-
-The configurable-systems literature ([`RESEARCH.md`](../../RESEARCH.md) §5) offers one
-method that looks tailor-made for this data: **Divide-and-Learn** (Gong & Chen,
-arXiv:2306.06651) partitions training samples into divisions with similar response, fits a
-local model per division, and routes an unseen sample to a division using its features.
-Our datasets are an obvious partition and their meta-features are an obvious router, so it
-was implemented and measured.
-
-Clustering the training datasets on their standardised meta-features, fitting one equation
-per division, and routing each held-out dataset to its nearest division centroid:
-
-| divisions | local terms | LOO-dataset R² |
-|---|---|---|
-| **1 (baseline — one global equation)** | 24 | **+0.466** |
-| 2 | 12 | +0.118 |
-| 3 | 8 | +0.187 |
-| **3** | **24** | **+0.216** (best division setting) |
-| 4 | 12 | -0.379 |
-
-**Every configuration is roughly half the baseline.** The mechanism is not subtle: 20
-datasets split three ways leaves about six per division, and under leave-one-dataset-out a
-local equation is then fitted on six datasets. Divide-and-Learn trades sample size for
-locality, and sample size is the one thing this study has repeatedly found to be the
-binding constraint. It is the right idea for a configuration space with thousands of
-measured samples and the wrong one for twenty datasets.
-
-Worth recording because it is a natural thing for a reader to suggest, and because the
-failure is about *this* meta-dataset rather than the method.
-
-> One implementation note that cost an hour: the term library must be built from **every**
-> row's features, not from the training rows of the fold. It is target-free, so building it
-> globally leaks nothing — but rebuilding it per fold makes a term that is admissible on
-> the training rows undefined on the held-out ones, and the first version of this
-> experiment returned `NaN` for that reason.
-
 ## Flexible models do worse, not better
 
 Standard regressors on the same raw features, under the same protocols:
@@ -265,7 +222,7 @@ Standard regressors on the same raw features, under the same protocols:
 | **metafit E2 (24 terms)** | 0.600 | **0.466** | 0.489 |
 
 Read the RandomForest row across. With 20 dataset groups a forest memorises dataset
-identity almost perfectly and then transfers worse than a 14-term equation. This is also
+identity almost perfectly and then transfers worse than a 24-term additive equation. This is also
 the likely provenance of the R² ≈ 0.9 figures reported for opaque meta-models: an
 in-sample or randomly-split forest reproduces them exactly, and the same forest is
 near-useless on an unseen dataset.

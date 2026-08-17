@@ -482,12 +482,25 @@ QUICK_ACCURATE = Configuration(
 )
 
 
-def run(path: str | None = None, *, quick: bool = False) -> Report:
-    """Run the whole study."""
+def run(
+    path: str | None = None,
+    *,
+    quick: bool = False,
+    config_e1: Configuration | None = None,
+    config_e2: Configuration | None = None,
+    config_accurate: Configuration | None = None,
+) -> Report:
+    """Run the whole study.
+
+    The three configurations default to the tuned ones (or to the quick ones under
+    ``quick``). Passing them explicitly is how the command line exposes the knobs: a
+    caller who overrides ``config_e2`` gets a study that is internally consistent, since
+    every table that mentions E2 is computed from the same configuration object.
+    """
     frame = load(path)
-    config_e1 = QUICK_E1 if quick else DEFAULT_E1
-    config_e2 = QUICK_E2 if quick else DEFAULT_E2
-    config_accurate = QUICK_ACCURATE if quick else ACCURATE_E2
+    config_e1 = config_e1 or (QUICK_E1 if quick else DEFAULT_E1)
+    config_e2 = config_e2 or (QUICK_E2 if quick else DEFAULT_E2)
+    config_accurate = config_accurate or (QUICK_ACCURATE if quick else ACCURATE_E2)
     e1 = run_e1(frame, config_e1)
     e2 = run_e2(frame, config_e2)
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)

@@ -306,17 +306,28 @@ Three rules are reported rather than one:
 
 | rule | terms | in-sample R² | LOO-dataset R² |
 |---|---|---|---|
-| knee of the in-sample curve | 8 | 0.533 | 0.303 |
-| knee of the cross-validated curve | 12 | 0.556 | 0.371 |
-| **best cross-validated** | **14** | **0.558** | **0.443** |
+| knee of the in-sample curve | 12 | 0.573 | 0.269 |
+| knee of the cross-validated curve | 8 | 0.539 | 0.108 |
+| **best cross-validated** | **24** | **0.600** | **0.466** |
 
-Fourteen is the headline, and two independent metrics agree on it: it is both the maximum
-of leave-one-dataset-out R² and the minimum of leave-one-dataset-out MAE (0.1884).
+**Twenty-four is the headline, and the three rules disagree sharply.** Both knees land far
+short of it and cost 0.2 of transfer to save a dozen terms. The knee is the right question
+for the in-sample curve, which is monotone and flattens; it is the wrong question for the
+cross-validated curve, which is not monotone at 20 groups — it dips to 0.009 at four terms,
+recovers to 0.414 at sixteen, and a detector run on that is describing the dip.
 
-Both **Pareto fronts** are also reported. Over (length, LOO-dataset R²) the front is 2, 4,
-8, 10, 12, 14 — nothing longer than 14 terms earns its length on transfer. Over (length,
-in-sample R²) *every* length is on the front, because fit is monotone in terms and so
-nothing is ever dominated. That is precisely why the in-sample curve cannot choose a
-length by itself and the knee detector exists for it.
+The best-cross-validated rule is therefore what selects the published length, and it is the
+one stated in advance rather than picked afterwards. It is worth noting what it costs to
+follow: **26 terms has the lower leave-one-dataset-out MAE** (0.1792 against 0.1827), so R²
+and MAE do not agree the way they did under the previous grammar. The rule was fixed
+before the numbers were in, and changing it now to catch a thousandth of MAE is how a
+selection rule stops meaning anything.
+
+Both **Pareto fronts** are also reported. Over (length, LOO-dataset R²) the front is just 2,
+16 and 24 — nothing longer than 24 terms earns its length on transfer, and most lengths
+below it are dominated by something shorter. Over (length, in-sample R²) *every* length is
+on the front, because fit is monotone in terms and so nothing is ever dominated. That is
+precisely why the in-sample curve cannot choose a length by itself and the knee detector
+exists for it.
 
 ![Accuracy versus equation length](../figures/term_count_curve.png)

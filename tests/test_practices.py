@@ -116,6 +116,34 @@ class TestBestPractices(unittest.TestCase):
         table = best_practices(equation, {"v": values})
         self.assertEqual(table.height, 0)
 
+    def test_features_whose_two_measurements_disagree_are_dropped(self) -> None:
+        # ``direction`` is a rank correlation over the whole range and ``effect`` compares
+        # the top decile against the bottom, so they can disagree in sign. When they do,
+        # the sentence would state one direction while quoting the other as its evidence,
+        # which is worse than saying nothing.
+        #
+        # Ninety rows over a narrow low range where the contribution falls, then ten far
+        # above it where the quadratic takes over: monotonically falling by rank, rising
+        # by decile.
+        values = np.concatenate([np.linspace(0.0, 0.9, 90), np.linspace(4.0, 5.0, 10)])
+        equation = Equation(
+            intercept=0.0,
+            terms=(Term("atom", (Atom("f"),)), Term("atom", (Atom("f", "sq"),))),
+            weights=(-1.0, 0.3),
+            standardized_weights=(-0.5, 0.5),
+        )
+        measured = feature_practices(equation, {"f": values})
+        self.assertLess(float(measured["direction"][0]), 0.0)
+        self.assertGreater(float(measured["effect"][0]), 0.0)
+
+        self.assertEqual(best_practices(equation, {"f": values}).height, 0)
+
+    def test_agreeing_measurements_are_kept(self) -> None:
+        table = best_practices(rising_equation(), columns())
+        self.assertEqual(table.height, 2)
+        for row in table.iter_rows(named=True):
+            self.assertGreater(float(row["direction"]) * float(row["effect"]), 0.0)
+
     def test_confidence_rises_with_evidence(self) -> None:
         strong = best_practices(rising_equation(), columns(), stability_table(up=0.95, down=0.95))
         levels = set(strong["confidence"].to_list())
