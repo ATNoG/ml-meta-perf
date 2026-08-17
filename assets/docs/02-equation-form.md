@@ -110,6 +110,13 @@ Three conclusions, and the first two were invisible at fixed penalty:
 So `max_arity = 3` is the default because it is the only setting that is not dominated:
 arity 2 is beaten outright, arity 4 wins one axis at a ruinous price on the other.
 
+**The fitted equation confirms it directly.** In the published 24-term E2 the three-feature
+`sum_ratio` accounts for 11 terms and **50% of the standardised weight mass** — the search
+did not merely tolerate the extra arity, it built half the equation out of it. A
+two-feature grammar would have had to express that half some other way, and the 0.6222
+ceiling above is what happens when it tries. Counted from the equation by
+`report.operation_usage`; see [chapter 7](07-practices.md#3-which-operations-the-equation-needed).
+
 The reason not to go past four is different and does not need a measurement. A
 `(f1+f2)/(f3+f4)` term already names four features and two operations, and the grammar
 exists so a reader can hold a term in their head. **Arity is capped by legibility before it
@@ -236,6 +243,25 @@ Adding `f^3` and `1/sqrt(f)` to the unary transforms was tested and **made thing
 The additional transforms are high-variance, score well under screening, and displace
 better terms. The vocabulary is not under-powered; [chapter 5](05-oracles.md) locates the
 real limit.
+
+**Two of the five transforms already on offer are never used either.** Counting from the
+published equation rather than from a sweep:
+
+| transform | terms using it | share of weight mass |
+|---|---|---|
+| `log` | 19 of 24 | 79% |
+| `id` | 12 of 24 | 41% |
+| `sqrt` | 1 of 24 | 6% |
+| `1/f` | **0** | **0%** |
+| `f^2` | **0** | **0%** |
+
+`log` is the workhorse by a wide margin, `sqrt` survives on a single term, and inversion
+and squaring earn nothing at all despite being admissible on 11 and 16 of the 17 features
+respectively. This is the strongest available evidence that the transform vocabulary is
+already past the point of usefulness rather than short of it: the search had these shapes
+available, screened them, and declined them. Trimming `1/f` and `f^2` would shrink the
+library at no measured cost — they are retained only because a vocabulary chosen to fit one
+meta-dataset's outcome is a worse default than one chosen on principle.
 
 ## Why the raw features are not scaled first
 

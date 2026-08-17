@@ -53,6 +53,48 @@ explains. The missing 42% is real and unwritten. Richer descriptors — inductiv
 hypothesis-space characteristics, optimiser behaviour — would probably help more than any
 change to the fitting.
 
+## A practice can flip sign between equations
+
+`Training Operations` is the worked example, and it is the most serious limitation on the
+guidance the study extracts.
+
+| equation | practice | effect | confidence |
+|---|---|---|---|
+| earlier default (14 terms, arity 2, λ=20) | higher training cost → **higher** MCC | 0.16 | moderate |
+| published default (24 terms, arity 3, λ=5) | higher training cost → **lower** MCC | 0.38 | moderate |
+
+Same data, same extraction procedure, same confidence rating, opposite sign — and the later
+equation is the better one on every metric, so this is not a case of a bad equation being
+corrected by a good one.
+
+**Neither reading is an error.** Each correctly describes the equation it was extracted
+from. The problem is the feature: `Training Operations` moves with two things at once. It
+rises with model capacity, which raises MCC, and it rises with dataset size, which is where
+the hard datasets are. Which of the two an equation ends up expressing depends on what
+*other* terms it has available to absorb the other half — and that depends on the grammar,
+the penalty and the length, none of which the practitioner reading the practice can see.
+
+This generalises past this one feature. **A practice is a property of an equation, not of
+the data**, and it only transfers to the data when the feature it names is not confounded
+inside the meta-data. The study has no test that separates the two cases, so the practices
+in [chapter 7](07-practices.md) should be read with the confidence column *and* this
+caveat, not the confidence column alone.
+
+Three mitigations are in place and none of them is sufficient:
+
+- terms selected in fewer than half the folds produce no practice, which catches
+  instability *within* one configuration but says nothing about instability *across*
+  configurations — `Training Operations` sits at 0.66 fold stability in the published
+  equation;
+- the marginal correlation is printed beside the conditional direction
+  ([chapter 9](09-report.md)), so a reader can at least see when the two disagree, as they
+  do here;
+- features whose rank direction and decile effect disagree in sign are dropped outright.
+
+What would actually settle it is refitting across a grid of configurations and reporting
+only the practices whose sign is stable across all of them. That is a sign-stability
+analogue of the fold-stability filter, it is affordable, and it has not been done.
+
 ## Hyperparameter selection is not nested
 
 The stability cap, penalty and equation length were tuned by inspecting
@@ -78,3 +120,4 @@ result biases the target upward.
 | richer model descriptors | would test whether the 42% unexplained model capability is reachable |
 | an interaction-aware but interpretable term family | would test whether the +0.122 rank-1 gap can be closed without abandoning readability |
 | a learning-to-rank objective | would test whether the ranking gap against the per-model-mean baseline closes |
+| refitting across a configuration grid | would separate practices that describe the data from practices that describe one equation |

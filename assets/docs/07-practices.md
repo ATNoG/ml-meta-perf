@@ -92,21 +92,10 @@ models run here, the expensive ones were not the ones that scored well on the da
 where they were expensive — and training cost is partly a function of dataset size, so it
 is carrying data difficulty as well as model capacity.
 
-### A direction that flipped, and what it means
-
-`Training Operations` is worth dwelling on. An earlier, shorter equation (14 terms, R²
-0.558) put it at *higher* MCC with moderate confidence; the published 24-term equation puts
-it at *lower* MCC, also with moderate confidence, and with more than twice the effect. Same
-data, same method, different equation length.
-
-This is not a defect in the extraction — both readings are correct descriptions of their
-own equation. It is a statement about the feature: `Training Operations` is not a clean
-signal in this meta-data. It rises with model capacity, which helps, and it also rises with
-dataset size, which is where the hard datasets are. Which of the two an equation ends up
-expressing depends on what else it has available to soak up the other. **A practice whose
-sign depends on the equation it was extracted from is not a practice**, and this one is
-reported here mainly as the worked example of why the confidence column is not enough on
-its own.
+`Training Operations` in particular flips sign between the earlier 14-term equation and the
+published one, and should not be acted on. It is written up as a limitation in
+[chapter 8](08-limitations.md#a-practice-can-flip-sign-between-equations), because the
+caveat it raises applies to the whole extraction rather than to that one row.
 
 ### These are conditional statements, not marginal ones
 
@@ -142,18 +131,94 @@ exactly that reason.
 Twenty datasets from one domain is a narrow evidential base. Every statement above should
 be read as a hypothesis this data is consistent with, not a finding established by it.
 
-## What the weights say about the equation itself
+## Three ways to read a flat equation
 
-Two properties of the published equation are visible only in the importance table, and
-both temper what the practices above are worth.
+The published equation's 24 weights behave like **20.2 equally-weighted terms** (inverse
+Simpson index of the standardised-weight shares, $1/\sum_i s_i^2$), and the largest single
+term carries 8.9% of the mass. Sixteen terms are needed to reach 80%.
 
-**The equation is flat.** Its 24 weights behave like **20.2 equally-weighted terms**
-(inverse Simpson index of the standardised-weight shares, $1/\sum_i s_i^2$), and the
-largest single term carries 8.9% of the mass. Sixteen terms are needed to reach 80%. This
-is a weaker kind of explanation than a short equation with one dominant term: the guidance
-rests on many small contributions, none of which is individually load-bearing. It is
-directly what the accuracy at this length costs, and it is the honest answer to "which term
-should I pay attention to" — mostly, none of them alone.
+The additive form $f(X) = w_0t_0 + w_1t_1 + \dots$ invites reading one term at a time, and
+a flat equation refuses that. **This is a statement about the unit of explanation, not
+about the quality of the equation.** MCC here is inferred by a *set* of terms acting
+together, and the right response is to change the unit rather than to conclude that the
+equation cannot be read. Three units work, and `metafit.report` generates all three into
+[chapter 9](09-report.md).
+
+### 1. Blocks of terms that move together
+
+Terms whose per-row contributions correlate say the same thing about a row and can be read
+as one. Grouping is on the *contributions* rather than on shared features — two terms can
+share no feature and still track each other, and two terms over the same feature can move
+independently once their transforms differ.
+
+The 24 terms collapse to **11 blocks**, and the top three hold five terms each. `shared`
+names the features a strict majority of a block's terms contain — a genuine question, since
+the grouping never looked at what the terms contained:
+
+| block | terms | share | direction | shared features |
+|---|---|---|---|---|
+| 1 | 5 | 22% | **raises** MCC | `Processing Units Number` |
+| 2 | 5 | 22% | **lowers** MCC | `Processing Units Number`, `Prediction Operations` |
+| 3 | 5 | 20% | **lowers** MCC | *(none)* |
+| 4–11 | 1–2 each | 39% between them | mixed | assorted |
+
+**Three blocks carry 64% of the equation**, and they read as three movements rather than 24
+fragments:
+
+1. **Capacity helps.** Every term in block 1 rises with `Processing Units Number` — some
+   with it in the numerator, some as a divisor with a negative weight, which is why
+   grouping on *contributions* rather than on features finds them together.
+2. **Capacity spent on inference hurts.** Block 2 shares capacity *and* inference cost and
+   moves the other way. It is largely products of the two — where a model is both large and
+   expensive to run, MCC falls.
+3. **Block 3 has no shared feature at all.** Five terms over class entropy, effective
+   feature count, attribute counts and instance counts that nonetheless move together and
+   pull MCC down: dataset difficulty, expressed through no single feature. It is the block
+   that most justifies the method, because no feature-based grouping would have found it.
+
+That structure is invisible in the term-by-term table and is not recoverable by reading the
+printed equation.
+
+### 2. Which features the search reached for
+
+Asked of the vocabulary rather than of the weights, so a spread of weights does not blunt
+it. **15 of the 17 available meta-features appear in the equation.** Two do not:
+`nr_outliers` and `Active Regularization Mechanisms` — both were offered under every
+transform and neither earned a place, which is a result about the meta-data rather than
+about the search.
+
+`Processing Units Number` appears in 10 of 24 terms and `Training Operations` in 8; the
+dataset features are spread thinner, 2–4 terms each. The full table, with the transforms
+and operations each feature was used under, is in [chapter 9](09-report.md).
+
+### 3. Which operations the equation needed
+
+| operation | terms | share |
+|---|---|---|
+| `sum_ratio` — $(f_1+f_2)/f_3$ | 11 | 50% |
+| `product` — $f_1 \cdot f_2$ | 8 | 31% |
+| `atom` — $f$ | 4 | 16% |
+| `ratio` — $f_1/f_2$ | 1 | 3% |
+
+| transform | terms | share |
+|---|---|---|
+| `log` | 19 | 79% |
+| `id` | 12 | 41% |
+| `sqrt` | 1 | 6% |
+| `inv`, `sq` | **0** | **0%** |
+
+Two things worth stating. **The three-feature operation carries half the equation**, which
+is the direct evidence for the arity design point argued in
+[chapter 2](02-equation-form.md) — a two-feature grammar would have had to express that
+half some other way. And **`1/f` and `f²` were offered and never used**: the search
+preferred `log` for compression and had no use for inversion or squaring at all.
+
+`ratio_of_sums` is absent because `max_arity = 3` kept it out of the library, not because
+the data declined it. The generated table marks that distinction with an `offered` column,
+since reading a configuration choice as a finding is exactly the mistake this section is
+built to avoid.
+
+### And one thing that does temper the guidance
 
 **Four of the sixteen major terms were selected by fewer than half of the folds**,
 including the very largest. A large standardised weight with a low selection frequency

@@ -79,7 +79,7 @@ Against the baselines and the ceiling that bounds any additive equation:
 
 The equation has 24 terms, of which **16** carry 81% of the standardised weight mass; the single largest carries 8.9%, and the weights behave like **20.2 equally-weighted terms** (inverse Simpson index of the shares).
 
-That last number is the one to read for concentration, because it does not depend on where a threshold is drawn. At 84% of the term count the equation is **flat**: no term dominates, and the guidance below rests on many small contributions rather than on a few large ones. That is a weaker kind of explanation than a short equation with one dominant term, and it is what the accuracy at this length costs.
+That last number is the one to read for concentration, because it does not depend on where a threshold is drawn. At 84% of the term count the equation is **flat**: no single term dominates. That is a statement about the *unit of explanation*, not about the quality of the equation — MCC here is inferred by a set of terms acting together rather than by one or two that could be quoted on their own. Three readings follow, and the sections below give each one: read the terms in the blocks that move together, read which features the search reached for, and read which operations it needed to apply to them.
 
 `beta` is the standardised weight — the MCC contributed per standard deviation of the term, which is what makes terms in unrelated units comparable. `effect` is the swing in predicted MCC across the middle 80% of the term's observed range. `stability` is the fraction of leave-one-dataset-out folds that selected the term.
 
@@ -133,6 +133,67 @@ That last number is the one to read for concentration, because it does not depen
 | 11 | ([log(class_ent)] + [log(eq_num_attr)]) / [log(nr_attr)] | dataset | -0.1134 | 0.0424 | 0.1000 |
 | 13 | nr_bin | dataset | 0.1025 | 0.0383 | 0.1000 |
 | 14 | ([log(gravity)] + [nr_norm]) / [log(nr_attr)] | dataset | 0.0968 | 0.0362 | 0.2500 |
+
+### Reading the terms in blocks
+
+An additive form invites reading one term at a time, and that works when one or two weights dominate. When they do not, the honest unit is larger than a term and smaller than the equation: terms whose per-row contributions move together say the same thing about a row and can be read as one block. Grouping is on the contributions rather than on shared features, because two terms can share no feature and still track each other.
+
+11 blocks over 24 terms, the largest holding 5 terms and 22% of the weight mass.
+
+| group | n_terms | share | effect | direction | shared | terms |
+|---|---|---|---|---|---|---|
+| 1 | 5 | 0.2199 | 1.2189 | raises MCC | Processing Units Number | Processing Units Number ; sqrt(Prediction Operations) ; [log(Processing Units Number)] * [Robust to Outliers] ; ([log(inst_to_attr)] + [log(nr_class)]) / [log(Processing Units Number)] ; ([log(nr_inst)] + [Robust to Outliers]) / [log(Processing Units Number)] |
+| 2 | 5 | 0.2169 | 1.2315 | lowers MCC | Processing Units Number, Prediction Operations | [log(Processing Units Number)] * [log(Training Operations)] ; [log(Processing Units Number)] * [log(Prediction Operations)] ; [log(Prediction Operations)] * [Robust to Outliers] ; ([log(class_ent)] + [log(Training Operations)]) / [log(Processing Units Number)] ; ([log(Processing Units Number)] + [log(Prediction Operations)]) / [log(nr_class)] |
+| 3 | 5 | 0.2030 | 0.9494 | lowers MCC |  | nr_bin ; [log(ns_ratio)] * [log(Training Operations)] ; ([log(class_ent)] + [log(eq_num_attr)]) / [log(nr_attr)] ; ([log(class_ent)] + [log(nr_class)]) / [log(Processing Units Number)] ; ([log(eq_num_attr)] + [log(Training Operations)]) / [log(nr_inst)] |
+| 4 | 1 | 0.0889 | 0.6689 | lowers MCC | Training Operations, gravity, ns_ratio | ([log(gravity)] + [log(ns_ratio)]) / [log(Training Operations)] |
+| 5 | 2 | 0.0782 | 0.5345 | lowers MCC | nr_norm | [nr_cor_attr] * [nr_norm] ; ([nr_norm] + [Robust to Outliers]) / [log(nr_attr)] |
+| 6 | 1 | 0.0480 | 0.3485 | lowers MCC | Processing Units Number, eq_num_attr, ns_ratio | ([log(eq_num_attr)] + [log(ns_ratio)]) / [log(Processing Units Number)] |
+| 7 | 1 | 0.0362 | 0.3040 | raises MCC | gravity, nr_attr, nr_norm | ([log(gravity)] + [nr_norm]) / [log(nr_attr)] |
+| 8 | 1 | 0.0334 | 0.2376 | raises MCC | inst_to_attr, nr_norm | [log(inst_to_attr)] * [nr_norm] |
+| 9 | 1 | 0.0305 | 0.1929 | raises MCC | Training Operations, nr_cor_attr | [nr_cor_attr] * [log(Training Operations)] |
+| 10 | 1 | 0.0251 | 0.1688 | lowers MCC | Training Operations, nr_cor_attr | [nr_cor_attr] / [log(Training Operations)] |
+| 11 | 1 | 0.0199 | 0.1329 | raises MCC | Training Operations | Training Operations |
+
+### Which features the search reached for
+
+**15 of 17** available meta-features appear in the equation. `share` sums the weight mass of every term a feature appears in, so a feature in two terms is credited both and the column does not sum to 1 — it answers how much of the equation touches this feature, not how much it owns. A feature the search declined to use after seeing every transform of it is itself a result.
+
+| feature | meaning | n_terms | share | transforms | operations |
+|---|---|---|---|---|---|
+| Processing Units Number | model capacity (log processing units) | 10 | 0.4815 | id, log | atom, product, sum_ratio |
+| Training Operations | training cost (log operations) | 8 | 0.3579 | id, log | atom, product, ratio, sum_ratio |
+| class_ent | class entropy (how evenly the labels are spread) | 3 | 0.1832 | log | sum_ratio |
+| ns_ratio | noise-to-signal ratio | 3 | 0.1634 | log | product, sum_ratio |
+| nr_norm | number of normally distributed attributes | 4 | 0.1478 | id | product, sum_ratio |
+| Prediction Operations | inference cost (log operations) | 4 | 0.1348 | log, sqrt | atom, product, sum_ratio |
+| Robust to Outliers | built-in robustness to outliers | 4 | 0.1332 | id | product, sum_ratio |
+| gravity | gravity (separation between the majority and minority class centres) | 2 | 0.1251 | log | sum_ratio |
+| eq_num_attr | equivalent number of attributes (effective feature count) | 3 | 0.1197 | log | sum_ratio |
+| nr_class | number of classes | 3 | 0.1152 | log | sum_ratio |
+| nr_cor_attr | proportion of correlated attribute pairs | 3 | 0.1098 | id | product, ratio |
+| nr_attr | number of attributes | 3 | 0.1025 | log | sum_ratio |
+| nr_inst | number of instances | 2 | 0.0749 | log | sum_ratio |
+| inst_to_attr | instances per attribute | 2 | 0.0583 | log | product, sum_ratio |
+| nr_bin | number of binary attributes | 1 | 0.0383 | id | atom |
+| nr_outliers | number of attributes containing outliers | 0 | 0.0000 |  |  |
+| Active Regularization Mechanisms | number of active regularisation mechanisms | 0 | 0.0000 |  |  |
+
+### Which operations the equation needed
+
+The vocabulary offers five operations and five transforms and the search is free to ignore any of them, so a row that was offered and went unused is a shape this data turned out not to need. Rows marked `offered = no` were kept out of the library by the arity cap and say nothing about the data:
+
+| kind | name | offered | n_terms | share |
+|---|---|---|---|---|
+| operation | atom | yes | 4 | 0.1582 |
+| operation | ratio | yes | 1 | 0.0251 |
+| operation | product | yes | 8 | 0.3129 |
+| operation | sum_ratio | yes | 11 | 0.5038 |
+| operation | ratio_of_sums | no | 0 | 0.0000 |
+| transform | id | yes | 12 | 0.4149 |
+| transform | log | yes | 19 | 0.7875 |
+| transform | sqrt | yes | 1 | 0.0558 |
+| transform | inv | yes | 0 | 0.0000 |
+| transform | sq | yes | 0 | 0.0000 |
 
 ### Where the equation's variance comes from
 

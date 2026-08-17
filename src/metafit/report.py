@@ -42,6 +42,7 @@ from metafit.experiment import Configuration, Report
 from metafit.model import Equation
 from metafit.practices import render as render_practices
 from metafit.stats import spearman
+from metafit.terms import TRANSFORMS, Atom, Term
 
 #: A term is *major* when it falls inside the smallest group of terms whose standardised
 #: weights account for this share of the total weight mass. Set at four fifths because
@@ -54,6 +55,13 @@ MAJOR_MASS = 0.8
 #: terms as major, and twenty near-identical paragraphs is not a readable analysis --
 #: the table carries the rest.
 SENTENCE_LIMIT = 8
+
+#: The grammar's operations, in the order ``operation_usage`` reports them.
+OPERATIONS = ("atom", "ratio", "product", "sum_ratio", "ratio_of_sums")
+
+#: How many raw features each operation names. Used to tell an operation the search
+#: *declined* from one the arity cap never offered it.
+OPERATION_ARITY = {"atom": 1, "ratio": 2, "product": 2, "sum_ratio": 3, "ratio_of_sums": 4}
 
 
 def term_importance(
@@ -230,6 +238,199 @@ def unstable_majors(importance: pl.DataFrame, threshold: float = 0.5) -> pl.Data
     ).select("rank", "term", "group", "beta", "share", "stability")
 
 
+def _atoms(term: Term | Atom) -> list[Atom]:
+    """Every `Atom` inside a term, however deeply nested."""
+    if isinstance(term, Atom):
+        return [term]
+    collected: list[Atom] = []
+    for operand in term.operands:
+        collected.extend(_atoms(operand))
+    return collected
+
+
+def feature_usage(
+    equation: Equation,
+    importance: pl.DataFrame,
+    available: tuple[str, ...],
+) -> pl.DataFrame:
+    """Which raw features the equation reached for, how often, and under what transforms.
+
+    A second way to read a flat equation. When no single term dominates, the question
+    "which term matters" has no useful answer, but "which of the features on offer did the
+    search actually use, and how did it have to bend them" still does -- and it is asked of
+    the vocabulary rather than of the weights, so a spread of weights does not blunt it.
+
+    ``share`` sums the standardised-weight mass of every term a feature appears in. A
+    feature in two terms is credited both, so the column does not sum to 1: it answers
+    "how much of the equation touches this feature", not "how much does this feature own".
+    ``unused`` features are reported too, since a feature the search declined to use after
+    seeing every transform of it is a finding about the meta-data.
+    """
+    mass = dict(zip(importance["term"].to_list(), importance["share"].to_list(), strict=True))
+    rows: list[dict[str, object]] = []
+    for feature in available:
+        indices = [index for index, term in enumerate(equation.terms) if feature in term.features]
+        transforms = sorted(
+            {atom.transform for index in indices for atom in _atoms(equation.terms[index]) if atom.feature == feature}
+        )
+        operations = sorted({equation.terms[index].operation for index in indices})
+        rows.append(
+            {
+                "feature": feature,
+                "meaning": FEATURE_GLOSSARY.get(feature, feature),
+                "n_terms": len(indices),
+                "share": float(sum(mass.get(equation.terms[index].name, 0.0) for index in indices)),
+                "transforms": ", ".join(transforms),
+                "operations": ", ".join(operations),
+            }
+        )
+    return pl.DataFrame(rows).sort("share", descending=True)
+
+
+def operation_usage(
+    equation: Equation,
+    importance: pl.DataFrame,
+    max_arity: int | None = None,
+) -> pl.DataFrame:
+    """Which grammar operations and transforms earned their place in the equation.
+
+    The vocabulary offers five operations and five transforms; the search is free to
+    ignore any of them, and what it declined is as much a result as what it chose --
+    every unused entry is a shape the data turned out not to need.
+
+    That reading only holds for entries the search could actually have used, so
+    ``max_arity`` marks the rest ``offered = no``. Reporting ``ratio_of_sums`` as
+    "declined" when a three-feature cap kept it out of the library would be reading a
+    configuration choice as a finding about the data.
+    """
+    mass = dict(zip(importance["term"].to_list(), importance["share"].to_list(), strict=True))
+    rows: list[dict[str, object]] = []
+    for kind, names in (("operation", OPERATIONS), ("transform", TRANSFORMS)):
+        for name in names:
+            if kind == "operation":
+                indices = [index for index, term in enumerate(equation.terms) if term.operation == name]
+                offered = max_arity is None or OPERATION_ARITY[name] <= max_arity
+            else:
+                indices = [
+                    index
+                    for index, term in enumerate(equation.terms)
+                    if any(atom.transform == name for atom in _atoms(term))
+                ]
+                offered = True
+            rows.append(
+                {
+                    "kind": kind,
+                    "name": name,
+                    "offered": offered,
+                    "n_terms": len(indices),
+                    "share": float(sum(mass.get(equation.terms[index].name, 0.0) for index in indices)),
+                }
+            )
+    return pl.DataFrame(rows)
+
+
+def _shared_features(equation: Equation, members: list[int]) -> list[str]:
+    """Features appearing in at least half of a block's terms, commonest first.
+
+    What names a block. The terms were grouped on how their contributions move, not on
+    what they contain, so this is a genuine question rather than a restatement of the
+    grouping -- and when a block has no common feature, the empty answer is worth seeing
+    too.
+    """
+    counts: dict[str, int] = {}
+    for index in members:
+        for feature in set(equation.terms[index].features):
+            counts[feature] = counts.get(feature, 0) + 1
+    # Strict majority. Half would let a two-term block claim a feature only one of its
+    # terms names, which is the opposite of shared.
+    threshold = len(members) // 2 + 1
+    return [
+        feature
+        for feature, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+        if count >= threshold
+    ]
+
+
+def term_groups(
+    equation: Equation,
+    columns: dict[str, np.ndarray],
+    importance: pl.DataFrame,
+    *,
+    threshold: float = 0.5,
+) -> pl.DataFrame:
+    """Terms whose contributions move together, read as one block.
+
+    An additive equation invites reading term by term, and that works when one or two
+    weights dominate. When they do not -- and here they do not -- the honest unit of
+    explanation is larger than a term and smaller than the whole equation. Terms are
+    grouped by the correlation of their per-row contributions, so a group is a set of terms
+    that rise and fall together across the meta-dataset and can be described in one
+    sentence.
+
+    Grouping on contributions rather than on shared features is deliberate. Two terms can
+    share no feature and still track each other, and two terms over the same feature can
+    move independently once their transforms differ; what a reader needs to know is whether
+    they say the same thing about a row.
+
+    Correlation is signed and taken on the contribution, so a term entering with a negative
+    weight joins the group it actually agrees with rather than the one it merely shares
+    features with.
+    """
+    if not equation.terms:
+        return pl.DataFrame(
+            schema={
+                "group": pl.Int64,
+                "n_terms": pl.Int64,
+                "share": pl.Float64,
+                "effect": pl.Float64,
+                "direction": pl.String,
+                "shared": pl.String,
+                "terms": pl.String,
+            }
+        )
+
+    matrix = contributions(equation, columns)
+    centered = matrix - matrix.mean(axis=0)
+    scale = np.sqrt((centered**2).sum(axis=0))
+    scale = np.where(scale < 1e-12, 1.0, scale)
+    correlation = (centered / scale).T @ (centered / scale)
+
+    mass = dict(zip(importance["term"].to_list(), importance["share"].to_list(), strict=True))
+    # Single-link agglomeration: a term joins a group when it tracks *any* member, which is
+    # the right rule here because a chain of terms that each track the next is one story
+    # told in several pieces, not several stories.
+    assignment = list(range(len(equation.terms)))
+    for i in range(len(equation.terms)):
+        for j in range(i + 1, len(equation.terms)):
+            if correlation[i, j] >= threshold:
+                merged, absorbed = sorted((assignment[i], assignment[j]))
+                assignment = [merged if label == absorbed else label for label in assignment]
+
+    rows: list[dict[str, object]] = []
+    for label in sorted(set(assignment)):
+        members = [index for index, value in enumerate(assignment) if value == label]
+        total = matrix[:, members].sum(axis=1)
+        low, high = np.percentile(total, [10.0, 90.0])
+        swing = float(high - low)
+        # The group's own sign: whether its combined contribution rises with itself, which
+        # is what a one-sentence description of the block has to state.
+        signed = float(np.sum([equation.standardized_weights[index] for index in members]))
+        rows.append(
+            {
+                "group": len(rows) + 1,
+                "n_terms": len(members),
+                "share": float(sum(mass.get(equation.terms[index].name, 0.0) for index in members)),
+                "effect": swing,
+                "direction": "raises MCC" if signed > 0.0 else "lowers MCC",
+                "shared": ", ".join(_shared_features(equation, members)),
+                "terms": " ; ".join(equation.terms[index].name for index in members),
+            }
+        )
+    return pl.DataFrame(rows).sort("share", descending=True).with_columns(
+        pl.int_range(1, pl.len() + 1).alias("group")
+    )
+
+
 def marginal_versus_conditional(
     practices: pl.DataFrame,
     columns: dict[str, np.ndarray],
@@ -395,10 +596,12 @@ def render(
         "on where a threshold is drawn. At "
         f"{flatness:.0%} of the term count the equation is "
         + (
-            "**flat**: no term dominates, and the guidance below rests on many small "
-            "contributions rather than on a few large ones. That is a weaker kind of "
-            "explanation than a short equation with one dominant term, and it is what the "
-            "accuracy at this length costs.\n"
+            "**flat**: no single term dominates. That is a statement about the *unit of "
+            "explanation*, not about the quality of the equation — MCC here is inferred by "
+            "a set of terms acting together rather than by one or two that could be quoted "
+            "on their own. Three readings follow, and the sections below give each one: "
+            "read the terms in the blocks that move together, read which features the "
+            "search reached for, and read which operations it needed to apply to them.\n"
             if flatness > 0.6
             else "**concentrated**: a minority of terms does most of the work, and reading "
             "those few is close to reading the whole equation.\n"
@@ -439,6 +642,52 @@ def render(
             "guidance on these.**\n"
         )
         parts.append(_table(unstable) + "\n")
+
+    blocks = term_groups(report.e2.equation, columns, importance)
+    parts.append("### Reading the terms in blocks\n")
+    parts.append(
+        "An additive form invites reading one term at a time, and that works when one or "
+        "two weights dominate. When they do not, the honest unit is larger than a term and "
+        "smaller than the equation: terms whose per-row contributions move together say the "
+        "same thing about a row and can be read as one block. Grouping is on the "
+        "contributions rather than on shared features, because two terms can share no "
+        "feature and still track each other.\n"
+    )
+    parts.append(
+        f"{blocks.height} blocks over {equation.n_terms} terms"
+        + (
+            f", the largest holding {int(blocks['n_terms'][0])} terms and "
+            f"{float(blocks['share'][0]):.0%} of the weight mass.\n"
+            if blocks.height
+            else ".\n"
+        )
+    )
+    parts.append(_table(blocks) + "\n")
+
+    parts.append("### Which features the search reached for\n")
+    usage = feature_usage(report.e2.equation, importance, dataset_features + model_features)
+    used = usage.filter(pl.col("n_terms") > 0)
+    parts.append(
+        f"**{used.height} of {usage.height}** available meta-features appear in the "
+        "equation. `share` sums the weight mass of every term a feature appears in, so a "
+        "feature in two terms is credited both and the column does not sum to 1 — it "
+        "answers how much of the equation touches this feature, not how much it owns. A "
+        "feature the search declined to use after seeing every transform of it is itself a "
+        "result.\n"
+    )
+    parts.append(_table(usage) + "\n")
+
+    parts.append("### Which operations the equation needed\n")
+    operations = operation_usage(
+        report.e2.equation, importance, config.max_arity if config is not None else None
+    )
+    parts.append(
+        "The vocabulary offers five operations and five transforms and the search is free "
+        "to ignore any of them, so a row that was offered and went unused is a shape this "
+        "data turned out not to need. Rows marked `offered = no` were kept out of the "
+        "library by the arity cap and say nothing about the data:\n"
+    )
+    parts.append(_table(operations) + "\n")
 
     parts.append("### Where the equation's variance comes from\n")
     for sentence in group_sentences(report.shares):

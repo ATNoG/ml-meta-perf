@@ -14,9 +14,12 @@ from metafit.model import Equation
 from metafit.report import (
     MAJOR_MASS,
     coverage,
+    feature_usage,
     glossary,
     group_sentences,
     marginal_versus_conditional,
+    operation_usage,
+    term_groups,
     term_importance,
     term_sentences,
     unstable_majors,
@@ -206,6 +209,140 @@ class TestUnstableMajors(unittest.TestCase):
     def test_empty_equation_is_handled(self) -> None:
         empty = Equation(intercept=0.0, terms=(), weights=(), standardized_weights=())
         self.assertEqual(unstable_majors(term_importance(empty, _columns(), DATASET, MODEL)).height, 0)
+
+
+class TestFeatureUsage(unittest.TestCase):
+    def setUp(self) -> None:
+        self.columns = _columns()
+        self.importance = term_importance(_equation(), self.columns, DATASET, MODEL)
+
+    def test_reports_every_available_feature_including_unused_ones(self) -> None:
+        table = feature_usage(_equation(), self.importance, (*DATASET, MODEL[0], "spare"))
+        self.assertEqual(set(table["feature"].to_list()), {"a", "b", "m", "spare"})
+        unused = table.filter(pl.col("feature") == "spare")
+        self.assertEqual(int(unused["n_terms"][0]), 0)
+        self.assertEqual(unused["transforms"][0], "")
+
+    def test_share_credits_every_term_a_feature_appears_in(self) -> None:
+        # ``m`` is in two of the three terms, so it carries both their shares -- which is
+        # why the column deliberately does not sum to 1.
+        table = feature_usage(_equation(), self.importance, (*DATASET, *MODEL))
+        row = table.filter(pl.col("feature") == "m")
+        self.assertEqual(int(row["n_terms"][0]), 2)
+        self.assertGreater(float(table["share"].sum()), 1.0)
+
+    def test_transforms_and_operations_are_listed(self) -> None:
+        table = feature_usage(_equation(), self.importance, (*DATASET, *MODEL))
+        row = table.filter(pl.col("feature") == "m")
+        self.assertEqual(row["transforms"][0], "id")
+        self.assertEqual(row["operations"][0], "atom, product")
+
+    def test_nested_terms_are_searched_for_atoms(self) -> None:
+        # A transform buried inside a nested term still has to be found, or the coverage
+        # table would understate what the equation used.
+        nested = Term("ratio", (Term("product", (Atom("a", "log"), Atom("b"))), Atom("m")))
+        equation = Equation(
+            intercept=0.0, terms=(nested,), weights=(1.0,), standardized_weights=(1.0,)
+        )
+        importance = term_importance(equation, self.columns, DATASET, MODEL)
+        table = feature_usage(equation, importance, (*DATASET, *MODEL))
+        self.assertEqual(table.filter(pl.col("feature") == "a")["transforms"][0], "log")
+
+
+class TestOperationUsage(unittest.TestCase):
+    def setUp(self) -> None:
+        self.importance = term_importance(_equation(), _columns(), DATASET, MODEL)
+        self.table = operation_usage(_equation(), self.importance)
+
+    def test_counts_operations_and_transforms(self) -> None:
+        counts = dict(zip(self.table["name"].to_list(), self.table["n_terms"].to_list(), strict=True))
+        self.assertEqual(counts["atom"], 2)
+        self.assertEqual(counts["product"], 1)
+        self.assertEqual(counts["id"], 3)
+        self.assertEqual(counts["log"], 0)
+
+    def test_everything_is_offered_when_no_arity_is_given(self) -> None:
+        self.assertTrue(all(self.table["offered"].to_list()))
+
+    def test_an_arity_cap_marks_what_the_library_never_held(self) -> None:
+        # Reporting ratio_of_sums as "declined" under a three-feature cap would read a
+        # configuration choice as a finding about the data.
+        table = operation_usage(_equation(), self.importance, max_arity=3)
+        offered = dict(zip(table["name"].to_list(), table["offered"].to_list(), strict=True))
+        self.assertFalse(offered["ratio_of_sums"])
+        self.assertTrue(offered["sum_ratio"])
+        self.assertTrue(offered["product"])
+
+
+class TestTermGroups(unittest.TestCase):
+    def setUp(self) -> None:
+        self.columns = _columns()
+
+    def test_terms_that_move_together_land_in_one_block(self) -> None:
+        # Two terms over the same rising feature under different transforms: different
+        # expressions, one story.
+        equation = Equation(
+            intercept=0.0,
+            terms=(Term("atom", (Atom("a"),)), Term("atom", (Atom("a", "sq"),)), Term("atom", (Atom("m"),))),
+            weights=(1.0, 1.0, 1e-6),
+            standardized_weights=(0.5, 0.5, 0.2),
+        )
+        importance = term_importance(equation, self.columns, DATASET, MODEL)
+        blocks = term_groups(equation, self.columns, importance)
+        sizes = sorted(blocks["n_terms"].to_list())
+        self.assertEqual(sizes, [1, 2])
+
+    def test_block_shares_sum_to_one(self) -> None:
+        importance = term_importance(_equation(), self.columns, DATASET, MODEL)
+        blocks = term_groups(_equation(), self.columns, importance)
+        self.assertAlmostEqual(float(blocks["share"].sum()), 1.0, places=9)
+
+    def test_blocks_are_ranked_by_share(self) -> None:
+        importance = term_importance(_equation(), self.columns, DATASET, MODEL)
+        blocks = term_groups(_equation(), self.columns, importance)
+        shares = blocks["share"].to_list()
+        self.assertEqual(shares, sorted(shares, reverse=True))
+        self.assertEqual(blocks["group"].to_list(), list(range(1, blocks.height + 1)))
+
+    def test_a_high_threshold_leaves_every_term_alone(self) -> None:
+        importance = term_importance(_equation(), self.columns, DATASET, MODEL)
+        blocks = term_groups(_equation(), self.columns, importance, threshold=1.01)
+        self.assertEqual(blocks.height, 3)
+
+    def test_a_block_is_named_by_the_features_most_of_its_terms_share(self) -> None:
+        equation = Equation(
+            intercept=0.0,
+            terms=(Term("atom", (Atom("a"),)), Term("atom", (Atom("a", "sq"),)), Term("atom", (Atom("m"),))),
+            weights=(1.0, 1.0, 1e-6),
+            standardized_weights=(0.5, 0.5, 0.2),
+        )
+        importance = term_importance(equation, self.columns, DATASET, MODEL)
+        blocks = term_groups(equation, self.columns, importance)
+        pair = blocks.filter(pl.col("n_terms") == 2)
+        self.assertEqual(pair["shared"][0], "a")
+
+    def test_a_block_with_nothing_in_common_says_so(self) -> None:
+        # Terms are grouped on how their contributions move, not on what they contain, so
+        # a block held together purely by co-movement is possible and must not be given a
+        # name it does not have.
+        columns = {"a": np.linspace(1.0, 5.0, 40), "b": np.linspace(1.0, 5.0, 40), "m": np.ones(40)}
+        equation = Equation(
+            intercept=0.0,
+            terms=(Term("atom", (Atom("a"),)), Term("atom", (Atom("b"),))),
+            weights=(1.0, 1.0),
+            standardized_weights=(0.5, 0.5),
+        )
+        importance = term_importance(equation, columns, DATASET, MODEL)
+        blocks = term_groups(equation, columns, importance)
+        self.assertEqual(int(blocks["n_terms"][0]), 2)
+        self.assertEqual(blocks["shared"][0], "")
+
+    def test_empty_equation_yields_a_schema(self) -> None:
+        empty = Equation(intercept=0.0, terms=(), weights=(), standardized_weights=())
+        importance = term_importance(empty, self.columns, DATASET, MODEL)
+        table = term_groups(empty, self.columns, importance)
+        self.assertEqual(table.height, 0)
+        self.assertIn("shared", table.columns)
 
 
 class TestMarginalVersusConditional(unittest.TestCase):
