@@ -114,6 +114,22 @@ class TestSelector(unittest.TestCase):
         found = self.selector.search(list(range(12)), 3, beam_width=4)
         self.assertEqual(set(found[3].indices), {1, 4, 7})
 
+    def test_the_fast_path_matches_the_reference_solver(self) -> None:
+        # ``Selector`` folds the ridge penalty into the full Gram diagonal once and
+        # indexes submatrices out of that, instead of calling ``ridge_solve`` per subset.
+        # The two must stay identical, and this is what says so -- without it
+        # ``ridge_solve`` would be documentation of an algorithm nothing runs.
+        for penalty in (0.0, 5.0, 50.0):
+            selector = Selector(self.design, self.target, penalty)
+            for indices in ((1,), (1, 4), (0, 4, 7), (1, 3, 4, 7, 9)):
+                order = np.array(indices, dtype=np.intp)
+                reference = ridge_solve(
+                    selector.gram[order[:, None], order], selector.projection[order], penalty
+                )
+                np.testing.assert_allclose(
+                    selector._evaluate(indices).weights, reference, rtol=1e-10, atol=1e-12
+                )
+
     def test_returns_a_subset_for_every_size(self) -> None:
         found = self.selector.search(list(range(12)), 5, beam_width=3)
         self.assertEqual(sorted(found), [1, 2, 3, 4, 5])

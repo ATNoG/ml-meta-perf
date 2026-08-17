@@ -320,6 +320,7 @@ def main(argv: list[str] | None = None) -> int:
             DATASET_FEATURES,
             MODEL_FEATURES,
             arguments.report,
+            frame=frame,
             config=config_e3,
             source=source,
         )

@@ -73,14 +73,15 @@ def ridge_solve(gram: np.ndarray, rhs: np.ndarray, penalty: float) -> np.ndarray
     applied to it -- shrinking an intercept toward zero would bias every prediction
     toward MCC = 0, which is not a value this data goes anywhere near.
 
-    The penalty is added along the diagonal of a copy rather than by building
-    ``penalty * np.eye(k)``. This runs several hundred thousand times in a full sweep and
-    the identity matrix was pure allocation.
+    This is the **reference form**, written to be read. `Selector._evaluate` does not call
+    it: it adds the penalty to the full Gram diagonal once at construction and indexes the
+    submatrix straight out of that, which is the same arithmetic without a copy and an
+    index array per solve. ``test_fit`` asserts the two agree, so this function is what
+    the fast path is checked against rather than documentation of something else.
     """
     system = gram.copy()
     if penalty:
-        diagonal = np.arange(system.shape[0])
-        system[diagonal, diagonal] += penalty
+        system.flat[:: system.shape[0] + 1] += penalty
     try:
         return np.linalg.solve(system, rhs)
     except np.linalg.LinAlgError:
@@ -156,6 +157,15 @@ class Selector:
         self.offset = float(target.mean())
         self.penalty = penalty
         self.gram = design.T @ design
+        # The ridge penalty added to the *full* Gram diagonal, once. A submatrix's
+        # diagonal is drawn from the full diagonal, so ``penalized[ix, ix]`` already
+        # equals ``gram[ix, ix] + penalty*I`` -- which removes a copy, an arange and a
+        # fancy-index assignment from every one of the million solves a study runs.
+        # ``gram`` itself stays unpenalised: the residual scoring and the collinearity
+        # guard both need it that way.
+        self.penalized = self.gram.copy()
+        if penalty:
+            self.penalized.flat[:: self.penalized.shape[0] + 1] += penalty
         self.projection = design.T @ self.centered
         self.total = float(self.centered @ self.centered)
         self.normalizer = float(design.shape[0])
@@ -177,17 +187,25 @@ class Selector:
         if cached is not None:
             return cached
 
-        order = np.array(indices, dtype=int)
-        block = self.gram[np.ix_(order, order)]
+        order = np.array(indices, dtype=np.intp)
+        # ``penalized[order[:, None], order]`` rather than ``np.ix_(order, order)``.
+        # Identical arithmetic: ix_ exists to build exactly this pair of broadcast index
+        # arrays, and it spends most of its time on dtype checks already known to hold
+        # here. At a million calls that check cost 24 of the study's 137 seconds, and
+        # doing the reshape directly is 1.8x faster.
+        block = self.penalized[order[:, None], order]
         rhs = self.projection[order]
-        weights = ridge_solve(block, rhs, self.penalty)
+        try:
+            weights = np.linalg.solve(block, rhs)
+        except np.linalg.LinAlgError:
+            weights = np.linalg.lstsq(block, rhs, rcond=None)[0]
         rss = self.total - float(weights @ rhs) - self.penalty * float(weights @ weights)
         subset = Subset(indices, weights, rss)
         self._cache[indices] = subset
         return subset
 
     def _residual_scores(self, subset: Subset) -> np.ndarray:
-        order = np.array(subset.indices, dtype=int)
+        order = np.array(subset.indices, dtype=np.intp)
         return np.abs(self.projection - self.gram[:, order] @ subset.weights)
 
     def _blocked(self, indices: tuple[int, ...]) -> np.ndarray | None:
@@ -199,7 +217,7 @@ class Selector:
         """
         if not indices:
             return None
-        order = np.array(indices, dtype=int)
+        order = np.array(indices, dtype=np.intp)
         return (np.abs(self.gram[:, order]) / self.normalizer > COLLINEARITY_LIMIT).any(axis=1)
 
     def search(

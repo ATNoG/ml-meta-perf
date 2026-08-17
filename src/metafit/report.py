@@ -39,6 +39,9 @@ import polars as pl
 from metafit.attribution import classify, contributions
 from metafit.data import FEATURE_GLOSSARY
 from metafit.experiment import Configuration, Report
+from metafit.guidance import as_table as as_guidance_table
+from metafit.guidance import assess
+from metafit.guidance import render as render_guidance
 from metafit.model import Equation
 from metafit.practices import render as render_practices
 from metafit.stats import spearman
@@ -527,6 +530,7 @@ def render(
     dataset_features: tuple[str, ...],
     model_features: tuple[str, ...],
     *,
+    frame: pl.DataFrame | None = None,
     config: Configuration | None = None,
     source: str | None = None,
 ) -> str:
@@ -697,13 +701,34 @@ def render(
 
     parts.append("## 5. Best practices\n")
     parts.append(
-        "One statement per raw feature the equation uses, kept only when the feature moves "
-        "predicted MCC enough to matter, does so monotonically enough for a sentence to be "
-        "true of it, and does so through terms that survived most folds. Directions are "
-        "measured on the data rather than read off weight signs, because a feature can "
-        "appear in several terms and inside denominators.\n"
+        "A best practice is general, transferable advice that already circulates in the "
+        "field — not a property of this equation. So the practices below are taken from the "
+        "literature and this study is used to *weigh* them: each verdict, and the numbers "
+        "inside it, are computed from this run by `metafit.guidance`, against a stated "
+        "threshold, so other data can overturn any of them.\n"
     )
-    parts.append("**These are associations across 20 datasets, not causal claims.**\n")
+    if frame is not None:
+        verdicts = assess(frame, report)
+        parts.append(render_guidance(verdicts) + "\n")
+        parts.append("At a glance:\n")
+        parts.append(_table(as_guidance_table(verdicts).select("practice", "verdict", "magnitude")) + "\n")
+    else:
+        parts.append("_(not assessed: the meta-dataset was not supplied to the renderer)_\n")
+
+    parts.append("## 5b. The measurements underneath\n")
+    parts.append(
+        "What the fitted equation says about each raw feature it uses, kept only when the "
+        "feature moves predicted MCC enough to matter, does so monotonically enough for a "
+        "sentence to be true of it, and does so through terms that survived most folds. "
+        "Directions are measured on the data rather than read off weight signs, because a "
+        "feature can appear in several terms and inside denominators.\n"
+    )
+    parts.append(
+        "**These are associations across 20 datasets, not causal claims, and not practices "
+        "on their own** — a statement about a meta-feature column is a measurement. Section "
+        "5 is where they become advice, by supporting or failing to support something a "
+        "practitioner could already have been told.\n"
+    )
     parts.append(render_practices(report.practices) + "\n")
     parts.append("Evidence:\n")
     parts.append(
@@ -798,6 +823,7 @@ def write(
     model_features: tuple[str, ...],
     path: str | Path,
     *,
+    frame: pl.DataFrame | None = None,
     config: Configuration | None = None,
     source: str | None = None,
 ) -> Path:
@@ -811,6 +837,7 @@ def write(
             truth,
             dataset_features,
             model_features,
+            frame=frame,
             config=config,
             source=source,
         ),

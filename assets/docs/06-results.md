@@ -153,15 +153,25 @@ carries under 9% of the mass.
 
 ![What each term is worth](../figures/term_effects.png)
 
-## Where the equation fails
+## Where the equation is weakest
 
 ![Predicted versus actual MCC](../figures/predicted_vs_actual.png)
 
-Predictions never fall below **0.17**, while 38 rows sit at exactly MCC = 0 — a column of
-points hanging well above the diagonal on the left. **E3 cannot identify the cases where a
-model will simply fail on a dataset.** It is a usable estimator in the range where models
-work and a poor detector of the range where they do not, which must be stated before
-anyone uses it to screen candidates.
+Predictions never fall below **0.17**, while 15 rows sit at exactly MCC = 0 — a short
+column of points hanging above the diagonal on the left. The equation compresses toward
+the middle of the range, as a shrunk linear fit will.
+
+**This is not a claim that E3 cannot predict training failure, because the meta-dataset
+contains no training failures.** Runs that failed to train were discarded when the corpus
+was built, so every row is a model that trained and then scored. A row at MCC = 0 is a
+classifier that converged and learned nothing useful — predicting the majority class, say
+— not one that crashed. The equation is fitted on, and can only speak about, the
+population of runs that completed.
+
+What that costs is stated in [chapter 8](08-limitations.md): every prediction is implicitly
+conditional on the training succeeding, and the study never measures how often that is
+true. It is the main reason the go/no-go rule in [chapter 9](09-report.md) should be read
+as "will this trained model be any good" rather than "should I try this at all".
 
 The axes start at 0; the single negative row falls outside them and
 `plots.count_below_floor()` returns the count for a caption.

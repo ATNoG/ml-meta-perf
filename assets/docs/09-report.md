@@ -209,9 +209,98 @@ The vocabulary offers five operations and five transforms and the search is free
 
 ## 5. Best practices
 
-One statement per raw feature the equation uses, kept only when the feature moves predicted MCC enough to matter, does so monotonically enough for a sentence to be true of it, and does so through terms that survived most folds. Directions are measured on the data rather than read off weight signs, because a feature can appear in several terms and inside denominators.
+A best practice is general, transferable advice that already circulates in the field — not a property of this equation. So the practices below are taken from the literature and this study is used to *weigh* them: each verdict, and the numbers inside it, are computed from this run by `metafit.guidance`, against a stated threshold, so other data can overturn any of them.
 
-**These are associations across 20 datasets, not causal claims.**
+11 practices assessed: 1 challenged, 1 not tested, 9 supported.
+
+### 1. Characterise the dataset before choosing a model. What the data is like bounds what any model can reach, and that bound is usually the larger effect.
+
+**Verdict: supported.** Knowing only which dataset a row came from explains 35.4% of MCC variance; knowing only which model, 28.2%. The dataset side is also the better described: twelve dataset meta-features reach 95% of what dataset identity explains, while five model meta-features reach 59% of theirs. Both the effect and our ability to measure it favour the data.
+
+*Practice from:* Zha et al., 'Data-centric AI: A Survey', arXiv:2303.10158 (2023). The data-centric position holds that returns from improving data exceed returns from swapping architectures. It is an argument about where to spend effort.
+
+### 2. On tabular data, start from tree ensembles. Reach for a neural architecture only when a tree ensemble has been tried and found wanting.
+
+**Verdict: supported.** On the 17 datasets where every model ran, tree-based families average MCC 0.927 against 0.660 for neural ones. The neural side splits sharply: architectures built for tabular data reach 0.797 while a plain MLP or DNN reaches 0.454, last of the ten families. The advice holds, and it holds most strongly against exactly the architectures that are not designed for this kind of data.
+
+*Practice from:* Grinsztajn et al., arXiv:2207.08815 (2022); Shwartz-Ziv & Armon, 'Deep Learning is Not All You Need', arXiv:2106.03253 (2021). Trees handle irregular, non-smooth target functions and uninformative features, which is what tabular data usually contains.
+
+### 3. Include a pretrained tabular model (TabPFN, TabICL) in the first round of candidates: it costs one fit and is frequently competitive with a tuned ensemble.
+
+**Verdict: supported.** Pretrained tabular models average MCC 0.953, against 0.951 for the best tree family, and place 1 and 3 of 25 models. They match the strongest tree ensembles here without a tuning budget, which is the whole of the claim.
+
+*Practice from:* Hollmann et al., TabPFN, arXiv:2207.01848 (2022); TabICL, arXiv:2502.05564 (2025). In-context learning on tabular data removes the tuning budget that usually separates a quick baseline from a competitive one.
+
+### 4. When rows share a group -- a subject, a site, a dataset -- validate by holding out whole groups. A random split reports a number that will not survive deployment.
+
+**Verdict: supported.** The same equation scores R² 0.540 under a random 10-fold split and 0.466 when whole datasets are held out -- 0.074 of pure protocol. Dataset meta-features are constant within a dataset, so a random fold shows the equation rows from a dataset it is being scored on.
+
+*Practice from:* Walsh et al., 'Machine learning reporting standards', Nature Methods 18 (2021). Any feature constant within a group lets the model recognise the group rather than generalise to it, and a random split puts the group on both sides.
+
+### 5. Spend the first effort on reducing noise in the data, not on a larger model. Noise sets a ceiling that capacity cannot lift.
+
+**Verdict: supported.** Noise-to-signal ratio moves predicted MCC by -0.17 between its lowest and highest decile, and it is one of only two features whose direction inside the equation agrees with its own correlation against MCC -- so it is not an artefact of conditioning. Nothing on the model side of the equation offsets it.
+
+*Practice from:* Zha et al., 'Data-centric AI: Perspectives and Challenges', arXiv:2301.04819 (2023). Irreducible error from noisy features or labels bounds every model on that data, so capacity spent against it buys nothing.
+
+### 6. On real-world data that has not been carefully curated, prefer a learner with built-in robustness to outliers.
+
+**Verdict: supported.** Built-in robustness to outliers carries the largest feature effect in the equation, +0.42 MCC between its lowest and highest decile, and its direction agrees with its plain correlation against MCC. It is the single most actionable thing the equation says about model choice.
+
+*Practice from:* Grinsztajn et al., arXiv:2207.08815 (2022), on non-smooth targets and outliers. Real tabular data carries outliers that a squared-error learner chases and a split-based or margin-based one largely ignores.
+
+### 7. Match capacity to the problem. A larger, more expensive model is not a safer default; on small tabular problems it is usually a worse one.
+
+**Verdict: supported.** The highest-capacity family here is also the worst: generic neural networks average MCC 0.454 against 0.927 for tree ensembles. Inside the equation the same tension is explicit -- one block of terms rises with capacity and raises MCC, a second block pairs capacity with inference cost and lowers it, and the two blocks carry equal weight.
+
+*Practice from:* Shwartz-Ziv & Armon, arXiv:2106.03253 (2021). Capacity beyond what the sample supports fits noise, and the cost is paid twice: in accuracy and in the tuning budget needed to recover it.
+
+### 8. Give neural architectures more data before writing them off: the gap to tree ensembles is a small-sample effect and closes as the dataset grows.
+
+**Verdict: challenged.** It does not close here, it widens. Splitting the complete-grid datasets at their median instance count, tree ensembles lead neural architectures by 0.255 MCC on the smaller half and 0.281 on the larger one. The nuance worth keeping: purpose-built tabular architectures do improve with size (0.750 to 0.849) while plain MLPs and DNNs get worse (0.499 to 0.405), so the scaling argument survives for the architectures designed for this data and fails for the ones that are not. Eight and nine datasets a side is a thin split and this is a direction, not a measurement.
+
+*Practice from:* Common reading of Grinsztajn et al., arXiv:2207.08815 (2022), §4.2. The tabular benchmarks where trees win are mostly small, and the scaling argument that carried deep learning elsewhere is expected to apply here too.
+
+### 9. Before adopting a meta-learner to choose models, check it against 'use whatever usually works'. Ranking is an easier problem than prediction and often needs less.
+
+**Verdict: supported.** Tested against this study's own equation and the equation loses. Ranking models within a held-out dataset, the per-model-mean baseline reaches Spearman 0.703 and top-1 regret 0.011 against the equation's 0.648 and 0.019. The equation wins on predicting the MCC *value*; for ordering candidates, the trivial baseline is the better tool.
+
+*Practice from:* Rice, 'The Algorithm Selection Problem' (1976); standard meta-learning practice. A per-model mean over previous datasets carries most of the ranking signal at zero modelling cost, and is the baseline any selection method has to clear.
+
+### 10. Report which (dataset, model) runs were excluded and why. Aggregate comparisons over an incomplete grid compare different models on different problems.
+
+**Verdict: supported.** 24 of 500 (dataset, model) cells are absent -- 5% -- and they are not absent at random: eight models are missing from the same three datasets. Measuring the bias rather than assuming it is small: restricting to the 17 complete datasets moves the model ranking by Spearman 0.975, so the ordering survives, but a mean over all rows still compares eight of the models on a different set of problems from the rest. Every family figure quoted here uses the complete subset for that reason.
+
+*Practice from:* Walsh et al., Nature Methods 18 (2021); benchmarking reporting standards. Runs usually go missing where a model struggles or will not fit, so exclusions are correlated with the outcome being measured.
+
+### 11. Score imbalanced classification with a metric that accounts for all four confusion-matrix cells -- MCC rather than accuracy or F1.
+
+**Verdict: not tested.** This study adopts MCC as its target and never measures an alternative, so it is not evidence for the practice. What it does show is the shape MCC has: 15 of 476 rows sit at exactly 0, which is a classifier that has learned nothing being scored as having learned nothing. Accuracy would not have said that.
+
+*Practice from:* Chicco & Jurman, BMC Genomics 21:6 (2020). Accuracy and F1 can both look strong on a classifier that has learned only the majority class; MCC cannot.
+
+
+At a glance:
+
+| practice | verdict | magnitude |
+|---|---|---|
+| Characterise the dataset before choosing a model. What the data is like bounds what any model can reach, and that bound is usually the larger effect. | supported | 0.0718 |
+| On tabular data, start from tree ensembles. Reach for a neural architecture only when a tree ensemble has been tried and found wanting. | supported | 0.2675 |
+| Include a pretrained tabular model (TabPFN, TabICL) in the first round of candidates: it costs one fit and is frequently competitive with a tuned ensemble. | supported | 0.0028 |
+| When rows share a group -- a subject, a site, a dataset -- validate by holding out whole groups. A random split reports a number that will not survive deployment. | supported | 0.0740 |
+| Spend the first effort on reducing noise in the data, not on a larger model. Noise sets a ceiling that capacity cannot lift. | supported | -0.1731 |
+| On real-world data that has not been carefully curated, prefer a learner with built-in robustness to outliers. | supported | 0.4234 |
+| Match capacity to the problem. A larger, more expensive model is not a safer default; on small tabular problems it is usually a worse one. | supported | -0.4727 |
+| Give neural architectures more data before writing them off: the gap to tree ensembles is a small-sample effect and closes as the dataset grows. | challenged | -0.0257 |
+| Before adopting a meta-learner to choose models, check it against 'use whatever usually works'. Ranking is an easier problem than prediction and often needs less. | supported | 0.0549 |
+| Report which (dataset, model) runs were excluded and why. Aggregate comparisons over an incomplete grid compare different models on different problems. | supported | 0.0480 |
+| Score imbalanced classification with a metric that accounts for all four confusion-matrix cells -- MCC rather than accuracy or F1. | not tested | 0.0315 |
+
+## 5b. The measurements underneath
+
+What the fitted equation says about each raw feature it uses, kept only when the feature moves predicted MCC enough to matter, does so monotonically enough for a sentence to be true of it, and does so through terms that survived most folds. Directions are measured on the data rather than read off weight signs, because a feature can appear in several terms and inside denominators.
+
+**These are associations across 20 datasets, not causal claims, and not practices on their own** — a statement about a meta-feature column is a measurement. Section 5 is where they become advice, by supporting or failing to support something a practitioner could already have been told.
 
  1. [moderate] Higher built-in robustness to outliers went with higher MCC (about 0.42 MCC between its lowest and highest decile).
  2. [moderate] Higher training cost (log operations) went with lower MCC (about 0.38 MCC between its lowest and highest decile).

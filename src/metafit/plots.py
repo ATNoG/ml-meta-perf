@@ -103,7 +103,7 @@ def error_curve(
     R2 answers "how much variance is explained", which is a relative question. MAE answers
     "how far off is a prediction, in MCC", which is the one a practitioner asks. SMAPE is
     included as the scale-free alternative, with the caveat that on a target passing
-    through zero it is dominated by the 38 rows at exactly MCC = 0.
+    through zero it is dominated by the 15 rows at exactly MCC = 0.
 
     ``curve`` supplies all three protocols, so fit and transfer are read from one figure.
 
@@ -142,7 +142,7 @@ def scatter_limits(
 
     Deliberately not MCC's theoretical [-1, 1]. Nothing here approaches -1 -- the observed
     minimum is -0.29, one row -- and the interval below zero is worse than empty, it is
-    uninformative: around MCC = 0 sit 38 degenerate results and one anti-correlated one,
+    uninformative: around MCC = 0 sit 15 degenerate results and one anti-correlated one,
     carrying no linear structure for the diagonal to be read against. Including them only
     compresses the range where the relationship lives.
     """

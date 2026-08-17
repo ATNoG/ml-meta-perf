@@ -52,6 +52,49 @@ MODEL_FEATURES: tuple[str, ...] = (
 ALL_FEATURES: tuple[str, ...] = DATASET_FEATURES + MODEL_FEATURES
 
 #: Plain-language readings of each feature, used when the fitted equation is turned into
+#: Learner family for each model in the meta-dataset. Model *features* describe capacity
+#: and cost; they do not say what kind of learner a row refers to, and the tabular-ML
+#: literature states its guidance in exactly those terms ("prefer tree ensembles"), so
+#: checking that guidance against this corpus needs the taxonomy written down.
+#:
+#: The split between ``tabular NN`` and ``generic NN`` is the one that matters: an
+#: architecture designed for tabular data and a plain multilayer perceptron are both
+#: "deep learning" and behave nothing alike here.
+MODEL_FAMILY: dict[str, str] = {
+    "TabICL": "tabular foundation",
+    "TabPFN": "tabular foundation",
+    "Bagging": "bagged trees",
+    "DT": "single tree",
+    "ExtraTree": "single tree",
+    "XGBoost": "boosted trees",
+    "LightGBM_RF": "boosted trees",
+    "LightGBM_ExtraTrees": "boosted trees",
+    "AdaBoost": "boosted trees",
+    "TabNet": "tabular NN",
+    "FT-Transformer": "tabular NN",
+    "TabTransformer": "tabular NN",
+    "DNN": "generic NN",
+    "MLP": "generic NN",
+    "KNN": "instance",
+    "Ridge": "linear",
+    "LR": "linear",
+    "LinearSVC": "linear",
+    "PassiveAggressive": "linear",
+    "SGD": "linear",
+    "Perceptron": "linear",
+    "QDA": "discriminant",
+    "LDA": "discriminant",
+    "BernoulliNB": "naive bayes",
+    "GaussianNB": "naive bayes",
+}
+
+#: Families the tabular-ML literature groups together as "tree-based".
+TREE_FAMILIES = ("bagged trees", "single tree", "boosted trees")
+
+#: Families that are neural networks, split by whether the architecture targets tabular
+#: data specifically.
+NEURAL_FAMILIES = ("tabular NN", "generic NN")
+
 #: written guidance. Without these a "best practice" degenerates into restating a column
 #: name, which is not advice anyone can act on.
 FEATURE_GLOSSARY: dict[str, str] = {

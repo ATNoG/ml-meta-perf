@@ -73,7 +73,7 @@ reported on both scales ([chapter 6](06-results.md)).
 
 ### A caveat on SMAPE
 
-SMAPE divides by $|y| + |\hat{y}|$, and **38 of the 476 rows have MCC exactly 0**. Each
+SMAPE divides by $|y| + |\hat{y}|$, and **15 of the 476 rows have MCC exactly 0**. Each
 contributes the full 200% unless the prediction is also exactly 0, so the metric is
 dominated by the rows the equation is already known to handle worst rather than by its
 typical error. It is reported because it is scale-free and was requested, but MAE is the

@@ -29,7 +29,7 @@ Three properties of this target shape every downstream decision:
 - **It saturates.** 80 of the 476 rows (17%) sit at exactly 1.0. A logit or `atanh`
   transform of the target was tried to handle the bound and **failed badly** —
   cross-validated R² went negative, because the saturation point maps to infinity.
-- **It passes through zero.** 38 rows are exactly 0.0 and one is negative. This is why
+- **It passes through zero.** 15 rows are exactly 0.0 and one is negative. This is why
   MAE rather than SMAPE is the honest error headline: see
   [chapter 4](04-evaluation.md).
 
@@ -77,7 +77,7 @@ standardised before selection (chapter 2).
 | | value |
 |---|---|
 | minimum | -0.2898 (NSL-KDD / SGD, one row) |
-| rows at exactly 0.0 | 38 |
+| rows at exactly 0.0 | 15 |
 | maximum | 1.0 |
 | rows at exactly 1.0 | 80 |
 | mean | 0.731 |

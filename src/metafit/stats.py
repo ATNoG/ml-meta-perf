@@ -70,7 +70,7 @@ def smape(truth: np.ndarray, prediction: np.ndarray) -> float:
     """Symmetric mean absolute percentage error, as a percentage in [0, 200].
 
     **Read this one with care on MCC.** SMAPE divides by ``|truth| + |prediction|``, and
-    38 of the 476 rows here have MCC exactly 0. Every one of those contributes the full
+    15 of the 476 rows here have MCC exactly 0. Every one of those contributes the full
     200% unless the prediction is also exactly 0, so the metric is dominated by the rows
     the equation is already known to handle worst rather than by its typical error. It is
     reported because it was asked for and because it is scale-free, but MAE is the

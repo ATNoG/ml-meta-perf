@@ -28,6 +28,7 @@ from metafit.data import (
     target,
 )
 from metafit.fit import FitResult, fit, prune
+from metafit.guidance import CATALOGUE, Practice, Verdict, assess
 from metafit.model import Equation
 from metafit.practices import best_practices, concordance, concordance_summary, feature_practices
 from metafit.report import (
@@ -56,6 +57,7 @@ __version__ = "0.1.0"
 
 __all__ = [
     "ALL_FEATURES",
+    "CATALOGUE",
     "DATASET_COLUMN",
     "DATASET_FEATURES",
     "MODEL_COLUMN",
@@ -66,12 +68,15 @@ __all__ = [
     "Equation",
     "FitResult",
     "Library",
+    "Practice",
     "Scores",
     "Term",
+    "Verdict",
     "__version__",
     "additive_oracle",
     "agglomerate",
     "aggregate_by_dataset",
+    "assess",
     "baseline_group_mean",
     "best_practices",
     "build_library",

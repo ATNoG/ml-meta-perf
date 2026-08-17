@@ -1,9 +1,59 @@
-# 7. From equation to practice
+# 7. From equation to evidence to practice
 
-*Implemented in `metafit.attribution`, `metafit.practices` and `metafit.report`.*
+*Implemented in `metafit.attribution`, `metafit.practices`, `metafit.report` and
+`metafit.guidance`.*
 
 This is what the accuracy was traded for. An equation nobody can turn into guidance has
 bought nothing over a black box.
+
+But the step from equation to guidance is two steps, and collapsing them was a mistake this
+chapter used to make.
+
+**A best practice is not a property of an equation.** It is general, transferable advice —
+short enough to remember, cheap enough to apply — that already circulates in the field and
+that evidence can support, qualify or challenge. "Higher `nr_norm` went with lower MCC on
+these twenty datasets" is not that. It is a *measurement*: it names a column rather than an
+action, it is true only of this corpus, and [chapter 8](08-limitations.md) shows that its
+sign can change when the equation changes.
+
+So the chapter runs in two layers:
+
+| layer | what it produces | module |
+|---|---|---|
+| **evidence** | what the fitted equation does as each feature and each term moves | `metafit.practices`, `metafit.report` |
+| **practice** | recommendations taken from the literature, each weighed against that evidence | `metafit.guidance` |
+
+The second layer is where the study earns its keep. Twenty datasets from one domain is a
+narrow base from which to *invent* advice and a perfectly reasonable base from which to
+*test* it, so `metafit.guidance` starts from eleven practices the tabular machine-learning
+literature already recommends and asks what this corpus says about each. The statements and
+citations are written by hand — a fitting procedure does not produce a citation — and every
+verdict and every number inside it is computed, against a stated threshold, so other data
+can overturn any of them.
+
+Verdicts are **supported**, **qualified**, **challenged** or **not tested**, and the
+catalogue is only worth reading because not everything comes back supported:
+
+| verdict | count | why it matters |
+|---|---|---|
+| supported | 9 | the corpus shows the predicted effect at a size worth acting on |
+| challenged | 1 | the corpus shows the opposite — see below |
+| not tested | 1 | the study *assumes* the practice and cannot be evidence for it |
+
+The challenged one is worth stating here because it is the study's clearest disagreement
+with received wisdom. **"Neural architectures catch up once the dataset is large enough"
+does not hold on this corpus.** Splitting the complete-grid datasets at their median
+instance count, tree ensembles lead neural architectures by 0.255 MCC on the smaller half
+and **0.281 on the larger** — the gap widens. It survives in one restricted form: purpose-built
+tabular architectures do improve with scale (0.750 → 0.849) while plain MLPs and DNNs get
+worse (0.499 → 0.405). Eight datasets against nine is a thin split and this is a direction
+rather than a measurement, but it is a direction that points against the usual advice.
+
+The not-tested one is the balanced-metric practice: the study adopts MCC and never compares
+it to accuracy or F1, so it has nothing to say. Marking that rather than quietly counting it
+as a win is the point of having the verdict at all.
+
+[Chapter 9](09-report.md) carries the full assessment, regenerated on every run.
 
 ## Making terms comparable
 
@@ -58,13 +108,13 @@ better left unwritten.
 `confidence` combines effect size with fold stability: *strong* is ≥0.85 stability and
 ≥0.10 effect; *moderate* is ≥0.50 and ≥0.05; anything else is *weak*.
 
-## The extracted practices
+## The measured associations
 
-Reproduced from the published 24-term E2; [chapter 9](09-report.md) is the generated
-version and is regenerated with the equation, so it is the one to trust if the two ever
-disagree.
+The evidence layer. Reproduced from the published 24-term E3; [chapter 9](09-report.md) is
+the generated version and is regenerated with the equation, so it is the one to trust if
+the two ever disagree.
 
-| # | practice | effect (MCC) | confidence |
+| # | association | effect (MCC) | confidence |
 |---|---|---|---|
 | 1 | Higher **built-in outlier robustness** → **higher** MCC | 0.42 | moderate |
 | 2 | Higher **training cost** (log operations) → **lower** MCC | 0.38 | moderate |
@@ -76,15 +126,21 @@ disagree.
 
 ![Feature effects](../figures/practice_effects.png)
 
-Read together: *prefer an outlier-robust model; expect trouble on noisy data, on data
-whose labels are evenly spread across many classes, and on data whose attributes are
-mostly well-behaved normal ones.*
+Read together these point somewhere — *prefer an outlier-robust model; expect trouble on
+noisy data, on data whose labels are evenly spread across many classes* — but the pointing
+is the reader's inference, not the table's content. Turning it into advice, and checking
+that advice against something other than this one equation, is the next section's job.
 
 ## What these are not
 
+**They are not best practices.** Each names a meta-feature column, which is a thing to
+measure rather than a thing to do, and each is true of one equation on one corpus. The
+practices are in [chapter 9](09-report.md), taken from the literature and weighed against
+these numbers among others.
+
 The defensible claim is directional, and the tables in this chapter should be read as a
 set of signed statements rather than as a ranking. Any write-up that orders these
-practices by effect size is claiming more than the evidence supports.
+associations by effect size is claiming more than the evidence supports.
 
 **Associations measured across 20 datasets, not causal claims.** "Higher training cost
 went with lower MCC" does not mean that cheaper models are better; it means that among the
@@ -94,7 +150,7 @@ is carrying data difficulty as well as model capacity.
 
 `Training Operations` in particular flips sign between the earlier 14-term equation and the
 published one, and should not be acted on. It is written up as a limitation in
-[chapter 8](08-limitations.md#a-practice-can-flip-sign-between-equations), because the
+[chapter 8](08-limitations.md#a-per-feature-association-can-flip-sign-between-equations), because the
 caveat it raises applies to the whole extraction rather than to that one row.
 
 ### These are conditional statements, not marginal ones

@@ -111,7 +111,7 @@ def captions(report: Report, data: str | Path | None = None) -> dict[str, str]:
         "predicted_vs_actual.png": (
             "Predicted against actual MCC for E3, with the rug showing the marginal "
             f"distribution of the target. Axes start at 0; {hidden} point below that is "
-            "not shown. Predictions never fall below 0.17 while 38 rows sit at exactly 0."
+            "not shown. Predictions never fall below 0.17 while 15 rows sit at exactly 0."
         ),
         "error_curve_mae.png": (
             "Mean absolute error in MCC against equation length, under both protocols. "

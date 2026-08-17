@@ -24,9 +24,9 @@ implementation side.
 | 4 | [Evaluation methodology](04-evaluation.md) | `metafit.validate`, `metafit.stats` |
 | 5 | [Oracles and ceilings](05-oracles.md) | `metafit.validate` |
 | 6 | [Results](06-results.md) | `metafit.experiment` |
-| 7 | [From equation to practice](07-practices.md) | `metafit.practices`, `metafit.attribution` |
+| 7 | [From equation to evidence to practice](07-practices.md) | `metafit.practices`, `metafit.attribution`, `metafit.guidance` |
 | 8 | [Limitations and threats to validity](08-limitations.md) | — |
-| 9 | [Generated report](09-report.md) | `metafit.report` |
+| 9 | [Generated report](09-report.md) | `metafit.report`, `metafit.guidance` |
 
 ## The one-paragraph version
 

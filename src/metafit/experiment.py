@@ -37,7 +37,7 @@ from metafit.fit import fit, prune
 from metafit.model import Equation
 from metafit.practices import best_practices
 from metafit.selection import pareto_table, recommend
-from metafit.terms import build_library
+from metafit.terms import Library, build_library
 from metafit.validate import (
     CrossValidation,
     Scores,
@@ -87,6 +87,10 @@ class EquationReport:
     curve: pl.DataFrame
     cross_validated: dict[str, dict[str, float | int]] = field(default_factory=dict)
     stability: pl.DataFrame | None = None
+    #: The full cross-validated path per protocol, kept so later tables can reuse it.
+    #: ``leakage_demonstration`` and ``decision_quality`` ask for the same folds at the
+    #: same settings, and recomputing them was a third of the study's runtime.
+    paths: dict[str, dict[int, CrossValidation]] = field(default_factory=dict)
 
 
 def _curve(
@@ -214,6 +218,7 @@ def run_e3(frame: pl.DataFrame, config: Configuration = DEFAULT_E3) -> EquationR
             label: path[config.headline_terms].scores(truth).as_dict() for label, path in paths.items()
         },
         stability=paths["loo_dataset"][config.headline_terms].stability(),
+        paths=paths,
     )
 
 
@@ -320,40 +325,54 @@ def baselines(frame: pl.DataFrame) -> pl.DataFrame:
     return pl.DataFrame(rows)
 
 
-def leakage_demonstration(frame: pl.DataFrame, config: Configuration = DEFAULT_E3) -> pl.DataFrame:
+def leakage_demonstration(
+    frame: pl.DataFrame,
+    config: Configuration = DEFAULT_E3,
+    known: dict[str, dict[int, CrossValidation]] | None = None,
+) -> pl.DataFrame:
     """The same equation scored under a random split and under a grouped split.
 
     Dataset features are constant across a dataset's rows, so a random k-fold split puts
     the same dataset on both sides of the fold. The equation then recognises the dataset
     rather than generalising to it. This table exists so the difference is visible in
     numbers rather than asserted in prose.
+
+    ``known`` supplies grouped paths that `run_e3` has already computed. They are the same
+    folds over the same library at the same settings, and beam search records its best
+    subset at every size as it goes, so a path built to 32 terms contains the 24-term
+    entry this table wants -- recomputing it produced identical numbers and was a third of
+    the study's runtime.
     """
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
     truth = target(frame)
-    library = build_library(
-        DATASET_FEATURES,
-        MODEL_FEATURES,
-        columns,
-        max_arity=config.max_arity,
-        max_abs_zscore=config.max_abs_zscore,
-    )
     protocols = {
-        "random 10-fold (leaky)": random_kfold_groups(truth.shape[0]),
-        "leave-one-dataset-out": groups(frame, DATASET_COLUMN),
-        "leave-one-model-out": groups(frame, MODEL_COLUMN),
+        "random 10-fold (leaky)": ("random", random_kfold_groups(truth.shape[0])),
+        "leave-one-dataset-out": ("loo_dataset", groups(frame, DATASET_COLUMN)),
+        "leave-one-model-out": ("loo_model", groups(frame, MODEL_COLUMN)),
     }
+    library: Library | None = None
     rows: list[dict[str, object]] = []
-    for label, labels in protocols.items():
-        path = cross_validate_path(
-            library,
-            columns,
-            truth,
-            labels,
-            max_terms=config.headline_terms,
-            penalty=config.penalty,
-            pool_size=config.pool_size,
-            beam_width=config.beam_width,
-        )
+    for label, (key, labels) in protocols.items():
+        path = (known or {}).get(key)
+        if path is None or config.headline_terms not in path:
+            if library is None:
+                library = build_library(
+                    DATASET_FEATURES,
+                    MODEL_FEATURES,
+                    columns,
+                    max_arity=config.max_arity,
+                    max_abs_zscore=config.max_abs_zscore,
+                )
+            path = cross_validate_path(
+                library,
+                columns,
+                truth,
+                labels,
+                max_terms=config.headline_terms,
+                penalty=config.penalty,
+                pool_size=config.pool_size,
+                beam_width=config.beam_width,
+            )
         rows.append({"protocol": label, **path[config.headline_terms].scores(truth).as_dict()})
     return pl.DataFrame(rows)
 
@@ -410,27 +429,37 @@ def comparison(
     )
 
 
-def decision_quality(frame: pl.DataFrame, config: Configuration = DEFAULT_E3) -> pl.DataFrame:
-    """Go/no-go decision quality, scored on held-out datasets rather than in-sample."""
+def decision_quality(
+    frame: pl.DataFrame,
+    config: Configuration = DEFAULT_E3,
+    known: dict[int, CrossValidation] | None = None,
+) -> pl.DataFrame:
+    """Go/no-go decision quality, scored on held-out datasets rather than in-sample.
+
+    ``known`` is `run_e3`'s leave-one-dataset-out path, reused for the same reason as in
+    `leakage_demonstration`.
+    """
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
     truth = target(frame)
-    library = build_library(
-        DATASET_FEATURES,
-        MODEL_FEATURES,
-        columns,
-        max_arity=config.max_arity,
-        max_abs_zscore=config.max_abs_zscore,
-    )
-    path = cross_validate_path(
-        library,
-        columns,
-        truth,
-        groups(frame, DATASET_COLUMN),
-        max_terms=config.headline_terms,
-        penalty=config.penalty,
-        pool_size=config.pool_size,
-        beam_width=config.beam_width,
-    )
+    path = known
+    if path is None or config.headline_terms not in path:
+        library = build_library(
+            DATASET_FEATURES,
+            MODEL_FEATURES,
+            columns,
+            max_arity=config.max_arity,
+            max_abs_zscore=config.max_abs_zscore,
+        )
+        path = cross_validate_path(
+            library,
+            columns,
+            truth,
+            groups(frame, DATASET_COLUMN),
+            max_terms=config.headline_terms,
+            penalty=config.penalty,
+            pool_size=config.pool_size,
+            beam_width=config.beam_width,
+        )
     return decision_report(truth, path[config.headline_terms].predictions)
 
 
@@ -504,9 +533,9 @@ def run(
         correlations=correlation_analysis(frame, config_e3),
         baselines=baselines(frame),
         comparison=comparison(frame, e1, e3, e2),
-        leakage=leakage_demonstration(frame, config_e3),
+        leakage=leakage_demonstration(frame, config_e3, e3.paths),
         selection=model_selection(frame, e3),
-        decision=decision_quality(frame, config_e3),
+        decision=decision_quality(frame, config_e3, e3.paths.get("loo_dataset")),
         term_choice=recommend(e3.curve),
         pareto=pareto_table(e3.curve),
         oracles=oracle_ladder(

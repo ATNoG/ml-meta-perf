@@ -56,6 +56,10 @@ Four findings the documentation develops:
   model-only terms 14%. "Which model suits which data" is where the signal is, not "how
   hard is this data" or "how good is this model". See
   [chapter 7](assets/docs/07-practices.md).
+- **Eleven best practices from the literature, weighed against the corpus** — 9 supported,
+  1 challenged, 1 untestable here. The challenged one: *neural architectures do not catch
+  up on larger datasets*; the tree-versus-neural gap **widens** from 0.255 to 0.281 MCC
+  across the median dataset size. See [chapter 9](assets/docs/09-report.md).
 
 ## Documentation
 
@@ -71,9 +75,9 @@ and carrying the generated figures.
 | 4 | [Evaluation methodology](assets/docs/04-evaluation.md) | `metafit.validate`, `metafit.stats` |
 | 5 | [Oracles and ceilings](assets/docs/05-oracles.md) | `metafit.validate` |
 | 6 | [Results](assets/docs/06-results.md) | `metafit.experiment` |
-| 7 | [From equation to practice](assets/docs/07-practices.md) | `metafit.practices`, `metafit.attribution` |
+| 7 | [From equation to evidence to practice](assets/docs/07-practices.md) | `metafit.practices`, `metafit.attribution`, `metafit.guidance` |
 | 8 | [Limitations](assets/docs/08-limitations.md) | — |
-| 9 | [Generated report](assets/docs/09-report.md) | `metafit.report` — **written by the code, not by hand** |
+| 9 | [Generated report](assets/docs/09-report.md) | `metafit.report`, `metafit.guidance` — **written by the code, not by hand** |
 
 Related work and positioning: **[`RESEARCH.md`](RESEARCH.md)**.
 
@@ -224,7 +228,8 @@ src/metafit/
     selection.py    knee detection and Pareto fronts over equation length
     attribution.py  per-term effects, group shares, variance decomposition
     construct.py    agglomerative term building and the dendrogram cut
-    practices.py    turning a fitted equation into written guidance
+    practices.py    per-feature associations measured from a fitted equation
+    guidance.py     literature best practices, weighed against what the study measured
     plots.py        the figures (matplotlib, Agg, headless, no embedded text)
     figures.py      the figure set and suggested LaTeX captions
     report.py       the generated report: term importance and written analysis
