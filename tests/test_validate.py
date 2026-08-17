@@ -13,6 +13,7 @@ from metafit.validate import (
     baseline_group_mean,
     cross_validate,
     cross_validate_path,
+    decision_report,
     interaction_oracle,
     leave_one_group_out,
     oracle_ladder,
@@ -213,6 +214,37 @@ class TestOracleLadder(unittest.TestCase):
     def test_r2_is_non_decreasing(self) -> None:
         scores = oracle_ladder(self.target, self.outer, self.inner, ranks=(0, 1, 2, 3))["r2"].to_numpy()
         self.assertTrue((np.diff(scores) >= -1e-9).all())
+
+
+class TestDecisionReport(unittest.TestCase):
+    """The go/no-go decision the equation supports."""
+
+    def test_perfect_prediction_decides_perfectly(self) -> None:
+        truth = np.array([0.1, 0.4, 0.8, 0.95])
+        table = decision_report(truth, truth.copy(), thresholds=(0.5,))
+        row = table.row(0, named=True)
+        self.assertAlmostEqual(row["accuracy"], 1.0)
+        self.assertAlmostEqual(row["precision"], 1.0)
+        self.assertAlmostEqual(row["recall"], 1.0)
+
+    def test_one_row_per_threshold(self) -> None:
+        truth = np.linspace(0.0, 1.0, 20)
+        self.assertEqual(decision_report(truth, truth.copy(), thresholds=(0.3, 0.6, 0.9)).height, 3)
+
+    def test_majority_is_the_bar_to_clear(self) -> None:
+        # 18 of 20 above the threshold: always saying yes scores 0.9.
+        truth = np.concatenate([np.full(18, 0.9), np.full(2, 0.1)])
+        row = decision_report(truth, truth.copy(), thresholds=(0.5,)).row(0, named=True)
+        self.assertAlmostEqual(row["majority"], 0.9)
+
+    def test_counts_actual_positives(self) -> None:
+        truth = np.array([0.1, 0.9, 0.9])
+        self.assertEqual(decision_report(truth, truth, thresholds=(0.5,))["n_positive"][0], 2)
+
+    def test_degenerate_prediction_gives_nan_mcc_not_a_crash(self) -> None:
+        truth = np.array([0.1, 0.9])
+        table = decision_report(truth, np.zeros(2), thresholds=(0.5,))
+        self.assertTrue(np.isnan(table["mcc"][0]))
 
 
 class TestRanking(unittest.TestCase):

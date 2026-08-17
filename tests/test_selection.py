@@ -5,7 +5,15 @@ import unittest
 import numpy as np
 import polars as pl
 
-from metafit.selection import knee_index, knee_terms, pareto_front, pareto_table, recommend
+from metafit.selection import (
+    DETECTORS,
+    knee_index,
+    knee_terms,
+    pareto_front,
+    pareto_table,
+    recommend,
+    simplify_curve,
+)
 
 
 def curve(
@@ -39,6 +47,40 @@ class TestKneeIndex(unittest.TestCase):
         scores = 1.0 - np.exp(-sizes / 4.0)
         index = knee_index(sizes, scores)
         self.assertTrue(0 <= index < len(sizes))
+
+
+class TestDetectorsAndSmoothing(unittest.TestCase):
+    def setUp(self) -> None:
+        self.sizes = np.arange(1.0, 33.0)
+        self.saturating = 1.0 - np.exp(-self.sizes / 5.0)
+        rng = np.random.default_rng(5)
+        self.noisy = self.saturating + rng.normal(0.0, 0.02, self.sizes.shape)
+
+    def test_every_detector_returns_a_valid_index(self) -> None:
+        for detector in DETECTORS:
+            index = knee_index(self.sizes, self.saturating, detector=detector)
+            self.assertTrue(0 <= index < self.sizes.shape[0], detector)
+
+    def test_an_unknown_detector_falls_back_to_the_default(self) -> None:
+        index = knee_index(self.sizes, self.saturating, detector="nonsense")
+        self.assertEqual(index, knee_index(self.sizes, self.saturating, detector="autoelbow"))
+
+    def test_simplification_keeps_the_endpoints(self) -> None:
+        kept = simplify_curve(self.sizes, self.saturating, 0.01)
+        self.assertIn(0, kept.tolist())
+        self.assertIn(self.sizes.shape[0] - 1, kept.tolist())
+
+    def test_simplification_reduces_the_point_count(self) -> None:
+        kept = simplify_curve(self.sizes, self.noisy, 0.05)
+        self.assertLess(kept.shape[0], self.sizes.shape[0])
+
+    def test_smoothed_knee_is_still_an_index_into_the_original(self) -> None:
+        index = knee_index(self.sizes, self.noisy, tolerance=0.01)
+        self.assertTrue(0 <= index < self.sizes.shape[0])
+
+    def test_smoothing_a_short_curve_falls_back(self) -> None:
+        short = np.array([1.0, 2.0, 3.0])
+        self.assertTrue(0 <= knee_index(short, np.array([0.1, 0.5, 0.6]), tolerance=0.5) < 3)
 
 
 class TestKneeTerms(unittest.TestCase):

@@ -30,7 +30,7 @@ from metafit.data import (
 from metafit.fit import FitResult, fit, prune
 from metafit.model import Equation
 from metafit.practices import best_practices, concordance, concordance_summary, feature_practices
-from metafit.selection import knee_terms, pareto_front, pareto_table, recommend
+from metafit.selection import knee_index, knee_terms, pareto_front, pareto_table, recommend, simplify_curve
 from metafit.terms import Atom, Library, Term, build_library, ratio_of_sums_terms, simplify
 from metafit.validate import (
     CrossValidation,
@@ -38,6 +38,7 @@ from metafit.validate import (
     additive_oracle,
     baseline_group_mean,
     cross_validate,
+    decision_report,
     ranking_report,
 )
 
@@ -70,11 +71,13 @@ __all__ = [
     "concordance_summary",
     "constructed_library",
     "cross_validate",
+    "decision_report",
     "feature_practices",
     "fit",
     "group_shares",
     "groups",
     "guided_merge",
+    "knee_index",
     "knee_terms",
     "load",
     "pareto_front",
@@ -86,6 +89,7 @@ __all__ = [
     "redundancy_groups",
     "screen",
     "simplify",
+    "simplify_curve",
     "structural_terms",
     "target",
     "term_effects",

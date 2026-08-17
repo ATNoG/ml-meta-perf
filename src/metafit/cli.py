@@ -90,6 +90,9 @@ def render(report: Report) -> None:
     _section("Validation protocol matters (same equation, different splits)")
     _show(report.leakage)
 
+    _section("Go/no-go decision quality on held-out datasets")
+    _show(report.decision)
+
     _section("Model selection on held-out datasets")
     _show(report.selection)
     print(

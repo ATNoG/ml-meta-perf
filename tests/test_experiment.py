@@ -31,6 +31,7 @@ from metafit.experiment import (
     baselines,
     comparison,
     correlation_analysis,
+    decision_quality,
     leakage_demonstration,
     model_selection,
     run_e1,
@@ -194,6 +195,7 @@ class TestCli(unittest.TestCase):
             comparison=comparison(frame, e1, e2),
             leakage=leakage_demonstration(frame, FAST_E2),
             selection=model_selection(frame, e2),
+            decision=decision_quality(frame, FAST_E2),
             term_choice=recommend(e2.curve),
             pareto=pareto_table(e2.curve),
             oracles=oracle_ladder(

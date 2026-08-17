@@ -40,6 +40,7 @@ from metafit.validate import (
     additive_oracle,
     baseline_group_mean,
     cross_validate_path,
+    decision_report,
     oracle_ladder,
     random_kfold_groups,
     ranking_report,
@@ -417,6 +418,30 @@ def comparison(
     )
 
 
+def decision_quality(frame: pl.DataFrame, config: Configuration = DEFAULT_E2) -> pl.DataFrame:
+    """Go/no-go decision quality, scored on held-out datasets rather than in-sample."""
+    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+    truth = target(frame)
+    library = build_library(
+        DATASET_FEATURES,
+        MODEL_FEATURES,
+        columns,
+        max_arity=config.max_arity,
+        max_abs_zscore=config.max_abs_zscore,
+    )
+    path = cross_validate_path(
+        library,
+        columns,
+        truth,
+        groups(frame, DATASET_COLUMN),
+        max_terms=config.headline_terms,
+        penalty=config.penalty,
+        pool_size=config.pool_size,
+        beam_width=config.beam_width,
+    )
+    return decision_report(truth, path[config.headline_terms].predictions)
+
+
 def model_selection(frame: pl.DataFrame, e2: EquationReport) -> pl.DataFrame:
     """Can the equation pick a good model for a dataset it has never seen?"""
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
@@ -445,6 +470,7 @@ class Report:
     term_choice: pl.DataFrame
     pareto: pl.DataFrame
     oracles: pl.DataFrame
+    decision: pl.DataFrame
 
 
 # Small enough to run in a couple of seconds. Intended for smoke-testing the wiring,
@@ -481,6 +507,7 @@ def run(path: str | None = None, *, quick: bool = False) -> Report:
         comparison=comparison(frame, e1, e2),
         leakage=leakage_demonstration(frame, config_e2),
         selection=model_selection(frame, e2),
+        decision=decision_quality(frame, config_e2),
         term_choice=recommend(e2.curve),
         pareto=pareto_table(e2.curve),
         oracles=oracle_ladder(

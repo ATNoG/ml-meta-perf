@@ -307,6 +307,61 @@ def oracle_ladder(
     return pl.DataFrame(rows)
 
 
+def decision_report(
+    target: np.ndarray,
+    prediction: np.ndarray,
+    thresholds: tuple[float, ...] = (0.3, 0.5, 0.7, 0.8, 0.9),
+) -> pl.DataFrame:
+    """Quality of the go/no-go decision the equation supports.
+
+    An R2 of 0.47 sounds too weak to act on, and read as "how precisely can I state the
+    MCC" it is. But the question a practitioner actually asks is coarser -- *will this
+    model work on this data* -- and a regression too imprecise for the first question can
+    be accurate on the second, because thresholding discards exactly the precision it
+    lacks.
+
+    Each row thresholds both the truth and the prediction at the same value and scores the
+    resulting binary decision. ``majority`` is the accuracy of always answering with the
+    larger class, which is the bar any such rule has to clear to be worth running.
+    """
+    rows: list[dict[str, object]] = []
+    for threshold in thresholds:
+        actual = target >= threshold
+        predicted = prediction >= threshold
+        hits = int(np.sum(actual & predicted))
+        correct_rejections = int(np.sum(~actual & ~predicted))
+        false_alarms = int(np.sum(~actual & predicted))
+        misses = int(np.sum(actual & ~predicted))
+
+        positives = hits + false_alarms
+        actual_positives = hits + misses
+        denominator = float(
+            np.sqrt(
+                float(positives)
+                * float(actual_positives)
+                * float(correct_rejections + false_alarms)
+                * float(correct_rejections + misses)
+            )
+        )
+        share = float(np.mean(actual))
+        rows.append(
+            {
+                "threshold": threshold,
+                "accuracy": (hits + correct_rejections) / target.shape[0],
+                "majority": max(share, 1.0 - share),
+                "precision": hits / positives if positives else float("nan"),
+                "recall": hits / actual_positives if actual_positives else float("nan"),
+                "mcc": (
+                    (hits * correct_rejections - false_alarms * misses) / denominator
+                    if denominator > 0.0
+                    else float("nan")
+                ),
+                "n_positive": actual_positives,
+            }
+        )
+    return pl.DataFrame(rows)
+
+
 def ranking_report(
     target: np.ndarray,
     prediction: np.ndarray,
