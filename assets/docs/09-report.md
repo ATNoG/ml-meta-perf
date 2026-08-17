@@ -172,7 +172,7 @@ An additive form invites reading one term at a time, and that works when one or 
 | nr_class | number of classes | 3 | 0.1152 | log | sum_ratio |
 | nr_cor_attr | proportion of correlated attribute pairs | 3 | 0.1098 | id | product, ratio |
 | nr_attr | number of attributes | 3 | 0.1025 | log | sum_ratio |
-| nr_inst | number of instances | 2 | 0.0749 | log | sum_ratio |
+| nr_inst | number of instances in the source dataset (before sampling) | 2 | 0.0749 | log | sum_ratio |
 | inst_to_attr | instances per attribute | 2 | 0.0583 | log | product, sum_ratio |
 | nr_bin | number of binary attributes | 1 | 0.0383 | id | atom |
 | nr_outliers | number of attributes containing outliers | 0 | 0.0000 |  |  |
@@ -211,7 +211,7 @@ The vocabulary offers five operations and five transforms and the search is free
 
 A best practice is general, transferable advice that already circulates in the field — not a property of this equation. So the practices below are taken from the literature and this study is used to *weigh* them: each verdict, and the numbers inside it, are computed from this run by `metafit.guidance`, against a stated threshold, so other data can overturn any of them.
 
-11 practices assessed: 1 challenged, 1 not tested, 9 supported.
+10 practices assessed: 1 not tested, 9 supported.
 
 ### 1. Characterise the dataset before choosing a model. What the data is like bounds what any model can reach, and that bound is usually the larger effect.
 
@@ -255,25 +255,19 @@ A best practice is general, transferable advice that already circulates in the f
 
 *Practice from:* Shwartz-Ziv & Armon, arXiv:2106.03253 (2021). Capacity beyond what the sample supports fits noise, and the cost is paid twice: in accuracy and in the tuning budget needed to recover it.
 
-### 8. Give neural architectures more data before writing them off: the gap to tree ensembles is a small-sample effect and closes as the dataset grows.
-
-**Verdict: challenged.** It does not close here, it widens. Splitting the complete-grid datasets at their median instance count, tree ensembles lead neural architectures by 0.255 MCC on the smaller half and 0.281 on the larger one. The nuance worth keeping: purpose-built tabular architectures do improve with size (0.750 to 0.849) while plain MLPs and DNNs get worse (0.499 to 0.405), so the scaling argument survives for the architectures designed for this data and fails for the ones that are not. Eight and nine datasets a side is a thin split and this is a direction, not a measurement.
-
-*Practice from:* Common reading of Grinsztajn et al., arXiv:2207.08815 (2022), §4.2. The tabular benchmarks where trees win are mostly small, and the scaling argument that carried deep learning elsewhere is expected to apply here too.
-
-### 9. Before adopting a meta-learner to choose models, check it against 'use whatever usually works'. Ranking is an easier problem than prediction and often needs less.
+### 8. Before adopting a meta-learner to choose models, check it against 'use whatever usually works'. Ranking is an easier problem than prediction and often needs less.
 
 **Verdict: supported.** Tested against this study's own equation and the equation loses. Ranking models within a held-out dataset, the per-model-mean baseline reaches Spearman 0.703 and top-1 regret 0.011 against the equation's 0.648 and 0.019. The equation wins on predicting the MCC *value*; for ordering candidates, the trivial baseline is the better tool.
 
 *Practice from:* Rice, 'The Algorithm Selection Problem' (1976); standard meta-learning practice. A per-model mean over previous datasets carries most of the ranking signal at zero modelling cost, and is the baseline any selection method has to clear.
 
-### 10. Report which (dataset, model) runs were excluded and why. Aggregate comparisons over an incomplete grid compare different models on different problems.
+### 9. Report which (dataset, model) runs were excluded and why. Aggregate comparisons over an incomplete grid compare different models on different problems.
 
 **Verdict: supported.** 24 of 500 (dataset, model) cells are absent -- 5% -- and they are not absent at random: eight models are missing from the same three datasets. Measuring the bias rather than assuming it is small: restricting to the 17 complete datasets moves the model ranking by Spearman 0.975, so the ordering survives, but a mean over all rows still compares eight of the models on a different set of problems from the rest. Every family figure quoted here uses the complete subset for that reason.
 
 *Practice from:* Walsh et al., Nature Methods 18 (2021); benchmarking reporting standards. Runs usually go missing where a model struggles or will not fit, so exclusions are correlated with the outcome being measured.
 
-### 11. Score imbalanced classification with a metric that accounts for all four confusion-matrix cells -- MCC rather than accuracy or F1.
+### 10. Score imbalanced classification with a metric that accounts for all four confusion-matrix cells -- MCC rather than accuracy or F1.
 
 **Verdict: not tested.** This study adopts MCC as its target and never measures an alternative, so it is not evidence for the practice. What it does show is the shape MCC has: 15 of 476 rows sit at exactly 0, which is a classifier that has learned nothing being scored as having learned nothing. Accuracy would not have said that.
 
@@ -291,7 +285,6 @@ At a glance:
 | Spend the first effort on reducing noise in the data, not on a larger model. Noise sets a ceiling that capacity cannot lift. | supported | -0.1731 |
 | On real-world data that has not been carefully curated, prefer a learner with built-in robustness to outliers. | supported | 0.4234 |
 | Match capacity to the problem. A larger, more expensive model is not a safer default; on small tabular problems it is usually a worse one. | supported | -0.4727 |
-| Give neural architectures more data before writing them off: the gap to tree ensembles is a small-sample effect and closes as the dataset grows. | challenged | -0.0257 |
 | Before adopting a meta-learner to choose models, check it against 'use whatever usually works'. Ranking is an easier problem than prediction and often needs less. | supported | 0.0549 |
 | Report which (dataset, model) runs were excluded and why. Aggregate comparisons over an incomplete grid compare different models on different problems. | supported | 0.0480 |
 | Score imbalanced classification with a metric that accounts for all four confusion-matrix cells -- MCC rather than accuracy or F1. | not tested | 0.0315 |
@@ -308,7 +301,7 @@ What the fitted equation says about each raw feature it uses, kept only when the
  4. [moderate] Higher class entropy (how evenly the labels are spread) went with lower MCC (about 0.24 MCC between its lowest and highest decile).
  5. [moderate] Higher noise-to-signal ratio went with lower MCC (about 0.17 MCC between its lowest and highest decile).
  6. [weak    ] Higher proportion of correlated attribute pairs went with higher MCC (about 0.02 MCC between its lowest and highest decile).
- 7. [weak    ] Higher number of instances went with lower MCC (about 0.02 MCC between its lowest and highest decile).
+ 7. [weak    ] Higher number of instances in the source dataset (before sampling) went with lower MCC (about 0.02 MCC between its lowest and highest decile).
 
 Evidence:
 
@@ -320,7 +313,7 @@ Evidence:
 | class_ent | class entropy (how evenly the labels are spread) | 3 | -0.6546 | -0.2415 | 0.6333 | moderate |
 | ns_ratio | noise-to-signal ratio | 3 | -0.5283 | -0.1731 | 0.6000 | moderate |
 | nr_cor_attr | proportion of correlated attribute pairs | 3 | 0.1806 | 0.0238 | 0.8833 | weak |
-| nr_inst | number of instances | 2 | -0.1535 | -0.0226 | 0.5250 | weak |
+| nr_inst | number of instances in the source dataset (before sampling) | 2 | -0.1535 | -0.0226 | 0.5250 | weak |
 
 ### These are conditional statements, not marginal ones
 
@@ -334,7 +327,7 @@ A practice states what the *equation* does as a feature rises, with every other 
 | class_ent | class entropy (how evenly the labels are spread) | 0.0894 | -0.6546 | lower | no |
 | ns_ratio | noise-to-signal ratio | -0.3954 | -0.5283 | lower | yes |
 | nr_cor_attr | proportion of correlated attribute pairs | -0.1966 | 0.1806 | higher | no |
-| nr_inst | number of instances | 0.0565 | -0.1535 | lower | no |
+| nr_inst | number of instances in the source dataset (before sampling) | 0.0565 | -0.1535 | lower | no |
 
 Disagreement is what conditioning does, not a defect. A marginal correlation mixes a feature's effect with everything it travels with; inside the equation the terms carrying those companions are already present, so what is left for this feature is what it adds beyond them. The practical consequence: **these statements describe what to expect once the other factors are accounted for, not what a scatter plot of that one feature will show** — and the scatter plot is what a reader will accidentally check against.
 

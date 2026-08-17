@@ -101,13 +101,6 @@ class Evidence:
     baseline_spearman: float
     selection_regret: float
     baseline_regret: float
-    #: Tree-minus-neural MCC gap on the smaller and larger halves of the complete-grid
-    #: datasets, split at their median instance count.
-    size_split: tuple[float, float]
-    tabular_nn_small: float
-    tabular_nn_large: float
-    generic_nn_small: float
-    generic_nn_large: float
 
     def family(self, name: str, complete: bool = True) -> float:
         """Mean MCC of one learner family, on the complete-grid subset by default."""
@@ -158,37 +151,6 @@ def _model_means(frame: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def _size_split(subset: pl.DataFrame) -> dict[str, float]:
-    """Family means on the smaller and larger halves of the datasets, by instance count.
-
-    Split at the median rather than at a round number, so the two halves are the same
-    size and the threshold is a property of the corpus. With seventeen complete datasets
-    this is eight against nine, which is thin -- the check that uses it says so.
-    """
-    if "nr_inst" not in subset.columns or subset.height == 0:
-        return dict.fromkeys(
-            ("gap_small", "gap_large", "tabular_small", "tabular_large", "generic_small", "generic_large"),
-            float("nan"),
-        )
-    sizes = subset.group_by(DATASET_COLUMN).agg(pl.col("nr_inst").first())
-    median = float(np.median(sizes["nr_inst"].to_numpy()))
-    labelled = subset.with_columns(pl.col(MODEL_COLUMN).replace(MODEL_FAMILY).alias("family"))
-
-    def mean_of(half: pl.DataFrame, families: tuple[str, ...]) -> float:
-        matched = half.filter(pl.col("family").is_in(list(families)))
-        return float(np.mean(matched[TARGET_COLUMN].to_numpy())) if matched.height else float("nan")
-
-    out: dict[str, float] = {}
-    for name, half in (
-        ("small", labelled.filter(pl.col("nr_inst") <= median)),
-        ("large", labelled.filter(pl.col("nr_inst") > median)),
-    ):
-        out[f"gap_{name}"] = mean_of(half, TREE_FAMILIES) - mean_of(half, NEURAL_FAMILIES)
-        out[f"tabular_{name}"] = mean_of(half, ("tabular NN",))
-        out[f"generic_{name}"] = mean_of(half, ("generic NN",))
-    return out
-
-
 def gather(frame: pl.DataFrame, report: Report) -> Evidence:
     """Measure everything the practice checks need.
 
@@ -221,7 +183,6 @@ def gather(frame: pl.DataFrame, report: Report) -> Evidence:
     datasets = frame[DATASET_COLUMN].to_numpy().astype(str)
     models = frame[MODEL_COLUMN].to_numpy().astype(str)
     baseline = ranking_report(truth, baseline_group_mean(truth, datasets, models), datasets)
-    halves = _size_split(subset)
 
     selection = report.selection
     return Evidence(
@@ -245,11 +206,6 @@ def gather(frame: pl.DataFrame, report: Report) -> Evidence:
         baseline_spearman=float(np.mean(baseline["spearman"].to_numpy())),
         selection_regret=float(np.mean(selection["regret"].to_numpy())),
         baseline_regret=float(np.mean(baseline["regret"].to_numpy())),
-        size_split=(halves["gap_small"], halves["gap_large"]),
-        tabular_nn_small=halves["tabular_small"],
-        tabular_nn_large=halves["tabular_large"],
-        generic_nn_small=halves["generic_small"],
-        generic_nn_large=halves["generic_large"],
     )
 
 
@@ -343,18 +299,6 @@ CATALOGUE: tuple[Practice, ...] = (
         rationale=(
             "Capacity beyond what the sample supports fits noise, and the cost is paid twice: "
             "in accuracy and in the tuning budget needed to recover it."
-        ),
-    ),
-    Practice(
-        id="neural-nets-need-scale",
-        statement=(
-            "Give neural architectures more data before writing them off: the gap to tree "
-            "ensembles is a small-sample effect and closes as the dataset grows."
-        ),
-        source="Common reading of Grinsztajn et al., arXiv:2207.08815 (2022), §4.2",
-        rationale=(
-            "The tabular benchmarks where trees win are mostly small, and the scaling "
-            "argument that carried deep learning elsewhere is expected to apply here too."
         ),
     ),
     Practice(
@@ -539,36 +483,6 @@ def _capacity_is_not_free(evidence: Evidence) -> Verdict:
     )
 
 
-def _neural_nets_need_scale(evidence: Evidence) -> Verdict:
-    small, large = evidence.size_split
-    if np.isnan(small) or np.isnan(large):
-        return Verdict(
-            practice=_BY_ID["neural-nets-need-scale"],
-            verdict=NOT_TESTED,
-            evidence="Not enough complete datasets to split by size.",
-            magnitude=float("nan"),
-        )
-    closing = small - large
-    verdict = SUPPORTED if closing > 0.05 else (QUALIFIED if closing > 0.0 else CHALLENGED)
-    return Verdict(
-        practice=_BY_ID["neural-nets-need-scale"],
-        verdict=verdict,
-        evidence=(
-            f"It does not close here, it widens. Splitting the complete-grid datasets at "
-            f"their median instance count, tree ensembles lead neural architectures by "
-            f"{small:.3f} MCC on the smaller half and {large:.3f} on the larger one. The "
-            "nuance worth keeping: purpose-built tabular architectures do improve with size "
-            f"({evidence.tabular_nn_small:.3f} to {evidence.tabular_nn_large:.3f}) while "
-            f"plain MLPs and DNNs get worse ({evidence.generic_nn_small:.3f} to "
-            f"{evidence.generic_nn_large:.3f}), so the scaling argument survives for the "
-            "architectures designed for this data and fails for the ones that are not. "
-            "Eight and nine datasets a side is a thin split and this is a direction, not a "
-            "measurement."
-        ),
-        magnitude=closing,
-    )
-
-
 def _beat_the_trivial_baseline(evidence: Evidence) -> Verdict:
     beaten = evidence.baseline_spearman >= evidence.selection_spearman
     return Verdict(
@@ -632,7 +546,6 @@ CHECKS: dict[str, Callable[[Evidence], Verdict]] = {
     "clean-noise-before-adding-capacity": _clean_noise_before_adding_capacity,
     "prefer-outlier-robust-learners": _prefer_outlier_robust_learners,
     "capacity-is-not-free": _capacity_is_not_free,
-    "neural-nets-need-scale": _neural_nets_need_scale,
     "beat-the-trivial-baseline": _beat_the_trivial_baseline,
     "report-excluded-runs": _report_excluded_runs,
     "use-a-balanced-metric": _use_a_balanced_metric,

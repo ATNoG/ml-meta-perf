@@ -18,13 +18,11 @@ from metafit.plots import (
     count_below_floor,
     equation_comparison,
     error_curve,
-    oracle_ladder,
     per_group_quality,
     practice_effects,
     predicted_versus_actual,
     term_count_curve,
     term_effects,
-    term_stability,
 )
 
 ORACLE_ROW = "additive oracle (ceiling)"
@@ -78,15 +76,8 @@ def generate(report: Report, destination: str | Path, data: str | Path | None = 
         term_effects(report.effects, folder / "term_effects.png"),
         practice_effects(report.practices, folder / "practice_effects.png"),
         contribution_shares(report.shares, folder / "contribution_shares.png"),
-        oracle_ladder(
-            report.oracles,
-            folder / "oracle_ladder.png",
-            achieved=float(report.e3.in_sample["r2"]),
-        ),
         per_group_quality(report.selection, folder / "per_group_quality.png"),
     ]
-    if report.e3.stability is not None:
-        written.append(term_stability(report.e3.stability, folder / "term_stability.png"))
     return written
 
 
@@ -129,17 +120,8 @@ def captions(report: Report, data: str | Path | None = None) -> dict[str, str]:
             "Share of E3's output variance driven by terms using dataset features only, "
             "model features only, and both. Shares are covariance-based and sum to 1."
         ),
-        "oracle_ladder.png": (
-            "Ceiling as interaction components are added to the additive oracle (AMMI). "
-            "Rank 0 is the additive oracle; the first component alone is worth +0.12 R2, "
-            "which the fitted equation does not reach."
-        ),
         "per_group_quality.png": (
             "Rank correlation and top-1 regret for each held-out dataset under "
             "leave-one-dataset-out validation."
-        ),
-        "term_stability.png": (
-            "Fraction of the 20 leave-one-dataset-out folds that selected each term. "
-            "Terms selected in few folds are artefacts of the training split."
         ),
     }

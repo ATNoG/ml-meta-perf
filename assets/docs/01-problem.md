@@ -60,6 +60,24 @@ Twenty CSV columns minus `Dataset`, `Model` and `MCC` leaves 17 features.
 log-scaled and vary with the dataset as well as the model, since they are functions of
 dataset size — which is why the model features are not purely model-level.
 
+### How the runs were produced, and what that rules out
+
+Two properties of the corpus are invisible in the CSV and change what may be asked of it.
+
+**Every model was trained on a stratified sample capped at 100,000 rows.** Ten of the
+twenty datasets are larger than that — up to 7.1 million — so `nr_inst` records the size of
+the *source dataset*, not the size of the training set, and above the cap the training sets
+are all the same size. **No question about the effect of more training data can be answered
+here.** `nr_inst` and `inst_to_attr` remain perfectly good meta-features — they describe the
+corpus a problem was drawn from, which is knowable before training — but a term over them
+is not a statement about sample size.
+
+**Runs that failed to train were discarded.** That is where the 24 missing cells went, and
+they are not missing at random: eight models are absent from the same three datasets, which
+are the three smallest in the corpus (165, 389 and 400 instances). The meta-dataset is
+therefore a sample of *completed* runs, and every prediction is conditional on training
+succeeding ([chapter 8](08-limitations.md)).
+
 ## Two facts that drive the whole design
 
 **Dataset features are constant across a dataset's 25 rows.** Everything follows from

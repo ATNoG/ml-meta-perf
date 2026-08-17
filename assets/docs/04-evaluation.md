@@ -126,5 +126,3 @@ data" cannot, because the baseline has nothing to say about *their* data.
 A fitted equation presents a term chosen in 19 of 20 folds and one chosen in 3
 identically. `CrossValidation.stability()` counts selection frequency across folds, and no
 extracted practice ([chapter 7](07-practices.md)) is published from a term below 50%.
-
-![Term stability](../figures/term_stability.png)

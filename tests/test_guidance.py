@@ -145,21 +145,6 @@ class TestVerdicts(unittest.TestCase):
         evidence = gather(self.frame, self.report)  # pyright: ignore[reportArgumentType]
         self.assertEqual(check(evidence).verdict, NOT_TESTED)
 
-    def test_a_practice_this_corpus_disagrees_with_is_challenged(self) -> None:
-        # The catalogue would be worth little if every entry came back supported. This one
-        # does not: the tree-versus-neural gap widens with dataset size here rather than
-        # closing, and the check has to say so.
-        check = CHECKS["neural-nets-need-scale"]
-        evidence = gather(self.frame, self.report)  # pyright: ignore[reportArgumentType]
-        verdict = check(evidence)
-        self.assertEqual(verdict.verdict, CHALLENGED)
-        self.assertLess(verdict.magnitude, 0.0)
-
-    def test_a_corpus_without_sizes_yields_not_tested(self) -> None:
-        check = CHECKS["neural-nets-need-scale"]
-        evidence = gather(frame(), _Report())  # pyright: ignore[reportArgumentType]
-        self.assertEqual(check(evidence).verdict, NOT_TESTED)
-
     def test_the_baseline_verdict_follows_which_side_wins(self) -> None:
         check = CHECKS["beat-the-trivial-baseline"]
         losing = gather(self.frame, self.report)  # pyright: ignore[reportArgumentType]

@@ -13,14 +13,12 @@ from metafit.plots import (
     count_below_floor,
     equation_comparison,
     error_curve,
-    oracle_ladder,
     per_group_quality,
     practice_effects,
     predicted_versus_actual,
     scatter_limits,
     term_count_curve,
     term_effects,
-    term_stability,
 )
 
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
@@ -71,10 +69,24 @@ class PlotTestCase(unittest.TestCase):
         self._directory.cleanup()
 
     def assertIsPng(self, path: Path) -> None:
+        """Both files, because every figure is written as a raster and a vector."""
         self.assertTrue(path.is_file())
         self.assertGreater(path.stat().st_size, 1000)
         with path.open("rb") as handle:
             self.assertEqual(handle.read(8), PNG_MAGIC)
+
+        vector = path.with_suffix(".pdf")
+        self.assertTrue(vector.is_file(), f"no PDF beside {path.name}")
+        with vector.open("rb") as handle:
+            self.assertEqual(handle.read(4), b"%PDF")
+
+        # Transparent background, checked at a corner rather than asserted from the
+        # savefig argument -- the argument could be right and the axes patch still opaque.
+        import matplotlib.image as mpimg
+
+        pixels = mpimg.imread(path)
+        self.assertEqual(pixels.shape[2], 4, "no alpha channel")
+        self.assertEqual(float(pixels[0, 0, 3]), 0.0, "corner pixel is not transparent")
 
 
 class TestPlots(PlotTestCase):
@@ -124,17 +136,6 @@ class TestPlots(PlotTestCase):
         )
         self.assertIsPng(error_curve(table, self.folder / "smape.png", metric="smape", marker=6))
 
-    def test_oracle_ladder(self) -> None:
-        ladder = pl.DataFrame(
-            {"interaction_rank": [0, 1, 2, 3], "r2": [0.66, 0.78, 0.85, 0.90],
-             "gain": [float("nan"), 0.12, 0.07, 0.05]}
-        )
-        self.assertIsPng(oracle_ladder(ladder, self.folder / "ladder.png", achieved=0.556))
-
-    def test_oracle_ladder_without_an_achieved_line(self) -> None:
-        ladder = pl.DataFrame({"interaction_rank": [0, 1], "r2": [0.66, 0.78], "gain": [float("nan"), 0.12]})
-        self.assertIsPng(oracle_ladder(ladder, self.folder / "ladder2.png"))
-
     def test_term_effects(self) -> None:
         self.assertIsPng(term_effects(effects(), self.folder / "terms.png"))
 
@@ -158,12 +159,6 @@ class TestPlots(PlotTestCase):
             }
         )
         self.assertIsPng(equation_comparison(table, self.folder / "comparison.png"))
-
-    def test_term_stability(self) -> None:
-        table = pl.DataFrame(
-            {"term": ["a", "[b] / [log(c)]", "d"], "folds": [20, 14, 3], "frequency": [1.0, 0.7, 0.15]}
-        )
-        self.assertIsPng(term_stability(table, self.folder / "stability.png"))
 
     def test_per_group_quality(self) -> None:
         table = pl.DataFrame(

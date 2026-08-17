@@ -11,6 +11,13 @@ and they behave very differently, which is why they are named separately here:
 That asymmetry is the whole point of the two-equation comparison, so the split is
 part of the public API rather than something each caller re-derives.
 
+**``nr_inst`` describes the source dataset, not the training set.** Every model was
+trained on a stratified sample capped at 100,000 rows, and ten of the twenty datasets are
+larger than that -- up to seven million. Nothing in the CSV records the sampled size,
+because it is the same cap for every dataset above it. So ``nr_inst`` and
+``inst_to_attr`` are properties of the corpus a dataset was drawn from, and no statement
+about "more training data" can be tested against them.
+
 Study chapter: [1. The problem and the data](../../assets/docs/01-problem.md) -- the rationale, in
 prose, with the figures.
 """
@@ -106,7 +113,7 @@ FEATURE_GLOSSARY: dict[str, str] = {
     "nr_bin": "number of binary attributes",
     "nr_class": "number of classes",
     "nr_cor_attr": "proportion of correlated attribute pairs",
-    "nr_inst": "number of instances",
+    "nr_inst": "number of instances in the source dataset (before sampling)",
     "nr_norm": "number of normally distributed attributes",
     "nr_outliers": "number of attributes containing outliers",
     "ns_ratio": "noise-to-signal ratio",

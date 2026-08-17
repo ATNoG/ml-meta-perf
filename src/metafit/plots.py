@@ -43,11 +43,28 @@ NEGATIVE = "#d1495b"
 FIGURE_DPI = 150
 
 
+#: Written alongside the raster for every figure. A vector copy is what a paper's
+#: typesetting actually wants, and generating it here costs one extra ``savefig``.
+VECTOR_SUFFIX = ".pdf"
+
+
 def _finish(figure: Figure, destination: str | Path) -> Path:
+    """Write the figure as PNG and PDF, both on a transparent background.
+
+    Transparent rather than white so a figure sits on whatever the page behind it is,
+    without a rectangle of the wrong shade around it. Text and ticks keep matplotlib's
+    near-black default, which suits the white or near-white page these are written for;
+    on a dark background they would need restyling, and transparency alone would not be
+    enough.
+
+    The returned path is the PNG: it is what the markdown chapters embed. The PDF sits
+    beside it under the same stem, since a paper's typesetting wants the vector copy.
+    """
     path = Path(destination)
     path.parent.mkdir(parents=True, exist_ok=True)
     figure.tight_layout()
-    figure.savefig(path, dpi=FIGURE_DPI, bbox_inches="tight")
+    figure.savefig(path, dpi=FIGURE_DPI, bbox_inches="tight", transparent=True)
+    figure.savefig(path.with_suffix(VECTOR_SUFFIX), bbox_inches="tight", transparent=True)
     plt.close(figure)
     return path
 
@@ -232,29 +249,6 @@ def equation_comparison(comparison: pl.DataFrame, destination: str | Path) -> Pa
     return _finish(figure, destination)
 
 
-def oracle_ladder(ladder: pl.DataFrame, destination: str | Path, *, achieved: float | None = None) -> Path:
-    """How fast the ceiling climbs as interaction components are added.
-
-    Rank 0 is the additive oracle. Each further component is one more pattern of "this
-    kind of model suits this kind of dataset", and the steepness of the first step is the
-    measure of how much interaction structure the data holds. With ``achieved`` supplied
-    the equation's own score is drawn as a line, showing which rung it has reached.
-    """
-    ranks = ladder["interaction_rank"].to_numpy()
-    figure, axes = plt.subplots(figsize=(6.4, 4.0))
-    axes.plot(ranks, ladder["r2"].to_numpy(), "o-", color=CEILING, linewidth=2, label="oracle ceiling")
-    if achieved is not None:
-        axes.axhline(
-            achieved, color=IN_SAMPLE, linestyle="--", linewidth=1.4,
-            label=f"fitted equation ({achieved:.3f})",
-        )
-    axes.set_xlabel("rank of the interaction added to the additive oracle")
-    axes.set_ylabel("$R^2$")
-    axes.set_xticks(ranks)
-    axes.grid(alpha=0.25, linestyle=":")
-    axes.legend(frameon=False, fontsize=9, loc="lower right")
-    return _finish(figure, destination)
-
 
 def term_effects(effects: pl.DataFrame, destination: str | Path, *, top: int = 12) -> Path:
     """Per-term effect sizes in MCC units, signed, strongest at the top."""
@@ -329,26 +323,6 @@ def contribution_shares(shares: pl.DataFrame, destination: str | Path) -> Path:
     return _finish(figure, destination)
 
 
-
-def term_stability(stability: pl.DataFrame, destination: str | Path, *, top: int = 16) -> Path:
-    """How often each term survived the leave-one-dataset-out folds.
-
-    The companion to any published equation. A term chosen in 19 of 20 folds is a finding;
-    one chosen in 3 is an artefact of which datasets landed in the training split, and the
-    fitted equation alone presents the two identically.
-    """
-    table = stability.head(top).reverse()
-    labels = [_shorten(name) for name in table["term"].to_list()]
-    values = table["frequency"].to_numpy()
-
-    figure, axes = plt.subplots(figsize=(8.2, 0.38 * len(labels) + 1.2))
-    axes.barh(range(len(labels)), values, color=IN_SAMPLE, alpha=0.85)
-    axes.set_yticks(range(len(labels)))
-    axes.set_yticklabels(labels, fontsize=8)
-    axes.set_xlim(0.0, 1.0)
-    axes.set_xlabel("fraction of leave-one-dataset-out folds selecting the term")
-    axes.grid(axis="x", alpha=0.25, linestyle=":")
-    return _finish(figure, destination)
 
 
 def per_group_quality(report: pl.DataFrame, destination: str | Path) -> Path:

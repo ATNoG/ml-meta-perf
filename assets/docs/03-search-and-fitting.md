@@ -316,6 +316,26 @@ for the in-sample curve, which is monotone and flattens; it is the wrong questio
 cross-validated curve, which is not monotone at 20 groups — it dips to 0.009 at four terms,
 recovers to 0.414 at sixteen, and a detector run on that is describing the dip.
 
+### Sixteen terms is the shorter equation worth knowing about
+
+Read by eye, the leave-one-dataset-out curve bends at **16**: it climbs from 0.009 at four
+terms to 0.414 at sixteen, and everything after that is a noisy plateau ending at 0.466.
+That reading is fair, and the two lengths are the real choice a term budget poses:
+
+| terms | in-sample R² | LOO-dataset R² | LOO-dataset MAE |
+|---|---|---|---|
+| 16 | 0.5854 | 0.4145 | 0.1870 |
+| **24** | **0.5998** | **0.4658** | **0.1827** |
+
+Eight more terms buy **+0.051 of transfer** and +0.014 of fit. That is a third more equation
+for a tenth more transfer, and which way it goes depends entirely on what the equation is
+for: 24 is the better predictor, 16 is the more readable object and gives up little. Both
+sit on the Pareto front over (length, transfer), and neither dominates the other once
+brevity counts as a good.
+
+The study publishes 24 because the stated rule selects it, not because 16 was rejected.
+Anyone reproducing this with a stricter readability budget should take 16 and lose 0.05.
+
 The best-cross-validated rule is therefore what selects the published length, and it is the
 one stated in advance rather than picked afterwards. It is worth noting what it costs to
 follow: **26 terms has the lower leave-one-dataset-out MAE** (0.1792 against 0.1827), so R²

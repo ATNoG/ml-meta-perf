@@ -76,8 +76,6 @@ decomposition nor enter any score.
 | 8 | 0.9842 | +0.019 |
 | 20 (full) | 1.0000 | — |
 
-![Oracle ladder](../figures/oracle_ladder.png)
-
 At full rank it reproduces every observed cell exactly, so the interesting question is not
 where the ladder ends but **how fast it climbs**.
 

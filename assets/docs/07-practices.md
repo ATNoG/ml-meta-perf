@@ -25,33 +25,31 @@ So the chapter runs in two layers:
 
 The second layer is where the study earns its keep. Twenty datasets from one domain is a
 narrow base from which to *invent* advice and a perfectly reasonable base from which to
-*test* it, so `metafit.guidance` starts from eleven practices the tabular machine-learning
+*test* it, so `metafit.guidance` starts from ten practices the tabular machine-learning
 literature already recommends and asks what this corpus says about each. The statements and
 citations are written by hand — a fitting procedure does not produce a citation — and every
 verdict and every number inside it is computed, against a stated threshold, so other data
 can overturn any of them.
 
-Verdicts are **supported**, **qualified**, **challenged** or **not tested**, and the
-catalogue is only worth reading because not everything comes back supported:
+Verdicts are **supported**, **qualified**, **challenged** or **not tested**. Nine of the
+ten are supported and one is not tested — the balanced-metric practice, because the study
+adopts MCC and never compares it to accuracy or F1. Marking that rather than quietly
+counting it as a win is the point of having the verdict at all.
 
-| verdict | count | why it matters |
-|---|---|---|
-| supported | 9 | the corpus shows the predicted effect at a size worth acting on |
-| challenged | 1 | the corpus shows the opposite — see below |
-| not tested | 1 | the study *assumes* the practice and cannot be evidence for it |
+**Nine of ten supported is a weak-looking result and should be read carefully.** It is not
+that the catalogue was chosen to pass: each check has a stated threshold and returns
+`qualified` or `challenged` when the numbers say so, and the tests exercise those branches.
+It is that the practices selected are ones a corpus of this shape *can* speak to. The
+honest reading is that this study corroborates established tabular-ML guidance on an
+independent corpus, not that it discovered anything the field disagreed about.
 
-The challenged one is worth stating here because it is the study's clearest disagreement
-with received wisdom. **"Neural architectures catch up once the dataset is large enough"
-does not hold on this corpus.** Splitting the complete-grid datasets at their median
-instance count, tree ensembles lead neural architectures by 0.255 MCC on the smaller half
-and **0.281 on the larger** — the gap widens. It survives in one restricted form: purpose-built
-tabular architectures do improve with scale (0.750 → 0.849) while plain MLPs and DNNs get
-worse (0.499 → 0.405). Eight datasets against nine is a thin split and this is a direction
-rather than a measurement, but it is a direction that points against the usual advice.
-
-The not-tested one is the balanced-metric practice: the study adopts MCC and never compares
-it to accuracy or F1, so it has nothing to say. Marking that rather than quietly counting it
-as a win is the point of having the verdict at all.
+One practice was **withdrawn** rather than reported. *"Neural architectures catch up once
+the dataset is large enough"* looked testable and is not: every model here was trained on a
+stratified sample capped at 100,000 rows, so splitting the corpus by `nr_inst` splits it by
+*source* size while every training set above the cap is identical in size. The withdrawal is
+recorded in [chapter 8](08-limitations.md#training-set-size-is-not-a-variable-here) because
+the near-miss is instructive — the split produced a clean-looking number, and the number
+meant nothing.
 
 [Chapter 9](09-report.md) carries the full assessment, regenerated on every run.
 
@@ -122,7 +120,7 @@ the two ever disagree.
 | 4 | Higher **class entropy** → **lower** MCC | 0.24 | moderate |
 | 5 | Higher **noise-to-signal ratio** → **lower** MCC | 0.17 | moderate |
 | 6 | Higher **proportion of correlated attributes** → **higher** MCC | 0.02 | weak |
-| 7 | Higher **number of instances** → **lower** MCC | 0.02 | weak |
+| 7 | Higher **source-dataset size** → **lower** MCC | 0.02 | weak |
 
 ![Feature effects](../figures/practice_effects.png)
 

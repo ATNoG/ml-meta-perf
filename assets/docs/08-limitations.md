@@ -30,6 +30,24 @@ The equation is additive in its terms. [Chapter 5](05-oracles.md) quantifies wha
 costs: a rank-1 interaction component is worth +0.122 R² and the equation captures
 essentially none of it. This is a limitation of the model family, not of the fitting.
 
+## Training-set size is not a variable here
+
+**Every model was trained on a stratified sample capped at 100,000 rows.** Ten of the
+twenty datasets exceed that cap, so above it every training set is the same size and
+`nr_inst` records the *source* dataset rather than what the model saw.
+
+This is a hard boundary on what the study can be asked. Anything of the form "does X change
+as the training set grows" is untestable here, and a split of the corpus by `nr_inst` is a
+split by source size, which is not the same variable. An earlier draft of
+[chapter 9](09-report.md) used exactly such a split to weigh the practice that *neural
+architectures catch up on larger datasets*; the practice has been withdrawn from the
+catalogue because this corpus cannot speak to it, not because the answer came out one way
+or the other.
+
+`nr_inst` and `inst_to_attr` remain legitimate meta-features — they are knowable before
+training and they describe the problem a practitioner is facing — but no term over them
+should be read as a statement about sample size.
+
 ## Every prediction is conditional on training succeeding
 
 **Runs that failed to train were discarded when the meta-dataset was built.** That was a
@@ -149,3 +167,4 @@ result biases the target upward.
 | a learning-to-rank objective | would test whether the ranking gap against the per-model-mean baseline closes |
 | refitting across a configuration grid | would separate evidence that describes the data from evidence that describes one equation |
 | recording failed training runs | would let the study speak about whether to try a model at all, not only about how good a trained one will be |
+| training without the 100k sampling cap, or recording the sampled size | would make training-set size a variable the study can reason about at all |
