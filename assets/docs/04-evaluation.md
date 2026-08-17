@@ -47,8 +47,6 @@ The **same equation**, three protocols:
 | leave-one-dataset-out | **0.466** | 0.183 |
 | leave-one-model-out | **0.489** | 0.177 |
 
-![Validation protocols](../figures/protocol_comparison.png)
-
 A reported R² near 0.5 on this kind of meta-data may be describing the split rather than
 the model. `metafit.validate.random_kfold_groups` exists **only** to produce this
 comparison; it is never used to score a result.
@@ -104,18 +102,18 @@ An equation earns its place only by beating the obvious alternatives:
 | global mean (loo-model) | -0.024 | 0.290 |
 | per-dataset mean (loo-model) | 0.296 | 0.213 |
 
-E2 beats all four on its respective protocol.
+E3 beats all four on its respective protocol.
 
 **One honest caveat, and it is not a small one.** For *ranking* models on a new dataset,
-the trivial "average MCC of this model elsewhere" baseline beats E2 on both ranking
+the trivial "average MCC of this model elsewhere" baseline beats E3 on both ranking
 measures:
 
 | | mean per-dataset Spearman | mean top-1 regret |
 |---|---|---|
 | per-model mean (leave-one-dataset-out) | **0.703** | **0.011** |
-| E2 | 0.648 | 0.019 |
+| E3 | 0.648 | 0.019 |
 
-E2 wins clearly on predicting the MCC *value* — 0.466 against the baseline's 0.201 — and
+E3 wins clearly on predicting the MCC *value* — 0.466 against the baseline's 0.201 — and
 loses on ordering models within a dataset. The two are not in tension: knowing which models
 are generally good is enough to rank them, and is most of what ranking needs; knowing *how
 well* a particular model will do on a particular dataset is what needs the meta-features,

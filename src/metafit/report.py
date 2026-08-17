@@ -538,10 +538,10 @@ def render(
     the *result* is generated.
     """
     importance = term_importance(
-        report.e2.equation, columns, dataset_features, model_features, report.e2.stability
+        report.e3.equation, columns, dataset_features, model_features, report.e3.stability
     )
     concentration = coverage(importance)
-    equation = report.e2.equation
+    equation = report.e3.equation
 
     parts: list[str] = []
     parts.append("# metafit — fitted equation and extracted practices\n")
@@ -559,7 +559,7 @@ def render(
 
     parts.append("## 2. The equation\n")
     parts.append(
-        f"E2 uses **{equation.n_terms} terms** over dataset and model meta-features, "
+        f"E3 uses **{equation.n_terms} terms** over dataset and model meta-features, "
         "simplified and refitted after pruning, so it evaluates exactly as printed.\n"
     )
     parts.append("```\n" + str(equation) + "\n```\n")
@@ -569,8 +569,8 @@ def render(
     parts.append("## 3. How well it does\n")
     parts.append("| protocol | R² | MAE | RMSE | n |")
     parts.append("|---|---|---|---|---|")
-    parts.append(_scores("in-sample", report.e2.in_sample))
-    for label, scores in report.e2.cross_validated.items():
+    parts.append(_scores("in-sample", report.e3.in_sample))
+    for label, scores in report.e3.cross_validated.items():
         parts.append(_scores(label.replace("_", "-"), scores))
     parts.append("")
     parts.append(
@@ -643,7 +643,7 @@ def render(
         )
         parts.append(_table(unstable) + "\n")
 
-    blocks = term_groups(report.e2.equation, columns, importance)
+    blocks = term_groups(report.e3.equation, columns, importance)
     parts.append("### Reading the terms in blocks\n")
     parts.append(
         "An additive form invites reading one term at a time, and that works when one or "
@@ -665,7 +665,7 @@ def render(
     parts.append(_table(blocks) + "\n")
 
     parts.append("### Which features the search reached for\n")
-    usage = feature_usage(report.e2.equation, importance, dataset_features + model_features)
+    usage = feature_usage(report.e3.equation, importance, dataset_features + model_features)
     used = usage.filter(pl.col("n_terms") > 0)
     parts.append(
         f"**{used.height} of {usage.height}** available meta-features appear in the "
@@ -679,7 +679,7 @@ def render(
 
     parts.append("### Which operations the equation needed\n")
     operations = operation_usage(
-        report.e2.equation, importance, config.max_arity if config is not None else None
+        report.e3.equation, importance, config.max_arity if config is not None else None
     )
     parts.append(
         "The vocabulary offers five operations and five transforms and the search is free "
@@ -774,18 +774,18 @@ def render(
         "curve and by Pareto dominance:\n"
     )
     parts.append(_table(report.term_choice) + "\n")
-    parts.append(_table(report.e2.curve) + "\n")
+    parts.append(_table(report.e3.curve) + "\n")
 
     parts.append("## 9. The dataset-only and model-only controls\n")
     parts.append(
         "E1 sees dataset meta-features only, so it can predict just one value per dataset; "
-        "EM sees model meta-features only. Together they show how much of MCC each half of "
+        "E2 sees model meta-features only. Together they show how much of MCC each half of "
         "the meta-data explains on its own.\n"
     )
     parts.append(f"**E1** ({report.e1.equation.n_terms} terms):\n")
     parts.append("```\n" + str(report.e1.equation) + "\n```\n")
-    parts.append(f"**EM** ({report.model_only.equation.n_terms} terms):\n")
-    parts.append("```\n" + str(report.model_only.equation) + "\n```\n")
+    parts.append(f"**E2** ({report.e2.equation.n_terms} terms):\n")
+    parts.append("```\n" + str(report.e2.equation) + "\n```\n")
 
     return "\n".join(parts)
 

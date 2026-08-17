@@ -13,12 +13,10 @@ from metafit.plots import (
     count_below_floor,
     equation_comparison,
     error_curve,
-    identity_ceilings,
     oracle_ladder,
     per_group_quality,
     practice_effects,
     predicted_versus_actual,
-    protocol_comparison,
     scatter_limits,
     term_count_curve,
     term_effects,
@@ -146,23 +144,11 @@ class TestPlots(PlotTestCase):
     def test_practice_effects(self) -> None:
         self.assertIsPng(practice_effects(practices(), self.folder / "practices.png"))
 
-    def test_protocol_comparison(self) -> None:
-        leakage = pl.DataFrame(
-            {"protocol": ["random 10-fold (leaky)", "leave-one-dataset-out"], "r2": [0.51, 0.37]}
-        )
-        self.assertIsPng(protocol_comparison(leakage, self.folder / "protocols.png"))
-
     def test_contribution_shares(self) -> None:
         shares = pl.DataFrame(
             {"group": ["dataset", "model", "mixed"], "n_terms": [5, 4, 3], "share": [0.52, 0.28, 0.20]}
         )
         self.assertIsPng(contribution_shares(shares, self.folder / "shares.png"))
-
-    def test_identity_ceilings(self) -> None:
-        decomposition = pl.DataFrame(
-            {"knowing only": ["dataset identity", "model identity"], "variance_explained": [0.354, 0.282]}
-        )
-        self.assertIsPng(identity_ceilings(decomposition, self.folder / "ceilings.png"))
 
     def test_equation_comparison(self) -> None:
         table = pl.DataFrame(
@@ -184,11 +170,6 @@ class TestPlots(PlotTestCase):
             {"group": ["alpha", "beta", "gamma"], "spearman": [0.8, 0.2, 0.6], "regret": [0.0, 0.1, 0.02]}
         )
         self.assertIsPng(per_group_quality(table, self.folder / "quality.png"))
-
-    def test_term_count_curve_with_a_comparison_overlay(self) -> None:
-        self.assertIsPng(
-            term_count_curve(curve(), self.folder / "overlay.png", oracle=0.661, comparison=curve())
-        )
 
     def test_practice_effects_without_confidence(self) -> None:
         plain = practices().drop("confidence")

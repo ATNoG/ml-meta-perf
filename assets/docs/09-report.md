@@ -18,7 +18,7 @@ Meta-dataset: `data/meta_dataset.csv`
 
 ## 2. The equation
 
-E2 uses **24 terms** over dataset and model meta-features, simplified and refitted after pruning, so it evaluates exactly as printed.
+E3 uses **24 terms** over dataset and model meta-features, simplified and refitted after pruning, so it evaluates exactly as printed.
 
 ```
 MCC = +1.61362
@@ -70,9 +70,9 @@ Against the baselines and the ceiling that bounds any additive equation:
 |---|---|---|---|---|---|---|
 | E1 (dataset only) | 0.3372 | 0.2152 | 0.2794 | 43.7123 | 0.6398 | 476 |
 | E1 ceiling (true dataset means) | 0.3539 | 0.2042 | 0.2758 | 42.7254 | 0.6533 | 476 |
-| EM (model only) | 0.1660 | 0.2509 | 0.3134 | 47.7324 | 0.3556 | 476 |
-| EM ceiling (true model means) | 0.2821 | 0.2257 | 0.2908 | 45.8786 | 0.4870 | 476 |
-| E2 (dataset + model) | 0.5998 | 0.1544 | 0.2171 | 35.9154 | 0.7864 | 476 |
+| E2 (model only) | 0.1660 | 0.2509 | 0.3134 | 47.7324 | 0.3556 | 476 |
+| E2 ceiling (true model means) | 0.2821 | 0.2257 | 0.2908 | 45.8786 | 0.4870 | 476 |
+| E3 (dataset + model) | 0.5998 | 0.1544 | 0.2171 | 35.9154 | 0.7864 | 476 |
 | additive oracle (ceiling) | 0.6605 | 0.1447 | 0.2000 | 35.2889 | 0.8100 | 476 |
 
 ## 4. Equation analysis
@@ -320,7 +320,7 @@ Where additional terms stop paying, by knee detection on the accuracy-versus-len
 
 ## 9. The dataset-only and model-only controls
 
-E1 sees dataset meta-features only, so it can predict just one value per dataset; EM sees model meta-features only. Together they show how much of MCC each half of the meta-data explains on its own.
+E1 sees dataset meta-features only, so it can predict just one value per dataset; E2 sees model meta-features only. Together they show how much of MCC each half of the meta-data explains on its own.
 
 **E1** (5 terms):
 
@@ -333,7 +333,7 @@ MCC = +1.21681
       +0.000217397 * [log(inst_to_attr)] * [nr_norm]              # beta=+0.0100
 ```
 
-**EM** (9 terms):
+**E2** (9 terms):
 
 ```
 MCC = +0.151793

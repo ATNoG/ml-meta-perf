@@ -1,6 +1,6 @@
 """The one entry point that runs every phase of the study: ``python -m metafit``.
 
-Given a meta-dataset it screens the term library, fits E1, E2 and the two controls,
+Given a meta-dataset it screens the term library, fits E1, E3 and the two controls,
 cross-validates all of them under both leave-one-group-out protocols, extracts the
 practices, writes the figures and generates the written report -- in one command, from
 one set of parameters, so a result can be reproduced by repeating the command line rather
@@ -26,12 +26,10 @@ import polars as pl
 
 from metafit.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays, load, target
 from metafit.experiment import (
-    ACCURATE_E2,
     DEFAULT_E1,
-    DEFAULT_E2,
-    QUICK_ACCURATE,
+    DEFAULT_E3,
     QUICK_E1,
-    QUICK_E2,
+    QUICK_E3,
     Configuration,
     Report,
     run,
@@ -80,42 +78,34 @@ def render(
         print("\naccuracy vs number of terms:")
         _show(report.e1.curve)
 
-        _section("E2 -- dataset + model features (fitted on all rows)")
+        _section("E2 -- model features only (the control for 'model choice dominates')")
         print(report.e2.equation)
         print(f"\nin-sample: {report.e2.in_sample}")
         for label, scores in report.e2.cross_validated.items():
             print(f"{label}: {scores}")
+
+        _section("E3 -- dataset + model features (fitted on all rows)")
+        print(report.e3.equation)
+        print(f"\nin-sample: {report.e3.in_sample}")
+        for label, scores in report.e3.cross_validated.items():
+            print(f"{label}: {scores}")
         print("\naccuracy vs number of terms:")
-        _show(report.e2.curve)
-        if report.e2.stability is not None:
+        _show(report.e3.curve)
+        if report.e3.stability is not None:
             print("\nterm stability across leave-one-dataset-out folds:")
-            _show(report.e2.stability.head(20))
-
-        _section("E2 accurate -- the same equation family tuned for fit rather than transfer")
-        print(report.e2_accurate.equation)
-        print(f"\nin-sample: {report.e2_accurate.in_sample}")
-        for label, scores in report.e2_accurate.cross_validated.items():
-            print(f"{label}: {scores}")
-        print("\naccuracy vs number of terms:")
-        _show(report.e2_accurate.curve)
-
-        _section("EM -- model features only (the control for 'model choice dominates')")
-        print(report.model_only.equation)
-        print(f"\nin-sample: {report.model_only.in_sample}")
-        for label, scores in report.model_only.cross_validated.items():
-            print(f"{label}: {scores}")
+            _show(report.e3.stability.head(20))
 
     if "practices" in phases:
         _section("Where the signal lives")
         print("variance of MCC explained by identity alone (no equation involved):")
         _show(report.decomposition)
-        print("\nshare of E2's output variance, by which features its terms use:")
+        print("\nshare of E3's output variance, by which features its terms use:")
         _show(report.shares)
 
         _section("Term importance -- ranked by standardised weight, major terms flagged")
         _show(
             term_importance(
-                report.e2.equation, columns, DATASET_FEATURES, MODEL_FEATURES, report.e2.stability
+                report.e3.equation, columns, DATASET_FEATURES, MODEL_FEATURES, report.e3.stability
             )
         )
 
@@ -133,7 +123,7 @@ def render(
         print("\nper-length Pareto membership, in-sample and cross-validated:")
         _show(report.pareto)
 
-        _section("E1 vs EM vs E2 on the common scale (all rows)")
+        _section("E1 vs E2 vs E3 on the common scale (all rows)")
         _show(report.comparison)
 
         _section("Oracle ladder -- what each interaction component would be worth")
@@ -158,17 +148,16 @@ def render(
 
 def configurations(
     arguments: argparse.Namespace,
-) -> tuple[Configuration, Configuration, Configuration]:
+) -> tuple[Configuration, Configuration]:
     """Fold the command line onto the tuned configurations.
 
     Only flags the caller actually passed are applied, so an unmentioned knob keeps its
-    tuned value rather than being reset to an argparse default. The E2 overrides are
-    applied to the accuracy-leaning configuration too, since a caller who asks for a
-    penalty means it for the whole run.
+    tuned value rather than being reset to an argparse default. Knobs that mean the same
+    thing everywhere -- the penalty, the pool, the beam, the stability cap -- are applied
+    to E1 as well; the ones that describe the published E3 specifically are not.
     """
     base_e1 = QUICK_E1 if arguments.quick else DEFAULT_E1
-    base_e2 = QUICK_E2 if arguments.quick else DEFAULT_E2
-    base_accurate = QUICK_ACCURATE if arguments.quick else ACCURATE_E2
+    base_e3 = QUICK_E3 if arguments.quick else DEFAULT_E3
 
     shared: dict[str, object] = {}
     if arguments.penalty is not None:
@@ -180,22 +169,21 @@ def configurations(
     if arguments.zscore is not None:
         shared["max_abs_zscore"] = arguments.zscore
 
-    e2_only: dict[str, object] = dict(shared)
+    e3_only: dict[str, object] = dict(shared)
     if arguments.arity is not None:
-        e2_only["max_arity"] = arguments.arity
+        e3_only["max_arity"] = arguments.arity
     if arguments.max_terms is not None:
-        e2_only["max_terms"] = arguments.max_terms
+        e3_only["max_terms"] = arguments.max_terms
     if arguments.terms is not None:
-        e2_only["headline_terms"] = arguments.terms
+        e3_only["headline_terms"] = arguments.terms
         # A headline longer than the search would be silently truncated to whatever the
         # search produced, so raise the search to meet it unless it was set explicitly.
-        if arguments.max_terms is None and arguments.terms > base_e2.max_terms:
-            e2_only["max_terms"] = arguments.terms
+        if arguments.max_terms is None and arguments.terms > base_e3.max_terms:
+            e3_only["max_terms"] = arguments.terms
 
     return (
         dataclasses.replace(base_e1, **shared),  # pyright: ignore[reportArgumentType]
-        dataclasses.replace(base_e2, **e2_only),  # pyright: ignore[reportArgumentType]
-        dataclasses.replace(base_accurate, **shared),  # pyright: ignore[reportArgumentType]
+        dataclasses.replace(base_e3, **e3_only),  # pyright: ignore[reportArgumentType]
     )
 
 
@@ -204,8 +192,7 @@ def _save_tables(report: Report, folder: Path) -> list[Path]:
     tables: dict[str, pl.DataFrame] = {
         "correlations": report.correlations,
         "curve_e1": report.e1.curve,
-        "curve_e2": report.e2.curve,
-        "curve_e2_accurate": report.e2_accurate.curve,
+        "curve_e3": report.e3.curve,
         "comparison": report.comparison,
         "baselines": report.baselines,
         "leakage": report.leakage,
@@ -219,8 +206,8 @@ def _save_tables(report: Report, folder: Path) -> list[Path]:
         "term_choice": report.term_choice,
         "pareto": report.pareto,
     }
-    if report.e2.stability is not None:
-        tables["stability"] = report.e2.stability
+    if report.e3.stability is not None:
+        tables["stability"] = report.e3.stability
     written: list[Path] = []
     for name, frame in tables.items():
         path = folder / f"{name}.csv"
@@ -264,7 +251,7 @@ def build_parser() -> argparse.ArgumentParser:
     data.add_argument("--quiet", action="store_true", help="write files without printing the study")
 
     search = parser.add_argument_group("equation and search")
-    search.add_argument("--terms", type=int, default=None, help="terms in the published E2 equation")
+    search.add_argument("--terms", type=int, default=None, help="terms in the published E3 equation")
     search.add_argument("--max-terms", type=int, default=None, help="longest equation the search explores")
     search.add_argument("--penalty", type=float, default=None, help="ridge penalty on standardised terms")
     search.add_argument("--arity", type=int, choices=(1, 2, 3, 4), default=None, help="raw features per term")
@@ -296,14 +283,13 @@ def main(argv: list[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
     phases = frozenset(PHASES) if not arguments.phase or "all" in arguments.phase else frozenset(arguments.phase)
 
-    config_e1, config_e2, config_accurate = configurations(arguments)
+    config_e1, config_e3 = configurations(arguments)
     started = time.perf_counter()
     report = run(
         arguments.data,
         quick=arguments.quick,
         config_e1=config_e1,
-        config_e2=config_e2,
-        config_accurate=config_accurate,
+        config_e3=config_e3,
     )
     elapsed = time.perf_counter() - started
 
@@ -318,9 +304,8 @@ def main(argv: list[str] | None = None) -> int:
         destination = Path(arguments.output)
         destination.mkdir(parents=True, exist_ok=True)
         report.e1.equation.save(destination / "e1.json")
+        report.e3.equation.save(destination / "e3.json")
         report.e2.equation.save(destination / "e2.json")
-        report.model_only.equation.save(destination / "em.json")
-        report.e2_accurate.equation.save(destination / "e2_accurate.json")
         print(f"\nequations written to {destination}")
 
         if not arguments.no_tables:
@@ -335,7 +320,7 @@ def main(argv: list[str] | None = None) -> int:
             DATASET_FEATURES,
             MODEL_FEATURES,
             arguments.report,
-            config=config_e2,
+            config=config_e3,
             source=source,
         )
         print(f"report written to {path}")

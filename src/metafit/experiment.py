@@ -1,9 +1,13 @@
-"""The end-to-end experiment: fit E1 and E2, validate both, and report.
+"""The end-to-end experiment: fit E1, E2 and E3, validate all three, and report.
+
+The three equations differ only in which features they may draw on -- E1 sees dataset
+meta-features, E2 sees model meta-features, E3 sees both -- so the gaps between them
+measure what each half of the meta-data is worth.
 
 The defaults below are not arbitrary. They are the configuration that survived a sweep
 over the term stability cap, the ridge penalty and the equation length, scored on
 leave-one-dataset-out rather than on fit. The sweep is reproducible through
-``sweep_configurations``; ``DEFAULT_E1`` and ``DEFAULT_E2`` are simply where it landed.
+``sweep_configurations``; ``DEFAULT_E1`` and ``DEFAULT_E3`` are simply where it landed.
 
 Study chapter: [6. Results](../../assets/docs/06-results.md) -- the rationale, in
 prose, with the figures.
@@ -62,28 +66,16 @@ class Configuration:
 
 
 DEFAULT_E1 = Configuration(max_abs_zscore=3.0, penalty=1.0, pool_size=200, max_terms=6, headline_terms=5)
-DEFAULT_E2 = Configuration(
+
+# Model features only. There are five of them, so the library is tiny and the equation is
+# short by necessity rather than by choice.
+DEFAULT_E2 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=100, max_terms=9, headline_terms=9)
+
+DEFAULT_E3 = Configuration(
     max_abs_zscore=3.0, penalty=5.0, pool_size=600, max_terms=32, headline_terms=24, max_arity=3
 )
 
 SWEEP_SIZES: tuple[int, ...] = (2, 4, 8, 12, 16, 20, 24, 26, 28, 32)
-
-# The accuracy-leaning alternative: four-feature terms, a wider library, 32 terms. It
-# reaches in-sample R2 = 0.668 and gives up most of the transfer to get there. Both
-# configurations are reported; the default above happens to win on *both* axes against
-# every earlier setting, so the trade is no longer symmetric -- this one buys fit only.
-#
-# A 4610-term library was briefly unaffordable: a full study took 12.5 minutes until the
-# duplicate check in ``guided_screen`` was vectorised, and now takes about four.
-ACCURATE_E2 = Configuration(
-    max_abs_zscore=4.0, penalty=5.0, pool_size=2000, max_terms=40, headline_terms=32, max_arity=4
-)
-
-# Model features only. There are five of them, so the library is tiny and the equation
-# is short by necessity rather than by choice.
-DEFAULT_MODEL_ONLY = Configuration(
-    max_abs_zscore=3.0, penalty=20.0, pool_size=100, max_terms=9, headline_terms=9
-)
 
 
 @dataclass
@@ -175,7 +167,7 @@ def run_e1(frame: pl.DataFrame, config: Configuration = DEFAULT_E1) -> EquationR
     )
 
 
-def run_e2(frame: pl.DataFrame, config: Configuration = DEFAULT_E2) -> EquationReport:
+def run_e3(frame: pl.DataFrame, config: Configuration = DEFAULT_E3) -> EquationReport:
     """Dataset and model features, fitted on all rows -- one input, one output."""
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
     truth = target(frame)
@@ -196,7 +188,7 @@ def run_e2(frame: pl.DataFrame, config: Configuration = DEFAULT_E2) -> EquationR
         penalty=config.penalty,
         pool_size=config.pool_size,
         beam_width=config.beam_width,
-        name="E2",
+        name="E3",
     )
     paths = {
         label: cross_validate_path(
@@ -225,7 +217,7 @@ def run_e2(frame: pl.DataFrame, config: Configuration = DEFAULT_E2) -> EquationR
     )
 
 
-def run_model_only(frame: pl.DataFrame, config: Configuration = DEFAULT_MODEL_ONLY) -> EquationReport:
+def run_e2(frame: pl.DataFrame, config: Configuration = DEFAULT_E2) -> EquationReport:
     """Model features only -- the mirror image of E1, and the control for the claim that
     model choice dominates dataset difficulty.
 
@@ -247,7 +239,7 @@ def run_model_only(frame: pl.DataFrame, config: Configuration = DEFAULT_MODEL_ON
         penalty=config.penalty,
         pool_size=config.pool_size,
         beam_width=config.beam_width,
-        name="EM",
+        name="E2",
     )
     available = max(result.equations)
     size = min(config.headline_terms, available)
@@ -272,7 +264,7 @@ def run_model_only(frame: pl.DataFrame, config: Configuration = DEFAULT_MODEL_ON
     )
 
 
-def correlation_analysis(frame: pl.DataFrame, config: Configuration = DEFAULT_E2, top: int = 15) -> pl.DataFrame:
+def correlation_analysis(frame: pl.DataFrame, config: Configuration = DEFAULT_E3, top: int = 15) -> pl.DataFrame:
     """Rank candidate terms by how they relate to MCC, linearly and monotonically.
 
     Both correlations are reported because they say different things and the difference
@@ -328,7 +320,7 @@ def baselines(frame: pl.DataFrame) -> pl.DataFrame:
     return pl.DataFrame(rows)
 
 
-def leakage_demonstration(frame: pl.DataFrame, config: Configuration = DEFAULT_E2) -> pl.DataFrame:
+def leakage_demonstration(frame: pl.DataFrame, config: Configuration = DEFAULT_E3) -> pl.DataFrame:
     """The same equation scored under a random split and under a grouped split.
 
     Dataset features are constant across a dataset's rows, so a random k-fold split puts
@@ -369,12 +361,12 @@ def leakage_demonstration(frame: pl.DataFrame, config: Configuration = DEFAULT_E
 def comparison(
     frame: pl.DataFrame,
     e1: EquationReport,
-    e2: EquationReport,
-    model_only: EquationReport | None = None,
+    e3: EquationReport,
+    e2: EquationReport | None = None,
 ) -> pl.DataFrame:
-    """E1 against E2 on the one scale where they are comparable: all rows.
+    """E1 against E3 on the one scale where they are comparable: all rows.
 
-    E1's own R2 is computed over 20 dataset means and E2's over 476 rows, so the two
+    E1's own R2 is computed over 20 dataset means and E3's over 476 rows, so the two
     headline numbers share no denominator. Evaluating E1's equation on every row puts
     both on the same variance and makes the gap between them mean something.
     """
@@ -391,8 +383,8 @@ def comparison(
     for label in np.unique(models):
         mask = models == label
         model_ceiling[mask] = truth[mask].mean()
-    if model_only is None:
-        model_only = run_model_only(frame)
+    if e2 is None:
+        e2 = run_e2(frame)
 
     return pl.DataFrame(
         [
@@ -402,14 +394,14 @@ def comparison(
                 **score(truth, dataset_ceiling).as_dict(),
             },
             {
-                "equation": "EM (model only)",
-                **score(truth, model_only.equation.predict(columns)).as_dict(),
+                "equation": "E2 (model only)",
+                **score(truth, e2.equation.predict(columns)).as_dict(),
             },
             {
-                "equation": "EM ceiling (true model means)",
+                "equation": "E2 ceiling (true model means)",
                 **score(truth, model_ceiling).as_dict(),
             },
-            {"equation": "E2 (dataset + model)", **score(truth, e2.equation.predict(columns)).as_dict()},
+            {"equation": "E3 (dataset + model)", **score(truth, e3.equation.predict(columns)).as_dict()},
             {
                 "equation": "additive oracle (ceiling)",
                 **score(truth, additive_oracle(truth, datasets, models)).as_dict(),
@@ -418,7 +410,7 @@ def comparison(
     )
 
 
-def decision_quality(frame: pl.DataFrame, config: Configuration = DEFAULT_E2) -> pl.DataFrame:
+def decision_quality(frame: pl.DataFrame, config: Configuration = DEFAULT_E3) -> pl.DataFrame:
     """Go/no-go decision quality, scored on held-out datasets rather than in-sample."""
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
     truth = target(frame)
@@ -442,12 +434,12 @@ def decision_quality(frame: pl.DataFrame, config: Configuration = DEFAULT_E2) ->
     return decision_report(truth, path[config.headline_terms].predictions)
 
 
-def model_selection(frame: pl.DataFrame, e2: EquationReport) -> pl.DataFrame:
+def model_selection(frame: pl.DataFrame, e3: EquationReport) -> pl.DataFrame:
     """Can the equation pick a good model for a dataset it has never seen?"""
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
     truth = target(frame)
     datasets = groups(frame, DATASET_COLUMN)
-    return ranking_report(truth, e2.equation.predict(columns), datasets)
+    return ranking_report(truth, e3.equation.predict(columns), datasets)
 
 
 @dataclass
@@ -455,9 +447,8 @@ class Report:
     """Everything the experiment produces."""
 
     e1: EquationReport
+    e3: EquationReport
     e2: EquationReport
-    e2_accurate: EquationReport
-    model_only: EquationReport
     practices: pl.DataFrame
     effects: pl.DataFrame
     shares: pl.DataFrame
@@ -476,10 +467,7 @@ class Report:
 # Small enough to run in a couple of seconds. Intended for smoke-testing the wiring,
 # not for reporting: the equations it produces are far shorter than the studied ones.
 QUICK_E1 = Configuration(max_abs_zscore=3.0, penalty=1.0, pool_size=40, max_terms=3, headline_terms=3)
-QUICK_E2 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=40, max_terms=3, headline_terms=3)
-QUICK_ACCURATE = Configuration(
-    max_abs_zscore=4.0, penalty=1.0, pool_size=40, max_terms=4, headline_terms=4
-)
+QUICK_E3 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=40, max_terms=3, headline_terms=3)
 
 
 def run(
@@ -487,42 +475,40 @@ def run(
     *,
     quick: bool = False,
     config_e1: Configuration | None = None,
-    config_e2: Configuration | None = None,
-    config_accurate: Configuration | None = None,
+    config_e3: Configuration | None = None,
 ) -> Report:
     """Run the whole study.
 
     The three configurations default to the tuned ones (or to the quick ones under
     ``quick``). Passing them explicitly is how the command line exposes the knobs: a
-    caller who overrides ``config_e2`` gets a study that is internally consistent, since
-    every table that mentions E2 is computed from the same configuration object.
+    caller who overrides ``config_e3`` gets a study that is internally consistent, since
+    every table that mentions E3 is computed from the same configuration object.
     """
     frame = load(path)
     config_e1 = config_e1 or (QUICK_E1 if quick else DEFAULT_E1)
-    config_e2 = config_e2 or (QUICK_E2 if quick else DEFAULT_E2)
-    config_accurate = config_accurate or (QUICK_ACCURATE if quick else ACCURATE_E2)
+    config_e3 = config_e3 or (QUICK_E3 if quick else DEFAULT_E3)
     e1 = run_e1(frame, config_e1)
-    e2 = run_e2(frame, config_e2)
+    e3 = run_e3(frame, config_e3)
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+    e2 = run_e2(frame)
     return Report(
         e1=e1,
         e2=e2,
-        e2_accurate=run_e2(frame, config_accurate),
-        model_only=run_model_only(frame),
-        practices=best_practices(e2.equation, columns, e2.stability),
-        effects=term_effects(e2.equation, columns, DATASET_FEATURES, MODEL_FEATURES),
-        shares=group_shares(e2.equation, columns, DATASET_FEATURES, MODEL_FEATURES),
+        e3=e3,
+        practices=best_practices(e3.equation, columns, e3.stability),
+        effects=term_effects(e3.equation, columns, DATASET_FEATURES, MODEL_FEATURES),
+        shares=group_shares(e3.equation, columns, DATASET_FEATURES, MODEL_FEATURES),
         decomposition=variance_decomposition(
             target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)
         ),
-        correlations=correlation_analysis(frame, config_e2),
+        correlations=correlation_analysis(frame, config_e3),
         baselines=baselines(frame),
-        comparison=comparison(frame, e1, e2),
-        leakage=leakage_demonstration(frame, config_e2),
-        selection=model_selection(frame, e2),
-        decision=decision_quality(frame, config_e2),
-        term_choice=recommend(e2.curve),
-        pareto=pareto_table(e2.curve),
+        comparison=comparison(frame, e1, e3, e2),
+        leakage=leakage_demonstration(frame, config_e3),
+        selection=model_selection(frame, e3),
+        decision=decision_quality(frame, config_e3),
+        term_choice=recommend(e3.curve),
+        pareto=pareto_table(e3.curve),
         oracles=oracle_ladder(
             target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)
         ),

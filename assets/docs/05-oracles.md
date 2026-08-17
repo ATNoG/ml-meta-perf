@@ -30,17 +30,15 @@ Two narrower ceilings come from the same construction with one group at a time:
 | which **dataset** it is | 0.354 |
 | which **model** it is | 0.282 |
 
-![Ceilings from identity alone](../figures/identity_ceilings.png)
-
-These bound E1 and EM respectively ([chapter 6](06-results.md)).
+These bound E1 and E2 respectively ([chapter 6](06-results.md)).
 
 ## What the additive oracle does *not* bound
 
-It bounds a **two-way additive** form. It does **not** bound E2.
+It bounds a **two-way additive** form. It does **not** bound E3.
 
-Half of E2's terms are *mixed* — products and ratios pairing a dataset feature with a
+Half of E3's terms are *mixed* — products and ratios pairing a dataset feature with a
 model feature — and those express exactly the interaction the two-way form cannot. Given
-enough terms, E2 crosses it:
+enough terms, E3 crosses it:
 
 | terms | in-sample R² | LOO-dataset R² |
 |---|---|---|
@@ -48,7 +46,7 @@ enough terms, E2 crosses it:
 | 28 | **0.6608** | **-0.283** |
 | 32 | **0.6632** | **-0.591** |
 
-But read the second column. E2 passes the oracle at exactly the point its cross-validated
+But read the second column. E3 passes the oracle at exactly the point its cross-validated
 score collapses. The crossing is not interaction being *captured*, it is interaction being
 *invented* — and the oracle turns out to mark, quite closely, the level past which
 apparent gains stop transferring at all. That makes it a useful line to draw even though

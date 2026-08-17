@@ -135,7 +135,7 @@ leave-one-dataset-out question.
 
 **What this community already knows that is worth borrowing.** Interaction terms are the
 standard remedy and are included by default rather than discovered, which is consistent
-with our finding that mixed dataset×model terms carry E2's entire lift. Their sampling
+with our finding that mixed dataset×model terms carry E3's entire lift. Their sampling
 literature exists because *which* configurations you measure dominates model quality — the
 analogue here is which (dataset, model) pairs get run, and our 476-of-500 grid is nearly
 complete, so we do not have their hardest problem.
@@ -181,7 +181,7 @@ random k-fold as a diagnostic for leakage rather than a result.
 
 The contribution is not a higher number. It is (a) an equation that can be read, (b) an
 explicit accuracy-versus-length curve instead of a single operating point, (c) the
-E1/E2 contrast isolating how much of MCC is attributable to model capability rather than
+E1/E3 contrast isolating how much of MCC is attributable to model capability rather than
 dataset difficulty, and (d) honest grouped-split validation with the leakage gap
 quantified.
 
@@ -193,10 +193,10 @@ quantified.
   direction and was worth most of the 0.558 → 0.603 improvement; a principled
   interaction basis is the obvious continuation.
 - **Ranking.** For selecting a model on a new dataset, the trivial per-model-mean
-  baseline out-ranks E2 (Spearman 0.70 vs 0.61). A learning-to-rank objective rather
+  baseline out-ranks E3 (Spearman 0.70 vs 0.61). A learning-to-rank objective rather
   than squared error would be the natural next step.
 - **More datasets.** Twenty is the binding constraint on every cross-validated number
   here; OpenML-scale meta-data would settle whether the 0.6605 additive ceiling is a
   property of this sample or of the approach.
-- **Interaction structure.** The gap between E2 (0.600) and the rank-1 oracle (0.783)
+- **Interaction structure.** The gap between E3 (0.600) and the rank-1 oracle (0.783)
   is entirely dataset×model interaction the current term vocabulary does not reach.

@@ -18,12 +18,10 @@ from metafit.plots import (
     count_below_floor,
     equation_comparison,
     error_curve,
-    identity_ceilings,
     oracle_ladder,
     per_group_quality,
     practice_effects,
     predicted_versus_actual,
-    protocol_comparison,
     term_count_curve,
     term_effects,
     term_stability,
@@ -61,46 +59,34 @@ def generate(report: Report, destination: str | Path, data: str | Path | None = 
     frame = load(data)
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
     truth = target(frame)
-    predicted = report.e2.equation.predict(columns)
+    predicted = report.e3.equation.predict(columns)
 
     written = [
         equation_comparison(report.comparison, folder / "equation_comparison.png"),
         term_count_curve(
-            report.e2.curve,
+            report.e3.curve,
             folder / "term_count_curve.png",
             oracle=_oracle(report),
-            comparison=report.e2_accurate.curve,
         ),
-        term_count_curve(report.e1.curve, folder / "term_count_curve_e1.png"),
         predicted_versus_actual(truth, predicted, folder / "predicted_vs_actual.png", groups=truth),
         error_curve(
-            report.e2.curve,
+            report.e3.curve,
             folder / "error_curve_mae.png",
             metric="mae",
             marker=_knee(report),
-            comparison=report.e2_accurate.curve,
-        ),
-        error_curve(
-            report.e2.curve,
-            folder / "error_curve_smape.png",
-            metric="smape",
-            marker=_knee(report),
-            comparison=report.e2_accurate.curve,
         ),
         term_effects(report.effects, folder / "term_effects.png"),
         practice_effects(report.practices, folder / "practice_effects.png"),
-        protocol_comparison(report.leakage, folder / "protocol_comparison.png"),
         contribution_shares(report.shares, folder / "contribution_shares.png"),
-        identity_ceilings(report.decomposition, folder / "identity_ceilings.png"),
         oracle_ladder(
             report.oracles,
             folder / "oracle_ladder.png",
-            achieved=float(report.e2.in_sample["r2"]),
+            achieved=float(report.e3.in_sample["r2"]),
         ),
         per_group_quality(report.selection, folder / "per_group_quality.png"),
     ]
-    if report.e2.stability is not None:
-        written.append(term_stability(report.e2.stability, folder / "term_stability.png"))
+    if report.e3.stability is not None:
+        written.append(term_stability(report.e3.stability, folder / "term_stability.png"))
     return written
 
 
@@ -109,7 +95,7 @@ def captions(report: Report, data: str | Path | None = None) -> dict[str, str]:
     frame = load(data)
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
     truth = target(frame)
-    hidden = count_below_floor(truth, report.e2.equation.predict(columns))
+    hidden = count_below_floor(truth, report.e3.equation.predict(columns))
 
     return {
         "equation_comparison.png": (
@@ -119,26 +105,17 @@ def captions(report: Report, data: str | Path | None = None) -> dict[str, str]:
             "oracle."
         ),
         "term_count_curve.png": (
-            "Accuracy against equation length for E2, under both cross-validation "
-            "protocols, with the accuracy-leaning configuration's in-sample curve "
-            "overlaid. The additive ceiling bounds every curve shown."
-        ),
-        "term_count_curve_e1.png": (
-            "Accuracy against equation length for E1, fitted on the 20 per-dataset mean "
-            "MCC values. Cross-validated R2 is unstable at this sample size."
+            "Accuracy against equation length for E3, in-sample and under both "
+            "cross-validation protocols. The additive ceiling bounds every curve shown."
         ),
         "predicted_vs_actual.png": (
-            "Predicted against actual MCC for E2, with the rug showing the marginal "
+            "Predicted against actual MCC for E3, with the rug showing the marginal "
             f"distribution of the target. Axes start at 0; {hidden} point below that is "
             "not shown. Predictions never fall below 0.17 while 38 rows sit at exactly 0."
         ),
         "error_curve_mae.png": (
             "Mean absolute error in MCC against equation length, under both protocols. "
             "The vertical line marks the knee of the in-sample curve."
-        ),
-        "error_curve_smape.png": (
-            "SMAPE against equation length. On a target passing through zero SMAPE is "
-            "dominated by the 38 rows at exactly MCC = 0; MAE is the honest headline."
         ),
         "term_effects.png": (
             "Per-term effect on predicted MCC, measured as the swing between the term's "
@@ -148,18 +125,9 @@ def captions(report: Report, data: str | Path | None = None) -> dict[str, str]:
             "Per-feature effect on predicted MCC between the feature's lowest and highest "
             "decile, shaded by the confidence its practice was rated at."
         ),
-        "protocol_comparison.png": (
-            "The same equation scored under three validation protocols. Dataset features "
-            "are constant within a dataset, so a random split lets the equation recognise "
-            "the dataset rather than generalise to it."
-        ),
         "contribution_shares.png": (
-            "Share of E2's output variance driven by terms using dataset features only, "
+            "Share of E3's output variance driven by terms using dataset features only, "
             "model features only, and both. Shares are covariance-based and sum to 1."
-        ),
-        "identity_ceilings.png": (
-            "Variance of MCC explained by knowing only which dataset, or only which "
-            "model, a row refers to. Measured on the target, independent of any equation."
         ),
         "oracle_ladder.png": (
             "Ceiling as interaction components are added to the additive oracle (AMMI). "

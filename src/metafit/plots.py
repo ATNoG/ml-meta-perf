@@ -36,7 +36,6 @@ from matplotlib.patches import Rectangle
 IN_SAMPLE = "#1b6ca8"
 LOO_DATASET = "#d1495b"
 LOO_MODEL = "#00798c"
-COMPARISON = "#8b5cf6"
 CEILING = "#6b7280"
 POSITIVE = "#00798c"
 NEGATIVE = "#d1495b"
@@ -58,17 +57,12 @@ def term_count_curve(
     destination: str | Path,
     *,
     oracle: float | None = None,
-    comparison: pl.DataFrame | None = None,
-    comparison_label: str = "in-sample (accuracy-leaning)",
 ) -> Path:
     """Accuracy against equation length: the explainability trade.
 
     The oracle line is the point of the figure. Without it a reader sees a curve still
     climbing and assumes more terms would keep paying, when the whole approach is bounded
     well below 1. It is drawn as a labelled line rather than described in text.
-
-    ``comparison`` overlays a second configuration's in-sample curve, so the cost of
-    tuning for fit rather than transfer is visible in one figure instead of two.
     """
     figure, axes = plt.subplots(figsize=(7.0, 4.4))
     sizes = curve["n_terms"].to_numpy()
@@ -81,15 +75,6 @@ def term_count_curve(
     if "r2_loo_model" in curve.columns:
         axes.plot(
             sizes, curve["r2_loo_model"].to_numpy(), "^:", color=LOO_MODEL, label="leave-one-model-out"
-        )
-    if comparison is not None:
-        axes.plot(
-            comparison["n_terms"].to_numpy(),
-            comparison["r2_in_sample"].to_numpy(),
-            "D-.",
-            color=COMPARISON,
-            label=comparison_label,
-            markersize=4,
         )
     if oracle is not None:
         axes.axhline(
@@ -112,7 +97,6 @@ def error_curve(
     *,
     metric: str = "mae",
     marker: int | None = None,
-    comparison: pl.DataFrame | None = None,
 ) -> Path:
     """Error against equation length, in the target's own units.
 
@@ -121,9 +105,7 @@ def error_curve(
     included as the scale-free alternative, with the caveat that on a target passing
     through zero it is dominated by the 38 rows at exactly MCC = 0.
 
-    Both configurations appear on every curve: ``curve`` supplies all three protocols and
-    ``comparison`` overlays the accuracy-leaning configuration's in-sample line, so fit
-    and transfer for both tunings are read from one figure.
+    ``curve`` supplies all three protocols, so fit and transfer are read from one figure.
 
     ``marker`` draws a vertical line at a chosen equation length -- the knee, typically --
     as a labelled line rather than an annotation.
@@ -139,15 +121,6 @@ def error_curve(
     ):
         if column in curve.columns:
             axes.plot(sizes, curve[column].to_numpy(), style, color=colour, label=name, linewidth=2)
-    if comparison is not None and f"{metric}_in_sample" in comparison.columns:
-        axes.plot(
-            comparison["n_terms"].to_numpy(),
-            comparison[f"{metric}_in_sample"].to_numpy(),
-            "D-.",
-            color=COMPARISON,
-            label="in-sample (accuracy-leaning)",
-            markersize=4,
-        )
     if marker is not None:
         axes.axvline(marker, color=CEILING, linestyle="-.", linewidth=1.2, label=f"knee ({marker} terms)")
 
@@ -341,24 +314,6 @@ def _confidence_alpha(table: pl.DataFrame) -> list[float]:
     return [scale.get(str(value), 0.6) for value in table["confidence"].to_list()]
 
 
-def protocol_comparison(leakage: pl.DataFrame, destination: str | Path) -> Path:
-    """The same equation under three splits -- the leakage figure."""
-    labels = leakage["protocol"].to_list()
-    values = leakage["r2"].to_numpy()
-
-    figure, axes = plt.subplots(figsize=(6.4, 3.8))
-    axes.bar(
-        range(len(labels)),
-        values,
-        color=[LOO_DATASET if "random" in label else IN_SAMPLE for label in labels],
-        alpha=0.85,
-    )
-    axes.set_xticks(range(len(labels)))
-    axes.set_xticklabels([_wrap(label) for label in labels], fontsize=9)
-    axes.set_ylabel("$R^2$")
-    axes.grid(axis="y", alpha=0.25, linestyle=":")
-    return _finish(figure, destination)
-
 
 def contribution_shares(shares: pl.DataFrame, destination: str | Path) -> Path:
     """Which feature groups drive the equation's output variance."""
@@ -373,19 +328,6 @@ def contribution_shares(shares: pl.DataFrame, destination: str | Path) -> Path:
     axes.grid(axis="y", alpha=0.25, linestyle=":")
     return _finish(figure, destination)
 
-
-def identity_ceilings(decomposition: pl.DataFrame, destination: str | Path) -> Path:
-    """Variance of MCC explained by dataset identity and by model identity alone."""
-    names = decomposition["knowing only"].to_list()
-    figure, axes = plt.subplots(figsize=(5.0, 3.6))
-    axes.bar(
-        range(len(names)), decomposition["variance_explained"].to_numpy(), color=LOO_MODEL, alpha=0.85
-    )
-    axes.set_xticks(range(len(names)))
-    axes.set_xticklabels([_wrap(name) for name in names])
-    axes.set_ylabel("variance of MCC explained")
-    axes.grid(axis="y", alpha=0.25, linestyle=":")
-    return _finish(figure, destination)
 
 
 def term_stability(stability: pl.DataFrame, destination: str | Path, *, top: int = 16) -> Path:

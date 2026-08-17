@@ -4,7 +4,7 @@ The point of publishing an equation rather than a fitted object is that it can b
 evaluated by hand. This script does the same thing programmatically, and prints the
 per-term contributions so the prediction can be read as a breakdown rather than a number.
 
-    PYTHONPATH=src venv/bin/python examples/run_experiment.py       # writes results/e2.json
+    PYTHONPATH=src venv/bin/python examples/run_experiment.py       # writes results/e3.json
     PYTHONPATH=src venv/bin/python examples/predict_new_dataset.py
 """
 
@@ -15,7 +15,7 @@ import numpy as np
 from metafit.data import ALL_FEATURES, DATASET_COLUMN, MODEL_COLUMN, columns_as_arrays, load
 from metafit.model import Equation
 
-EQUATION_PATH = Path(__file__).resolve().parents[1] / "results" / "e2.json"
+EQUATION_PATH = Path(__file__).resolve().parents[1] / "results" / "e3.json"
 
 
 def main() -> int:

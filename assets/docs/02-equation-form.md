@@ -63,7 +63,7 @@ project's life.
 `sum_ratio` was originally generated over the **dataset features only**. Every other
 operation could pair a dataset feature with a model one; the highest-arity operation could
 not. That made the richest part of the grammar the only part unable to express a
-dataset×model interaction — the exact combination carrying E2's entire lift over E1, and
+dataset×model interaction — the exact combination carrying E3's entire lift over E1, and
 the exact structure the oracle ladder says is missing.
 
 Generating it over all features instead takes mixed terms in the library from **19 to 126**
@@ -110,7 +110,7 @@ Three conclusions, and the first two were invisible at fixed penalty:
 So `max_arity = 3` is the default because it is the only setting that is not dominated:
 arity 2 is beaten outright, arity 4 wins one axis at a ruinous price on the other.
 
-**The fitted equation confirms it directly.** In the published 24-term E2 the three-feature
+**The fitted equation confirms it directly.** In the published 24-term E3 the three-feature
 `sum_ratio` accounts for 11 terms and **50% of the standardised weight mass** — the search
 did not merely tolerate the extra arity, it built half the equation out of it. A
 two-feature grammar would have had to express that half some other way, and the 0.6222
@@ -164,8 +164,8 @@ across the sweep improved from **-1.66 to -0.39** once the rule became structura
 | configuration | `max_abs_zscore` | terms |
 |---|---|---|
 | E1 (dataset only, 20 aggregated rows) | 3.0 | 136 |
-| E2 default | 3.0 | 172 |
-| E2 accuracy-leaning | 4.0 | 360 |
+| E3 default | 3.0 | 172 |
+| arity-4 grammar (measured, not published) | 4.0 | 360 |
 
 The `max_abs_zscore` cap rejects a term when a single row sits more than that many
 standard deviations from its mean. The cap is **sample-size dependent**: a lone outlier
