@@ -217,6 +217,42 @@ staying inspectable. Billa et al. (arXiv:2601.00428) find EBMs and symbolic regr
 dominate interpretable tabular regression. The trade is real: an EBM is a set of shape
 functions rather than a closed-form equation, so it can be plotted but not written down.
 
+## Divide-and-Learn, tested and rejected
+
+The configurable-systems literature ([`RESEARCH.md`](../../RESEARCH.md) §5) offers one
+method that looks tailor-made for this data: **Divide-and-Learn** (Gong & Chen,
+arXiv:2306.06651) partitions training samples into divisions with similar response, fits a
+local model per division, and routes an unseen sample to a division using its features.
+Our datasets are an obvious partition and their meta-features are an obvious router, so it
+was implemented and measured.
+
+Clustering the training datasets on their standardised meta-features, fitting one equation
+per division, and routing each held-out dataset to its nearest division centroid:
+
+| divisions | local terms | LOO-dataset R² |
+|---|---|---|
+| **1 (baseline — one global equation)** | 24 | **+0.466** |
+| 2 | 12 | +0.118 |
+| 3 | 8 | +0.187 |
+| **3** | **24** | **+0.216** (best division setting) |
+| 4 | 12 | -0.379 |
+
+**Every configuration is roughly half the baseline.** The mechanism is not subtle: 20
+datasets split three ways leaves about six per division, and under leave-one-dataset-out a
+local equation is then fitted on six datasets. Divide-and-Learn trades sample size for
+locality, and sample size is the one thing this study has repeatedly found to be the
+binding constraint. It is the right idea for a configuration space with thousands of
+measured samples and the wrong one for twenty datasets.
+
+Worth recording because it is a natural thing for a reader to suggest, and because the
+failure is about *this* meta-dataset rather than the method.
+
+> One implementation note that cost an hour: the term library must be built from **every**
+> row's features, not from the training rows of the fold. It is target-free, so building it
+> globally leaks nothing — but rebuilding it per fold makes a term that is admissible on
+> the training rows undefined on the held-out ones, and the first version of this
+> experiment returned `NaN` for that reason.
+
 ## Flexible models do worse, not better
 
 Standard regressors on the same raw features, under the same protocols:

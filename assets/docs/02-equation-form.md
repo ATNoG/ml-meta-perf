@@ -70,24 +70,51 @@ Generating it over all features instead takes mixed terms in the library from **
 and is worth, on its own, most of the improvement reported in
 [chapter 6](06-results.md).
 
-### Is three enough?
+### Is three enough? — the design point, measured properly
 
-`max_arity` exists so the question can be answered rather than assumed. At the default
-configuration:
+`max_arity` exists so this is answered rather than assumed, and answering it correctly
+requires **retuning the ridge penalty inside each arity**. A wider grammar needs more
+shrinkage; comparing arities at a fixed penalty measures the penalty as much as the arity.
 
-| max arity | library | in-sample (k=32) | LOO-dataset (k=32) |
+The fixed-penalty comparison (λ = 20 throughout, 32 terms) suggests arity 2 is best for
+transfer:
+
+| max arity | library | in-sample | LOO-dataset |
 |---|---|---|---|
-| 2 | 92 | 0.5687 | **+0.458** |
-| **3** | **281** | **0.5758** | +0.375 |
-| 4 | 1599 | **0.6186** | +0.321 |
+| 2 | 92 | 0.5687 | +0.458 |
+| 3 | 281 | 0.5758 | +0.375 |
+| 4 | 1599 | 0.6186 | +0.321 |
 
-Four-feature terms buy real fit — 0.62 against 0.57 — and cost transfer. Three is the
-default because it is where the two curves are jointly best once the penalty is retuned
-with it; four is one parameter away for anyone who wants the fit.
+**That reading is an artefact.** λ = 20 was tuned for the narrow grammar, so the wider ones
+are being shown under-shrunk. Sweeping λ ∈ {1, 5, 20, 50} and k ∈ {12 … 32} *within* each
+arity and reporting each one's best gives a different picture:
 
-The deeper reason to stop at four: a `(f1+f2)/(f3+f4)` term already names four features and
-two operations, and the grammar's whole purpose is that a reader can hold a term in their
-head. Arity is capped by legibility before it is capped by evidence.
+| max arity | library | best in-sample | best LOO-dataset |
+|---|---|---|---|
+| 2 | 92 | 0.6222 (λ=1, k=32) | +0.4629 (λ=20, k=24) |
+| **3** | **281** | **0.6361** (λ=1, k=32) | **+0.4658** (λ=5, k=24) |
+| 4 | 1599 | **0.6714** (λ=1, k=32) | +0.2628 (λ=50, k=16) |
+
+Three conclusions, and the first two were invisible at fixed penalty:
+
+1. **Arity 3 dominates arity 2 on both axes.** Better fit (0.6361 vs 0.6222) *and* better
+   transfer (+0.4658 vs +0.4629). There is no reason to prefer two-feature terms; the
+   apparent transfer advantage of arity 2 was the fixed penalty.
+2. **Arity 4 is a fit-only option, and an expensive one.** It buys +0.035 in-sample over
+   arity 3 and gives up **0.203** of transfer — roughly six units of transfer per unit of
+   fit. That is the trade, stated properly.
+3. **The optimal penalty falls as arity rises** for transfer (20 → 5 → 50 is not monotone,
+   but arity 4's best transfer needs both the heaviest shrinkage *and* the shortest
+   equation, k=16, which is the signature of a grammar the sample cannot support).
+
+So `max_arity = 3` is the default because it is the only setting that is not dominated:
+arity 2 is beaten outright, arity 4 wins one axis at a ruinous price on the other.
+
+The reason not to go past four is different and does not need a measurement. A
+`(f1+f2)/(f3+f4)` term already names four features and two operations, and the grammar
+exists so a reader can hold a term in their head. **Arity is capped by legibility before it
+is capped by evidence** — four is already at the edge of what belongs in a printed
+equation, and the evidence happens to agree.
 
 ## Admissibility: which terms are allowed to exist
 
