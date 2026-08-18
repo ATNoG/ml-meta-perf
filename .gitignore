@@ -26,6 +26,13 @@ results/
 docs_build/
 /docs/
 
+# Working notes, deliberately local. `CLAUDE.md` is agent orientation and `todo.md` is the
+# research record -- the measured negative results, and what to record when the
+# meta-dataset can be recomputed. Neither is needed to run anything, and findings that
+# belong to the study go into assets/docs/ instead.
+CLAUDE.md
+todo.md
+
 # Editors and operating systems
 .idea/
 .vscode/
