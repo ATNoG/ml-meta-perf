@@ -1,7 +1,32 @@
-.PHONY: docs figures study report quick test lint clean
+.PHONY: venv docs figures study report quick test lint clean
 
 VENV := venv
-PY := PYTHONPATH=src $(VENV)/bin/python
+
+# One BLAS thread. OpenBLAS threads by default, but this study is a million solves of
+# k-by-k systems with k <= 32 -- far below the size where BLAS parallelism pays. Measured
+# end to end: 1 thread 24.7s wall / 24.7s cpu, 8 threads 25.3s wall / 87.7s cpu. Threading
+# buys nothing and burns 3.5x the CPU.
+#
+# It has to be set here rather than inside the package: `python -m metafit` imports numpy
+# before __main__ runs, and OpenBLAS reads the variable when it loads.
+THREADS := OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1
+
+PY := $(THREADS) PYTHONPATH=src $(VENV)/bin/python
+
+## Create the virtualenv, building numpy against the host's OpenBLAS.
+##
+## The `--no-binary numpy` in requirements.txt is what does it; this target exists so that
+## recreating the venv is one command rather than a remembered incantation. Needs
+## the BLAS development files (an openblas.pc for pkg-config), a C compiler and ninja.
+## Roughly two minutes the first time; pip caches the built wheel, so later recreates of
+## the venv reuse it. See assets/docs/03-search-and-fitting.md for why, and how to opt out.
+venv:
+	rm -rf $(VENV)
+	python3 -m venv $(VENV)
+	$(VENV)/bin/pip install --upgrade pip
+	$(VENV)/bin/pip install -r requirements-dev.txt
+	@$(VENV)/bin/python -c "import numpy; b = numpy.show_config(mode='dicts')['Build Dependencies']['blas']; \
+	print(f\"numpy {numpy.__version__} -> {b['name']} {b.get('version')} from {b.get('lib directory')}\")"
 
 ## Generate the API reference from the module docstrings.
 ##

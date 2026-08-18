@@ -26,8 +26,8 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/mariolpantunes/aiml-model"
-Issues = "https://github.com/mariolpantunes/aiml-model/issues"
+Repository = "https://github.com/mariolpantunes/ml-meta-perf"
+Issues = "https://github.com/mariolpantunes/ml-meta-perf/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

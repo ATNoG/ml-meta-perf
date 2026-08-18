@@ -29,6 +29,39 @@ def rankdata(values: np.ndarray) -> np.ndarray:
     return ranks
 
 
+def rank_columns(matrix: np.ndarray) -> np.ndarray:
+    """`rankdata` applied down every column at once, with the same tie handling.
+
+    `metafit.fit.guided_screen` needs the ranks of every candidate term in the library, in
+    every fold. Doing that a column at a time cost 32k calls and a tenth of the study's
+    runtime; the work is identical but the Python loop is not. ``test_stats`` asserts the
+    two agree column by column, so `rankdata` stays the definition and this stays a
+    restatement of it.
+
+    Ties are averaged by locating each run of equal values in the sorted order: a run
+    spanning sorted positions ``i..j`` takes rank ``(i + j) / 2 + 1``, which is the mean of
+    the consecutive ranks it would otherwise receive.
+    """
+    rows = matrix.shape[0]
+    order = np.argsort(matrix, axis=0, kind="stable")
+    ordered = np.take_along_axis(matrix, order, axis=0)
+
+    starts = np.empty(matrix.shape, dtype=bool)
+    starts[0] = True
+    np.not_equal(ordered[1:], ordered[:-1], out=starts[1:])
+    ends = np.empty(matrix.shape, dtype=bool)
+    ends[-1] = True
+    ends[:-1] = starts[1:]
+
+    position = np.arange(rows, dtype=np.float64)[:, None]
+    first = np.maximum.accumulate(np.where(starts, position, -1.0), axis=0)
+    last = np.minimum.accumulate(np.where(ends, position, float(rows))[::-1], axis=0)[::-1]
+
+    ranks = np.empty(matrix.shape, dtype=np.float64)
+    np.put_along_axis(ranks, order, (first + last) / 2.0 + 1.0, axis=0)
+    return ranks
+
+
 def pearson(first: np.ndarray, second: np.ndarray) -> float:
     """Linear correlation, returning 0.0 when either side is constant."""
     a = first - first.mean()

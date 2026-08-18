@@ -11,6 +11,19 @@ so composite terms are built over log-compressed operands wherever the feature i
 strictly positive. Dividing raw ``gravity`` by anything produces a term whose weight is
 1e-16 and whose meaning is unreadable.
 
+**This vocabulary assumes strictly positive, continuous features, and degrades quietly
+when given anything else.** The assumption is worth stating because nothing here raises
+when it is violated -- the affected terms are simply never generated, and a caller adding
+a feature sees a smaller library rather than an error. For a feature that reaches zero,
+``log``, ``sqrt`` and ``1/f`` are all undefined (`Atom.is_defined_on`) and it can never be
+a denominator (`denominator_atom`), which already excludes ``nr_norm``, ``nr_bin`` and
+``nr_outliers`` from three quarters of the grammar. For a **binary** feature only ``f`` and
+``f^2`` survive, and those are the same column twice -- see `Library`. What is left to a
+0/1 column is addition and multiplication, and the two are not equally safe: inside a sum
+it contributes a level to every row, while inside a product it zeroes the term entirely on
+the rows where it is off, which is a per-group slope rather than a relationship. Prefer a
+continuous descriptor that grades the same distinction.
+
 Study chapter: [2. Equation form and term vocabulary](../../assets/docs/02-equation-form.md) -- the rationale, in
 prose, with the figures.
 """
@@ -30,6 +43,11 @@ DENOMINATOR_FLOOR = 1e-9
 MAX_ABS_ZSCORE = 8.0
 MIN_RELATIVE_SPREAD = 1e-6
 MAX_DENOMINATOR_RANGE = 20.0
+
+#: Two terms count as the same column when their centred correlation reaches this. At
+#: ``1 - 1e-9`` the pair is indistinguishable to the solver anyway, so the threshold
+#: separates "algebraically identical" from "merely similar" rather than imposing a taste.
+COLLINEARITY_TOLERANCE = 1.0 - 1e-9
 
 #: Every elementary transform a unary term may use.
 TRANSFORMS: tuple[Transform, ...] = ("id", "log", "sqrt", "inv", "sq")
@@ -425,8 +443,44 @@ def is_admissible(values: np.ndarray, max_abs_zscore: float = MAX_ABS_ZSCORE) ->
     return float(np.max(np.abs(values - np.mean(values)))) / spread <= max_abs_zscore
 
 
+def _unit(values: np.ndarray) -> np.ndarray:
+    """The centred column scaled to unit length -- the form collinearity is judged in.
+
+    Centring first is what makes the test match the fit: fitting happens on standardised
+    terms, so two columns differing by an additive or multiplicative constant are one
+    column as far as the solve is concerned, however different their raw values look.
+    """
+    centred = values - np.mean(values)
+    norm = float(np.linalg.norm(centred))
+    return centred / norm if norm > 0.0 else centred
+
+
 class Library:
-    """A set of terms together with the design matrix they produce."""
+    """A set of terms together with the design matrix they produce.
+
+    Terms are dropped for three reasons, in order: a repeated *name*, failing
+    `is_admissible`, and -- the subtlest -- being the same column as a term already kept.
+
+    That last check cannot be done on names. ``inst_to_attr`` is ``nr_inst / nr_attr`` in
+    this meta-dataset, so ``[log(inst_to_attr)] + [log(nr_attr)]`` **is**
+    ``log(nr_inst)``, exactly, and the grammar generates both. Three such pairs exist in
+    the published 281-term library. A binary feature produces them too and more bluntly:
+    ``log``, ``sqrt`` and ``1/f`` are all undefined at zero, leaving only ``f`` and
+    ``f^2``, which for a 0/1 column are the same numbers under two names.
+
+    Keeping both members of a pair is wasteful rather than dangerous, and the distinction
+    is worth being precise about. The beam search already refuses a candidate whose
+    correlation with a selected term exceeds ``metafit.fit.COLLINEARITY_LIMIT`` (0.95), so
+    a duplicate pair cannot both be selected on that path and no singular system arises
+    there. What the duplicates cost is candidate-pool slots, search time, and a place in
+    the reported term rankings, where they appear as two independent findings. The check
+    here also covers the paths ``_blocked`` does not: a ``Library`` assembled by hand, and
+    any consumer reading `terms` or `matrix` directly.
+
+    The first term of a pair wins. Generation order runs simple to complex, so the survivor
+    is the shorter form: ``[log(nr_inst)] / [log(Training Operations)]`` is kept and
+    ``([log(inst_to_attr)] + [log(nr_attr)]) / [log(Training Operations)]`` is dropped.
+    """
 
     def __init__(
         self,
@@ -437,6 +491,7 @@ class Library:
     ) -> None:
         kept: list[Term] = []
         vectors: list[np.ndarray] = []
+        units: list[np.ndarray] = []
         seen: set[str] = set()
         for term in terms:
             if term.name in seen:
@@ -445,9 +500,13 @@ class Library:
                 values = term.evaluate(columns)
             if not is_admissible(values, max_abs_zscore):
                 continue
+            unit = _unit(values)
+            if any(abs(float(other @ unit)) > COLLINEARITY_TOLERANCE for other in units):
+                continue
             seen.add(term.name)
             kept.append(term)
             vectors.append(values)
+            units.append(unit)
         if not kept:
             raise ValueError("term library is empty after filtering")
         self.terms: list[Term] = kept

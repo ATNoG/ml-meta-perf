@@ -54,7 +54,39 @@ MODEL_FEATURES: tuple[str, ...] = (
     "Prediction Operations",
     "Active Regularization Mechanisms",
     "Robust to Outliers",
+    "Model Capability",
 )
+
+#: Where each learner family sits on a capability ladder, low to high.
+#:
+#: This is the **provenance** of the ``Model Capability`` column, which the CSV carries like
+#: any other feature. It is kept here, and checked against the CSV by ``test_data``, so the
+#: column can be regenerated and so a reader can see where the numbers came from rather than
+#: finding twenty-five unexplained integers in a data file.
+#:
+#: **The order is asserted from the tabular-ML literature, not fitted here** -- Grinsztajn
+#: et al. (2022), Shwartz-Ziv & Armon (2022), McElfresh et al. (2023), and Hollmann et al.
+#: (2023) for the in-context models. Ordering families by their observed MCC in this corpus
+#: would fit the column on the target and make every coefficient over it circular.
+#:
+#: That independence is also the column's weakness, and it is measured rather than
+#: suspected: against this corpus the asserted order rises at only 6 of 9 steps in raw
+#: per-family mean MCC, where 9 would be monotone and about 4.5 is unrelated. `generic NN`
+#: has the *lowest* family mean here, 0.454, from rung 6 of 10; `single tree` is near the
+#: top at 0.930 from rung 5. Anything the equation reads off this column is therefore only
+#: loosely "capability", and a term over it must not be quoted as though it were more.
+MODEL_CAPABILITY: dict[str, int] = {
+    "naive bayes": 1,
+    "discriminant": 2,
+    "linear": 3,
+    "instance": 4,
+    "single tree": 5,
+    "generic NN": 6,
+    "tabular NN": 7,
+    "bagged trees": 8,
+    "boosted trees": 9,
+    "tabular foundation": 10,
+}
 
 ALL_FEATURES: tuple[str, ...] = DATASET_FEATURES + MODEL_FEATURES
 
@@ -122,6 +154,7 @@ FEATURE_GLOSSARY: dict[str, str] = {
     "Prediction Operations": "inference cost (log operations)",
     "Active Regularization Mechanisms": "number of active regularisation mechanisms",
     "Robust to Outliers": "built-in robustness to outliers",
+    "Model Capability": "learner family's capability rank in the tabular-ML literature (1-10)",
 }
 
 DEFAULT_PATH = Path(__file__).resolve().parents[2] / "data" / "meta_dataset.csv"
@@ -161,10 +194,15 @@ def load(path: str | Path | None = None) -> pl.DataFrame:
 def aggregate_by_dataset(frame: pl.DataFrame) -> pl.DataFrame:
     """Collapse to one row per dataset: the dataset features plus the mean MCC.
 
-    This is the target E1 is actually fitted against. Fitting the 476 raw rows with
-    dataset features alone gives the same weights -- least squares on a predictor that
-    is constant within a group lands on the group mean either way -- but working on the
-    20 aggregated points makes that explicit and keeps the fold count honest.
+    **E1 is no longer fitted against this**, and the reason is worth recording. Least
+    squares on a predictor that is constant within a group lands on that group's mean
+    either way, so aggregating first looked free. It was not: it put E1's R2 on a
+    20-point denominator, which cannot be compared with E3's 476-row one, and the 0.506
+    it produced read as *better* transfer than E3's 0.466 when on the common scale it is
+    0.217. All three equations are now fitted on all 476 rows.
+
+    Kept because the aggregated view is still the right one for describing the corpus --
+    20 datasets, one row each -- and because chapter 6 quotes the comparison.
     """
     return (
         frame.group_by(DATASET_COLUMN)

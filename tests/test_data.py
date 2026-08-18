@@ -10,7 +10,9 @@ from metafit.data import (
     ALL_FEATURES,
     DATASET_COLUMN,
     DATASET_FEATURES,
+    MODEL_CAPABILITY,
     MODEL_COLUMN,
+    MODEL_FAMILY,
     MODEL_FEATURES,
     TARGET_COLUMN,
     SchemaError,
@@ -56,6 +58,22 @@ class TestLoad(unittest.TestCase):
     def test_missing_file_is_reported(self) -> None:
         with self.assertRaises(SchemaError):
             load("/nonexistent/meta_dataset.csv")
+
+    def test_capability_column_matches_its_documented_provenance(self) -> None:
+        # The CSV carries `Model Capability` like any other feature, but unlike the others
+        # it was assigned here rather than measured upstream. This is what keeps the column
+        # and the taxonomy that explains it from drifting apart.
+        frame = load()
+        for model, capability in zip(
+            frame[MODEL_COLUMN].to_list(), frame["Model Capability"].to_list(), strict=True
+        ):
+            self.assertEqual(capability, float(MODEL_CAPABILITY[MODEL_FAMILY[model]]))
+
+    def test_every_family_sits_somewhere_on_the_capability_ladder(self) -> None:
+        self.assertEqual(set(MODEL_FAMILY.values()), set(MODEL_CAPABILITY))
+        self.assertEqual(
+            sorted(MODEL_CAPABILITY.values()), list(range(1, len(MODEL_CAPABILITY) + 1))
+        )
 
     def test_missing_column_is_reported(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

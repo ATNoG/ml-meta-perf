@@ -7,18 +7,13 @@ worth under leave-one-dataset-out and leave-one-model-out validation.
 
 from metafit.analysis import redundancy_groups, screen
 from metafit.attribution import group_shares, term_effects, variance_decomposition
-from metafit.construct import (
-    agglomerate,
-    cluster_terms,
-    constructed_library,
-    guided_merge,
-    structural_terms,
-)
 from metafit.data import (
     ALL_FEATURES,
     DATASET_COLUMN,
     DATASET_FEATURES,
+    MODEL_CAPABILITY,
     MODEL_COLUMN,
+    MODEL_FAMILY,
     MODEL_FEATURES,
     TARGET_COLUMN,
     aggregate_by_dataset,
@@ -29,6 +24,7 @@ from metafit.data import (
 )
 from metafit.fit import FitResult, fit, prune
 from metafit.guidance import CATALOGUE, Practice, Verdict, assess
+from metafit.identity import ModelEffects, correct_out_of_fold, fit_effects
 from metafit.model import Equation
 from metafit.practices import best_practices, concordance, concordance_summary, feature_practices
 from metafit.report import (
@@ -60,7 +56,9 @@ __all__ = [
     "CATALOGUE",
     "DATASET_COLUMN",
     "DATASET_FEATURES",
+    "MODEL_CAPABILITY",
     "MODEL_COLUMN",
+    "MODEL_FAMILY",
     "MODEL_FEATURES",
     "TARGET_COLUMN",
     "Atom",
@@ -68,32 +66,31 @@ __all__ = [
     "Equation",
     "FitResult",
     "Library",
+    "ModelEffects",
     "Practice",
     "Scores",
     "Term",
     "Verdict",
     "__version__",
     "additive_oracle",
-    "agglomerate",
     "aggregate_by_dataset",
     "assess",
     "baseline_group_mean",
     "best_practices",
     "build_library",
-    "cluster_terms",
     "columns_as_arrays",
     "concordance",
     "concordance_summary",
-    "constructed_library",
+    "correct_out_of_fold",
     "coverage",
     "cross_validate",
     "decision_report",
     "feature_practices",
     "feature_usage",
     "fit",
+    "fit_effects",
     "group_shares",
     "groups",
-    "guided_merge",
     "knee_index",
     "knee_terms",
     "load",
@@ -109,7 +106,6 @@ __all__ = [
     "screen",
     "simplify",
     "simplify_curve",
-    "structural_terms",
     "target",
     "term_effects",
     "term_groups",

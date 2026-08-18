@@ -93,7 +93,7 @@ def captions(report: Report, data: str | Path | None = None) -> dict[str, str]:
             "Each fitted equation against the ceiling that bounds it, all scored on the "
             "same 476 rows. Dataset-only and model-only equations are bounded by what "
             "their group identity can explain; any additive equation is bounded by the "
-            "oracle."
+            "oracle. All bars are in-sample."
         ),
         "term_count_curve.png": (
             "Accuracy against equation length for E3, in-sample and under both "

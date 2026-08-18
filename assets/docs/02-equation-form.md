@@ -53,9 +53,9 @@ project's life.
 
 | operation | raw features | terms (arity 3 library) |
 |---|---|---|
-| `atom` | 1 | 25 |
-| `ratio`, `product` | 2 | 67 |
-| `sum_ratio` — `(f1+f2)/f3` | 3 | 189 |
+| `atom` | 1 | 30 |
+| `ratio`, `product` | 2 | 75 |
+| `sum_ratio` — `(f1+f2)/f3` | 3 | 211 |
 | `ratio_of_sums` — `(f1+f2)/(f3+f4)` | 4 | *available, not default* |
 
 ### The asymmetry that was there, and is now fixed
@@ -95,6 +95,12 @@ arity and reporting each one's best gives a different picture:
 | **3** | **281** | **0.6361** (λ=1, k=32) | **+0.4658** (λ=5, k=24) |
 | 4 | 1599 | **0.6714** (λ=1, k=32) | +0.2628 (λ=50, k=16) |
 
+<sub>Measured over the five model descriptors the corpus ships, before `Model Capability`
+joined them; the library sizes and R² values in this table are that configuration's. The
+*decision* — arity 3 — was re-checked against the enlarged feature set and is unchanged,
+which is why the sweep has not been re-run to refresh four numbers that support a
+conclusion they still support.</sub>
+
 Three conclusions, and the first two were invisible at fixed penalty:
 
 1. **Arity 3 dominates arity 2 on both axes.** Better fit (0.6361 vs 0.6222) *and* better
@@ -110,9 +116,10 @@ Three conclusions, and the first two were invisible at fixed penalty:
 So `max_arity = 3` is the default because it is the only setting that is not dominated:
 arity 2 is beaten outright, arity 4 wins one axis at a ruinous price on the other.
 
-**The fitted equation confirms it directly.** In the published 24-term E3 the three-feature
-`sum_ratio` accounts for 11 terms and **50% of the standardised weight mass** — the search
-did not merely tolerate the extra arity, it built half the equation out of it. A
+**The fitted equation confirms it directly.** In the published 20-term E3 the three-feature
+`sum_ratio` accounts for 7 terms and **37% of the standardised weight mass** — the search
+did not merely tolerate the extra arity, it built better than a third of the equation out
+of it. A
 two-feature grammar would have had to express that half some other way, and the 0.6222
 ceiling above is what happens when it tries. Counted from the equation by
 `report.operation_usage`; see [chapter 7](07-practices.md#3-which-operations-the-equation-needed).
@@ -159,13 +166,56 @@ assembled by hand, but nothing `build_library` produces depends on it. Its effec
 visible at loose stability caps: at `max_abs_zscore=6` the worst leave-one-dataset-out R²
 across the sweep improved from **-1.66 to -0.39** once the rule became structural.
 
+### Two terms, one column
+
+A repeated *name* is not the only way the same column enters the library twice, and the
+other way is invisible on the page. In this meta-dataset `inst_to_attr` is
+$n_{\text{inst}} / n_{\text{attr}}$, so
+
+$$\log(\texttt{inst\_to\_attr}) + \log(\texttt{nr\_attr}) \;=\; \log(\texttt{nr\_inst})$$
+
+exactly — and the grammar generates both sides. Three such pairs existed in the 281-term
+library. The beam search would not have put both members in one equation — it refuses a
+candidate correlating above 0.95 with a selected term — so nothing published was ever at
+risk. What the duplicates cost is candidate-pool slots, search time, and a place in the
+reported term rankings, where the two forms appear as two independent findings and are one.
+
+`Library` therefore drops a term whose centred column correlates with an already-kept
+column above $1 - 10^{-9}$. Centring first is what makes the test match the fit: fitting
+happens on standardised terms, so two columns differing by an additive or multiplicative
+constant are one column to the solver however different their raw values look. The first
+term of a pair wins, and since generation runs simple to complex the survivor is the
+shorter form.
+
+### What the vocabulary assumes about a feature
+
+Every transform above assumes a **strictly positive, continuous** feature, and the library
+degrades quietly rather than loudly when given anything else — the affected terms are never
+generated, so a caller adding a feature sees a smaller library, not an error.
+
+| feature reaches | `log` | `sqrt` | `1/f` | may be a denominator |
+|---|---|---|---|---|
+| strictly positive | yes | yes | yes | if the range rule allows |
+| zero | no | no | no | no |
+
+A **binary** feature is the degenerate case: only `f` and `f^2` survive, and for a 0/1
+column those are the same numbers under two names — caught by the collinearity rule above.
+What remains available to it is addition and multiplication, and the two differ in kind.
+Inside a sum, an indicator contributes a level to every row: $(a + b)/c$ expands to
+$a/c + b/c$, an additive offset. Inside a product it **zeroes the term entirely** on the
+rows where it is off, so `[log(Processing Units Number)] * [is a tree]` does not say
+"capacity helps" but "capacity helps, for trees" — a per-group slope written in product
+notation, not a relationship. A continuous descriptor that *grades* the distinction is
+preferable to an indicator that switches on it.
+
 ## Library sizes
 
 | configuration | `max_abs_zscore` | terms |
 |---|---|---|
-| E1 (dataset only, 20 aggregated rows) | 3.0 | 136 |
-| E3 default | 3.0 | 172 |
-| arity-4 grammar (measured, not published) | 4.0 | 360 |
+| E1 (dataset features only) | 3.0 | 137 |
+| E2 (model features only) | 3.0 | 30 |
+| **E3 default** | **3.0** | **316** |
+| arity-4 grammar (measured, not published) | 4.0 | 5224 |
 
 The `max_abs_zscore` cap rejects a term when a single row sits more than that many
 standard deviations from its mean. The cap is **sample-size dependent**: a lone outlier

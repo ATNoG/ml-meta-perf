@@ -51,7 +51,7 @@ recorded in [chapter 8](08-limitations.md#training-set-size-is-not-a-variable-he
 the near-miss is instructive — the split produced a clean-looking number, and the number
 meant nothing.
 
-[Chapter 9](09-report.md) carries the full assessment, regenerated on every run.
+[Chapter 10](10-report.md) carries the full assessment, regenerated on every run.
 
 ## Making terms comparable
 
@@ -108,7 +108,7 @@ better left unwritten.
 
 ## The measured associations
 
-The evidence layer. Reproduced from the published 24-term E3; [chapter 9](09-report.md) is
+The evidence layer. Reproduced from the published 24-term E3; [chapter 10](10-report.md) is
 the generated version and is regenerated with the equation, so it is the one to trust if
 the two ever disagree.
 
@@ -133,7 +133,7 @@ that advice against something other than this one equation, is the next section'
 
 **They are not best practices.** Each names a meta-feature column, which is a thing to
 measure rather than a thing to do, and each is true of one equation on one corpus. The
-practices are in [chapter 9](09-report.md), taken from the literature and weighed against
+practices are in [chapter 10](10-report.md), taken from the literature and weighed against
 these numbers among others.
 
 The defensible claim is directional, and the tables in this chapter should be read as a
@@ -196,7 +196,7 @@ a flat equation refuses that. **This is a statement about the unit of explanatio
 about the quality of the equation.** MCC here is inferred by a *set* of terms acting
 together, and the right response is to change the unit rather than to conclude that the
 equation cannot be read. Three units work, and `metafit.report` generates all three into
-[chapter 9](09-report.md).
+[chapter 10](10-report.md).
 
 ### 1. Blocks of terms that move together
 
@@ -243,7 +243,7 @@ about the search.
 
 `Processing Units Number` appears in 10 of 24 terms and `Training Operations` in 8; the
 dataset features are spread thinner, 2–4 terms each. The full table, with the transforms
-and operations each feature was used under, is in [chapter 9](09-report.md).
+and operations each feature was used under, is in [chapter 10](10-report.md).
 
 ### 3. Which operations the equation needed
 
@@ -310,7 +310,7 @@ is the product and the equation is only its raw material — and the claim "this
 interpretable" quietly becomes "this model was interpreted by an expert, once".
 
 So `metafit.report` derives the written analysis arithmetically, and
-[chapter 9](09-report.md) is its output. The same equation always produces the same
+[chapter 10](10-report.md) is its output. The same equation always produces the same
 sentences, and every sentence maps onto a row of a table printed next to it.
 
 **Terms are ranked by standardised weight.** The target is centred but never scaled during

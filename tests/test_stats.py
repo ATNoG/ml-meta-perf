@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 
-from metafit.stats import mae, pearson, r2_score, rankdata, rmse, smape, spearman
+from metafit.stats import mae, pearson, r2_score, rank_columns, rankdata, rmse, smape, spearman
 
 
 class TestRankdata(unittest.TestCase):
@@ -99,6 +99,31 @@ class TestSmape(unittest.TestCase):
         a = np.array([0.2, 0.8, 0.5])
         b = np.array([0.3, 0.6, 0.9])
         self.assertAlmostEqual(smape(a, b), smape(b, a))
+
+
+class TestRankColumns(unittest.TestCase):
+    """The vectorised form must be a restatement of `rankdata`, not an approximation."""
+
+    def test_matches_rankdata_column_by_column(self) -> None:
+        rng = np.random.default_rng(0)
+        matrix = rng.normal(size=(60, 25))
+        expected = np.column_stack([rankdata(matrix[:, j]) for j in range(matrix.shape[1])])
+        np.testing.assert_allclose(rank_columns(matrix), expected)
+
+    def test_matches_rankdata_when_columns_are_full_of_ties(self) -> None:
+        rng = np.random.default_rng(1)
+        matrix = rng.integers(0, 3, size=(40, 8)).astype(np.float64)
+        expected = np.column_stack([rankdata(matrix[:, j]) for j in range(matrix.shape[1])])
+        np.testing.assert_allclose(rank_columns(matrix), expected)
+
+    def test_a_constant_column_gets_one_average_rank(self) -> None:
+        matrix = np.column_stack([np.ones(9), np.arange(9.0)])
+        ranks = rank_columns(matrix)
+        np.testing.assert_allclose(ranks[:, 0], np.full(9, 5.0))
+        np.testing.assert_allclose(ranks[:, 1], np.arange(1.0, 10.0))
+
+    def test_a_single_row_is_rank_one(self) -> None:
+        np.testing.assert_allclose(rank_columns(np.array([[3.0, -1.0]])), [[1.0, 1.0]])
 
 
 if __name__ == "__main__":

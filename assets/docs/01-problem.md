@@ -38,6 +38,39 @@ Three properties of this target shape every downstream decision:
 `data/meta_dataset.csv` — 476 rows, no missing values. One row per (dataset, model) pair,
 covering **20 datasets × 25 models** (24 of the 500 possible pairs are absent).
 
+### Each row is the best of three seeds, not their mean
+
+Audited against the corpus that produced it
+([meta2perf-symbolic-regression](https://github.com/mariolpantunes/meta2perf-symbolic-regression),
+`exp_stage_create_meta_dataset.py`). Every (dataset, model) pair was trained under three
+random seeds, and the row kept here is the one with the **highest** MCC
+(`groupby(["Dataset","Model"]).MCC.idxmax()`). Measured over the 348 pairs whose per-seed
+records are published:
+
+| | MCC |
+|---|---|
+| mean of (max − mean) across seeds | **0.0206** |
+| mean of (max − min) across seeds | 0.0512 |
+| 90th percentile of (max − min) | 0.1020 |
+| pairs whose seeds spread more than 0.05 | 64 of 340 |
+| mean within-run cross-validation fold std | 0.0267 |
+
+Two consequences, and only the first is a caveat.
+
+**The target is optimistic by about 0.02 MCC.** Every absolute statement in this study —
+"tree families average 0.927", the go/no-go thresholds — describes the best of three runs
+rather than a typical one. The bias is roughly constant across rows, so comparisons
+between models and the fitted weights are barely affected; the level is.
+
+**It sets a noise floor.** A quantity that moves by 0.05 between seeds of the *same*
+configuration cannot be predicted more precisely than that by anything. The study's
+leave-one-dataset-out MAE is 0.183, well above the floor, so the sample rather than the
+target's own noise is what binds — but the floor is where an error curve would stop, and
+it is worth knowing that it sits around 0.03–0.05.
+
+The 80 rows at exactly 1.0 are not an artefact of the selection: of the 54 saturated pairs
+with published seed records, 52 average above 0.99 across all three.
+
 | | count | constant within |
 |---|---|---|
 | dataset meta-features | 12 | a dataset |

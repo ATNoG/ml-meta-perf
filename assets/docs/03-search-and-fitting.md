@@ -78,11 +78,103 @@ identity against the literal definition across penalties and subset sizes.
 ### Cost
 
 Every candidate refit is a $k \times k$ solve against a precomputed Gram matrix rather
-than a least-squares call against the full design. A full 32-term leave-one-dataset-out
-sweep runs in **15 seconds**, down from 39 after three optimisations that changed no
-result (`np.ix_` called once rather than twice, the penalty added along a diagonal rather
-than via `penalty * np.eye(k)`, and the RSS identity above), plus memoisation of subsets
-and a vectorised collinearity mask.
+than a least-squares call against the full design. The whole study — seven cross-validated
+sweeps, three equations, both protocols — runs in **27 seconds**, and every optimisation
+that got it there was verified to leave every output file byte-identical.
+
+| change | what it does | effect |
+|---|---|---|
+| Gram-matrix arithmetic | a $k\times k$ solve instead of a least-squares call | the design |
+| the RSS identity above | removes a matrix-vector product from the inner loop | |
+| `np.ix_` replaced by a direct broadcast reshape | skips dtype checks already known to hold | 1.8× on the indexing |
+| penalty folded into the full Gram diagonal once | removes a copy and an index array per solve | |
+| memoised subsets, vectorised collinearity mask | | 39s → 15s per sweep |
+| **stacked solves** | a beam step's candidates go to LAPACK as one `(n, k, k)` array | **1.16M solve calls → 87k** |
+| **target ranked once per screen** | Spearman's expensive half hoisted out of the candidate loop | 52k rank calls → 29k |
+
+The last two are the current ones. At $k \le 32$ numpy's per-call wrapper — dtype
+promotion, array coercion, the errstate context manager — costs several times the LAPACK
+call it guards, so batching the candidates of one beam step into a single stacked solve is
+worth 2–10× depending on $k$ while running the identical routine per slice. What remains
+in the profile is the arithmetic itself: gathering the $(n, k, k)$ submatrices and the
+solves, in that order. There is no Python-level hotspot left above 20%.
+
+### One BLAS thread, deliberately
+
+The solver underneath is whatever LAPACK numpy was built against — for the wheels used
+here, the OpenBLAS build that numpy vendors (`numpy.libs/libscipy_openblas64_*.so`, built
+`MAX_THREADS=64`). **That is a bundled shared library, not the scipy package**, which this
+project does not depend on ([chapter 4](04-evaluation.md) covers the statistics written out
+by hand for the same reason).
+
+OpenBLAS threads by default, and on this workload the threads do nothing but spin:
+
+| `OPENBLAS_NUM_THREADS` | wall | CPU |
+|---|---|---|
+| **1** | **24.7 s** | **24.7 s** |
+| 2 | 24.8 s | 33.9 s |
+| 4 | 24.7 s | 52.1 s |
+| 8 | 25.3 s | 87.7 s |
+
+A 32×32 solve is far below the size where BLAS parallelism pays, so eight threads buy no
+wall time and burn 3.5× the CPU. The `Makefile` therefore pins `OPENBLAS_NUM_THREADS=1`.
+
+It has to be pinned on the command line rather than inside the package: `python -m metafit`
+imports `metafit`, and therefore numpy, and therefore OpenBLAS, *before* `__main__` runs,
+and OpenBLAS reads the variable when it loads. Anyone timing this study by calling
+`python -m metafit` directly will see the same 25 seconds against five times the CPU.
+
+### Using the host's BLAS instead of the wheel's
+
+`pip install numpy` installs a wheel that **vendors its own OpenBLAS** — a 25 MB
+`numpy.libs/libscipy_openblas64_*.so`, built ILP64 with prefixed symbols. It is linked at
+build time and there is no runtime switch, so a different BLAS means rebuilding numpy:
+
+```bash
+venv/bin/pip install --no-binary numpy --force-reinstall numpy \
+  -Csetup-args=-Dblas=openblas -Csetup-args=-Dlapack=openblas
+```
+
+That needs the BLAS development files (an `openblas.pc` for pkg-config, plus the headers),
+a C compiler and `ninja`. It takes about two minutes the first time on 16 cores; pip caches
+the built wheel, so recreating the venv afterwards reuses it and costs seconds. `venv/bin/pip install --force-reinstall numpy` goes back to the
+wheel. **`requirements.txt` names `numpy>=2.0.0`, so a later `pip install -r` will silently
+replace a source build with the wheel again** — the rebuild is deliberately not mandatory,
+because requiring a compiler and BLAS headers is a heavier ask than the rest of this
+project makes.
+
+Why do it at all: the wheel's build is chosen for portability rather than for the host. On
+the machine these numbers were taken it selects the `Haswell` kernel on a Zen 5 CPU, while
+the system build selects `Zen`. Whether that matters is a property of the host, and here it
+is not measurable:
+
+| | wall | CPU | results |
+|---|---|---|---|
+| vendored OpenBLAS (Haswell kernel) | 24.4 s | 27.9 s | — |
+| system OpenBLAS (Zen kernel) | 24.6 s | 28.0 s | **byte-identical** |
+
+Every one of the study's twenty output tables is unchanged across the swap, which is the
+check that matters more than the timing: a different BLAS can round differently, and
+different rounding could in principle change which term the beam selects. It does not here.
+
+Head to head on `dgesv` at the sizes this study actually uses, timed with
+[exectimeit](https://github.com/mariolpantunes/exectimeit) — which fits
+$T_k = k \cdot t_{\text{exec}} + t_{\text{overhead}}$ and takes the slope, so the timer's
+own overhead is removed rather than averaged over:
+
+| n | vendored (Haswell) | system (Zen) |
+|---|---|---|
+| 8 | 7.88 ± 0.74 µs | 7.92 ± 0.46 µs |
+| 16 | 9.72 ± 0.89 µs | 9.46 ± 1.05 µs |
+| 24 | 12.52 ± 1.50 µs | 12.58 ± 1.51 µs |
+| 32 | 16.68 ± 3.19 µs | 16.90 ± 2.22 µs |
+
+Every difference is inside two standard errors. A plain timing loop had reported a
+consistent 5–6% gap at n = 24 and 32 which **vanished** once the measurement was done
+properly — which is the argument for measuring it this way rather than with a stopwatch
+around a loop. The mechanism agrees: a 32×32 system is 8 KB and sits in L1, so there is no
+cache behaviour for a tuned kernel to improve. A better-tuned BLAS pays on large matrix
+products, and this study never forms one.
 
 ## Negative result: the search is already converged
 
@@ -110,7 +202,7 @@ justify the extra configuration surface, and one global penalty is retained.
 
 ## An alternative that was built and measured: agglomerative construction
 
-`metafit.construct` implements a different way of finding terms, structurally identical to
+A different way of finding terms was built and measured, structurally identical to
 **hierarchical clustering**. Every feature starts as a singleton, straightened by whichever
 transform makes it most linear in MCC. At each step the pair whose merge — under one of the
 grammar's operations — becomes most linear in MCC is joined; features no merge improves are
@@ -254,10 +346,12 @@ enumeration costs one pass and yields eight times the terms. The honest reading 
 this meta-dataset is too small **in its feature dimension** for construction to beat
 exhaustion.
 
-**Status: not used, and not part of the reported study.** `metafit.construct` ships tested and is wired into no pipeline. It
-is kept because a documented negative result is worth more than a deleted one — the
-question "why not build terms by clustering instead of enumerating them?" is the first
-one a reader will ask, and the answer is measured rather than asserted. Its ideas were
+**Status: measured, rejected, and no longer in the tree.** It lived at
+`src/metafit/construct.py` with its own tests until the repository was cut back to the code
+the study actually runs; `git log -- src/metafit/construct.py` recovers it. The measurement
+is kept here because a documented negative result is worth more than a deleted one — "why
+not build terms by clustering instead of enumerating them?" is the first question a reader
+will ask, and the answer is measured rather than asserted. Its ideas were
 also tried as a *filter* on the enumerated library rather than a replacement for it, and
 that fails too, for the reason given above: any filter over marginal impact discards the
 weak-but-complementary terms the equation depends on.
@@ -306,48 +400,37 @@ Three rules are reported rather than one:
 
 | rule | terms | in-sample R² | LOO-dataset R² |
 |---|---|---|---|
-| knee of the in-sample curve | 12 | 0.573 | 0.269 |
-| knee of the cross-validated curve | 8 | 0.539 | 0.108 |
-| **best cross-validated** | **24** | **0.600** | **0.466** |
+| knee of the in-sample curve | 4 | 0.488 | 0.215 |
+| knee of the cross-validated curve | 8 | 0.563 | 0.401 |
+| **best cross-validated** | **20** | **0.614** | **0.478** |
 
-**Twenty-four is the headline, and the three rules disagree sharply.** Both knees land far
-short of it and cost 0.2 of transfer to save a dozen terms. The knee is the right question
-for the in-sample curve, which is monotone and flattens; it is the wrong question for the
-cross-validated curve, which is not monotone at 20 groups — it dips to 0.009 at four terms,
-recovers to 0.414 at sixteen, and a detector run on that is describing the dip.
+**Twenty is the headline, and the three rules still disagree.** Both knees land short of it,
+the in-sample knee badly so: it costs 0.26 of transfer to save sixteen terms. The knee is
+the right question for the in-sample curve, which is monotone and flattens; it is the wrong
+question for the cross-validated curve, which is not monotone at 20 groups.
 
 ### Sixteen terms is the shorter equation worth knowing about
 
-Read by eye, the leave-one-dataset-out curve bends at **16**: it climbs from 0.009 at four
-terms to 0.414 at sixteen, and everything after that is a noisy plateau ending at 0.466.
-That reading is fair, and the two lengths are the real choice a term budget poses:
-
 | terms | in-sample R² | LOO-dataset R² | LOO-dataset MAE |
 |---|---|---|---|
-| 16 | 0.5854 | 0.4145 | 0.1870 |
-| **24** | **0.5998** | **0.4658** | **0.1827** |
+| 16 | 0.6033 | 0.4744 | **0.1776** |
+| **20** | **0.6141** | **0.4779** | 0.1788 |
 
-Eight more terms buy **+0.051 of transfer** and +0.014 of fit. That is a third more equation
-for a tenth more transfer, and which way it goes depends entirely on what the equation is
-for: 24 is the better predictor, 16 is the more readable object and gives up little. Both
-sit on the Pareto front over (length, transfer), and neither dominates the other once
-brevity counts as a good.
+Four more terms buy **+0.0035 of transfer** and +0.011 of fit, and *cost* a thousandth of
+MAE. On this configuration the two lengths are all but indistinguishable on transfer, so the
+choice is almost purely about readability — which is a better position to be in than the
+previous grammar's, where the same comparison was worth +0.051 and the trade was real.
 
-The study publishes 24 because the stated rule selects it, not because 16 was rejected.
-Anyone reproducing this with a stricter readability budget should take 16 and lose 0.05.
+The study publishes 20 because the stated rule selects it. Anyone reproducing this with a
+stricter readability budget should take 16 and lose essentially nothing. The rule was fixed
+before the numbers were in, and the fact that it now selects a length whose MAE is very
+slightly worse than its neighbour's is exactly the kind of thing a pre-stated rule is
+supposed to survive.
 
-The best-cross-validated rule is therefore what selects the published length, and it is the
-one stated in advance rather than picked afterwards. It is worth noting what it costs to
-follow: **26 terms has the lower leave-one-dataset-out MAE** (0.1792 against 0.1827), so R²
-and MAE do not agree the way they did under the previous grammar. The rule was fixed
-before the numbers were in, and changing it now to catch a thousandth of MAE is how a
-selection rule stops meaning anything.
-
-Both **Pareto fronts** are also reported. Over (length, LOO-dataset R²) the front is just 2,
-16 and 24 — nothing longer than 24 terms earns its length on transfer, and most lengths
-below it are dominated by something shorter. Over (length, in-sample R²) *every* length is
-on the front, because fit is monotone in terms and so nothing is ever dominated. That is
-precisely why the in-sample curve cannot choose a length by itself and the knee detector
-exists for it.
+Both **Pareto fronts** are also reported. Over (length, LOO-dataset R²) the front is 2, 8,
+12, 16 and 20 — nothing longer than 20 terms earns its length on transfer. Over
+(length, in-sample R²) *every* length is on the front, because fit is monotone in terms and
+so nothing is ever dominated. That is precisely why the in-sample curve cannot choose a
+length by itself and the knee detector exists for it.
 
 ![Accuracy versus equation length](../figures/term_count_curve.png)

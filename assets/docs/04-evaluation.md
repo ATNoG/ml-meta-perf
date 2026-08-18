@@ -12,7 +12,7 @@
 
 In-sample is reported as a first-class result rather than dismissed. Term count is capped
 and terms are drawn from a screened pool, so this is **equation fitting, not model
-fitting**: the capacity to memorise 476 rows with 24 terms is limited, and the gap between
+fitting**: the capacity to memorise 476 rows with 20 terms is limited, and the gap between
 in-sample and cross-validated columns is itself the diagnostic. For contrast, a
 RandomForest reaches 0.910 in-sample and 0.067 leave-one-dataset-out on the same features.
 
@@ -43,9 +43,9 @@ The **same equation**, three protocols:
 
 | protocol | R² | MAE |
 |---|---|---|
-| random 10-fold | **0.540** | 0.165 |
-| leave-one-dataset-out | **0.466** | 0.183 |
-| leave-one-model-out | **0.489** | 0.177 |
+| random 10-fold | **0.561** | 0.164 |
+| leave-one-dataset-out | **0.478** | 0.179 |
+| leave-one-model-out | **0.428** | 0.188 |
 
 A reported R² near 0.5 on this kind of meta-data may be describing the split rather than
 the model. `metafit.validate.random_kfold_groups` exists **only** to produce this
@@ -67,9 +67,15 @@ same recommendation made by community reporting standards (Walsh et al., 2020).
 ### A caveat on R²
 
 R² is computed against the mean of the **evaluated** rows, so its denominator is the
-variance of whatever is being scored. An R² over the 20 aggregated dataset means and one
-over the 476 raw rows share no denominator and **cannot be compared**. This is why E1 is
-reported on both scales ([chapter 6](06-results.md)).
+variance of whatever is being scored. Two R² values computed over different row sets share
+no denominator and **cannot be compared**.
+
+This used to bite here. E1 was fitted and scored on the 20 aggregated per-dataset means,
+which put its 0.506 on a twenty-point denominator beside E3's 0.478 on a 476-row one —
+inviting exactly the comparison the caveat forbids, and in the direction that flatters the
+control. All three equations are now fitted and scored on the same 476 rows
+([chapter 6](06-results.md)), so the caveat is a general warning rather than a live hazard
+in this study's own tables. E1's transfer figure on the common scale is 0.217.
 
 ### A caveat on SMAPE
 
@@ -89,7 +95,7 @@ ranks first.
 
 ![Per-dataset ranking quality](../figures/per_group_quality.png)
 
-The mean (0.648) hides a wide spread: IoT-APD ranks at 0.90, DeepSlice at 0.09.
+The mean (0.706) hides a wide spread across the twenty held-out datasets.
 
 ## Baselines
 
@@ -104,22 +110,27 @@ An equation earns its place only by beating the obvious alternatives:
 
 E3 beats all four on its respective protocol.
 
-**One honest caveat, and it is not a small one.** For *ranking* models on a new dataset,
-the trivial "average MCC of this model elsewhere" baseline beats E3 on both ranking
-measures:
+**The ranking caveat that stood through earlier drafts has closed.** For *ranking* models
+on a new dataset, the trivial "average MCC of this model elsewhere" baseline used to beat
+E3 on both measures. With `Model Capability` in the model side it no longer does:
 
 | | mean per-dataset Spearman | mean top-1 regret |
 |---|---|---|
-| per-model mean (leave-one-dataset-out) | **0.703** | **0.011** |
-| E3 | 0.648 | 0.019 |
+| per-model mean (leave-one-dataset-out) | 0.703 | 0.011 |
+| **E3** | **0.706** | **0.008** |
 
-E3 wins clearly on predicting the MCC *value* — 0.466 against the baseline's 0.201 — and
-loses on ordering models within a dataset. The two are not in tension: knowing which models
-are generally good is enough to rank them, and is most of what ranking needs; knowing *how
-well* a particular model will do on a particular dataset is what needs the meta-features,
-and is what the equation supplies. Anyone whose actual question is "which of these 25
-models should I run" should use the baseline. Anyone asking "will this reach MCC 0.8 on my
-data" cannot, because the baseline has nothing to say about *their* data.
+The margin on rank correlation is 0.003 and should be read as a tie rather than a win; the
+regret figure, at less than half the baseline's, is the more meaningful of the two. What
+changed is not the search but the feature: a column that says which family a model belongs
+to is exactly what a per-model mean was standing in for.
+
+E3 also wins clearly on predicting the MCC *value* — 0.478 against the baseline's 0.201,
+and that was always the larger gap. Knowing which models are generally good is most of what
+*ranking* needs, which is why the baseline was so hard to beat there; knowing *how well* a
+particular model will do on a particular dataset is what needs the meta-features, and the
+baseline has nothing to say about it. The practical reading is unchanged for anyone asking
+"will this reach MCC 0.8 on my data" and improved for anyone asking "which of these 25
+models should I run".
 
 ## Term stability
 

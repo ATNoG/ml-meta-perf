@@ -192,6 +192,7 @@ def _save_tables(report: Report, folder: Path) -> list[Path]:
     tables: dict[str, pl.DataFrame] = {
         "correlations": report.correlations,
         "curve_e1": report.e1.curve,
+        "curve_e2": report.e2.curve,
         "curve_e3": report.e3.curve,
         "comparison": report.comparison,
         "baselines": report.baselines,
@@ -242,7 +243,7 @@ def build_parser() -> argparse.ArgumentParser:
     # equations and the CSV tables, which are regenerated on every run and are not.
     data.add_argument(
         "--report",
-        default="assets/docs/09-report.md",
+        default="assets/docs/10-report.md",
         help="path for the generated markdown report",
     )
     data.add_argument("--no-figures", action="store_true", help="skip figure generation")

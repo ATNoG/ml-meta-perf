@@ -96,3 +96,18 @@ equation's mixed terms are products of *single raw features*, which recover that
 only if it happens to align with one feature pair. Closing this gap without abandoning
 interpretability is the clearest direction for future work — and doing it with principal
 components would close it at the cost of the very thing the project exists to provide.
+
+## How much of the ladder is reachable
+
+The latents above are 20 free dataset numbers and 25 free model numbers, so the ladder is
+an upper bound and not a target. [Chapter 9](09-model-effects.md) measures what is left
+once each latent has to be *predicted*: replacing both with ridge fits on their own
+meta-features leaves **+0.018 of the +0.122**, and the shortfall is almost entirely on the
+model side — the dataset latent is 0.597 predictable from `gravity` alone, the model latent
+only 0.32 from its best two features.
+
+Keeping the model side free instead — legitimate under leave-one-dataset-out, where every
+model appears in every training fold — recovers **+0.106** of leave-one-dataset-out R²
+rather than +0.018. That is not an equation and is not reported as a result; it is the
+ceiling on what better *model descriptors* could be worth, which is what
+[chapter 9](09-model-effects.md) uses it for.

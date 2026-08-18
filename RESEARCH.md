@@ -40,7 +40,7 @@ Their central result is directly relevant and worth quoting in full:
 
 **Relevance.** This is independent corroboration of the central measurement here. Our
 leave-one-dataset-out R² of ~0.47 for a classification metric (MCC), against an in-sample
-0.600, is not a failure of the method — it reflects a documented property of classifier
+0.614, is not a failure of the method — it reflects a documented property of classifier
 performance prediction. The paper also names the **"interpretability tax"**: methods
 optimising for structural sparsity pay significantly in training time. `metafit` pays a
 different tax — accuracy — and quantifies it explicitly through the term-count curve.
@@ -144,6 +144,79 @@ complete, so we do not have their hardest problem.
 our leave-one-dataset-out protocol holds out a whole system. That is the harder question
 and explains part of the gap between their reported accuracies and ours.
 
+## 5b. Two-way tables with covariates on one side — the model behind the ceiling
+
+Chapter 9 measures a ceiling by adding, to the fitted equation, a table of one level and
+one slope per classifier. That construction is not new; it is the standard model for a
+two-way table where one margin can be described by covariates and the other cannot. It is
+**not published as a model here** — it is how the study puts a number on what better model
+descriptors would be worth.
+
+- Denis, "Two-way analysis using covariates", *Statistics* 19(2) (1988) — **factorial
+  regression**: a two-way table modelled with covariates on the rows, the columns, or both,
+  with free coefficients wherever covariates are unavailable.
+- van Eeuwijk, Denis, Kang, "Incorporating additional information on genotypes and
+  environments in models for two-way genotype by environment tables", in *Genotype-by-
+  Environment Interaction* (1996). The direct ancestor: AMMI's free interaction latents
+  replaced, on one side only, by a regression on measured covariates.
+- Finlay & Wilkinson, "The analysis of adaptation in a plant-breeding programme",
+  *Australian Journal of Agricultural Research* 14 (1963) — the earliest form of the same
+  idea: each subject gets its own *slope* on an index of the condition.
+- Efron & Morris, "Data analysis using Stein's estimator and its generalizations", *JASA*
+  70 (1975) — the shrinkage applied to both the levels and the slopes.
+- Hastie & Tibshirani, *Generalized Additive Models* (1990) — backfitting, the alternative
+  fitting scheme, which was measured here and is worse.
+
+**Relevance.** The agronomy literature already cited for AMMI ([chapter 5](assets/docs/05-oracles.md))
+answers the question AMMI raises. AMMI's latents are free on both margins, so it explains a
+grid and predicts nothing outside it; factorial regression with covariates on one margin is
+the predictive version, and it is exactly what leave-one-dataset-out permits — the datasets
+are new, the classifiers are not. Using it as a *ceiling* rather than as a result is the
+honest reading: it says what the meta-features fail to capture, in the units the study
+reports.
+
+## 5c. Algorithm selection as collaborative filtering
+
+The per-model table is an effect learned from the observed (dataset x model) grid, which is
+the collaborative half of a hybrid recommender. That framing has an established literature
+in AutoML.
+
+- Mısır & Sebag, "Alors: An algorithm recommender system", *Artificial Intelligence* 244
+  (2017). Collaborative filtering over an algorithm-by-instance performance matrix, with
+  meta-features used to place a *new* instance — the cold-start case, which is our
+  leave-one-dataset-out protocol.
+- Fusi, Sheth, Elibol, "Probabilistic Matrix Factorization for Automated Machine Learning",
+  arXiv:1705.05355 (NeurIPS 2018).
+- Yang, Akimoto, Kim, Udell, "OBOE: Collaborative Filtering for AutoML Model Selection",
+  arXiv:1808.03233 (KDD 2019).
+
+**Relevance.** These establish that latent-factor models over a pipeline-by-dataset matrix
+are standard practice for algorithm recommendation, and they are why the +0.106 measured in
+[chapter 9](assets/docs/09-model-effects.md) is unsurprising in size. They are also what
+this study deliberately does *not* deliver: a latent factor per model is an uninterpreted
+coordinate, and a table of them supports no term analysis and no transferable practice.
+Reporting the number as a ceiling states the trade honestly — this is what an interpretable
+additive equation gives up against a factorised recommender on this corpus, and it is
+0.106 of R², not the order of magnitude a reader might assume.
+
+## 5d. Ranking objectives
+
+- Herbrich, Graepel, Obermayer, "Large margin rank boundaries for ordinal regression",
+  *Advances in Large Margin Classifiers* (2000); Joachims, "Optimizing search engines using
+  clickthrough data", KDD 2002 — pairwise learning-to-rank.
+- Brazdil & Soares, "A comparison of ranking methods for classification algorithm
+  selection", ECML 2000 — ranking as *the* output of algorithm selection, and the
+  average-ranking baseline that our per-model mean reproduces.
+- Mundlak, "On the pooling of time series and cross section data", *Econometrica* 46 (1978)
+  — the within (fixed-effects) transform, which is what makes a pairwise-ranking least
+  squares objective closed-form.
+
+**Relevance.** The obvious response to "the per-model mean out-ranks E3" is to optimise the
+ranking directly, and the within transform makes that a one-line change rather than a new
+optimiser. It was implemented and it **ranks worse** (Spearman 0.532 against 0.625). The
+result is worth reporting precisely because the literature makes it look like free money:
+the binding constraint here is the thinness of the model descriptors, not the loss.
+
 ## 6. The target metric
 
 - Chicco & Jurman, "The advantages of the Matthews correlation coefficient (MCC) over F1
@@ -174,10 +247,11 @@ random k-fold as a diagnostic for leakage rather than a result.
 | | prior work | `metafit` |
 |---|---|---|
 | Model class | opaque regressors (RF, GBM, NN); or GP-evolved long expressions | fixed additive form, linear in the weights |
-| Reported R² | ~0.9 (opaque), >0.7 (GP) | 0.600 in-sample, 0.466 LOO-dataset |
+| Reported R² | ~0.9 (opaque), >0.7 (GP) | 0.614 in-sample, 0.478 LOO-dataset |
 | Validation | often random k-fold | leave-one-dataset-out and leave-one-model-out |
 | Extractable guidance | little | each weight reads directly in feature units |
 | Ceiling stated | rarely | additive oracle at 0.6605, rank-1 at 0.783, E1 capped at 0.354 |
+| Reachable ceiling | not distinguished | +0.018 of the rank-1 rung from covariates; +0.106 is what perfect model descriptors would still buy |
 
 The contribution is not a higher number. It is (a) an equation that can be read, (b) an
 explicit accuracy-versus-length curve instead of a single operating point, (c) the
@@ -190,13 +264,19 @@ quantified.
 - **Interaction-aware but interpretable terms.** The oracle ladder puts a rank-1
   interaction at +0.122 R², and the performance-influence literature (§5) includes
   interaction terms by default. Our symmetric `sum_ratio` fix was a step in that
-  direction and was worth most of the 0.558 → 0.603 improvement; a principled
-  interaction basis is the obvious continuation.
-- **Ranking.** For selecting a model on a new dataset, the trivial per-model-mean
-  baseline out-ranks E3 (Spearman 0.70 vs 0.61). A learning-to-rank objective rather
-  than squared error would be the natural next step.
+  direction and was worth most of the 0.558 → 0.603 improvement. **Mostly closed as a
+  question** (§5b): only +0.018 of that rung is reachable with covariates on both margins,
+  so what remains open is not the interaction basis but the model descriptors.
+- **Ranking.** *Closed, but not by the obvious route* (§5d). A pairwise-ranking objective
+  ranked worse than squared error (Spearman 0.532 against 0.625), leaving the per-model
+  mean ahead at 0.703. What closed the gap was a better model descriptor, not a better
+  loss: with `Model Capability` in the model side E3 reaches 0.706 with top-1 regret 0.008
+  against the baseline's 0.011. The margin on rank correlation is a tie; the regret figure
+  is the real gain. This is the diagnosis confirming itself — the baseline out-ranked the
+  equation because it knew which models are generally good, and the remedy was to tell the
+  equation.
 - **More datasets.** Twenty is the binding constraint on every cross-validated number
   here; OpenML-scale meta-data would settle whether the 0.6605 additive ceiling is a
   property of this sample or of the approach.
-- **Interaction structure.** The gap between E3 (0.600) and the rank-1 oracle (0.783)
+- **Interaction structure.** The gap between E3 (0.614) and the rank-1 oracle (0.783)
   is entirely dataset×model interaction the current term vocabulary does not reach.

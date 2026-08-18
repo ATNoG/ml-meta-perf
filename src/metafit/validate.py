@@ -28,7 +28,7 @@ import numpy as np
 import polars as pl
 
 from metafit.fit import Selector, Standardizer, guided_screen, to_equation
-from metafit.model import MCC_LOWER, MCC_UPPER
+from metafit.model import MCC_LOWER, MCC_UPPER, Equation
 from metafit.stats import mae, r2_score, rmse, smape, spearman
 from metafit.terms import Library
 
@@ -85,6 +85,10 @@ class CrossValidation:
     predictions: np.ndarray
     per_fold: dict[str, Scores] = field(default_factory=dict)
     selected: list[list[str]] = field(default_factory=list)
+    #: The equation each fold fitted, keyed by the label it held out. Kept so that a
+    #: correction fitted on a fold's training rows -- `metafit.identity` fits one -- can
+    #: reuse the search this path already paid for instead of repeating it.
+    equations: dict[str, Equation] = field(default_factory=dict)
 
     def scores(self, truth: np.ndarray) -> Scores:
         return score(truth, self.predictions)
@@ -153,6 +157,7 @@ def cross_validate_path(
             result.predictions[test] = equation.predict(held)
             result.per_fold[label] = score(target[test], result.predictions[test])
             result.selected.append([term.name for term in equation.terms])
+            result.equations[label] = equation
 
     return results
 

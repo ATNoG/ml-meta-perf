@@ -130,6 +130,27 @@ class TestSelector(unittest.TestCase):
                     selector._evaluate(indices).weights, reference, rtol=1e-10, atol=1e-12
                 )
 
+    def test_the_batched_solve_matches_the_one_at_a_time_solve(self) -> None:
+        # Beam steps and refinement positions go through the solver as one stack. That
+        # is only an optimisation if it is arithmetically the same thing, so both paths
+        # are run over the same subsets and compared exactly rather than approximately.
+        batch = [(1, 4), (0, 4), (4, 7), (1, 7)]
+        for penalty in (0.0, 5.0):
+            batched = Selector(self.design, self.target, penalty)._evaluate_many(batch)
+            single = Selector(self.design, self.target, penalty)
+            for subset, indices in zip(batched, batch, strict=True):
+                reference = single._evaluate(indices)
+                self.assertEqual(subset.indices, reference.indices)
+                np.testing.assert_array_equal(subset.weights, reference.weights)
+                self.assertEqual(subset.rss, reference.rss)
+
+    def test_the_batched_solve_shares_the_cache_and_keeps_order(self) -> None:
+        requested = [(1, 4), (0, 7), (1, 4)]
+        subsets = self.selector._evaluate_many(requested)
+        self.assertEqual([subset.indices for subset in subsets], requested)
+        # A repeated subset is solved once and served from the cache the second time.
+        self.assertIs(subsets[0], subsets[2])
+
     def test_returns_a_subset_for_every_size(self) -> None:
         found = self.selector.search(list(range(12)), 5, beam_width=3)
         self.assertEqual(sorted(found), [1, 2, 3, 4, 5])

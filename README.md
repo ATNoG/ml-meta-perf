@@ -24,42 +24,67 @@ equation a practitioner can inspect, argue with, and derive guidance from.
 
 | | R² on all 476 rows |
 |---|---|
-| E1 — dataset features only, 5 terms | 0.337 |
+| E1 — dataset features only, 7 terms | 0.349 |
 | *ceiling: the true dataset means* | *0.354* |
-| E2 — model features only, 9 terms | 0.164 |
+| E2 — model features only, 12 terms | 0.281 |
 | *ceiling: the true model means* | *0.282* |
-| **E3 — dataset + model, 24 terms** | **0.600** |
+| **E3 — dataset + model, 20 terms** | **0.614** |
 | *additive oracle* | *0.6605* |
 | *additive + rank-1 interaction* | *0.7828* |
 
-Leave-one-dataset-out R² for E3 is **0.466**; leave-one-model-out **0.489**.
+All three are fitted on the same 476 rows by the same function and scored under the same
+two protocols, so the gaps between them measure the features and nothing else.
+
+| | in-sample | LOO-dataset | LOO-model |
+|---|---|---|---|
+| E1 | 0.349 | 0.217 | 0.294 |
+| E2 | 0.281 | 0.151 | 0.188 |
+| **E3** | **0.614** | **0.478** | **0.428** |
 
 The three equations differ only in which features they may draw on — **E1** sees the
 dataset, **E2** sees the model, **E3** sees both — so the gaps between them measure what
 each half of the meta-data is worth.
+
+Their R² values share a scale but not a ceiling: E1 predicts one value per dataset, so
+0.354 is the most it could ever reach. The comparable quantity is how much of its own
+ceiling each one captures — **98% for the dataset features, 99% for the model features**.
+
+Reaching parity on the model side took one column that the corpus does not contain.
+`Model Capability` ranks the ten learner families on a capability ladder taken from the
+tabular-ML literature, and adding it moves E2 from **63% of its ceiling to 99%**. The
+finding is therefore sharper than "the corpus lacks model meta-features": the corpus lacks
+them, *and* a single ten-level ordinal asserted from outside it closes most of the gap.
+What that column cannot do is describe a model nobody has classified — see
+[chapter 8](assets/docs/08-limitations.md).
 
 ![Equations against their ceilings](assets/figures/equation_comparison.png)
 
 Four findings the documentation develops:
 
 - **A random split reports an equation that does not exist.** The same equation scores
-  0.540 under random 10-fold and 0.466 under leave-one-dataset-out, because dataset
+  far higher under random 10-fold than under leave-one-dataset-out, because dataset
   features are constant within a dataset and a random fold puts the same dataset on both
   sides. See [chapter 4](assets/docs/04-evaluation.md).
-- **The meta-features describe datasets far better than models.** The dataset equation
-  reaches 95% of its ceiling; the model equation reaches 58%. See
-  [chapter 6](assets/docs/06-results.md).
-- **One interaction component is worth +0.122 R²** and the equation captures none of it —
-  the clearest direction for future work. See [chapter 5](assets/docs/05-oracles.md).
-- **Mixed dataset×model terms carry the equation.** 12 of 24 terms use features from both
-  groups and drive **76%** of the output variance; dataset-only terms drive 10% and
-  model-only terms 14%. "Which model suits which data" is where the signal is, not "how
+- **The corpus describes datasets far better than models, and the fix comes from outside
+  it.** On the five descriptors the corpus ships, the model equation reaches 63% of its
+  ceiling against the dataset equation's 98%. One asserted capability ordinal takes it to
+  99%. See [chapter 6](assets/docs/06-results.md).
+- **One interaction component is worth +0.122 R²** and the equation captures none of it.
+  Only about **+0.018** of that is reachable from meta-features on both sides, and the
+  bottleneck is the model side. See [chapter 5](assets/docs/05-oracles.md).
+- **Better model descriptors are worth at most +0.106 leave-one-dataset-out R²** — measured
+  by replacing them with model identity itself, which is the best any descriptor set could
+  do. That is larger than any change to the equation measured here, and it is the one open
+  direction with room left in it. See [chapter 9](assets/docs/09-model-effects.md).
+- **Mixed dataset×model terms carry the equation.** 11 of 20 terms use features from both
+  groups and drive **59%** of the output variance; dataset-only terms drive 25% and
+  model-only terms 16%. "Which model suits which data" is where the signal is, not "how
   hard is this data" or "how good is this model". See
   [chapter 7](assets/docs/07-practices.md).
-- **Ten best practices from the literature, weighed against the corpus** — 9 supported, 1
-  untestable here. The strongest: tree-based families average MCC **0.927** against
+- **Ten best practices from the literature, weighed against the corpus** — 8 supported,
+  1 qualified, 1 untestable here. The strongest: tree-based families average MCC **0.927** against
   **0.660** for neural ones on the datasets where every model ran, with plain MLPs and DNNs
-  last of ten families at 0.454. See [chapter 9](assets/docs/09-report.md).
+  last of ten families at 0.454. See [chapter 10](assets/docs/10-report.md).
 
 ## Documentation
 
@@ -77,7 +102,8 @@ and carrying the generated figures.
 | 6 | [Results](assets/docs/06-results.md) | `metafit.experiment` |
 | 7 | [From equation to evidence to practice](assets/docs/07-practices.md) | `metafit.practices`, `metafit.attribution`, `metafit.guidance` |
 | 8 | [Limitations](assets/docs/08-limitations.md) | — |
-| 9 | [Generated report](assets/docs/09-report.md) | `metafit.report`, `metafit.guidance` — **written by the code, not by hand** |
+| 9 | [Model identity: the bound on better descriptors](assets/docs/09-model-effects.md) | `metafit.identity` — measured, **not part of the study** |
+| 10 | [Generated report](assets/docs/10-report.md) | `metafit.report`, `metafit.guidance` — **written by the code, not by hand** |
 
 Related work and positioning: **[`RESEARCH.md`](RESEARCH.md)**.
 
@@ -108,16 +134,21 @@ cross-validating under both protocols, extracting the practices, writing the fig
 generating the report.
 
 ```bash
-PYTHONPATH=src venv/bin/python -m metafit
+make study          # or: OPENBLAS_NUM_THREADS=1 PYTHONPATH=src venv/bin/python -m metafit
 ```
+
+`OPENBLAS_NUM_THREADS=1` is not a typo. The inner loop is ~87k solves of matrices no
+larger than 32×32, which is far below the size where BLAS parallelism pays: threading buys
+no wall time and burns 3.5× the CPU spinning. `make study` sets it; running the module
+directly does not, because numpy loads before `__main__` does.
 
 That reproduces every number in this README, and writes:
 
 | | |
 |---|---|
-| [`assets/docs/09-report.md`](assets/docs/09-report.md) | the generated report — equation, term analysis, practices |
+| [`assets/docs/10-report.md`](assets/docs/10-report.md) | the generated report — equation, term analysis, practices |
 | `results/e1.json`, `e2.json`, `e3.json` | the fitted equations, reloadable |
-| `results/*.csv` | 16 tables — curves, baselines, oracles, stability, practices |
+| `results/*.csv` | 17 tables — curves, baselines, oracles, stability, practices |
 | `assets/figures/*.png`, `*.pdf` | the 8 figures, raster and vector |
 
 Everything printed and written is derived from the run. **The report is generated by
@@ -152,7 +183,7 @@ PYTHONPATH=src venv/bin/python -m metafit --data mine.csv --output runs/mine
 | `--data` | `data/meta_dataset.csv` | the meta-dataset to fit |
 | `--output` | `results` | where the equations and CSV tables go |
 | `--figures` | `assets/figures` | where the figures go |
-| `--report` | `assets/docs/09-report.md` | where the generated report goes |
+| `--report` | `assets/docs/10-report.md` | where the generated report goes |
 | `--terms` | 24 | terms in the published E3 equation |
 | `--max-terms` | 32 | longest equation the search explores (drives the curve) |
 | `--penalty` | 5.0 | ridge penalty on standardised terms |
@@ -175,11 +206,12 @@ PYTHONPATH=src venv/bin/python -m metafit --arity 4 --pool 2000 --output runs/ar
 PYTHONPATH=src venv/bin/python -m metafit --phase screen --no-figures
 ```
 
-Two runnable examples:
+Three runnable examples:
 
 ```bash
-PYTHONPATH=src venv/bin/python examples/run_experiment.py       # study + saved equations
-PYTHONPATH=src venv/bin/python examples/predict_new_dataset.py  # per-term breakdown of one row
+PYTHONPATH=src venv/bin/python examples/run_experiment.py          # study + saved equations
+PYTHONPATH=src venv/bin/python examples/predict_new_dataset.py     # per-term breakdown of one row
+PYTHONPATH=src venv/bin/python examples/model_identity_ceiling.py  # what better model descriptors are worth
 ```
 
 ## Using it as a library
@@ -230,12 +262,12 @@ src/metafit/
     validate.py     leave-one-group-out protocols, baselines, oracles
     selection.py    knee detection and Pareto fronts over equation length
     attribution.py  per-term effects, group shares, variance decomposition
-    construct.py    agglomerative term building and the dendrogram cut
     practices.py    per-feature associations measured from a fitted equation
     guidance.py     literature best practices, weighed against what the study measured
     plots.py        the figures (matplotlib, Agg, headless, no embedded text)
     figures.py      the figure set and suggested LaTeX captions
     report.py       the generated report: term importance and written analysis
+    identity.py     per-model effects, measuring the ceiling on model descriptors
     experiment.py   the end-to-end study and its tuned configurations
     cli.py          python -m metafit -- the entry point that runs every phase
 assets/docs/        the study chapters

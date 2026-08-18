@@ -425,5 +425,78 @@ class TestLibrary(unittest.TestCase):
             Library([Term("atom", (Atom("z"),))], constant)
 
 
+class TestCollinearTermsAreDropped(unittest.TestCase):
+    """One column may not enter the library twice under two names."""
+
+    def test_a_binary_feature_yields_f_and_f_squared_as_one_column(self) -> None:
+        columns = {"flag": np.array([0.0, 1.0] * 20)}
+        library = Library(unary_terms(("flag",), columns), columns)
+        self.assertEqual(library.names, ["flag"])
+
+    def test_the_survivor_is_the_first_offered(self) -> None:
+        columns = {"flag": np.array([0.0, 1.0] * 20)}
+        squared = Term("atom", (Atom("flag", "sq"),))
+        plain = Term("atom", (Atom("flag"),))
+        self.assertEqual(Library([squared, plain], columns).names, ["flag^2"])
+        self.assertEqual(Library([plain, squared], columns).names, ["flag"])
+
+    def test_an_affine_copy_is_the_same_column(self) -> None:
+        rng = np.random.default_rng(1)
+        base = rng.uniform(1.0, 9.0, 40)
+        columns = {"a": base, "b": 3.0 * base + 5.0}
+        library = Library(unary_terms(("a", "b"), columns), columns)
+        self.assertNotIn("b", library.names)
+        self.assertIn("a", library.names)
+
+    def test_a_merely_similar_column_is_kept(self) -> None:
+        rng = np.random.default_rng(2)
+        base = rng.uniform(1.0, 9.0, 40)
+        columns = {"a": base, "b": base + rng.normal(0.0, 0.05, 40)}
+        library = Library(
+            [Term("atom", (Atom("a"),)), Term("atom", (Atom("b"),))], columns
+        )
+        self.assertEqual(library.names, ["a", "b"])
+
+    def test_the_grammar_generates_an_algebraic_duplicate_and_it_is_dropped(self) -> None:
+        # log(inst_to_attr) + log(nr_attr) == log(nr_inst) whenever the first is the
+        # ratio of the other two, which is exactly how the meta-dataset defines it.
+        rng = np.random.default_rng(3)
+        nr_attr = rng.uniform(2.0, 60.0, 40)
+        nr_inst = rng.uniform(500.0, 90000.0, 40)
+        columns = {
+            "nr_attr": nr_attr,
+            "nr_inst": nr_inst,
+            "inst_to_attr": nr_inst / nr_attr,
+            "d": rng.uniform(2.0, 9.0, 40),
+        }
+        # build_library emits pairwise terms before sum_ratio ones, so the two-feature
+        # form is offered first and is the one that must survive.
+        terms = pairwise_terms(
+            ("nr_inst",), ("d",), columns, both_directions=True
+        ) + sum_ratio_terms(tuple(columns), columns)
+        offered = [term.name for term in terms]
+        kept = set(Library(terms, columns).names)
+
+        short = "[log(d)] / [log(nr_inst)]"
+        long = "([log(nr_attr)] + [log(inst_to_attr)]) / [log(nr_inst)]"
+        self.assertIn(short, offered)
+        self.assertIn(long, offered)
+        self.assertIn(short, kept)
+        self.assertNotIn(long, kept)
+
+    def test_the_published_library_has_no_collinear_pair(self) -> None:
+        from metafit.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays, load
+
+        columns = columns_as_arrays(load(), DATASET_FEATURES + MODEL_FEATURES)
+        library = build_library(
+            DATASET_FEATURES, MODEL_FEATURES, columns, max_arity=3, max_abs_zscore=3.0
+        )
+        matrix = library.matrix - library.matrix.mean(axis=0)
+        unit = matrix / np.linalg.norm(matrix, axis=0)
+        correlation = unit.T @ unit
+        np.fill_diagonal(correlation, 0.0)
+        self.assertLess(float(np.abs(correlation).max()), 1.0 - 1e-9)
+
+
 if __name__ == "__main__":
     unittest.main()

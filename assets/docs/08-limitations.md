@@ -9,8 +9,8 @@ honest about its own.
 
 - Leave-one-dataset-out R² varies by ±0.07 between adjacent term counts from fold noise
   alone. The curve should be read, never a single cell.
-- E1's cross-validated numbers rest on 20 points and are correspondingly unstable —
-  negative at 1–2 terms, 0.506 at 5.
+- E1's cross-validated numbers rest on 20 folds and are correspondingly unstable — its
+  leave-one-dataset-out R² is negative at 1–4 terms and 0.217 at 7.
 - The knee detector, the Pareto front and the "best cross-validated" rule all operate on a
   curve whose points carry that much noise. That they agree on 12–14 terms is reassuring,
   not conclusive.
@@ -39,7 +39,7 @@ twenty datasets exceed that cap, so above it every training set is the same size
 This is a hard boundary on what the study can be asked. Anything of the form "does X change
 as the training set grows" is untestable here, and a split of the corpus by `nr_inst` is a
 split by source size, which is not the same variable. An earlier draft of
-[chapter 9](09-report.md) used exactly such a split to weigh the practice that *neural
+[chapter 10](10-report.md) used exactly such a split to weigh the practice that *neural
 architectures catch up on larger datasets*; the practice has been withdrawn from the
 catalogue because this corpus cannot speak to it, not because the answer came out one way
 or the other.
@@ -63,7 +63,7 @@ Two consequences, and they point in different directions:
 
 - **For the model comparison, the bias is measurable and small.** Restricting to the 17
   datasets where every model ran moves the model ranking by Spearman 0.975 and no mean by
-  more than 0.07. Every family-level figure in [chapter 9](09-report.md) is computed on
+  more than 0.07. Every family-level figure in [chapter 10](10-report.md) is computed on
   that complete subset for this reason rather than on all rows.
 - **For the go/no-go rule, the bias is not correctable.** A rule trained only on runs that
   completed answers "will this trained model be any good", not "should I try this at all".
@@ -75,21 +75,59 @@ never fall below 0.17, so those rows sit above the diagonal, but that is shrinka
 the middle of the observed range rather than an inability to recognise a failure mode the
 data does not contain.
 
-## Ranking is not dominated
+## Ranking: a limitation that closed, and how
 
-For selecting a model on a new dataset, the trivial per-model-mean baseline out-ranks E3 on
-both measures — mean Spearman 0.703 against 0.648, mean top-1 regret 0.011 against 0.019.
-E3 wins on predicting the MCC *value* (0.466 against 0.201), which is a different question:
-knowing which models are generally good is enough to order them, while knowing how well one
-will do on *this* data is what needs the meta-features. A learning-to-rank objective rather
-than squared error is the natural next step and has not been tried.
+Through earlier drafts the trivial per-model-mean baseline out-ranked E3 on both measures —
+mean Spearman 0.703 against 0.648, top-1 regret 0.011 against 0.019 — while E3 won on
+predicting the MCC *value*. Two responses were tried and one worked.
 
-## Model descriptors are thin
+A learning-to-rank objective was the obvious one and it **failed**. Squared error over
+within-dataset pairs is ordinary least squares after centring both the design and the target
+inside each dataset, so it costs one extra step and stays closed-form; it ranked *worse*
+than the objective it was meant to beat, 0.532 against 0.625
+([chapter 9](09-model-effects.md)). The loss function was never the limitation.
 
-Five model features, one of them constant per model, capture 58% of what model identity
-explains. The missing 42% is real and unwritten. Richer descriptors — inductive bias,
-hypothesis-space characteristics, optimiser behaviour — would probably help more than any
-change to the fitting.
+Adding `Model Capability` to the model side closed it: E3 now reaches mean Spearman
+**0.706** and top-1 regret **0.008**. The rank-correlation margin over the baseline is
+0.003 and should be read as a tie; the regret figure, less than half the baseline's, is the
+real improvement. This is the diagnosis confirming itself. A per-model mean out-ranked the
+equation because it knew something the equation did not — roughly, which models are good —
+and the fix was to tell the equation, not to change how it was fitted.
+
+## Model descriptors are thin, and one of them is asserted
+
+The five model features the corpus ships capture 63% of what model identity explains. That
+gap is what `Model Capability` was added to close, and it closes most of it: E2 goes from
+63% to 99% of its ceiling.
+
+**The column is asserted, not measured, and that is the sharpest limitation in this
+chapter.** Every other feature was computed from a trained instance; this one ranks the ten
+learner families on a ladder taken from the tabular-ML literature (Grinsztajn et al. 2022;
+Shwartz-Ziv & Armon 2022; McElfresh et al. 2023; Hollmann et al. 2023). Three consequences
+follow and none should be glossed:
+
+- **It encodes prior knowledge, so it cannot be evidence for that knowledge.** Any result
+  that amounts to "capable families do better" is partly built in. What the column can
+  support is the *conditional* claim — how family capability interacts with dataset
+  properties — which is not something the ladder asserts.
+- **The corpus contradicts it in places.** Ordering families by observed mean MCC agrees
+  with the ladder at only 6 of 9 steps, and `generic NN` sits at rung 6 of 10 while holding
+  the *lowest* family mean here, 0.454. The overall association is nonetheless strong
+  (Spearman 0.733 conditional, 0.391 marginal).
+- **It does not extend to an unclassified model.** A new learner needs a human to place it
+  on the ladder, where the other five features are computed from the trained instance. This
+  is visible in the results: leave-one-model-out falls from 0.489 to 0.428.
+
+Richer *measured* descriptors — inductive bias, hypothesis-space characteristics, optimiser
+behaviour — would carry none of these caveats and remain the better answer.
+
+How much more is now measured rather than guessed. Tabulating that missing third per model
+instead of describing it is worth **+0.106** of leave-one-dataset-out R²
+([chapter 9](09-model-effects.md)) — which is at most what a *perfect* set of extra
+descriptors would be worth, since free per-model numbers are the best any descriptor set
+could do at telling these 25 models apart. It is also why a table is not a substitute for
+descriptors: it transfers to a new dataset and not to a new model, while a descriptor would
+do both.
 
 ## A per-feature association can flip sign between equations
 
@@ -99,7 +137,7 @@ per-feature associations as evidence rather than as advice.
 | equation | association | effect | confidence |
 |---|---|---|---|
 | earlier default (14 terms, arity 2, λ=20) | higher training cost → **higher** MCC | 0.16 | moderate |
-| published default (24 terms, arity 3, λ=5) | higher training cost → **lower** MCC | 0.38 | moderate |
+| a later default (24 terms, arity 3, λ=5) | higher training cost → **lower** MCC | 0.38 | moderate |
 
 Same data, same extraction procedure, same confidence rating, opposite sign — and the later
 equation is the better one on every metric, so this is not a case of a bad equation being
@@ -119,7 +157,7 @@ weak evidence. It is not, on its own, a best practice: a practice is a general
 recommendation that a body of evidence can support, and no single fitted equation is that
 body.
 
-That is why [chapter 9](09-report.md) states its practices at the level of received
+That is why [chapter 10](10-report.md) states its practices at the level of received
 guidance from the literature and uses this study to weigh each one, rather than reading new
 guidance out of the weights. A recommendation that survives being weighed against several
 independent measurements is worth something; one extracted from a single equation inherits
@@ -132,7 +170,7 @@ Three mitigations are in place and none of them is sufficient:
   configurations — `Training Operations` sits at 0.66 fold stability in the published
   equation;
 - the marginal correlation is printed beside the conditional direction
-  ([chapter 9](09-report.md)), so a reader can at least see when the two disagree, as they
+  ([chapter 10](10-report.md)), so a reader can at least see when the two disagree, as they
   do here;
 - features whose rank direction and decile effect disagree in sign are dropped outright.
 

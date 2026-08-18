@@ -27,7 +27,6 @@ from metafit.data import (
     DATASET_FEATURES,
     MODEL_COLUMN,
     MODEL_FEATURES,
-    aggregate_by_dataset,
     columns_as_arrays,
     groups,
     load,
@@ -65,14 +64,29 @@ class Configuration:
     max_arity: int = 3
 
 
-DEFAULT_E1 = Configuration(max_abs_zscore=3.0, penalty=1.0, pool_size=200, max_terms=6, headline_terms=5)
+# Dataset features only, fitted on all 476 rows like the other two. An earlier version
+# fitted it on the 20 aggregated per-dataset means, on the grounds that a predictor which
+# is constant inside a group can only ever predict that group's mean anyway. That was
+# true and it was still the wrong choice: it put E1's R2 on a 20-point denominator, so
+# its headline could not be compared with E3's without a paragraph of explanation, and
+# the 0.506 it produced read as *better* transfer than E3's 0.466 when on the common
+# scale it is 0.217. Fitting all three the same way costs 0.03 of in-sample R2 and
+# removes the caveat entirely. See [chapter 6](../../assets/docs/06-results.md).
+DEFAULT_E1 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=200, max_terms=8, headline_terms=7)
 
-# Model features only. There are five of them, so the library is tiny and the equation is
+# Model features only. There are six of them, so the library is small and the equation is
 # short by necessity rather than by choice.
-DEFAULT_E2 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=100, max_terms=9, headline_terms=9)
+DEFAULT_E2 = Configuration(max_abs_zscore=3.0, penalty=1.0, pool_size=100, max_terms=16, headline_terms=12)
 
+# Re-swept over penalty x length on leave-one-dataset-out after `Model Capability` joined
+# the model side. Reusing the previous point (penalty 5, 24 terms) would have credited the
+# ridge with the column's effect or blamed it for its cost: at penalty 5 the enlarged
+# library reaches 0.361 and at penalty 20 it reaches 0.478, and the difference is which
+# terms the beam selects rather than how hard their weights are shrunk -- the penalty is in
+# the selection score, not only in the solve. Penalty 20 is a 4% shrinkage on a 476-row
+# standardised design, which is mild; it is the subset scoring that moves.
 DEFAULT_E3 = Configuration(
-    max_abs_zscore=3.0, penalty=5.0, pool_size=600, max_terms=32, headline_terms=24, max_arity=3
+    max_abs_zscore=3.0, penalty=20.0, pool_size=600, max_terms=32, headline_terms=20, max_arity=3
 )
 
 SWEEP_SIZES: tuple[int, ...] = (2, 4, 8, 12, 16, 20, 24, 26, 28, 32)
@@ -124,63 +138,31 @@ def _curve(
     return pl.DataFrame(rows)
 
 
-def run_e1(frame: pl.DataFrame, config: Configuration = DEFAULT_E1) -> EquationReport:
-    """Dataset features only, fitted on the per-dataset mean MCC.
+def run_equation(
+    frame: pl.DataFrame,
+    dataset_features: tuple[str, ...],
+    model_features: tuple[str, ...],
+    config: Configuration,
+    name: str,
+    sizes: tuple[int, ...] | None = None,
+) -> EquationReport:
+    """Fit one equation and validate it. The three equations differ **only** in the
+    features they may draw on, and this is the single code path that says so.
 
-    Every model on a given dataset shares one feature vector, so this equation can only
-    ever predict a per-dataset constant. That is not a flaw to be corrected -- it is the
-    point of the comparison. E1 measures how much of MCC is explained by the data alone.
+    Every one of them is fitted on all 476 rows and scored on all 476 rows, under both
+    leave-one-group-out protocols. That uniformity is the point: the gaps between E1, E2
+    and E3 are only evidence about what each half of the meta-data is worth if nothing
+    else differs between them -- not the fitting scale, not the protocol, not the
+    denominator of the R2.
     """
-    aggregated = aggregate_by_dataset(frame)
-    columns = columns_as_arrays(aggregated, DATASET_FEATURES)
-    truth = target(aggregated)
-    labels = groups(aggregated, DATASET_COLUMN)
-
-    library = build_library(
-        DATASET_FEATURES, (), columns, max_arity=config.max_arity, max_abs_zscore=config.max_abs_zscore
-    )
-    result = fit(
-        library,
-        truth,
-        max_terms=config.max_terms,
-        penalty=config.penalty,
-        pool_size=config.pool_size,
-        beam_width=config.beam_width,
-        name="E1",
-    )
-    path = cross_validate_path(
-        library,
-        columns,
-        truth,
-        labels,
-        max_terms=config.max_terms,
-        penalty=config.penalty,
-        pool_size=config.pool_size,
-        beam_width=config.beam_width,
-    )
-    sizes = tuple(size for size in range(1, config.max_terms + 1))
-    in_sample = {size: score(truth, eq.predict(columns)) for size, eq in result.equations.items()}
-    equation = prune(result.equations[config.headline_terms], columns, truth, penalty=config.penalty)
-
-    return EquationReport(
-        equation=equation,
-        in_sample=score(truth, equation.predict(columns)).as_dict(),
-        curve=_curve(sizes, in_sample, {"loo_dataset": path}, truth),
-        cross_validated={"loo_dataset": path[config.headline_terms].scores(truth).as_dict()},
-        stability=path[config.headline_terms].stability(),
-    )
-
-
-def run_e3(frame: pl.DataFrame, config: Configuration = DEFAULT_E3) -> EquationReport:
-    """Dataset and model features, fitted on all rows -- one input, one output."""
-    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+    columns = columns_as_arrays(frame, dataset_features + model_features)
     truth = target(frame)
     datasets = groups(frame, DATASET_COLUMN)
     models = groups(frame, MODEL_COLUMN)
 
     library = build_library(
-        DATASET_FEATURES,
-        MODEL_FEATURES,
+        dataset_features,
+        model_features,
         columns,
         max_arity=config.max_arity,
         max_abs_zscore=config.max_abs_zscore,
@@ -192,81 +174,67 @@ def run_e3(frame: pl.DataFrame, config: Configuration = DEFAULT_E3) -> EquationR
         penalty=config.penalty,
         pool_size=config.pool_size,
         beam_width=config.beam_width,
-        name="E3",
+        name=name,
     )
+    available = max(result.equations)
+    size = min(config.headline_terms, available)
     paths = {
         label: cross_validate_path(
             library,
             columns,
             truth,
             labels,
-            max_terms=config.max_terms,
+            max_terms=available,
             penalty=config.penalty,
             pool_size=config.pool_size,
             beam_width=config.beam_width,
         )
         for label, labels in (("loo_dataset", datasets), ("loo_model", models))
     }
-    in_sample = {size: score(truth, eq.predict(columns)) for size, eq in result.equations.items()}
-    equation = prune(result.equations[config.headline_terms], columns, truth, penalty=config.penalty)
+    in_sample = {k: score(truth, eq.predict(columns)) for k, eq in result.equations.items()}
+    equation = prune(result.equations[size], columns, truth, penalty=config.penalty)
 
     return EquationReport(
         equation=equation,
         in_sample=score(truth, equation.predict(columns)).as_dict(),
-        curve=_curve(SWEEP_SIZES, in_sample, paths, truth),
-        cross_validated={
-            label: path[config.headline_terms].scores(truth).as_dict() for label, path in paths.items()
-        },
-        stability=paths["loo_dataset"][config.headline_terms].stability(),
+        curve=_curve(sizes or tuple(sorted(result.equations)), in_sample, paths, truth),
+        cross_validated={label: path[size].scores(truth).as_dict() for label, path in paths.items()},
+        stability=paths["loo_dataset"][size].stability(),
         paths=paths,
     )
 
 
-def run_e2(frame: pl.DataFrame, config: Configuration = DEFAULT_E2) -> EquationReport:
-    """Model features only -- the mirror image of E1, and the control for the claim that
-    model choice dominates dataset difficulty.
+def run_e1(frame: pl.DataFrame, config: Configuration = DEFAULT_E1) -> EquationReport:
+    """Dataset features only -- how much of MCC the data alone explains.
 
-    There are only five model features and one of them is constant per model, so the
-    library this can draw on is tiny. That is itself the finding: the meta-data describes
-    datasets far better than it describes models.
+    Every model on a given dataset shares one feature vector, so this equation can only
+    ever predict a per-dataset constant. That is not a flaw to be corrected, it is the
+    control: whatever E3 reaches beyond this is what knowing the model buys.
+
+    Least squares finds that per-dataset constant on its own, so the aggregation an
+    earlier version performed up front was unnecessary as well as harmful to the
+    comparison -- see the note on `DEFAULT_E1`.
     """
-    columns = columns_as_arrays(frame, MODEL_FEATURES)
-    truth = target(frame)
-    labels = groups(frame, DATASET_COLUMN)
+    return run_equation(frame, DATASET_FEATURES, (), config, "E1")
 
-    library = build_library(
-        (), MODEL_FEATURES, columns, max_arity=config.max_arity, max_abs_zscore=config.max_abs_zscore
-    )
-    result = fit(
-        library,
-        truth,
-        max_terms=config.max_terms,
-        penalty=config.penalty,
-        pool_size=config.pool_size,
-        beam_width=config.beam_width,
-        name="E2",
-    )
-    available = max(result.equations)
-    size = min(config.headline_terms, available)
-    path = cross_validate_path(
-        library,
-        columns,
-        truth,
-        labels,
-        max_terms=available,
-        penalty=config.penalty,
-        pool_size=config.pool_size,
-        beam_width=config.beam_width,
-    )
-    in_sample = {k: score(truth, eq.predict(columns)) for k, eq in result.equations.items()}
-    equation = prune(result.equations[size], columns, truth, penalty=config.penalty)
-    return EquationReport(
-        equation=equation,
-        in_sample=score(truth, equation.predict(columns)).as_dict(),
-        curve=_curve(tuple(sorted(result.equations)), in_sample, {"loo_dataset": path}, truth),
-        cross_validated={"loo_dataset": path[size].scores(truth).as_dict()},
-        stability=path[size].stability(),
-    )
+
+def run_e2(frame: pl.DataFrame, config: Configuration = DEFAULT_E2) -> EquationReport:
+    """Model features only -- the mirror image of E1.
+
+    There are five model features and one is constant per model, so the library is tiny
+    and the equation is short by necessity rather than by choice. That is itself the
+    finding: the meta-data describes datasets far better than it describes models.
+
+    Aggregating this one to 25 per-model means -- the mirror of what E1 used to do -- was
+    measured and is worse, because three of the five features are functions of the
+    dataset as well as the model and averaging them discards real variation.
+    """
+    return run_equation(frame, (), MODEL_FEATURES, config, "E2")
+
+
+def run_e3(frame: pl.DataFrame, config: Configuration = DEFAULT_E3) -> EquationReport:
+    """Dataset and model features -- one input, one output, and the published equation."""
+    return run_equation(frame, DATASET_FEATURES, MODEL_FEATURES, config, "E3", SWEEP_SIZES)
 
 
 def correlation_analysis(frame: pl.DataFrame, config: Configuration = DEFAULT_E3, top: int = 15) -> pl.DataFrame:
