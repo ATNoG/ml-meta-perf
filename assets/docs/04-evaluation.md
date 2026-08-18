@@ -1,6 +1,6 @@
 # 4. Evaluation methodology
 
-*Implemented in `metafit.validate` and `metafit.stats`.*
+*Implemented in `ml_meta_perf.validate` and `ml_meta_perf.stats`.*
 
 ## Protocols
 
@@ -48,7 +48,7 @@ The **same equation**, three protocols:
 | leave-one-model-out | **0.428** | 0.188 |
 
 A reported R² near 0.5 on this kind of meta-data may be describing the split rather than
-the model. `metafit.validate.random_kfold_groups` exists **only** to produce this
+the model. `ml_meta_perf.validate.random_kfold_groups` exists **only** to produce this
 comparison; it is never used to score a result.
 
 This is the same concern as subject-wise splitting in clinical machine learning, and the

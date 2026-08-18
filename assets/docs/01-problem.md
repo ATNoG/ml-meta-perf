@@ -1,6 +1,6 @@
 # 1. The problem and the data
 
-*Implemented in `metafit.data`.*
+*Implemented in `ml_meta_perf.data`.*
 
 ## The algorithm selection problem
 
@@ -25,7 +25,7 @@ negative values indicate anti-correlation with the labels.
 Three properties of this target shape every downstream decision:
 
 - **It is bounded.** A linear form is unaware of that, so predictions are clipped to
-  [-1, 1] (`metafit.model.Equation.predict`).
+  [-1, 1] (`ml_meta_perf.model.Equation.predict`).
 - **It saturates.** 80 of the 476 rows (17%) sit at exactly 1.0. A logit or `atanh`
   transform of the target was tried to handle the bound and **failed badly** —
   cross-validated R² went negative, because the saturation point maps to infinity.
@@ -35,7 +35,7 @@ Three properties of this target shape every downstream decision:
 
 ## The meta-dataset
 
-`src/metafit/meta_dataset.csv` — 476 rows, no missing values. One row per (dataset, model) pair,
+`src/ml_meta_perf/meta_dataset.csv` — 476 rows, no missing values. One row per (dataset, model) pair,
 covering **20 datasets × 25 models** (24 of the 500 possible pairs are absent).
 
 ### Each row is the best of three seeds, not their mean

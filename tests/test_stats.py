@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 
-from metafit.stats import mae, pearson, r2_score, rank_columns, rankdata, rmse, smape, spearman
+from ml_meta_perf.stats import mae, pearson, r2_score, rank_columns, rankdata, rmse, smape, spearman
 
 
 class TestRankdata(unittest.TestCase):

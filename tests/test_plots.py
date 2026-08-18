@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import numpy as np
 import polars as pl
 
-from metafit.plots import (
+from ml_meta_perf.plots import (
     contribution_shares,
     count_below_floor,
     equation_comparison,
@@ -230,7 +230,7 @@ class TestOracleLookup(unittest.TestCase):
     """The ceiling drawn on the curve must be the one the run computed."""
 
     def test_reads_the_oracle_from_the_comparison_table(self) -> None:
-        from metafit.figures import ORACLE_ROW, _oracle
+        from ml_meta_perf.figures import ORACLE_ROW, _oracle
 
         report = SimpleNamespace(
             comparison=pl.DataFrame({"equation": ["E2 (dataset + model)", ORACLE_ROW], "r2": [0.556, 0.6605]})
@@ -240,7 +240,7 @@ class TestOracleLookup(unittest.TestCase):
         self.assertAlmostEqual(value, 0.6605)
 
     def test_returns_none_when_the_row_is_absent(self) -> None:
-        from metafit.figures import _oracle
+        from ml_meta_perf.figures import _oracle
 
         report = SimpleNamespace(comparison=pl.DataFrame({"equation": ["E2"], "r2": [0.5]}))
         self.assertIsNone(_oracle(report))  # pyright: ignore[reportArgumentType]
@@ -248,8 +248,8 @@ class TestOracleLookup(unittest.TestCase):
 
 class TestFigureSet(PlotTestCase):
     def test_generate_writes_the_whole_set(self) -> None:
-        from metafit.experiment import run
-        from metafit.figures import generate
+        from ml_meta_perf.experiment import run
+        from ml_meta_perf.figures import generate
 
         written = generate(run(quick=True), self.folder)
         self.assertEqual(len(written), len(set(written)))

@@ -5,15 +5,15 @@ import unittest
 import numpy as np
 import polars as pl
 
-from metafit.model import Equation
-from metafit.practices import (
+from ml_meta_perf.model import Equation
+from ml_meta_perf.practices import (
     best_practices,
     concordance,
     concordance_summary,
     feature_practices,
     render,
 )
-from metafit.terms import Atom, Term
+from ml_meta_perf.terms import Atom, Term
 
 
 def rising_equation() -> Equation:

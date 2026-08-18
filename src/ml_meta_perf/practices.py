@@ -23,10 +23,10 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 
-from metafit.attribution import contributions
-from metafit.data import FEATURE_GLOSSARY
-from metafit.model import Equation
-from metafit.stats import spearman
+from ml_meta_perf.attribution import contributions
+from ml_meta_perf.data import FEATURE_GLOSSARY
+from ml_meta_perf.model import Equation
+from ml_meta_perf.stats import spearman
 
 #: A feature has to move predicted MCC by at least this much, between the bottom and top
 #: decile of its own range, before it is worth writing down as guidance.

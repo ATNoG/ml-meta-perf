@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128"
-     role="img" aria-label="metafit — sparse interpretable equations for classifier performance">
-  <title>metafit — sparse interpretable equations for classifier performance</title>
+     role="img" aria-label="ml-meta-perf — sparse interpretable equations for classifier performance">
+  <title>ml-meta-perf — sparse interpretable equations for classifier performance</title>
   <desc>A fitted line rising from lower left to upper right, with four bold
   markers scattered either side of it and short residual ticks joining each one
   to the line. The faint markers further off are the candidate terms the search

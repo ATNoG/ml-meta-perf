@@ -9,8 +9,8 @@ import unittest
 import numpy as np
 import polars as pl
 
-from metafit.data import MODEL_FAMILY, NEURAL_FAMILIES, TREE_FAMILIES, load
-from metafit.guidance import (
+from ml_meta_perf.data import MODEL_FAMILY, NEURAL_FAMILIES, TREE_FAMILIES, load
+from ml_meta_perf.guidance import (
     CATALOGUE,
     CHALLENGED,
     CHECKS,

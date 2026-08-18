@@ -6,9 +6,9 @@ import unittest
 import numpy as np
 import polars as pl
 
-from metafit.analysis import redundancy_groups, screen
-from metafit.terms import build_library
-from metafit.validate import (
+from ml_meta_perf.analysis import redundancy_groups, screen
+from ml_meta_perf.terms import build_library
+from ml_meta_perf.validate import (
     additive_oracle,
     baseline_group_mean,
     cross_validate,
@@ -170,7 +170,7 @@ class TestInteractionOracle(unittest.TestCase):
         )
 
     def test_more_components_never_fit_worse(self) -> None:
-        from metafit.stats import r2_score
+        from ml_meta_perf.stats import r2_score
 
         scores = [
             r2_score(self.target, interaction_oracle(self.target, self.outer, self.inner, rank))
@@ -180,7 +180,7 @@ class TestInteractionOracle(unittest.TestCase):
             self.assertGreaterEqual(later, earlier - 1e-9)
 
     def test_full_rank_reproduces_every_cell(self) -> None:
-        from metafit.stats import r2_score
+        from ml_meta_perf.stats import r2_score
 
         full = min(np.unique(self.outer).shape[0], np.unique(self.inner).shape[0])
         value = r2_score(self.target, interaction_oracle(self.target, self.outer, self.inner, full))

@@ -158,7 +158,7 @@ FEATURE_GLOSSARY: dict[str, str] = {
 }
 
 #: The shipped corpus, resolved next to this module rather than relative to a source
-#: checkout. `pip install metafit && metafit` has no repository around it, and the previous
+#: checkout. `pip install ml-meta-perf && ml-meta-perf` has no repository around it, and the previous
 #: form -- ``parents[2] / "data"`` -- pointed inside `site-packages` and failed there.
 DEFAULT_PATH = Path(__file__).resolve().parent / "meta_dataset.csv"
 

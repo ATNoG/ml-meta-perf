@@ -30,9 +30,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from metafit.model import Equation
-from metafit.stats import pearson, rank_columns, rankdata, spearman
-from metafit.terms import Library, Term, is_trivial, simplify
+from ml_meta_perf.model import Equation
+from ml_meta_perf.stats import pearson, rank_columns, rankdata, spearman
+from ml_meta_perf.terms import Library, Term, is_trivial, simplify
 
 RIDGE_DEFAULT = 10.0
 BEAM_WIDTH_DEFAULT = 6

@@ -5,7 +5,7 @@ import unittest
 
 import numpy as np
 
-from metafit.fit import (
+from ml_meta_perf.fit import (
     Selector,
     Standardizer,
     Subset,
@@ -17,8 +17,8 @@ from metafit.fit import (
     to_equation,
     transform_gap,
 )
-from metafit.model import Equation
-from metafit.terms import build_library
+from ml_meta_perf.model import Equation
+from ml_meta_perf.terms import build_library
 
 
 def synthetic_columns(n: int = 120, seed: int = 3) -> dict[str, np.ndarray]:

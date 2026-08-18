@@ -1,7 +1,7 @@
 # 7. From equation to evidence to practice
 
-*Implemented in `metafit.attribution`, `metafit.practices`, `metafit.report` and
-`metafit.guidance`.*
+*Implemented in `ml_meta_perf.attribution`, `ml_meta_perf.practices`, `ml_meta_perf.report` and
+`ml_meta_perf.guidance`.*
 
 This is what the accuracy was traded for. An equation nobody can turn into guidance has
 bought nothing over a black box.
@@ -20,12 +20,12 @@ So the chapter runs in two layers:
 
 | layer | what it produces | module |
 |---|---|---|
-| **evidence** | what the fitted equation does as each feature and each term moves | `metafit.practices`, `metafit.report` |
-| **practice** | recommendations taken from the literature, each weighed against that evidence | `metafit.guidance` |
+| **evidence** | what the fitted equation does as each feature and each term moves | `ml_meta_perf.practices`, `ml_meta_perf.report` |
+| **practice** | recommendations taken from the literature, each weighed against that evidence | `ml_meta_perf.guidance` |
 
 The second layer is where the study earns its keep. Twenty datasets from one domain is a
 narrow base from which to *invent* advice and a perfectly reasonable base from which to
-*test* it, so `metafit.guidance` starts from ten practices the tabular machine-learning
+*test* it, so `ml_meta_perf.guidance` starts from ten practices the tabular machine-learning
 literature already recommends and asks what this corpus says about each. The statements and
 citations are written by hand — a fitting procedure does not produce a citation — and every
 verdict and every number inside it is computed, against a stated threshold, so other data
@@ -206,7 +206,7 @@ The additive form $f(X) = w_0t_0 + w_1t_1 + \dots$ invites reading one term at a
 a flat equation refuses that. **This is a statement about the unit of explanation, not
 about the quality of the equation.** MCC here is inferred by a *set* of terms acting
 together, and the right response is to change the unit rather than to conclude that the
-equation cannot be read. Three units work, and `metafit.report` generates all three into
+equation cannot be read. Three units work, and `ml_meta_perf.report` generates all three into
 [chapter 10](10-report.md).
 
 ### 1. Blocks of terms that move together
@@ -296,7 +296,7 @@ rank-1 term — `(log(gravity) + log(ns_ratio)) / log(Training Operations)`, 8.9
 
 ## Reading a single prediction
 
-`metafit.attribution.contributions` gives the per-term breakdown for one row, which is the
+`ml_meta_perf.attribution.contributions` gives the per-term breakdown for one row, which is the
 interpretability payoff in its most direct form:
 
 ```
@@ -320,7 +320,7 @@ somebody then sits down to explain which terms matter and what they imply, the e
 is the product and the equation is only its raw material — and the claim "this model is
 interpretable" quietly becomes "this model was interpreted by an expert, once".
 
-So `metafit.report` derives the written analysis arithmetically, and
+So `ml_meta_perf.report` derives the written analysis arithmetically, and
 [chapter 10](10-report.md) is its output. The same equation always produces the same
 sentences, and every sentence maps onto a row of a table printed next to it.
 

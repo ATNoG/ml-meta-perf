@@ -6,7 +6,7 @@ from pathlib import Path
 
 import polars as pl
 
-from metafit.data import (
+from ml_meta_perf.data import (
     ALL_FEATURES,
     DATASET_COLUMN,
     DATASET_FEATURES,

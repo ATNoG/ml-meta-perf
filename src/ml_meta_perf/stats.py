@@ -32,7 +32,7 @@ def rankdata(values: np.ndarray) -> np.ndarray:
 def rank_columns(matrix: np.ndarray) -> np.ndarray:
     """`rankdata` applied down every column at once, with the same tie handling.
 
-    `metafit.fit.guided_screen` needs the ranks of every candidate term in the library, in
+    `ml_meta_perf.fit.guided_screen` needs the ranks of every candidate term in the library, in
     every fold. Doing that a column at a time cost 32k calls and a tenth of the study's
     runtime; the work is identical but the Python loop is not. ``test_stats`` asserts the
     two agree column by column, so `rankdata` stays the definition and this stays a

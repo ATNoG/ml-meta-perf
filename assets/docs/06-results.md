@@ -1,6 +1,6 @@
 # 6. Results
 
-*Produced by `metafit.experiment`; reproduce with `PYTHONPATH=src venv/bin/python -m metafit`.*
+*Produced by `ml_meta_perf.experiment`; reproduce with `PYTHONPATH=src venv/bin/python -m ml_meta_perf`.*
 
 ## The three equations
 
@@ -373,7 +373,7 @@ Standard regressors on the same raw features, under the same protocols:
 | RidgeCV (linear, 17 features) | 0.418 | **-2.002** | 0.328 |
 | RandomForest (300 trees) | **0.910** | **0.067** | 0.465 |
 | GradientBoosting | 0.820 | 0.049 | 0.354 |
-| **metafit E3 (20 terms)** | 0.614 | **0.478** | 0.428 |
+| **ml-meta-perf E3 (20 terms)** | 0.614 | **0.478** | 0.428 |
 
 Read the RandomForest row across. With 20 dataset groups a forest memorises dataset
 identity almost perfectly and then transfers worse than a 20-term additive equation. This is also

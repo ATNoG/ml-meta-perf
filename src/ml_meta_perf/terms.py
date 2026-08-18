@@ -470,7 +470,7 @@ class Library:
 
     Keeping both members of a pair is wasteful rather than dangerous, and the distinction
     is worth being precise about. The beam search already refuses a candidate whose
-    correlation with a selected term exceeds ``metafit.fit.COLLINEARITY_LIMIT`` (0.95), so
+    correlation with a selected term exceeds ``ml_meta_perf.fit.COLLINEARITY_LIMIT`` (0.95), so
     a duplicate pair cannot both be selected on that path and no singular system arises
     there. What the duplicates cost is candidate-pool slots, search time, and a place in
     the reported term rankings, where they appear as two independent findings. The check

@@ -1,4 +1,4 @@
-"""The one entry point that runs every phase of the study: ``python -m metafit``.
+"""The one entry point that runs every phase of the study: ``python -m ml_meta_perf``.
 
 Given a meta-dataset it screens the term library, fits E1, E3 and the two controls,
 cross-validates all of them under both leave-one-group-out protocols, extracts the
@@ -7,7 +7,7 @@ one set of parameters, so a result can be reproduced by repeating the command li
 than by rerunning a notebook in the right order.
 
 Every knob that was tuned during the study is exposed as a flag. Defaults are the tuned
-values, so a bare ``python -m metafit`` reproduces the reported numbers.
+values, so a bare ``python -m ml_meta_perf`` reproduces the reported numbers.
 
 Study chapter: [6. Results](../../assets/docs/06-results.md) -- the rationale, in
 prose, with the figures.
@@ -24,8 +24,8 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
-from metafit.data import DATASET_FEATURES, DEFAULT_PATH, MODEL_FEATURES, columns_as_arrays, load, target
-from metafit.experiment import (
+from ml_meta_perf.data import DATASET_FEATURES, DEFAULT_PATH, MODEL_FEATURES, columns_as_arrays, load, target
+from ml_meta_perf.experiment import (
     DEFAULT_E1,
     DEFAULT_E3,
     QUICK_E1,
@@ -34,9 +34,9 @@ from metafit.experiment import (
     Report,
     run,
 )
-from metafit.practices import render as render_practices
-from metafit.report import term_importance
-from metafit.report import write as write_report
+from ml_meta_perf.practices import render as render_practices
+from ml_meta_perf.report import term_importance
+from ml_meta_perf.report import write as write_report
 
 #: What ``--phase`` accepts. ``all`` is the default and is what the study runs.
 PHASES = ("screen", "equations", "validation", "practices", "figures", "report")
@@ -219,7 +219,7 @@ def _save_tables(report: Report, folder: Path) -> list[Path]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="metafit",
+        prog="ml-meta-perf",
         description=(
             "Fit interpretable equations predicting MCC from dataset and model meta-features, "
             "validate them under leave-one-group-out, and write the figures and the report."
@@ -328,7 +328,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"report written to {path}")
 
     if arguments.figures and not arguments.no_figures and "figures" in phases:
-        from metafit.figures import generate
+        from ml_meta_perf.figures import generate
 
         written = generate(report, arguments.figures, arguments.data)
         print(f"{len(written)} figures written to {arguments.figures}")

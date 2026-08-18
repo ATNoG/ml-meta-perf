@@ -1,6 +1,6 @@
 # Related work and positioning
 
-Notes gathered while building `metafit`, organised around the question the project
+Notes gathered while building `ml-meta-perf`, organised around the question the project
 actually faces: *why choose a short additive equation over an accurate opaque regressor,
 and what should be expected of it?*
 
@@ -42,7 +42,7 @@ Their central result is directly relevant and worth quoting in full:
 leave-one-dataset-out R² of ~0.47 for a classification metric (MCC), against an in-sample
 0.614, is not a failure of the method — it reflects a documented property of classifier
 performance prediction. The paper also names the **"interpretability tax"**: methods
-optimising for structural sparsity pay significantly in training time. `metafit` pays a
+optimising for structural sparsity pay significantly in training time. `ml-meta-perf` pays a
 different tax — accuracy — and quantifies it explicitly through the term-count curve.
 
 This paper is the strongest single citation for framing our modest cross-validated
@@ -50,7 +50,7 @@ numbers as a finding rather than a shortfall.
 
 ## 3. Sparse regression over a term library (the method)
 
-`metafit` is, structurally, **sparse regression over a fixed library of candidate
+`ml-meta-perf` is, structurally, **sparse regression over a fixed library of candidate
 functions** — the same machinery as SINDy, applied to meta-learning rather than dynamics.
 
 - Brunton, Proctor, Kutz, "Discovering governing equations from data by sparse
@@ -90,7 +90,7 @@ long to interpret. That is a known and named failure mode.
 
 **Relevance.** TIR is the strongest argument for our design: restricting the *form* up
 front (additive, linear in the weights, over a curated term vocabulary) is an established
-route to interpretable SR, not a naive simplification. And because `metafit` is linear in
+route to interpretable SR, not a naive simplification. And because `ml-meta-perf` is linear in
 its weights, the coefficients are solved exactly by ridge regression — sidestepping the
 coefficient-optimisation weakness that GP has to work around.
 
@@ -116,8 +116,8 @@ structurally identical problem.
   performance-influence model is
   $\Pi = \beta_0 + \sum_i \beta_i o_i + \sum_{i,j} \beta_{ij} o_i o_j$:
   linear in its weights, over terms that are options and pairwise option *interactions*,
-  fitted by stepwise forward/backward selection. That is `metafit`'s model class and
-  `metafit`'s search strategy, arrived at independently for a different domain.
+  fitted by stepwise forward/backward selection. That is `ml-meta-perf`'s model class and
+  `ml-meta-perf`'s search strategy, arrived at independently for a different domain.
 - Velez et al., "White-Box Analysis over Machine Learning: Modeling Performance of
   Configurable Systems", arXiv:2101.05362 (2021).
 - Velez et al., "ConfigCrusher: Towards White-Box Performance Analysis for Configurable
@@ -244,7 +244,7 @@ random k-fold as a diagnostic for leakage rather than a result.
 
 ## 8. Where this work is positioned
 
-| | prior work | `metafit` |
+| | prior work | `ml-meta-perf` |
 |---|---|---|
 | Model class | opaque regressors (RF, GBM, NN); or GP-evolved long expressions | fixed additive form, linear in the weights |
 | Reported R² | ~0.9 (opaque), >0.7 (GP) | 0.614 in-sample, 0.478 LOO-dataset |

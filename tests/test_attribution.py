@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 
-from metafit.attribution import (
+from ml_meta_perf.attribution import (
     DATASET_ONLY,
     MIXED,
     MODEL_ONLY,
@@ -14,8 +14,8 @@ from metafit.attribution import (
     term_effects,
     variance_decomposition,
 )
-from metafit.model import Equation
-from metafit.terms import Atom, Term
+from ml_meta_perf.model import Equation
+from ml_meta_perf.terms import Atom, Term
 
 DATASET = ("d1", "d2")
 MODEL = ("m1", "m2")
@@ -143,7 +143,7 @@ class TestVarianceDecomposition(unittest.TestCase):
 
     def test_real_data_puts_dataset_above_model(self) -> None:
         # The empirical answer to "does model choice matter more than the data".
-        from metafit.data import DATASET_COLUMN, MODEL_COLUMN, groups, load, target
+        from ml_meta_perf.data import DATASET_COLUMN, MODEL_COLUMN, groups, load, target
 
         frame = load()
         table = variance_decomposition(

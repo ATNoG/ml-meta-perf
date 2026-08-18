@@ -1,6 +1,6 @@
 # 9. Model identity: the bound on what better descriptors could buy
 
-*Implemented in `metafit.identity`. **Not part of the reported study** — see the last
+*Implemented in `ml_meta_perf.identity`. **Not part of the reported study** — see the last
 section for why it was measured and then withdrawn.*
 
 [Chapter 6](06-results.md) measures a gap and stops there. Dataset identity explains 0.354
@@ -199,7 +199,7 @@ and +0.018 as the covariate-reachable part of the interaction ladder. Those belo
 [chapter 8](08-limitations.md)'s argument about thin model descriptors, and they are the
 reason that argument now carries a number.
 
-`metafit.identity` ships tested and is wired into no pipeline. It stays in the tree where
+`ml_meta_perf.identity` ships tested and is wired into no pipeline. It stays in the tree where
 the agglomerative-construction experiment of [chapter 3](03-search-and-fitting.md) did not,
 because this one produces a number the study quotes — the +0.106 ceiling — rather than only
-a conclusion. `metafit.identity.correct_out_of_fold`, applied to a finished `cross_validate_path`, reproduces the table above.
+a conclusion. `ml_meta_perf.identity.correct_out_of_fold`, applied to a finished `cross_validate_path`, reproduces the table above.

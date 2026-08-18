@@ -27,10 +27,10 @@ from dataclasses import dataclass, field
 import numpy as np
 import polars as pl
 
-from metafit.fit import Selector, Standardizer, guided_screen, to_equation
-from metafit.model import MCC_LOWER, MCC_UPPER, Equation
-from metafit.stats import mae, r2_score, rmse, smape, spearman
-from metafit.terms import Library
+from ml_meta_perf.fit import Selector, Standardizer, guided_screen, to_equation
+from ml_meta_perf.model import MCC_LOWER, MCC_UPPER, Equation
+from ml_meta_perf.stats import mae, r2_score, rmse, smape, spearman
+from ml_meta_perf.terms import Library
 
 
 def leave_one_group_out(groups: np.ndarray) -> Iterator[tuple[str, np.ndarray, np.ndarray]]:
@@ -86,7 +86,7 @@ class CrossValidation:
     per_fold: dict[str, Scores] = field(default_factory=dict)
     selected: list[list[str]] = field(default_factory=list)
     #: The equation each fold fitted, keyed by the label it held out. Kept so that a
-    #: correction fitted on a fold's training rows -- `metafit.identity` fits one -- can
+    #: correction fitted on a fold's training rows -- `ml_meta_perf.identity` fits one -- can
     #: reuse the search this path already paid for instead of repeating it.
     equations: dict[str, Equation] = field(default_factory=dict)
 

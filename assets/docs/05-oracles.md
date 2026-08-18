@@ -1,6 +1,6 @@
 # 5. Oracles and ceilings
 
-*Implemented in `metafit.validate.additive_oracle`, `interaction_oracle` and
+*Implemented in `ml_meta_perf.validate.additive_oracle`, `interaction_oracle` and
 `oracle_ladder`.*
 
 An oracle here is **not a model**. It is fitted with the true target values, including

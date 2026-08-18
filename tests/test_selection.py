@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 import polars as pl
 
-from metafit.selection import (
+from ml_meta_perf.selection import (
     DETECTORS,
     knee_index,
     knee_terms,

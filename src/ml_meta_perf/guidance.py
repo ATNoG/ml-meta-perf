@@ -3,11 +3,11 @@
 A best practice is not a property of a fitted equation. It is a piece of general,
 transferable advice -- short enough to remember, cheap enough to apply -- that already
 circulates in the field and that evidence can *support*, *qualify* or *challenge*. The
-equation analysis in `metafit.report` is evidence. It is not itself the advice, and a
+equation analysis in `ml_meta_perf.report` is evidence. It is not itself the advice, and a
 sentence of the form "higher `nr_norm` went with lower MCC" is a measurement rather than
 something anyone can act on.
 
-So this module runs the other way round from `metafit.practices`. Instead of reading
+So this module runs the other way round from `ml_meta_perf.practices`. Instead of reading
 guidance out of the weights, it starts from practices the tabular machine-learning
 literature already recommends, and asks what this corpus says about each one. That makes
 the study's contribution a *test of received advice* rather than a source of new advice,
@@ -41,7 +41,7 @@ from dataclasses import dataclass
 import numpy as np
 import polars as pl
 
-from metafit.data import (
+from ml_meta_perf.data import (
     DATASET_COLUMN,
     MODEL_COLUMN,
     MODEL_FAMILY,
@@ -49,7 +49,7 @@ from metafit.data import (
     TARGET_COLUMN,
     TREE_FAMILIES,
 )
-from metafit.experiment import Report
+from ml_meta_perf.experiment import Report
 
 SUPPORTED = "supported"
 QUALIFIED = "qualified"
@@ -160,8 +160,8 @@ def gather(frame: pl.DataFrame, report: Report) -> Evidence:
     compares those eight models on a different set of problems from the other seventeen.
     Restricting to the datasets where every model ran removes that.
     """
-    from metafit.stats import spearman
-    from metafit.validate import baseline_group_mean, ranking_report
+    from ml_meta_perf.stats import spearman
+    from ml_meta_perf.validate import baseline_group_mean, ranking_report
 
     n_models = frame[MODEL_COLUMN].n_unique()
     counts = frame.select(DATASET_COLUMN, MODEL_COLUMN).unique().group_by(DATASET_COLUMN).len()

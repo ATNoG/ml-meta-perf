@@ -1,1 +1,1 @@
-"""Test suite for metafit."""
+"""Test suite for ml-meta-perf."""

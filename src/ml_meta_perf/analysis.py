@@ -16,8 +16,8 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 
-from metafit.stats import pearson, spearman
-from metafit.terms import Library
+from ml_meta_perf.stats import pearson, spearman
+from ml_meta_perf.terms import Library
 
 
 def _center_within_groups(values: np.ndarray, groups: np.ndarray) -> np.ndarray:

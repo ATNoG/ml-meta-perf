@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 
-from metafit.terms import (
+from ml_meta_perf.terms import (
     Atom,
     Library,
     Term,
@@ -250,7 +250,7 @@ class TestDenominatorEligibility(unittest.TestCase):
     def test_no_generated_ratio_has_a_denominator_near_zero(self) -> None:
         # The structural guarantee: over the real meta-dataset, every ratio the library
         # emits has a divisor that stays clear of zero, so none of them can spike.
-        from metafit.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays, load
+        from ml_meta_perf.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays, load
 
         data = columns_as_arrays(load(), DATASET_FEATURES + MODEL_FEATURES)
         library = build_library(DATASET_FEATURES, MODEL_FEATURES, data)
@@ -311,7 +311,7 @@ class TestBuilders(unittest.TestCase):
         data = columns(a=[1.0, 2.0], b=[3.0, 4.0], zero=[0.0, 1.0])
         for term in sum_ratio_terms(("a", "b", "zero"), data):
             divisor = term.operands[-1]
-            # build_library only ever composes atoms; nesting comes from metafit.construct.
+            # build_library only ever composes atoms; nesting comes from ml_meta_perf.construct.
             self.assertIsInstance(divisor, Atom)
             assert isinstance(divisor, Atom)
             self.assertNotEqual(divisor.feature, "zero")
@@ -485,7 +485,7 @@ class TestCollinearTermsAreDropped(unittest.TestCase):
         self.assertNotIn(long, kept)
 
     def test_the_published_library_has_no_collinear_pair(self) -> None:
-        from metafit.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays, load
+        from ml_meta_perf.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays, load
 
         columns = columns_as_arrays(load(), DATASET_FEATURES + MODEL_FEATURES)
         library = build_library(

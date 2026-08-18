@@ -22,7 +22,7 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 
-from metafit.model import Equation
+from ml_meta_perf.model import Equation
 
 DATASET_ONLY = "dataset"
 MODEL_ONLY = "model"

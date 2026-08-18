@@ -20,9 +20,9 @@ from dataclasses import dataclass, field
 import numpy as np
 import polars as pl
 
-from metafit.analysis import screen
-from metafit.attribution import group_shares, term_effects, variance_decomposition
-from metafit.data import (
+from ml_meta_perf.analysis import screen
+from ml_meta_perf.attribution import group_shares, term_effects, variance_decomposition
+from ml_meta_perf.data import (
     DATASET_COLUMN,
     DATASET_FEATURES,
     MODEL_COLUMN,
@@ -32,12 +32,12 @@ from metafit.data import (
     load,
     target,
 )
-from metafit.fit import fit, prune
-from metafit.model import Equation
-from metafit.practices import best_practices
-from metafit.selection import pareto_table, recommend
-from metafit.terms import Library, build_library
-from metafit.validate import (
+from ml_meta_perf.fit import fit, prune
+from ml_meta_perf.model import Equation
+from ml_meta_perf.practices import best_practices
+from ml_meta_perf.selection import pareto_table, recommend
+from ml_meta_perf.terms import Library, build_library
+from ml_meta_perf.validate import (
     CrossValidation,
     Scores,
     additive_oracle,

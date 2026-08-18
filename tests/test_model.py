@@ -7,8 +7,8 @@ from pathlib import Path
 
 import numpy as np
 
-from metafit.model import Equation
-from metafit.terms import Atom, Term
+from ml_meta_perf.model import Equation
+from ml_meta_perf.terms import Atom, Term
 
 
 def equation(intercept: float = 0.5) -> Equation:

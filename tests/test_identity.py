@@ -6,7 +6,7 @@ import unittest
 
 import numpy as np
 
-from metafit.identity import (
+from ml_meta_perf.identity import (
     ModelEffects,
     carrier_stability,
     carrying_atoms,
@@ -14,9 +14,9 @@ from metafit.identity import (
     fit_effects,
     predict,
 )
-from metafit.model import Equation
-from metafit.terms import Atom, Library, Term
-from metafit.validate import CrossValidation, cross_validate_path
+from ml_meta_perf.model import Equation
+from ml_meta_perf.terms import Atom, Library, Term
+from ml_meta_perf.validate import CrossValidation, cross_validate_path
 
 
 def _grid(n_datasets: int = 6, n_models: int = 5) -> tuple[dict[str, np.ndarray], np.ndarray, np.ndarray]:
@@ -162,7 +162,7 @@ class TestCorrectOutOfFold(unittest.TestCase):
         self.assertEqual(len(self.path[2].equations), 8)
 
     def test_the_correction_improves_a_planted_model_effect(self) -> None:
-        from metafit.stats import r2_score
+        from ml_meta_perf.stats import r2_score
 
         before = r2_score(self.target, self.path[2].predictions)
         after = r2_score(

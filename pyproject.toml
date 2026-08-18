@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "metafit"
+name = "ml-meta-perf"
 version = "0.1.0"
 authors = [
     {name = "Mário Antunes", email = "mario.antunes@av.it.pt"}
@@ -26,9 +26,9 @@ dependencies = [
 ]
 
 [project.scripts]
-# The pipeline entry point. `metafit --help` documents every input; the study is
+# The pipeline entry point. `ml-meta-perf --help` documents every input; the study is
 # the default with no arguments.
-metafit = "metafit.cli:main"
+ml-meta-perf = "ml_meta_perf.cli:main"
 
 [project.urls]
 Repository = "https://github.com/mariolpantunes/ml-meta-perf"
@@ -38,9 +38,9 @@ Issues = "https://github.com/mariolpantunes/ml-meta-perf/issues"
 where = ["src"]
 
 [tool.setuptools.package-data]
-# The corpus ships with the package: `pip install metafit && metafit` has no repository
+# The corpus ships with the package: `pip install ml-meta-perf && ml-meta-perf` has no repository
 # around it to find a top-level data/ directory in.
-metafit = ["meta_dataset.csv"]
+ml_meta_perf = ["meta_dataset.csv"]
 
 [tool.ruff]
 line-length = 120
@@ -51,7 +51,7 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.basedpyright]
 typeCheckingMode = "standard"
-include = ["src/metafit", "tests"]
+include = ["src/ml_meta_perf", "tests"]
 # No `venvPath`/`venv` here. basedpyright exits 3 when the configured venv is absent, which
 # is every CI runner, and without it the tool does not infer one from the interpreter that
 # launched it. Both call sites pass `--pythonpath` instead, which says the same thing
@@ -59,11 +59,11 @@ include = ["src/metafit", "tests"]
 reportImportCycles = "none"
 
 [tool.vulture]
-paths = ["src/metafit", "tests"]
+paths = ["src/ml_meta_perf", "tests"]
 min_confidence = 80
 
 [tool.coverage.run]
-source = ["src/metafit"]
+source = ["src/ml_meta_perf"]
 branch = true
 
 [tool.coverage.report]

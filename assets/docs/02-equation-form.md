@@ -1,6 +1,6 @@
 # 2. Equation form and term vocabulary
 
-*Implemented in `metafit.terms` and `metafit.model`.*
+*Implemented in `ml_meta_perf.terms` and `ml_meta_perf.model`.*
 
 ## The form
 
@@ -161,7 +161,7 @@ Allowing unrestricted division raises in-sample R² to 0.611 and drives leave-on
 R² to **-1.7**. Standardisation hides the problem while fitting — the spike simply becomes
 the scale — but the term explodes on a held-out dataset outside the training range.
 
-`metafit.terms.is_admissible` remains as a cheap numerical backstop for libraries
+`ml_meta_perf.terms.is_admissible` remains as a cheap numerical backstop for libraries
 assembled by hand, but nothing `build_library` produces depends on it. Its effect is
 visible at loose stability caps: at `max_abs_zscore=6` the worst leave-one-dataset-out R²
 across the sweep improved from **-1.66 to -0.39** once the rule became structural.

@@ -11,9 +11,9 @@ from pathlib import Path
 
 import polars as pl
 
-from metafit.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays, load, target
-from metafit.experiment import Report
-from metafit.plots import (
+from ml_meta_perf.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays, load, target
+from ml_meta_perf.experiment import Report
+from ml_meta_perf.plots import (
     contribution_shares,
     count_below_floor,
     equation_comparison,

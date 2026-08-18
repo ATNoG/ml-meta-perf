@@ -1,6 +1,6 @@
 # 3. Search and fitting
 
-*Implemented in `metafit.fit`, `metafit.analysis` and `metafit.selection`.*
+*Implemented in `ml_meta_perf.fit`, `ml_meta_perf.analysis` and `ml_meta_perf.selection`.*
 
 Two problems are involved and only one of them is hard.
 
@@ -22,14 +22,14 @@ two disagree informatively:
 - when Spearman is clearly the larger, the relation is monotone but curved, which is the
   signal that a log, an inverse or a ratio will pay for itself.
 
-`metafit.fit.transform_gap` is exactly $|\rho_s| - |\rho_p|$, and `guided_screen` ranks by
+`ml_meta_perf.fit.transform_gap` is exactly $|\rho_s| - |\rho_p|$, and `guided_screen` ranks by
 the stronger of the two while applying a small penalty to terms that are only monotone,
 because linear terms read more simply. Near-duplicates of an already-kept term are
 dropped so the beam does not spend its width on variations of one idea.
 
 ### Within-group screening
 
-`metafit.analysis.screen` additionally centres **both the term and the target inside each
+`ml_meta_perf.analysis.screen` additionally centres **both the term and the target inside each
 group** before correlating. A term is then credited only for variance that group identity
 does not already explain.
 
@@ -119,10 +119,10 @@ OpenBLAS threads by default, and on this workload the threads do nothing but spi
 A 32×32 solve is far below the size where BLAS parallelism pays, so eight threads buy no
 wall time and burn 3.5× the CPU, so `OPENBLAS_NUM_THREADS=1` is worth setting in the environment before a run. It is left to the caller: a library that silently pins a global thread count is a library that surprises whoever imports it.
 
-It has to be pinned on the command line rather than inside the package: `python -m metafit`
-imports `metafit`, and therefore numpy, and therefore OpenBLAS, *before* `__main__` runs,
+It has to be pinned on the command line rather than inside the package: `python -m ml_meta_perf`
+imports `ml-meta-perf`, and therefore numpy, and therefore OpenBLAS, *before* `__main__` runs,
 and OpenBLAS reads the variable when it loads. Anyone timing this study by calling
-`python -m metafit` directly will see the same 25 seconds against five times the CPU.
+`python -m ml_meta_perf` directly will see the same 25 seconds against five times the CPU.
 
 ### Using the host's BLAS instead of the wheel's
 
@@ -348,8 +348,8 @@ this meta-dataset is too small **in its feature dimension** for construction to 
 exhaustion.
 
 **Status: measured, rejected, and no longer in the tree.** It lived at
-`src/metafit/construct.py` with its own tests until the repository was cut back to the code
-the study actually runs; `git log -- src/metafit/construct.py` recovers it. The measurement
+`src/ml_meta_perf/construct.py` with its own tests until the repository was cut back to the code
+the study actually runs; `git log -- src/ml_meta_perf/construct.py` recovers it. The measurement
 is kept here because a documented negative result is worth more than a deleted one — "why
 not build terms by clustering instead of enumerating them?" is the first question a reader
 will ask, and the answer is measured rather than asserted. Its ideas were

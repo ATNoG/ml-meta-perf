@@ -52,5 +52,5 @@ jobs:
         # The tests cover the parts; this covers the whole, which is what a
         # reader cloning the repository actually runs. It also fails loudly if
         # the shipped meta-dataset and the code disagree about the schema.
-        run: python -m metafit --quiet --output "${RUNNER_TEMP}/results"
+        run: python -m ml_meta_perf --quiet --output "${RUNNER_TEMP}/results"
           --report "${RUNNER_TEMP}/report.md" --figures "${RUNNER_TEMP}/figures"

@@ -10,8 +10,8 @@ import unittest
 import numpy as np
 import polars as pl
 
-from metafit.model import Equation
-from metafit.report import (
+from ml_meta_perf.model import Equation
+from ml_meta_perf.report import (
     MAJOR_MASS,
     coverage,
     feature_usage,
@@ -24,7 +24,7 @@ from metafit.report import (
     term_sentences,
     unstable_majors,
 )
-from metafit.terms import Atom, Term
+from ml_meta_perf.terms import Atom, Term
 
 DATASET = ("a", "b")
 MODEL = ("m",)
@@ -375,7 +375,7 @@ class TestMarginalVersusConditional(unittest.TestCase):
 
 class TestGlossary(unittest.TestCase):
     def test_every_feature_is_explained(self) -> None:
-        from metafit.data import ALL_FEATURES
+        from ml_meta_perf.data import ALL_FEATURES
 
         table = glossary()
         self.assertEqual(set(table["feature"].to_list()), set(ALL_FEATURES))

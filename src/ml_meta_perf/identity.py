@@ -55,9 +55,9 @@ from dataclasses import dataclass
 import numpy as np
 import polars as pl
 
-from metafit.model import MCC_LOWER, MCC_UPPER, Equation
-from metafit.terms import Atom, composition_atom
-from metafit.validate import CrossValidation, leave_one_group_out
+from ml_meta_perf.model import MCC_LOWER, MCC_UPPER, Equation
+from ml_meta_perf.terms import Atom, composition_atom
+from ml_meta_perf.validate import CrossValidation, leave_one_group_out
 
 #: Denominator added to a model's row count when averaging its residuals. A model with
 #: 19 rows is shrunk by 19/24 toward zero, which is the empirical-Bayes estimator for a
@@ -212,7 +212,7 @@ def correct_out_of_fold(
     """Re-score a finished cross-validation with per-model effects fitted in each fold.
 
     The effects are cheap and the beam search is not, so this consumes the per-fold
-    equations a completed `metafit.validate.cross_validate_path` already recorded rather
+    equations a completed `ml_meta_perf.validate.cross_validate_path` already recorded rather
     than searching again. Each fold's effects are fitted on that fold's training rows
     only, from that fold's own equation, and applied to the rows it held out -- so the
     protocol is the one the path was run under, unchanged.

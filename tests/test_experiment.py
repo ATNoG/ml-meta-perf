@@ -13,9 +13,9 @@ from pathlib import Path
 
 import numpy as np
 
-from metafit.attribution import group_shares, term_effects, variance_decomposition
-from metafit.cli import build_parser, configurations, main, render
-from metafit.data import (
+from ml_meta_perf.attribution import group_shares, term_effects, variance_decomposition
+from ml_meta_perf.cli import build_parser, configurations, main, render
+from ml_meta_perf.data import (
     DATASET_COLUMN,
     DATASET_FEATURES,
     MODEL_COLUMN,
@@ -25,7 +25,7 @@ from metafit.data import (
     load,
     target,
 )
-from metafit.experiment import (
+from ml_meta_perf.experiment import (
     DEFAULT_E3,
     Configuration,
     Report,
@@ -39,10 +39,10 @@ from metafit.experiment import (
     run_e2,
     run_e3,
 )
-from metafit.model import Equation
-from metafit.practices import best_practices
-from metafit.selection import pareto_table, recommend
-from metafit.validate import oracle_ladder
+from ml_meta_perf.model import Equation
+from ml_meta_perf.practices import best_practices
+from ml_meta_perf.selection import pareto_table, recommend
+from ml_meta_perf.validate import oracle_ladder
 
 FAST_E1 = Configuration(max_abs_zscore=3.0, penalty=1.0, pool_size=40, max_terms=3, headline_terms=3)
 FAST_E3 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=40, max_terms=3, headline_terms=3)
@@ -62,13 +62,13 @@ class TestEquationReports(unittest.TestCase):
             self.assertLess(abs(weight), 1e6)
 
     def test_e1_only_uses_dataset_features(self) -> None:
-        from metafit.data import MODEL_FEATURES
+        from ml_meta_perf.data import MODEL_FEATURES
 
         used = {feature for term in self.e1.equation.terms for feature in term.features}
         self.assertFalse(used & set(MODEL_FEATURES))
 
     def test_e2_uses_at_least_one_model_feature(self) -> None:
-        from metafit.data import MODEL_FEATURES
+        from ml_meta_perf.data import MODEL_FEATURES
 
         used = {feature for term in self.e3.equation.terms for feature in term.features}
         self.assertTrue(used & set(MODEL_FEATURES))
@@ -101,7 +101,7 @@ class TestEquationReports(unittest.TestCase):
         # A published term that ``simplify`` can still shorten is a defect: the whole
         # claim is that the equation can be read, and ``([a] / [b]) * [b]`` says ``a`` in
         # six symbols. ``prune`` applies it, and this is the check that it stuck.
-        from metafit.terms import simplify
+        from ml_meta_perf.terms import simplify
 
         for equation in (self.e1.equation, self.e3.equation):
             for term in equation.terms:

@@ -1,13 +1,13 @@
-"""metafit -- interpretable linear meta-models for classifier performance.
+"""ml-meta-perf -- interpretable linear meta-models for classifier performance.
 
 Fits equations of the form ``MCC = w1*t1 + w2*t2 + ...`` where each term is a simple
 expression over dataset and model meta-features, and reports what they are actually
 worth under leave-one-dataset-out and leave-one-model-out validation.
 """
 
-from metafit.analysis import redundancy_groups, screen
-from metafit.attribution import group_shares, term_effects, variance_decomposition
-from metafit.data import (
+from ml_meta_perf.analysis import redundancy_groups, screen
+from ml_meta_perf.attribution import group_shares, term_effects, variance_decomposition
+from ml_meta_perf.data import (
     ALL_FEATURES,
     DATASET_COLUMN,
     DATASET_FEATURES,
@@ -22,12 +22,12 @@ from metafit.data import (
     load,
     target,
 )
-from metafit.fit import FitResult, fit, prune
-from metafit.guidance import CATALOGUE, Practice, Verdict, assess
-from metafit.identity import ModelEffects, correct_out_of_fold, fit_effects
-from metafit.model import Equation
-from metafit.practices import best_practices, concordance, concordance_summary, feature_practices
-from metafit.report import (
+from ml_meta_perf.fit import FitResult, fit, prune
+from ml_meta_perf.guidance import CATALOGUE, Practice, Verdict, assess
+from ml_meta_perf.identity import ModelEffects, correct_out_of_fold, fit_effects
+from ml_meta_perf.model import Equation
+from ml_meta_perf.practices import best_practices, concordance, concordance_summary, feature_practices
+from ml_meta_perf.report import (
     coverage,
     feature_usage,
     marginal_versus_conditional,
@@ -37,9 +37,9 @@ from metafit.report import (
     term_sentences,
     unstable_majors,
 )
-from metafit.selection import knee_index, knee_terms, pareto_front, pareto_table, recommend, simplify_curve
-from metafit.terms import Atom, Library, Term, build_library, ratio_of_sums_terms, simplify
-from metafit.validate import (
+from ml_meta_perf.selection import knee_index, knee_terms, pareto_front, pareto_table, recommend, simplify_curve
+from ml_meta_perf.terms import Atom, Library, Term, build_library, ratio_of_sums_terms, simplify
+from ml_meta_perf.validate import (
     CrossValidation,
     Scores,
     additive_oracle,

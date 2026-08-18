@@ -39,19 +39,19 @@ jobs:
 
       - name: Generate Docs
         run: |
-          # `metafit` alone: pdoc recurses into the package's submodules, and
+          # `ml_meta_perf` alone: pdoc recurses into the package's submodules, and
           # naming them as well makes it warn about duplicate specs.
-          pdoc --math -d google -o docs_build metafit \
-            --logo "assets/metafit_logo.svg" \
-            --favicon "assets/metafit_logo.svg"
+          pdoc --math -d google -o docs_build ml_meta_perf \
+            --logo "assets/logo.svg" \
+            --favicon "assets/logo.svg"
           # The logo path is resolved relative to the page referencing it, and
-          # pdoc emits two levels: `metafit.html` at the root and
-          # `metafit/<submodule>.html` below it. A single copy leaves every
+          # pdoc emits two levels: `ml_meta_perf.html` at the root and
+          # `ml_meta_perf/<submodule>.html` below it. A single copy leaves every
           # submodule page with a broken logo, so the assets go in both. The
           # assets tree also carries the study chapters each module docstring
           # links to, and the figures those chapters embed.
           cp -r assets docs_build/assets
-          cp -r assets docs_build/metafit/assets
+          cp -r assets docs_build/ml_meta_perf/assets
           touch docs_build/.nojekyll
 
       - name: Every page must resolve its logo
@@ -61,7 +61,7 @@ jobs:
           root = pathlib.Path("docs_build")
           pages = list(root.rglob("*.html"))
           missing = [f"{p.relative_to(root)} -> {r}" for p in pages
-                     for r in set(re.findall(r'(?:src|href)="([^"]*metafit_logo\.svg)"',
+                     for r in set(re.findall(r'(?:src|href)="([^"]*logo\.svg)"',
                                              p.read_text()))
                      if not (p.parent / r).exists()]
           if missing:

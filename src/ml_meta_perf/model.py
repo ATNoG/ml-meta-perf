@@ -18,7 +18,7 @@ from pathlib import Path
 
 import numpy as np
 
-from metafit.terms import Term
+from ml_meta_perf.terms import Term
 
 MCC_LOWER = -1.0
 MCC_UPPER = 1.0
