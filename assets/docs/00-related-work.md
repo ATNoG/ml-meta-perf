@@ -167,7 +167,7 @@ descriptors would be worth.
 - Hastie & Tibshirani, *Generalized Additive Models* (1990) — backfitting, the alternative
   fitting scheme, which was measured here and is worse.
 
-**Relevance.** The agronomy literature already cited for AMMI ([chapter 5](assets/docs/05-oracles.md))
+**Relevance.** The agronomy literature already cited for AMMI ([chapter 5](05-oracles.md))
 answers the question AMMI raises. AMMI's latents are free on both margins, so it explains a
 grid and predicts nothing outside it; factorial regression with covariates on one margin is
 the predictive version, and it is exactly what leave-one-dataset-out permits — the datasets
@@ -192,7 +192,7 @@ in AutoML.
 
 **Relevance.** These establish that latent-factor models over a pipeline-by-dataset matrix
 are standard practice for algorithm recommendation, and they are why the +0.106 measured in
-[chapter 9](assets/docs/09-model-effects.md) is unsurprising in size. They are also what
+[chapter 9](09-model-effects.md) is unsurprising in size. They are also what
 this study deliberately does *not* deliver: a latent factor per model is an uninterpreted
 coordinate, and a table of them supports no term analysis and no transferable practice.
 Reporting the number as a ceiling states the trade honestly — this is what an interpretable

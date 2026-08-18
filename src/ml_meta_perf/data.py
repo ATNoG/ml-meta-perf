@@ -90,7 +90,6 @@ MODEL_CAPABILITY: dict[str, int] = {
 
 ALL_FEATURES: tuple[str, ...] = DATASET_FEATURES + MODEL_FEATURES
 
-#: Plain-language readings of each feature, used when the fitted equation is turned into
 #: Learner family for each model in the meta-dataset. Model *features* describe capacity
 #: and cost; they do not say what kind of learner a row refers to, and the tabular-ML
 #: literature states its guidance in exactly those terms ("prefer tree ensembles"), so
@@ -134,6 +133,7 @@ TREE_FAMILIES = ("bagged trees", "single tree", "boosted trees")
 #: data specifically.
 NEURAL_FAMILIES = ("tabular NN", "generic NN")
 
+#: Plain-language readings of each feature, used wherever a fitted equation is turned into
 #: written guidance. Without these a "best practice" degenerates into restating a column
 #: name, which is not advice anyone can act on.
 FEATURE_GLOSSARY: dict[str, str] = {
