@@ -32,6 +32,8 @@ docs_build/
 # belong to the study go into assets/docs/ instead.
 CLAUDE.md
 todo.md
+paired.py
+paired2.py
 
 # Editors and operating systems
 .idea/
