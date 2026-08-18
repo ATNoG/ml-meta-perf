@@ -38,7 +38,9 @@ jobs:
         run: ruff check src
 
       - name: Type-check with basedpyright
-        run: basedpyright
+        # --pythonpath, because pyproject.toml deliberately pins no venv: without it
+        # basedpyright resolves no third-party import and exits 3 on a clean runner.
+        run: basedpyright --pythonpath "$(which python)"
 
       - name: Dead code with Vulture
         run: vulture

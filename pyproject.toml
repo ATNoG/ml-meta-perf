@@ -51,9 +51,11 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.basedpyright]
 typeCheckingMode = "standard"
-venvPath = "."
-venv = "venv"
 include = ["src/metafit", "tests"]
+# No `venvPath`/`venv` here. basedpyright exits 3 when the configured venv is absent, which
+# is every CI runner, and without it the tool does not infer one from the interpreter that
+# launched it. Both call sites pass `--pythonpath` instead, which says the same thing
+# explicitly and says it correctly in each place.
 reportImportCycles = "none"
 
 [tool.vulture]
