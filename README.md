@@ -105,17 +105,11 @@ and carrying the generated figures.
 | 9 | [Model identity: the bound on better descriptors](assets/docs/09-model-effects.md) | `metafit.identity` — measured, **not part of the study** |
 | 10 | [Generated report](assets/docs/10-report.md) | `metafit.report`, `metafit.guidance` — **written by the code, not by hand** |
 
-Related work and positioning: **[`RESEARCH.md`](RESEARCH.md)**.
+Related work and positioning: **[chapter 0](assets/docs/00-related-work.md)**.
 
-Working context — where the project stands, what has already been tried and failed, and
-which facts about the corpus are easy to get wrong: **[`CLAUDE.md`](CLAUDE.md)**.
-
-The API reference is generated from the module docstrings with `pdoc`, and each module
-links back to the chapter covering it:
-
-```bash
-make docs      # -> docs/index.html, with assets/ copied alongside
-```
+The API reference is generated from the module docstrings with `pdoc` and published to
+GitHub Pages by `.github/workflows/docs.yml`; each module links back to the chapter
+covering it.
 
 ## Installation
 
@@ -124,7 +118,7 @@ Python 3.12+. Runtime dependencies are **polars**, **numpy**, **matplotlib** and
 
 ```bash
 python3 -m venv venv
-venv/bin/pip install -r requirements-dev.txt
+venv/bin/pip install -e .
 ```
 
 ## Running it
@@ -134,15 +128,10 @@ cross-validating under both protocols, extracting the practices, writing the fig
 generating the report.
 
 ```bash
-make study          # or: OPENBLAS_NUM_THREADS=1 PYTHONPATH=src venv/bin/python -m metafit
+venv/bin/metafit          # or: PYTHONPATH=src venv/bin/python -m metafit
 ```
 
-`OPENBLAS_NUM_THREADS=1` is not a typo. The inner loop is ~87k solves of matrices no
-larger than 32×32, which is far below the size where BLAS parallelism pays: threading buys
-no wall time and burns 3.5× the CPU spinning. `make study` sets it; running the module
-directly does not, because numpy loads before `__main__` does.
-
-That reproduces every number in this README, and writes:
+That takes about 25 seconds, reproduces every number in this README, and writes:
 
 | | |
 |---|---|
@@ -157,17 +146,22 @@ sentence per major term, groups terms into the blocks that move together, and re
 features and which grammar operations the search actually used — so a flat equation with no
 dominant term is still readable, at a larger unit than one term.
 
-Through `make`:
+Every phase can be skipped and every destination redirected, so the same entry point
+serves a full study, a numbers-only run and a smoke test:
 
 ```bash
-make study     # the full run above
-make report    # the same without figures
-make figures   # figures only
-make quick     # seconds, not minutes; checks the wiring, not the numbers
-make docs      # build the API reference
-make test      # unittest
-make lint      # the full CI gate
+metafit --no-figures                        # tables and report only
+metafit --quiet --no-tables --no-report     # figures only
+metafit --quick --output /tmp/check         # seconds, not minutes: wiring, not numbers
+metafit --output results --report report.md --figures figures
 ```
+
+`metafit --help` lists all of them.
+
+**One note on threading.** The inner loop is ~87k solves of matrices no larger than 32×32,
+far below the size where BLAS parallelism pays: threading buys no wall time and burns 3.5×
+the CPU spinning. Setting `OPENBLAS_NUM_THREADS=1` costs nothing and saves the CPU; it is
+left to the caller rather than forced from inside a library.
 
 ### Parameters
 
@@ -180,7 +174,7 @@ PYTHONPATH=src venv/bin/python -m metafit --data mine.csv --output runs/mine
 
 | flag | default | what it does |
 |---|---|---|
-| `--data` | `data/meta_dataset.csv` | the meta-dataset to fit |
+| `--data` | the shipped corpus | the meta-dataset to fit |
 | `--output` | `results` | where the equations and CSV tables go |
 | `--figures` | `assets/figures` | where the figures go |
 | `--report` | `assets/docs/10-report.md` | where the generated report goes |
@@ -204,14 +198,6 @@ PYTHONPATH=src venv/bin/python -m metafit --arity 4 --pool 2000 --output runs/ar
 
 # just the screening table
 PYTHONPATH=src venv/bin/python -m metafit --phase screen --no-figures
-```
-
-Three runnable examples:
-
-```bash
-PYTHONPATH=src venv/bin/python examples/run_experiment.py          # study + saved equations
-PYTHONPATH=src venv/bin/python examples/predict_new_dataset.py     # per-term breakdown of one row
-PYTHONPATH=src venv/bin/python examples/model_identity_ceiling.py  # what better model descriptors are worth
 ```
 
 ## Using it as a library
@@ -269,22 +255,25 @@ src/metafit/
     report.py       the generated report: term importance and written analysis
     identity.py     per-model effects, measuring the ceiling on model descriptors
     experiment.py   the end-to-end study and its tuned configurations
-    cli.py          python -m metafit -- the entry point that runs every phase
+    cli.py          the argparse pipeline: `metafit`, `python -m metafit`
+    meta_dataset.csv  the corpus: 476 rows, shipped with the package
 assets/docs/        the study chapters
 assets/figures/     generated figures
 results/            generated equations, tables and report.md
-data/               meta_dataset.csv
-tests/              352 unittest tests
-examples/           runnable entry points
+tests/              unittest suite
+.github/workflows/  CI on 3.12 and 3.14, and the published API reference
 ```
 
 ## Development
 
-`ci.sh` runs the full gate; `.pre-commit-config.yaml` runs the same checks at commit time.
+`.pre-commit-config.yaml` is the gate and `.github/workflows/main.yml` runs the same four
+checks on Python 3.12 and 3.14, reading their settings from `pyproject.toml` so the two
+cannot drift apart.
 
 ```bash
+venv/bin/pip install ruff basedpyright vulture pre-commit pdoc
 venv/bin/pre-commit install
-./ci.sh          # unittest + coverage, ruff, basedpyright, vulture
+venv/bin/pre-commit run --all-files   # ruff, basedpyright, vulture, unittest
 ```
 
 ## Citation

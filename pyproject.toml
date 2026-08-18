@@ -25,12 +25,22 @@ dependencies = [
     "kneeliverse>=1.2.0",
 ]
 
+[project.scripts]
+# The pipeline entry point. `metafit --help` documents every input; the study is
+# the default with no arguments.
+metafit = "metafit.cli:main"
+
 [project.urls]
 Repository = "https://github.com/mariolpantunes/ml-meta-perf"
 Issues = "https://github.com/mariolpantunes/ml-meta-perf/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+# The corpus ships with the package: `pip install metafit && metafit` has no repository
+# around it to find a top-level data/ directory in.
+metafit = ["meta_dataset.csv"]
 
 [tool.ruff]
 line-length = 120
@@ -43,11 +53,11 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 typeCheckingMode = "standard"
 venvPath = "."
 venv = "venv"
-include = ["src/metafit", "tests", "examples"]
+include = ["src/metafit", "tests"]
 reportImportCycles = "none"
 
 [tool.vulture]
-paths = ["src/metafit", "tests", "examples"]
+paths = ["src/metafit", "tests"]
 min_confidence = 80
 
 [tool.coverage.run]

@@ -202,4 +202,4 @@ reason that argument now carries a number.
 `metafit.identity` ships tested and is wired into no pipeline. It stays in the tree where
 the agglomerative-construction experiment of [chapter 3](03-search-and-fitting.md) did not,
 because this one produces a number the study quotes — the +0.106 ceiling — rather than only
-a conclusion. `examples/model_identity_ceiling.py` reproduces the table above.
+a conclusion. `metafit.identity.correct_out_of_fold`, applied to a finished `cross_validate_path`, reproduces the table above.

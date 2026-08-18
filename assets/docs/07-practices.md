@@ -31,14 +31,16 @@ citations are written by hand — a fitting procedure does not produce a citatio
 verdict and every number inside it is computed, against a stated threshold, so other data
 can overturn any of them.
 
-Verdicts are **supported**, **qualified**, **challenged** or **not tested**. Nine of the
-ten are supported and one is not tested — the balanced-metric practice, because the study
-adopts MCC and never compares it to accuracy or F1. Marking that rather than quietly
-counting it as a win is the point of having the verdict at all.
+Verdicts are **supported**, **qualified**, **challenged** or **not tested**. Eight of the
+ten are supported, one is not tested — the balanced-metric practice, because the study
+adopts MCC and never compares it to accuracy or F1 — and one is **qualified**: the practice
+of checking a meta-learner against "use whatever usually works" now returns a verdict
+saying the equation clears that baseline, where in earlier runs it did not. Marking both
+rather than quietly counting them as wins is the point of having the verdict at all.
 
-**Nine of ten supported is a weak-looking result and should be read carefully.** It is not
+**Eight of ten supported is a weak-looking result and should be read carefully.** It is not
 that the catalogue was chosen to pass: each check has a stated threshold and returns
-`qualified` or `challenged` when the numbers say so, and the tests exercise those branches.
+`qualified` or `challenged` when the numbers say so, and one now does.
 It is that the practices selected are ones a corpus of this shape *can* speak to. The
 honest reading is that this study corroborates established tabular-ML guidance on an
 independent corpus, not that it discovered anything the field disagreed about.
@@ -108,24 +110,33 @@ better left unwritten.
 
 ## The measured associations
 
-The evidence layer. Reproduced from the published 24-term E3; [chapter 10](10-report.md) is
+The evidence layer. Reproduced from the published 20-term E3; [chapter 10](10-report.md) is
 the generated version and is regenerated with the equation, so it is the one to trust if
 the two ever disagree.
 
 | # | association | effect (MCC) | confidence |
 |---|---|---|---|
-| 1 | Higher **built-in outlier robustness** → **higher** MCC | 0.42 | moderate |
-| 2 | Higher **training cost** (log operations) → **lower** MCC | 0.38 | moderate |
-| 3 | Higher **number of normally distributed attributes** → **lower** MCC | 0.33 | moderate |
-| 4 | Higher **class entropy** → **lower** MCC | 0.24 | moderate |
-| 5 | Higher **noise-to-signal ratio** → **lower** MCC | 0.17 | moderate |
-| 6 | Higher **proportion of correlated attributes** → **higher** MCC | 0.02 | weak |
-| 7 | Higher **source-dataset size** → **lower** MCC | 0.02 | weak |
+| 1 | Higher **equivalent number of attributes** → **lower** MCC | 0.37 | moderate |
+| 2 | Higher **model capacity** (log processing units) → **higher** MCC | 0.30 | moderate |
+| 3 | Higher **learner-family capability rank** → **higher** MCC | 0.29 | moderate |
+| 4 | Higher **number of attributes** → **higher** MCC | 0.24 | strong |
+| 5 | Higher **number of binary attributes** → **higher** MCC | 0.23 | strong |
+| 6 | Higher **noise-to-signal ratio** → **lower** MCC | 0.23 | strong |
+| 7 | Higher **number of classes** → **lower** MCC | 0.14 | moderate |
+| 8 | Higher **built-in outlier robustness** → **higher** MCC | 0.07 | moderate |
+| 9 | Higher **source-dataset size** → **higher** MCC | 0.06 | moderate |
+| 10 | Higher **count of active regularisation mechanisms** → **lower** MCC | 0.03 | weak |
+
+Row 3 needs its caveat carried with it wherever it is quoted. `Model Capability` is the one
+feature here that was *asserted* rather than measured, so "higher capability rank went with
+higher MCC" is partly the ladder being read back out. What is not built in is the
+conditional part — how family capability interacts with dataset properties — and
+[chapter 8](08-limitations.md) sets out the three costs in full.
 
 ![Feature effects](../figures/practice_effects.png)
 
-Read together these point somewhere — *prefer an outlier-robust model; expect trouble on
-noisy data, on data whose labels are evenly spread across many classes* — but the pointing
+Read together these point somewhere — *prefer a capable, high-capacity model; expect
+trouble on noisy data and on data spread across many classes* — but the pointing
 is the reader's inference, not the table's content. Turning it into advice, and checking
 that advice against something other than this one equation, is the next section's job.
 
@@ -285,8 +296,8 @@ rank-1 term — `(log(gravity) + log(ns_ratio)) / log(Training Operations)`, 8.9
 
 ## Reading a single prediction
 
-`examples/predict_new_dataset.py` prints the per-term contribution breakdown for one row,
-which is the interpretability payoff in its most direct form:
+`metafit.attribution.contributions` gives the per-term breakdown for one row, which is the
+interpretability payoff in its most direct form:
 
 ```
 dataset : 5G_Slicing

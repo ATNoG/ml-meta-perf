@@ -157,7 +157,10 @@ FEATURE_GLOSSARY: dict[str, str] = {
     "Model Capability": "learner family's capability rank in the tabular-ML literature (1-10)",
 }
 
-DEFAULT_PATH = Path(__file__).resolve().parents[2] / "data" / "meta_dataset.csv"
+#: The shipped corpus, resolved next to this module rather than relative to a source
+#: checkout. `pip install metafit && metafit` has no repository around it, and the previous
+#: form -- ``parents[2] / "data"`` -- pointed inside `site-packages` and failed there.
+DEFAULT_PATH = Path(__file__).resolve().parent / "meta_dataset.csv"
 
 
 class SchemaError(ValueError):

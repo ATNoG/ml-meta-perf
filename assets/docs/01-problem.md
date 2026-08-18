@@ -35,7 +35,7 @@ Three properties of this target shape every downstream decision:
 
 ## The meta-dataset
 
-`data/meta_dataset.csv` — 476 rows, no missing values. One row per (dataset, model) pair,
+`src/metafit/meta_dataset.csv` — 476 rows, no missing values. One row per (dataset, model) pair,
 covering **20 datasets × 25 models** (24 of the 500 possible pairs are absent).
 
 ### Each row is the best of three seeds, not their mean

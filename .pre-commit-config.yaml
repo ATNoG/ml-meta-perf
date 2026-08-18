@@ -1,24 +1,26 @@
-# The CI pipeline, moved to commit time.
+# The CI gate, moved to commit time.
 #
-# Every project hook below is `language: system` rather than a pinned mirror. A mirror
-# fetches its own copy of ruff or basedpyright and runs it against a config pre-commit
-# chose, which is how a repository ends up with hooks that pass and CI that fails.
-# These call the tools installed in `venv/` and let them read `pyproject.toml`, so
-# `git commit` and `ci.sh` run the same check with the same settings by construction.
+# Every Python hook below is `language: system`, not a pinned mirror. A mirror
+# would fetch its own copy of ruff or basedpyright and run it against a config
+# that pre-commit chose, which is how a repository ends up with hooks that pass
+# and CI that fails. These call the tools already installed in the environment
+# and let them read `pyproject.toml`, so `git commit` and `.github/workflows`
+# are running the same check with the same settings by construction.
 #
-# `pass_filenames: false` throughout is deliberate. basedpyright and vulture both need
-# the whole project to be correct -- vulture calls a function dead when nothing
-# references it, so handing it only the staged files makes everything they reference
-# look unreferenced. Type checking one file in isolation fails the same way.
+# `pass_filenames: false` on the whole-project tools is deliberate. basedpyright
+# and vulture both need to see every file to be correct -- vulture calls a
+# function dead when nothing references it, and handing it only the staged files
+# means everything they reference looks unreferenced. Type-checking one file in
+# isolation fails the same way.
 #
 # `files` rather than `types: [python]` on the project-wide hooks: they are
-# driven by pyproject.toml (ruff rules, basedpyright mode, vulture paths, any
-# coverage threshold), so a commit that changes only that file must still run
-# them. Filtering on file *type* skipped them all at exactly the moment the
-# configuration governing them was being edited.
+# driven by pyproject.toml (ruff rules, basedpyright mode, vulture paths), so a
+# commit that changes only that file must still run them. Filtering on file
+# *type* skipped them all at exactly the moment the configuration governing them
+# was being edited.
 #
-# Install with: venv/bin/pre-commit install
-# Run over everything once: venv/bin/pre-commit run --all-files
+# Install with: pre-commit install
+# Run over everything once: pre-commit run --all-files
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -34,21 +36,9 @@ repos:
 
   - repo: local
     hooks:
-      - id: tests
-        name: unittest + coverage
-        # The tests run once, under coverage, rather than once bare and once again for
-        # the report -- the suite takes ~25s and a commit hook should not pay that twice.
-        # PYTHONPATH=src, not a bare `python`: a commit hook has no install step and the
-        # interpreter on PATH is whoever's. Testing the working tree is also the more
-        # useful thing to check before a commit.
-        entry: bash -c 'PYTHONPATH=src venv/bin/coverage run -m unittest discover -s tests && venv/bin/coverage report'
-        language: system
-        files: '(\.py$|^pyproject\.toml$)'
-        pass_filenames: false
-
       - id: ruff
-        name: ruff
-        entry: venv/bin/ruff check .
+        name: ruff (src)
+        entry: venv/bin/ruff check src
         language: system
         files: '(\.py$|^pyproject\.toml$)'
         pass_filenames: false
@@ -63,6 +53,18 @@ repos:
       - id: vulture
         name: vulture
         entry: venv/bin/vulture
+        language: system
+        files: '(\.py$|^pyproject\.toml$)'
+        pass_filenames: false
+
+      - id: unittest
+        name: unittest
+        # PYTHONPATH=src and venv/bin/python, not a bare `python`: CI runs
+        # `pip install .` first, but a commit hook has no such step and the
+        # interpreter on PATH is /usr/bin/python, which lacks this project's
+        # dependencies. Testing the working tree is also the more useful thing
+        # to check before a commit.
+        entry: env PYTHONPATH=src venv/bin/python -m unittest discover -s tests
         language: system
         files: '(\.py$|^pyproject\.toml$)'
         pass_filenames: false

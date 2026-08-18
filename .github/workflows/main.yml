@@ -1,0 +1,54 @@
+name: Python CI
+
+# The same gate as ess, knee, pyBlindOpt and torann, so a change that passes
+# locally in one repository passes in all of them.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.14"]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Pinned, and matching the other repositories. Unpinned, a linter
+          # release that enables new rules by default fails a PR that changed
+          # none of the code it flags -- which is what happened at ruff 0.16.
+          pip install ruff==0.16.1 basedpyright==1.39.8 vulture==2.16
+          pip install .
+
+      - name: Lint with Ruff
+        run: ruff check src
+
+      - name: Type-check with basedpyright
+        run: basedpyright
+
+      - name: Dead code with Vulture
+        run: vulture
+
+      - name: Run tests
+        run: python -m unittest discover -s tests
+
+      - name: The study reproduces end to end
+        # The tests cover the parts; this covers the whole, which is what a
+        # reader cloning the repository actually runs. It also fails loudly if
+        # the shipped meta-dataset and the code disagree about the schema.
+        run: python -m metafit --quiet --output "${RUNNER_TEMP}/results"
+          --report "${RUNNER_TEMP}/report.md" --figures "${RUNNER_TEMP}/figures"

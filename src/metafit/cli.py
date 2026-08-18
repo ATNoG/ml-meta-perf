@@ -24,7 +24,7 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
-from metafit.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays, load, target
+from metafit.data import DATASET_FEATURES, DEFAULT_PATH, MODEL_FEATURES, columns_as_arrays, load, target
 from metafit.experiment import (
     DEFAULT_E1,
     DEFAULT_E3,
@@ -227,7 +227,7 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     data = parser.add_argument_group("data and output")
-    data.add_argument("--data", default=None, help="meta-dataset CSV (defaults to data/meta_dataset.csv)")
+    data.add_argument("--data", default=None, help="meta-dataset CSV (defaults to the shipped corpus)")
     data.add_argument(
         "--output",
         default="results",
@@ -296,7 +296,7 @@ def main(argv: list[str] | None = None) -> int:
 
     frame = load(arguments.data)
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
-    source = arguments.data or "data/meta_dataset.csv"
+    source = arguments.data or str(DEFAULT_PATH)
 
     if not arguments.quiet:
         render(report, phases, columns)

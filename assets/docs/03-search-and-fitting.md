@@ -117,7 +117,7 @@ OpenBLAS threads by default, and on this workload the threads do nothing but spi
 | 8 | 25.3 s | 87.7 s |
 
 A 32×32 solve is far below the size where BLAS parallelism pays, so eight threads buy no
-wall time and burn 3.5× the CPU. The `Makefile` therefore pins `OPENBLAS_NUM_THREADS=1`.
+wall time and burn 3.5× the CPU, so `OPENBLAS_NUM_THREADS=1` is worth setting in the environment before a run. It is left to the caller: a library that silently pins a global thread count is a library that surprises whoever imports it.
 
 It has to be pinned on the command line rather than inside the package: `python -m metafit`
 imports `metafit`, and therefore numpy, and therefore OpenBLAS, *before* `__main__` runs,
@@ -137,11 +137,12 @@ venv/bin/pip install --no-binary numpy --force-reinstall numpy \
 
 That needs the BLAS development files (an `openblas.pc` for pkg-config, plus the headers),
 a C compiler and `ninja`. It takes about two minutes the first time on 16 cores; pip caches
-the built wheel, so recreating the venv afterwards reuses it and costs seconds. `venv/bin/pip install --force-reinstall numpy` goes back to the
-wheel. **`requirements.txt` names `numpy>=2.0.0`, so a later `pip install -r` will silently
-replace a source build with the wheel again** — the rebuild is deliberately not mandatory,
-because requiring a compiler and BLAS headers is a heavier ask than the rest of this
-project makes.
+the built wheel, so recreating the venv afterwards reuses it and costs seconds.
+`venv/bin/pip install --force-reinstall numpy` goes back to the wheel. **Any later
+`pip install` that resolves numpy will silently replace a source build with the wheel
+again**, since `pyproject.toml` asks only for `numpy>=2.0.0`. The rebuild is deliberately
+optional: requiring a compiler and BLAS headers is a heavier ask than the rest of this
+project makes, and it changes speed rather than results.
 
 Why do it at all: the wheel's build is chosen for portability rather than for the host. On
 the machine these numbers were taken it selects the `Haswell` kernel on a Zen 5 CPU, while

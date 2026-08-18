@@ -11,7 +11,7 @@ Predicting how well an algorithm will perform on a dataset it has not seen is th
 of problem instances to a performance space of algorithms. The meta-learning literature
 operationalises it by describing each dataset with *meta-features* — statistical,
 information-theoretic and complexity measures — and learning a regressor from those to a
-performance metric. The features in `data/meta_dataset.csv` (`class_ent`, `gravity`,
+performance metric. The features in the shipped corpus (`class_ent`, `gravity`,
 `ns_ratio`, `nr_cor_attr`, `eq_num_attr`, …) are standard meta-features of this kind.
 
 - Brazdil, Giraud-Carrier, Soares, Vilalta, *Metalearning: Applications to Automated
