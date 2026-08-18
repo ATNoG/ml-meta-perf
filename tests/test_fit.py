@@ -131,9 +131,16 @@ class TestSelector(unittest.TestCase):
                 )
 
     def test_the_batched_solve_matches_the_one_at_a_time_solve(self) -> None:
-        # Beam steps and refinement positions go through the solver as one stack. That
-        # is only an optimisation if it is arithmetically the same thing, so both paths
-        # are run over the same subsets and compared exactly rather than approximately.
+        # Beam steps and refinement positions go through the solver as one stack. That is
+        # only an optimisation if it is the same arithmetic, so both paths are run over the
+        # same subsets and compared.
+        #
+        # Compared to a tight tolerance rather than exactly. A stacked `np.linalg.solve` and
+        # a loop of single solves are the same operations in a different order, and LAPACK
+        # is free to associate them differently -- so the last couple of ULP depend on the
+        # BLAS. They agree bitwise against the system OpenBLAS here and differ at 1e-16
+        # against the one on GitHub's runners, which is the tolerance being asserted, not a
+        # defect. Anything looser would stop catching a real divergence.
         batch = [(1, 4), (0, 4), (4, 7), (1, 7)]
         for penalty in (0.0, 5.0):
             batched = Selector(self.design, self.target, penalty)._evaluate_many(batch)
@@ -141,8 +148,10 @@ class TestSelector(unittest.TestCase):
             for subset, indices in zip(batched, batch, strict=True):
                 reference = single._evaluate(indices)
                 self.assertEqual(subset.indices, reference.indices)
-                np.testing.assert_array_equal(subset.weights, reference.weights)
-                self.assertEqual(subset.rss, reference.rss)
+                np.testing.assert_allclose(
+                    subset.weights, reference.weights, rtol=1e-12, atol=1e-14
+                )
+                self.assertAlmostEqual(subset.rss, reference.rss, delta=1e-12 * abs(reference.rss))
 
     def test_the_batched_solve_shares_the_cache_and_keeps_order(self) -> None:
         requested = [(1, 4), (0, 7), (1, 4)]
