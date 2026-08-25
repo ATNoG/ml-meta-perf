@@ -43,6 +43,13 @@ def grid(n_groups: int = 6, per_group: int = 5, seed: int = 4):
     return columns, target, outer_labels, inner_labels
 
 
+def unbounded_grid(n_groups: int = 6, per_group: int = 5, seed: int = 4):
+    """The same grid, with an additive target far outside the MCC range."""
+    columns, _, outer, inner = grid(n_groups, per_group, seed)
+    target = 200.0 + 30.0 * columns["f1"] + 10.0 * columns["g1"]
+    return columns, target, outer, inner
+
+
 class TestSplitters(unittest.TestCase):
     def test_leave_one_group_out_covers_every_row_once(self) -> None:
         labels = np.array(["a", "a", "b", "c", "c", "c"])
@@ -95,6 +102,31 @@ class TestCrossValidation(unittest.TestCase):
         )
         self.assertGreaterEqual(result.predictions.min(), -1.0)
         self.assertLessEqual(result.predictions.max(), 1.0)
+
+    def test_unbounded_path_predictions_are_left_unclipped(self) -> None:
+        columns, target, outer, _ = unbounded_grid()
+        library = build_library(("f1", "f2"), ("g1", "g2"), columns)
+        path = cross_validate_path(
+            library, columns, target, outer, max_terms=2, penalty=1.0, pool_size=30, bounds=None
+        )
+        result = path[2]
+        self.assertGreater(float(result.predictions.max()), 1.0)
+        for label, _, test in leave_one_group_out(outer):
+            equation = result.equations.get(label)
+            if equation is None:
+                continue
+            held = {name: values[test] for name, values in columns.items()}
+            np.testing.assert_allclose(result.predictions[test], equation.evaluate(held))
+
+    def test_unbounded_cross_validate_predictions_are_left_unclipped(self) -> None:
+        columns, target, outer, _ = unbounded_grid()
+        library = build_library(("f1", "f2"), ("g1", "g2"), columns)
+        result = cross_validate(
+            library, columns, target, outer, n_terms=2, penalty=1.0, pool_size=30, bounds=None
+        )
+        self.assertGreater(float(result.predictions.max()), 1.0)
+        for equation in result.equations.values():
+            self.assertIsNone(equation.bounds)
 
     def test_path_returns_every_size(self) -> None:
         path = cross_validate_path(
@@ -149,6 +181,21 @@ class TestBaselines(unittest.TestCase):
             float(np.corrcoef(baseline_group_mean(self.target, self.outer), self.target)[0, 1]),
         )
 
+    def test_an_unbounded_group_mean_is_the_training_mean_itself(self) -> None:
+        _, target, outer, _ = unbounded_grid()
+        predictions = baseline_group_mean(target, outer, bounds=None)
+        expected = np.zeros_like(target)
+        for _, train, test in leave_one_group_out(outer):
+            expected[test] = float(target[train].mean())
+        self.assertGreater(float(predictions.min()), 1.0)
+        np.testing.assert_allclose(predictions, expected)
+
+    def test_an_unbounded_additive_oracle_reproduces_an_additive_target(self) -> None:
+        _, target, outer, inner = unbounded_grid()
+        oracle = additive_oracle(target, outer, inner, bounds=None)
+        self.assertGreater(float(oracle.min()), 1.0)
+        np.testing.assert_allclose(oracle, target, rtol=1e-9)
+
     def test_baselines_stay_inside_the_mcc_range(self) -> None:
         for predictions in (
             baseline_group_mean(self.target, self.outer),
@@ -186,6 +233,12 @@ class TestInteractionOracle(unittest.TestCase):
         value = r2_score(self.target, interaction_oracle(self.target, self.outer, self.inner, full))
         self.assertGreater(value, 0.999)
 
+    def test_an_unbounded_oracle_reproduces_an_additive_target(self) -> None:
+        _, target, outer, inner = unbounded_grid()
+        prediction = interaction_oracle(target, outer, inner, 2, bounds=None)
+        self.assertGreater(float(prediction.min()), 1.0)
+        np.testing.assert_allclose(prediction, target, rtol=1e-9)
+
     def test_stays_inside_the_mcc_range(self) -> None:
         prediction = interaction_oracle(self.target, self.outer, self.inner, 2)
         self.assertGreaterEqual(prediction.min(), -1.0)
@@ -210,6 +263,15 @@ class TestOracleLadder(unittest.TestCase):
     def test_gain_is_undefined_for_the_first_rung(self) -> None:
         table = oracle_ladder(self.target, self.outer, self.inner, ranks=(0, 1))
         self.assertNotEqual(table["gain"][0], table["gain"][0])  # NaN
+
+    def test_bounds_reach_the_oracle_behind_the_ladder(self) -> None:
+        from ml_meta_perf.stats import r2_score
+
+        _, target, outer, inner = unbounded_grid()
+        unbounded = oracle_ladder(target, outer, inner, ranks=(0, 1), bounds=None)["r2"].to_numpy()
+        clipped = oracle_ladder(target, outer, inner, ranks=(0, 1))["r2"].to_numpy()
+        np.testing.assert_allclose(unbounded, np.ones(2), atol=1e-9)
+        np.testing.assert_allclose(clipped, np.full(2, r2_score(target, np.ones_like(target))))
 
     def test_r2_is_non_decreasing(self) -> None:
         scores = oracle_ladder(self.target, self.outer, self.inner, ranks=(0, 1, 2, 3))["r2"].to_numpy()

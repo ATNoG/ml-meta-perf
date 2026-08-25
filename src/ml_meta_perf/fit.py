@@ -30,7 +30,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ml_meta_perf.model import Equation
+from ml_meta_perf.model import MCC_LOWER, MCC_UPPER, Equation
 from ml_meta_perf.stats import pearson, rank_columns, rankdata, spearman
 from ml_meta_perf.terms import Library, Term, is_trivial, simplify
 
@@ -361,6 +361,8 @@ def to_equation(
     standardizer: Standardizer,
     offset: float,
     name: str,
+    *,
+    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
 ) -> Equation:
     """Fold the standardisation back into the weights so the equation reads in raw units."""
     order = list(subset.indices)
@@ -372,6 +374,7 @@ def to_equation(
         weights=tuple(float(value) for value in raw),
         standardized_weights=tuple(float(value) for value in subset.weights),
         name=name,
+        bounds=bounds,
     )
 
 
@@ -466,14 +469,19 @@ def prune(
 
     if not keep:
         return Equation(
-            intercept=float(target.mean()), terms=(), weights=(), standardized_weights=(), name=equation.name
+            intercept=float(target.mean()),
+            terms=(),
+            weights=(),
+            standardized_weights=(),
+            name=equation.name,
+            bounds=equation.bounds,
         )
 
     library = Library(keep, columns)
     standardizer = Standardizer.fit(library.matrix)
     selector = Selector(standardizer.apply(library.matrix), target, penalty)
     subset = selector._evaluate(tuple(range(len(library))))
-    return to_equation(library, subset, standardizer, selector.offset, equation.name)
+    return to_equation(library, subset, standardizer, selector.offset, equation.name, bounds=equation.bounds)
 
 
 def selected_terms(equation: Equation) -> list[Term]:

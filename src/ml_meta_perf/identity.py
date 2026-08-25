@@ -55,7 +55,7 @@ from dataclasses import dataclass
 import numpy as np
 import polars as pl
 
-from ml_meta_perf.model import MCC_LOWER, MCC_UPPER, Equation
+from ml_meta_perf.model import Equation
 from ml_meta_perf.terms import Atom, composition_atom
 from ml_meta_perf.validate import CrossValidation, leave_one_group_out
 
@@ -234,7 +234,7 @@ def correct_out_of_fold(
             slope_shrinkage=slope_shrinkage,
         )
         corrected = equation.evaluate(held) + effects.apply(held, models[test])
-        predictions[test] = np.clip(corrected, MCC_LOWER, MCC_UPPER)
+        predictions[test] = corrected if equation.bounds is None else np.clip(corrected, *equation.bounds)
     return predictions
 
 
@@ -244,8 +244,9 @@ def predict(
     columns: dict[str, np.ndarray],
     models: np.ndarray,
 ) -> np.ndarray:
-    """Equation plus table, clipped into the range MCC can take."""
-    return np.clip(equation.evaluate(columns) + effects.apply(columns, models), MCC_LOWER, MCC_UPPER)
+    """Equation plus table, clipped into the range the equation's target can take."""
+    values = equation.evaluate(columns) + effects.apply(columns, models)
+    return values if equation.bounds is None else np.clip(values, *equation.bounds)
 
 
 def carrier_stability(

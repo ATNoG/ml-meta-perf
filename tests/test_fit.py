@@ -2,6 +2,7 @@
 
 import itertools
 import unittest
+from dataclasses import replace
 
 import numpy as np
 
@@ -17,13 +18,23 @@ from ml_meta_perf.fit import (
     to_equation,
     transform_gap,
 )
-from ml_meta_perf.model import Equation
-from ml_meta_perf.terms import build_library
+from ml_meta_perf.model import MCC_LOWER, MCC_UPPER, Equation
+from ml_meta_perf.terms import Library, build_library
 
 
 def synthetic_columns(n: int = 120, seed: int = 3) -> dict[str, np.ndarray]:
     rng = np.random.default_rng(seed)
     return {name: rng.uniform(1.0, 20.0, n) for name in ("f1", "f2", "f3", "f4")}
+
+
+def fitted_pieces() -> tuple[Library, Subset, Standardizer, Selector]:
+    columns = synthetic_columns(90, seed=11)
+    library = build_library(("f1", "f2"), ("f3",), columns)
+    target = 0.3 * np.log(columns["f1"]) + 0.1 * columns["f3"]
+    standardizer = Standardizer.fit(library.matrix)
+    selector = Selector(standardizer.apply(library.matrix), target, 1.0)
+    subset = selector.search(list(range(len(library)))[:40], 3, beam_width=3)[3]
+    return library, subset, standardizer, selector
 
 
 class TestStandardizer(unittest.TestCase):
@@ -202,6 +213,23 @@ class TestToEquation(unittest.TestCase):
         expected = selector.offset + design[:, list(subset.indices)] @ subset.weights
         np.testing.assert_allclose(equation.evaluate(columns), expected, rtol=1e-6, atol=1e-9)
 
+    def test_bounds_default_to_the_mcc_range(self) -> None:
+        library, subset, standardizer, selector = fitted_pieces()
+        equation = to_equation(library, subset, standardizer, selector.offset, "check")
+        self.assertEqual(equation.bounds, (MCC_LOWER, MCC_UPPER))
+
+    def test_bounds_can_be_disabled(self) -> None:
+        library, subset, standardizer, selector = fitted_pieces()
+        equation = to_equation(library, subset, standardizer, selector.offset, "check", bounds=None)
+        self.assertIsNone(equation.bounds)
+
+    def test_bounds_are_carried_through_as_given(self) -> None:
+        library, subset, standardizer, selector = fitted_pieces()
+        equation = to_equation(
+            library, subset, standardizer, selector.offset, "check", bounds=(0.0, 500.0)
+        )
+        self.assertEqual(equation.bounds, (0.0, 500.0))
+
     def test_subset_dataclass_carries_its_fit(self) -> None:
         subset = Subset((1, 2), np.array([0.5, -0.5]), 3.0)
         self.assertEqual(subset.indices, (1, 2))
@@ -286,6 +314,18 @@ class TestPrune(unittest.TestCase):
         pruned = prune(self.equation, self.columns, self.target, penalty=1.0, min_contribution=1e9)
         self.assertEqual(pruned.n_terms, 0)
         self.assertAlmostEqual(pruned.intercept, float(self.target.mean()))
+
+    def test_bounds_survive_a_prune_that_keeps_terms(self) -> None:
+        unbounded = replace(self.equation, bounds=None)
+        pruned = prune(unbounded, self.columns, self.target, penalty=1.0, min_contribution=1e-12)
+        self.assertGreater(pruned.n_terms, 0)
+        self.assertIsNone(pruned.bounds)
+
+    def test_bounds_survive_a_prune_that_drops_everything(self) -> None:
+        unbounded = replace(self.equation, bounds=None)
+        pruned = prune(unbounded, self.columns, self.target, penalty=1.0, min_contribution=1e9)
+        self.assertEqual(pruned.n_terms, 0)
+        self.assertIsNone(pruned.bounds)
 
     def test_prediction_stays_finite(self) -> None:
         pruned = prune(self.equation, self.columns, self.target, penalty=1.0, min_contribution=0.01)
