@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ml_meta_perf.model import Equation
+from ml_meta_perf.model import MCC_LOWER, MCC_UPPER, Equation
 from ml_meta_perf.terms import Atom, Term
 
 
@@ -42,6 +42,28 @@ class TestEvaluation(unittest.TestCase):
         np.testing.assert_allclose(wild.predict(columns), [1.0, -1.0])
         # evaluate is deliberately unclipped, so the two differ
         self.assertGreater(float(wild.evaluate(columns)[0]), 1.0)
+
+    def test_predict_does_not_clip_when_bounds_is_none(self) -> None:
+        wild = Equation(
+            intercept=0.0,
+            terms=(Term("atom", (Atom("a"),)),),
+            weights=(100.0,),
+            standardized_weights=(1.0,),
+            bounds=None,
+        )
+        columns = {"a": np.array([5.0, -5.0])}
+        np.testing.assert_allclose(wild.predict(columns), [500.0, -500.0])
+
+    def test_predict_uses_the_bounds_it_was_given(self) -> None:
+        wild = Equation(
+            intercept=0.0,
+            terms=(Term("atom", (Atom("a"),)),),
+            weights=(100.0,),
+            standardized_weights=(1.0,),
+            bounds=(-20.0, 20.0),
+        )
+        columns = {"a": np.array([5.0, -5.0])}
+        np.testing.assert_allclose(wild.predict(columns), [20.0, -20.0])
 
     def test_an_equation_with_no_terms_is_a_constant(self) -> None:
         constant = Equation(intercept=0.3, terms=(), weights=(), standardized_weights=())
@@ -112,6 +134,35 @@ class TestSerialisation(unittest.TestCase):
         np.testing.assert_allclose(
             Equation.from_dict(original.to_dict()).predict(columns), original.predict(columns)
         )
+
+    def test_round_trips_custom_bounds(self) -> None:
+        original = Equation(
+            intercept=0.5,
+            terms=(Term("atom", (Atom("a"),)),),
+            weights=(0.25,),
+            standardized_weights=(0.1,),
+            bounds=(-7.5, 12.5),
+        )
+        restored = Equation.from_dict(json.loads(json.dumps(original.to_dict())))
+        self.assertEqual(restored.bounds, (-7.5, 12.5))
+        self.assertEqual(restored, original)
+
+    def test_round_trips_an_unbounded_equation(self) -> None:
+        original = Equation(
+            intercept=0.5,
+            terms=(Term("atom", (Atom("a"),)),),
+            weights=(0.25,),
+            standardized_weights=(0.1,),
+            bounds=None,
+        )
+        restored = Equation.from_dict(json.loads(json.dumps(original.to_dict())))
+        self.assertIsNone(restored.bounds)
+        self.assertEqual(restored, original)
+
+    def test_a_payload_without_bounds_defaults_to_the_mcc_range(self) -> None:
+        payload = equation().to_dict()
+        del payload["bounds"]
+        self.assertEqual(Equation.from_dict(payload).bounds, (MCC_LOWER, MCC_UPPER))
 
     def test_malformed_payload_is_rejected(self) -> None:
         with self.assertRaises(ValueError):

@@ -33,6 +33,7 @@ class Equation:
     weights: tuple[float, ...]
     standardized_weights: tuple[float, ...]
     name: str = "equation"
+    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER)
 
     def __post_init__(self) -> None:
         if not (len(self.terms) == len(self.weights) == len(self.standardized_weights)):
@@ -52,13 +53,15 @@ class Equation:
         return total
 
     def predict(self, columns: dict[str, np.ndarray]) -> np.ndarray:
-        """Apply the equation and clip into the range MCC can actually take.
+        """Apply the equation and clip into ``bounds``, the range the target can take.
 
         A linear form has no idea that MCC stops at 1.0, and 17% of the meta-dataset
         sits exactly there. Clipping is the one piece of domain knowledge imposed on the
-        output, and it is applied identically during cross-validation.
+        output, and it is applied identically during cross-validation. An unbounded
+        target sets ``bounds=None`` and is returned as written.
         """
-        return np.clip(self.evaluate(columns), MCC_LOWER, MCC_UPPER)
+        values = self.evaluate(columns)
+        return values if self.bounds is None else np.clip(values, *self.bounds)
 
     def ranked_terms(self) -> list[tuple[Term, float, float]]:
         """Terms ordered by standardised weight magnitude: strongest contributor first."""
@@ -88,6 +91,7 @@ class Equation:
             "terms": [term.to_dict() for term in self.terms],
             "weights": list(self.weights),
             "standardized_weights": list(self.standardized_weights),
+            "bounds": list(self.bounds) if self.bounds is not None else None,
         }
 
     @classmethod
@@ -95,6 +99,7 @@ class Equation:
         terms = payload["terms"]
         weights = payload["weights"]
         standardized = payload["standardized_weights"]
+        bounds = payload.get("bounds", [MCC_LOWER, MCC_UPPER])
         if not isinstance(terms, list) or not isinstance(weights, list) or not isinstance(standardized, list):
             raise ValueError("malformed equation payload")
         return cls(
@@ -103,6 +108,7 @@ class Equation:
             weights=tuple(float(value) for value in weights),  # pyright: ignore[reportArgumentType]
             standardized_weights=tuple(float(value) for value in standardized),  # pyright: ignore[reportArgumentType]
             name=str(payload.get("name", "equation")),
+            bounds=tuple(bounds) if bounds is not None else None,  # pyright: ignore[reportArgumentType]
         )
 
     def save(self, path: str | Path) -> None:

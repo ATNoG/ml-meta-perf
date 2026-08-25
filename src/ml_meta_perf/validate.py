@@ -122,6 +122,7 @@ def cross_validate_path(
     penalty: float,
     pool_size: int = 250,
     beam_width: int = 6,
+    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
 ) -> dict[int, CrossValidation]:
     """Cross-validate every equation size at once, from a single search per fold.
 
@@ -153,7 +154,9 @@ def cross_validate_path(
             if size not in subsets:
                 result.predictions[test] = fallback
                 continue
-            equation = to_equation(library, subsets[size], standardizer, selector.offset, f"fold_{label}")
+            equation = to_equation(
+                library, subsets[size], standardizer, selector.offset, f"fold_{label}", bounds=bounds
+            )
             result.predictions[test] = equation.predict(held)
             result.per_fold[label] = score(target[test], result.predictions[test])
             result.selected.append([term.name for term in equation.terms])
@@ -172,6 +175,7 @@ def cross_validate(
     penalty: float,
     pool_size: int = 250,
     beam_width: int = 6,
+    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
 ) -> CrossValidation:
     """Cross-validate a single equation size."""
     path = cross_validate_path(
@@ -183,6 +187,7 @@ def cross_validate(
         penalty=penalty,
         pool_size=pool_size,
         beam_width=beam_width,
+        bounds=bounds,
     )
     return path[n_terms]
 
@@ -201,6 +206,8 @@ def baseline_group_mean(
     target: np.ndarray,
     outer: np.ndarray,
     inner: np.ndarray | None = None,
+    *,
+    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
 ) -> np.ndarray:
     """Predict the training mean, optionally conditioned on a second grouping.
 
@@ -218,10 +225,16 @@ def baseline_group_mean(
             selected = test & (inner == label)
             source = train & (inner == label)
             predictions[selected] = float(target[source].mean()) if source.any() else fallback
-    return np.clip(predictions, MCC_LOWER, MCC_UPPER)
+    return predictions if bounds is None else np.clip(predictions, *bounds)
 
 
-def additive_oracle(target: np.ndarray, first: np.ndarray, second: np.ndarray) -> np.ndarray:
+def additive_oracle(
+    target: np.ndarray,
+    first: np.ndarray,
+    second: np.ndarray,
+    *,
+    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
+) -> np.ndarray:
     """The best any purely additive equation could do, given perfect group effects.
 
     Fit in-sample with the true per-group means, so it is not a predictor -- it is the
@@ -234,7 +247,7 @@ def additive_oracle(target: np.ndarray, first: np.ndarray, second: np.ndarray) -
         for label in np.unique(group):
             mask = group == label
             prediction[mask] += float(target[mask].mean()) - grand
-    return np.clip(prediction, MCC_LOWER, MCC_UPPER)
+    return prediction if bounds is None else np.clip(prediction, *bounds)
 
 
 def interaction_oracle(
@@ -242,6 +255,8 @@ def interaction_oracle(
     first: np.ndarray,
     second: np.ndarray,
     rank: int,
+    *,
+    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
 ) -> np.ndarray:
     """The additive oracle plus the best rank-``rank`` approximation of what it misses.
 
@@ -287,7 +302,7 @@ def interaction_oracle(
     prediction = np.array(
         [additive[row_index[row], column_index[column]] for row, column in zip(first, second, strict=True)]
     )
-    return np.clip(prediction, MCC_LOWER, MCC_UPPER)
+    return prediction if bounds is None else np.clip(prediction, *bounds)
 
 
 def oracle_ladder(
@@ -295,12 +310,14 @@ def oracle_ladder(
     first: np.ndarray,
     second: np.ndarray,
     ranks: tuple[int, ...] = (0, 1, 2, 3, 4, 6, 8),
+    *,
+    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
 ) -> pl.DataFrame:
     """How much each additional interaction component would be worth."""
     rows: list[dict[str, object]] = []
     previous: float | None = None
     for rank in ranks:
-        value = r2_score(target, interaction_oracle(target, first, second, rank))
+        value = r2_score(target, interaction_oracle(target, first, second, rank, bounds=bounds))
         rows.append(
             {
                 "interaction_rank": rank,
