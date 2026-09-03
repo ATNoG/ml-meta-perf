@@ -25,10 +25,24 @@ dependencies = [
     "kneeliverse>=1.2.0",
 ]
 
+[project.optional-dependencies]
+# Tooling for `ml-meta-perf select-features` -- searching the candidate descriptor pool
+# down to a `MODEL_FEATURES` set. Not needed to fit or evaluate the shipped equations, so
+# it is not a base dependency: `pip install ml-meta-perf` stays free of two optimizers
+# almost no caller of the library needs.
+search = [
+    "optuna>=4.0.0",
+    "pyBlindOpt>=0.5.0",
+]
+
 [project.scripts]
 # The pipeline entry point. `ml-meta-perf --help` documents every input; the study is
 # the default with no arguments.
 ml-meta-perf = "ml_meta_perf.cli:main"
+# Searches the AI-proposed descriptor pool down to a MODEL_FEATURES recommendation.
+# Separate from `ml-meta-perf` since it needs the `search` extra and reads the candidate
+# CSV (`assets/meta_dataset_all_descriptors.csv`), not the shipped corpus.
+ml-meta-perf-select-features = "ml_meta_perf.feature_search_cli:main"
 
 [project.urls]
 Repository = "https://github.com/mariolpantunes/ml-meta-perf"

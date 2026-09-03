@@ -1,0 +1,18 @@
+# The dev/research venv for this repo -- created as `venv/`, not `.venv/` (see
+# `.gitignore` and `.pre-commit-config.yaml`, both hard-coded to `venv/bin/...`).
+#
+#   python3 -m venv venv
+#   venv/bin/pip install -r requirements.txt
+#   venv/bin/pre-commit install
+#
+# The project itself, editable, with the `search` extra (optuna + pyBlindOpt) needed by
+# `ml-meta-perf select-features`. Everything below the blank line is dev/CI tooling,
+# pinned to exactly what `.github/workflows/main.yml` installs, so a commit that passes
+# the local pre-commit hook passes CI for the same reason -- both are `language: system`
+# hooks that must find the same tool versions on PATH.
+-e .[search]
+
+ruff==0.16.1
+basedpyright==1.39.8
+vulture==2.16
+pre-commit
