@@ -8,55 +8,51 @@ Meta-dataset: `/home/mantunes/git/aiml-model/src/ml_meta_perf/meta_dataset.csv`
 
 | setting | value |
 |---|---|
-| max_abs_zscore | 3.0 |
-| penalty | 20.0 |
+| max_abs_zscore | 4.25 |
+| penalty | 15.0 |
 | pool_size | 600 |
 | max_terms | 32 |
-| headline_terms | 20 |
+| headline_terms | 16 |
 | beam_width | 6 |
-| max_arity | 3 |
+| max_arity | 2 |
 
 ## 2. The equation
 
-E3 uses **20 terms** over dataset and model meta-features, simplified and refitted after pruning, so it evaluates exactly as printed.
+E3 uses **16 terms** over dataset and model meta-features, simplified and refitted after pruning, so it evaluates exactly as printed.
 
 ```
-MCC = +1.43565
-      -0.0380101 * ([log(eq_num_attr)] + [log(gravity)]) / [log(Training Operations)]  # beta=-0.1279
-      -0.0953483 * [log(eq_num_attr)] * [log(nr_class)]           # beta=-0.1216
-      -0.102164 * ([log(eq_num_attr)] + [log(ns_ratio)]) / [log(Processing Units Number)]  # beta=-0.1212
-      +0.100593 * [log(Model Capability)] / [log(nr_class)]       # beta=+0.0931
-      +0.00972864 * [log(nr_inst)] * [Robust to Outliers]         # beta=+0.0900
-      -0.157677 * [nr_cor_attr] * [nr_norm]                       # beta=-0.0894
-      -0.057662 * [log(Prediction Operations)] * [Robust to Outliers]  # beta=-0.0816
-      -0.0801998 * [log(Processing Units Number)] / [log(nr_class)]  # beta=-0.0756
-      +0.0118444 * ([nr_bin] + [nr_norm]) / [log(nr_attr)]        # beta=+0.0708
-      +0.0349278 * [log(Processing Units Number)] * [log(Model Capability)]  # beta=+0.0645
-      +0.0770948 * sqrt(Prediction Operations)                    # beta=+0.0553
-      -0.373962 * ([nr_cor_attr] + [Robust to Outliers]) / [Model Capability]  # beta=-0.0537
-      +0.0271827 * [log(Processing Units Number)] * [Robust to Outliers]  # beta=+0.0527
-      -0.138487 * ([nr_cor_attr] + [log(Model Capability)]) / [log(Processing Units Number)]  # beta=-0.0513
-      -0.0530859 * [log(Prediction Operations)] / [log(nr_class)]  # beta=-0.0500
-      -0.0457245 * ([log(inst_to_attr)] + [Active Regularization Mechanisms]) / [log(Training Operations)]  # beta=-0.0391
-      +0.00362286 * [log(inst_to_attr)] * [log(ns_ratio)]         # beta=+0.0375
-      -0.135553 * ([log(nr_class)] + [log(Processing Units Number)]) / [log(Training Operations)]  # beta=-0.0370
-      +0.000645044 * [log(inst_to_attr)] * [nr_norm]              # beta=+0.0299
-      +0.146663 * [nr_cor_attr] * [log(Training Operations)]      # beta=+0.0233
+MCC = +1.47874
+      +0.00702424 * [log(gravity)] * [log(Model Capability)]      # beta=+0.1381
+      -8.53446e-05 * [log(nr_inst)] * [nr_outliers]               # beta=-0.1340
+      -0.0930928 * [log(eq_num_attr)] * [log(nr_class)]           # beta=-0.1187
+      -0.228628 * [log(eq_num_attr)] / [log(Processing Units Number)]  # beta=-0.1107
+      -0.0162518 * [log(gravity)] / [log(Processing Units Number)]  # beta=-0.1001
+      -0.0900072 * [log(Processing Units Number)] / [log(nr_class)]  # beta=-0.0849
+      -2.41577 * [nr_cor_attr] / [log(Processing Units Number)]   # beta=-0.0832
+      +0.0016961 * [nr_bin] * [log(Model Capability)]             # beta=+0.0814
+      +0.283307 * 1/Fitting Regime                                # beta=+0.0794
+      -0.0208779 * [log(gravity)] / [log(nr_attr)]                # beta=-0.0773
+      -0.00597581 * [log(gravity)] * [log(Fitting Regime)]        # beta=-0.0717
+      -0.0757525 * [log(Input Distribution Modelling)] * [log(Processing Units Number)]  # beta=-0.0700
+      -0.192767 * [log(nr_class)] / [log(Processing Units Number)]  # beta=-0.0633
+      +0.323154 * [nr_cor_attr] * [log(Processing Units Number)]  # beta=+0.0374
+      +0.203545 * 1/gravity                                       # beta=+0.0282
+      +0.00423689 * Fitting Regime^2                              # beta=+0.0279
 ```
 
 LaTeX:
 
 ```latex
-\mathrm{MCC} = +1.436 -0.03801 \cdot \mathrm{([log(eq\_num\_attr)] + [log(gravity)]) / [log(Training Operations)]} -0.09535 \cdot \mathrm{[log(eq\_num\_attr)] * [log(nr\_class)]} -0.1022 \cdot \mathrm{([log(eq\_num\_attr)] + [log(ns\_ratio)]) / [log(Processing Units Number)]} +0.1006 \cdot \mathrm{[log(Model Capability)] / [log(nr\_class)]} +0.009729 \cdot \mathrm{[log(nr\_inst)] * [Robust to Outliers]} -0.1577 \cdot \mathrm{[nr\_cor\_attr] * [nr\_norm]} -0.05766 \cdot \mathrm{[log(Prediction Operations)] * [Robust to Outliers]} -0.0802 \cdot \mathrm{[log(Processing Units Number)] / [log(nr\_class)]} +0.01184 \cdot \mathrm{([nr\_bin] + [nr\_norm]) / [log(nr\_attr)]} +0.03493 \cdot \mathrm{[log(Processing Units Number)] * [log(Model Capability)]} +0.07709 \cdot \mathrm{sqrt(Prediction Operations)} -0.374 \cdot \mathrm{([nr\_cor\_attr] + [Robust to Outliers]) / [Model Capability]} +0.02718 \cdot \mathrm{[log(Processing Units Number)] * [Robust to Outliers]} -0.1385 \cdot \mathrm{([nr\_cor\_attr] + [log(Model Capability)]) / [log(Processing Units Number)]} -0.05309 \cdot \mathrm{[log(Prediction Operations)] / [log(nr\_class)]} -0.04572 \cdot \mathrm{([log(inst\_to\_attr)] + [Active Regularization Mechanisms]) / [log(Training Operations)]} +0.003623 \cdot \mathrm{[log(inst\_to\_attr)] * [log(ns\_ratio)]} -0.1356 \cdot \mathrm{([log(nr\_class)] + [log(Processing Units Number)]) / [log(Training Operations)]} +0.000645 \cdot \mathrm{[log(inst\_to\_attr)] * [nr\_norm]} +0.1467 \cdot \mathrm{[nr\_cor\_attr] * [log(Training Operations)]}
+\mathrm{MCC} = +1.479 +0.007024 \cdot \mathrm{[log(gravity)] * [log(Model Capability)]} -8.534e-05 \cdot \mathrm{[log(nr\_inst)] * [nr\_outliers]} -0.09309 \cdot \mathrm{[log(eq\_num\_attr)] * [log(nr\_class)]} -0.2286 \cdot \mathrm{[log(eq\_num\_attr)] / [log(Processing Units Number)]} -0.01625 \cdot \mathrm{[log(gravity)] / [log(Processing Units Number)]} -0.09001 \cdot \mathrm{[log(Processing Units Number)] / [log(nr\_class)]} -2.416 \cdot \mathrm{[nr\_cor\_attr] / [log(Processing Units Number)]} +0.001696 \cdot \mathrm{[nr\_bin] * [log(Model Capability)]} +0.2833 \cdot \mathrm{1/Fitting Regime} -0.02088 \cdot \mathrm{[log(gravity)] / [log(nr\_attr)]} -0.005976 \cdot \mathrm{[log(gravity)] * [log(Fitting Regime)]} -0.07575 \cdot \mathrm{[log(Input Distribution Modelling)] * [log(Processing Units Number)]} -0.1928 \cdot \mathrm{[log(nr\_class)] / [log(Processing Units Number)]} +0.3232 \cdot \mathrm{[nr\_cor\_attr] * [log(Processing Units Number)]} +0.2035 \cdot \mathrm{1/gravity} +0.004237 \cdot \mathrm{Fitting Regime\^{}2}
 ```
 
 ## 3. How well it does
 
 | protocol | R² | MAE | RMSE | n |
 |---|---|---|---|---|
-| in-sample | 0.6141 | 0.1540 | 0.2132 | 476 |
-| loo-dataset | 0.4779 | 0.1788 | 0.2480 | 476 |
-| loo-model | 0.4276 | 0.1884 | 0.2596 | 476 |
+| in-sample | 0.6716 | 0.1341 | 0.1967 | 476 |
+| loo-dataset | 0.6522 | 0.1378 | 0.2024 | 476 |
+| loo-model | 0.6334 | 0.1418 | 0.2078 | 476 |
 
 Cross-validated rows hold out a whole dataset or a whole model, so the equation is scored on a group it has never seen. That is the number that matters, and it is well below the in-sample one at this sample size.
 
@@ -66,111 +62,105 @@ Against the baselines and the ceiling that bounds any additive equation:
 |---|---|---|---|---|---|---|
 | E1 (dataset only) | 0.3485 | 0.2103 | 0.2770 | 43.2650 | 0.6566 | 476 |
 | E1 ceiling (true dataset means) | 0.3539 | 0.2042 | 0.2758 | 42.7254 | 0.6533 | 476 |
-| E2 (model only) | 0.2806 | 0.2273 | 0.2911 | 45.7833 | 0.5209 | 476 |
+| E2 (model only) | 0.2705 | 0.2302 | 0.2931 | 46.0003 | 0.4693 | 476 |
 | E2 ceiling (true model means) | 0.2821 | 0.2257 | 0.2908 | 45.8786 | 0.4870 | 476 |
-| E3 (dataset + model) | 0.6141 | 0.1540 | 0.2132 | 35.9191 | 0.8043 | 476 |
+| E3 (dataset + model) | 0.6716 | 0.1341 | 0.1967 | 34.3070 | 0.8283 | 476 |
 | additive oracle (ceiling) | 0.6605 | 0.1447 | 0.2000 | 35.2889 | 0.8100 | 476 |
 
 ## 4. Equation analysis
 
-The equation has 20 terms, of which **13** carry 80% of the standardised weight mass; the single largest carries 9.4%, and the weights behave like **16.7 equally-weighted terms** (inverse Simpson index of the shares).
+The equation has 16 terms, of which **11** carry 83% of the standardised weight mass; the single largest carries 10.6%, and the weights behave like **13.8 equally-weighted terms** (inverse Simpson index of the shares).
 
-That last number is the one to read for concentration, because it does not depend on where a threshold is drawn. At 83% of the term count the equation is **flat**: no single term dominates. That is a statement about the *unit of explanation*, not about the quality of the equation — MCC here is inferred by a set of terms acting together rather than by one or two that could be quoted on their own. Three readings follow, and the sections below give each one: read the terms in the blocks that move together, read which features the search reached for, and read which operations it needed to apply to them.
+That last number is the one to read for concentration, because it does not depend on where a threshold is drawn. At 86% of the term count the equation is **flat**: no single term dominates. That is a statement about the *unit of explanation*, not about the quality of the equation — MCC here is inferred by a set of terms acting together rather than by one or two that could be quoted on their own. Three readings follow, and the sections below give each one: read the terms in the blocks that move together, read which features the search reached for, and read which operations it needed to apply to them.
 
 `beta` is the standardised weight — the MCC contributed per standard deviation of the term, which is what makes terms in unrelated units comparable. `effect` is the swing in predicted MCC across the middle 80% of the term's observed range. `stability` is the fraction of leave-one-dataset-out folds that selected the term.
 
 | rank | term | group | features | weight | beta | effect | share | cumulative | major | stability | direction |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | ([log(eq_num_attr)] + [log(gravity)]) / [log(Training Operations)] | mixed | eq_num_attr, gravity, Training Operations | -0.0380 | -0.1279 | 0.3720 | 0.0937 | 0.0937 | yes | 0.1000 | lowers MCC |
-| 2 | [log(eq_num_attr)] * [log(nr_class)] | dataset | eq_num_attr, nr_class | -0.0953 | -0.1216 | 0.4085 | 0.0890 | 0.1827 | yes | 1.0000 | lowers MCC |
-| 3 | ([log(eq_num_attr)] + [log(ns_ratio)]) / [log(Processing Units Number)] | mixed | eq_num_attr, ns_ratio, Processing Units Number | -0.1022 | -0.1212 | 0.3286 | 0.0887 | 0.2714 | yes | 0.9500 | lowers MCC |
-| 4 | [log(Model Capability)] / [log(nr_class)] | mixed | Model Capability, nr_class | 0.1006 | 0.0931 | 0.2607 | 0.0682 | 0.3396 | yes | 1.0000 | raises MCC |
-| 5 | [log(nr_inst)] * [Robust to Outliers] | mixed | nr_inst, Robust to Outliers | 0.0097 | 0.0900 | 0.2279 | 0.0659 | 0.4055 | yes | 1.0000 | raises MCC |
-| 6 | [nr_cor_attr] * [nr_norm] | dataset | nr_cor_attr, nr_norm | -0.1577 | -0.0894 | 0.2399 | 0.0655 | 0.4710 | yes | 1.0000 | lowers MCC |
-| 7 | [log(Prediction Operations)] * [Robust to Outliers] | model | Prediction Operations, Robust to Outliers | -0.0577 | -0.0816 | 0.2202 | 0.0597 | 0.5307 | yes | 1.0000 | lowers MCC |
-| 8 | [log(Processing Units Number)] / [log(nr_class)] | mixed | Processing Units Number, nr_class | -0.0802 | -0.0756 | 0.2045 | 0.0554 | 0.5861 | yes | 0.2000 | lowers MCC |
-| 9 | ([nr_bin] + [nr_norm]) / [log(nr_attr)] | dataset | nr_bin, nr_norm, nr_attr | 0.0118 | 0.0708 | 0.2320 | 0.0519 | 0.6380 | yes | 0.9500 | raises MCC |
-| 10 | [log(Processing Units Number)] * [log(Model Capability)] | model | Processing Units Number, Model Capability | 0.0349 | 0.0645 | 0.1687 | 0.0472 | 0.6852 | yes | 0.5000 | raises MCC |
-| 11 | sqrt(Prediction Operations) | model | Prediction Operations | 0.0771 | 0.0553 | 0.1525 | 0.0405 | 0.7257 | yes | 1.0000 | raises MCC |
-| 12 | ([nr_cor_attr] + [Robust to Outliers]) / [Model Capability] | mixed | nr_cor_attr, Robust to Outliers, Model Capability | -0.3740 | -0.0537 | 0.1427 | 0.0393 | 0.7650 | yes | 0.3000 | lowers MCC |
-| 13 | [log(Processing Units Number)] * [Robust to Outliers] | model | Processing Units Number, Robust to Outliers | 0.0272 | 0.0527 | 0.1315 | 0.0386 | 0.8037 | yes | 0.7000 | raises MCC |
-| 14 | ([nr_cor_attr] + [log(Model Capability)]) / [log(Processing Units Number)] | mixed | nr_cor_attr, Model Capability, Processing Units Number | -0.1385 | -0.0513 | 0.1352 | 0.0376 | 0.8412 | no | 0.8000 | lowers MCC |
-| 15 | [log(Prediction Operations)] / [log(nr_class)] | mixed | Prediction Operations, nr_class | -0.0531 | -0.0500 | 0.1166 | 0.0366 | 0.8778 | no | 0.2000 | lowers MCC |
-| 16 | ([log(inst_to_attr)] + [Active Regularization Mechanisms]) / [log(Training Operations)] | mixed | inst_to_attr, Active Regularization Mechanisms, Training Operations | -0.0457 | -0.0391 | 0.1036 | 0.0286 | 0.9065 | no | 0.5000 | lowers MCC |
-| 17 | [log(inst_to_attr)] * [log(ns_ratio)] | dataset | inst_to_attr, ns_ratio | 0.0036 | 0.0375 | 0.1127 | 0.0274 | 0.9339 | no | 0.7500 | raises MCC |
-| 18 | ([log(nr_class)] + [log(Processing Units Number)]) / [log(Training Operations)] | mixed | nr_class, Processing Units Number, Training Operations | -0.1356 | -0.0370 | 0.0956 | 0.0271 | 0.9610 | no | 0.2000 | lowers MCC |
-| 19 | [log(inst_to_attr)] * [nr_norm] | dataset | inst_to_attr, nr_norm | 0.0006 | 0.0299 | 0.0795 | 0.0219 | 0.9829 | no | 0.6000 | raises MCC |
-| 20 | [nr_cor_attr] * [log(Training Operations)] | mixed | nr_cor_attr, Training Operations | 0.1467 | 0.0233 | 0.0552 | 0.0171 | 1.0000 | no | 0.2500 | raises MCC |
+| 1 | [log(gravity)] * [log(Model Capability)] | mixed | gravity, Model Capability | 0.0070 | 0.1381 | 0.3546 | 0.1057 | 0.1057 | yes | 0.9500 | raises MCC |
+| 2 | [log(nr_inst)] * [nr_outliers] | dataset | nr_inst, nr_outliers | -0.0001 | -0.1340 | 0.1170 | 0.1026 | 0.2083 | yes | 0.1500 | lowers MCC |
+| 3 | [log(eq_num_attr)] * [log(nr_class)] | dataset | eq_num_attr, nr_class | -0.0931 | -0.1187 | 0.3989 | 0.0909 | 0.2991 | yes | 0.8500 | lowers MCC |
+| 4 | [log(eq_num_attr)] / [log(Processing Units Number)] | mixed | eq_num_attr, Processing Units Number | -0.2286 | -0.1107 | 0.2742 | 0.0847 | 0.3839 | yes | 0.7500 | lowers MCC |
+| 5 | [log(gravity)] / [log(Processing Units Number)] | mixed | gravity, Processing Units Number | -0.0163 | -0.1001 | 0.2560 | 0.0767 | 0.4605 | yes | 1.0000 | lowers MCC |
+| 6 | [log(Processing Units Number)] / [log(nr_class)] | mixed | Processing Units Number, nr_class | -0.0900 | -0.0849 | 0.2296 | 0.0650 | 0.5255 | yes | 0.8500 | lowers MCC |
+| 7 | [nr_cor_attr] / [log(Processing Units Number)] | mixed | nr_cor_attr, Processing Units Number | -2.4158 | -0.0832 | 0.2098 | 0.0637 | 0.5892 | yes | 0.4500 | lowers MCC |
+| 8 | [nr_bin] * [log(Model Capability)] | mixed | nr_bin, Model Capability | 0.0017 | 0.0814 | 0.0957 | 0.0623 | 0.6516 | yes | 0.8000 | raises MCC |
+| 9 | 1/Fitting Regime | model | Fitting Regime | 0.2833 | 0.0794 | 0.2125 | 0.0608 | 0.7124 | yes | 0.7500 | raises MCC |
+| 10 | [log(gravity)] / [log(nr_attr)] | dataset | gravity, nr_attr | -0.0209 | -0.0773 | 0.2248 | 0.0591 | 0.7715 | yes | 0.5000 | lowers MCC |
+| 11 | [log(gravity)] * [log(Fitting Regime)] | mixed | gravity, Fitting Regime | -0.0060 | -0.0717 | 0.1526 | 0.0549 | 0.8264 | yes | 0.6500 | lowers MCC |
+| 12 | [log(Input Distribution Modelling)] * [log(Processing Units Number)] | model | Input Distribution Modelling, Processing Units Number | -0.0758 | -0.0700 | 0.1437 | 0.0536 | 0.8800 | no | 0.8000 | lowers MCC |
+| 13 | [log(nr_class)] / [log(Processing Units Number)] | mixed | nr_class, Processing Units Number | -0.1928 | -0.0633 | 0.1708 | 0.0485 | 0.9285 | no | 0.7500 | lowers MCC |
+| 14 | [nr_cor_attr] * [log(Processing Units Number)] | mixed | nr_cor_attr, Processing Units Number | 0.3232 | 0.0374 | 0.0860 | 0.0286 | 0.9571 | no | 0.4500 | raises MCC |
+| 15 | 1/gravity | dataset | gravity | 0.2035 | 0.0282 | 0.0142 | 0.0216 | 0.9787 | no | 0.2500 | raises MCC |
+| 16 | Fitting Regime^2 | model | Fitting Regime | 0.0042 | 0.0279 | 0.0636 | 0.0213 | 1.0000 | no | 0.4000 | raises MCC |
 
 ### The 8 largest terms, in words
 
-(13 terms are flagged major; the leading 8 are written out, and the table above carries the rest.)
+(11 terms are flagged major; the leading 8 are written out, and the table above carries the rest.)
 
-1. `([log(eq_num_attr)] + [log(gravity)]) / [log(Training Operations)]` (mixed) lowers MCC: one standard deviation of this term is worth -0.128 MCC, it moves predicted MCC by 0.372 across the middle 80% of its observed range, it carries 9.4% of the equation's weight mass, and it was selected in 10% of folds.
-2. `[log(eq_num_attr)] * [log(nr_class)]` (dataset) lowers MCC: one standard deviation of this term is worth -0.122 MCC, it moves predicted MCC by 0.409 across the middle 80% of its observed range, it carries 8.9% of the equation's weight mass, and it was selected in every fold.
-3. `([log(eq_num_attr)] + [log(ns_ratio)]) / [log(Processing Units Number)]` (mixed) lowers MCC: one standard deviation of this term is worth -0.121 MCC, it moves predicted MCC by 0.329 across the middle 80% of its observed range, it carries 8.9% of the equation's weight mass, and it was selected in 95% of folds.
-4. `[log(Model Capability)] / [log(nr_class)]` (mixed) raises MCC: one standard deviation of this term is worth +0.093 MCC, it moves predicted MCC by 0.261 across the middle 80% of its observed range, it carries 6.8% of the equation's weight mass, and it was selected in every fold.
-5. `[log(nr_inst)] * [Robust to Outliers]` (mixed) raises MCC: one standard deviation of this term is worth +0.090 MCC, it moves predicted MCC by 0.228 across the middle 80% of its observed range, it carries 6.6% of the equation's weight mass, and it was selected in every fold.
-6. `[nr_cor_attr] * [nr_norm]` (dataset) lowers MCC: one standard deviation of this term is worth -0.089 MCC, it moves predicted MCC by 0.240 across the middle 80% of its observed range, it carries 6.5% of the equation's weight mass, and it was selected in every fold.
-7. `[log(Prediction Operations)] * [Robust to Outliers]` (model) lowers MCC: one standard deviation of this term is worth -0.082 MCC, it moves predicted MCC by 0.220 across the middle 80% of its observed range, it carries 6.0% of the equation's weight mass, and it was selected in every fold.
-8. `[log(Processing Units Number)] / [log(nr_class)]` (mixed) lowers MCC: one standard deviation of this term is worth -0.076 MCC, it moves predicted MCC by 0.205 across the middle 80% of its observed range, it carries 5.5% of the equation's weight mass, and it was selected in 20% of folds.
+1. `[log(gravity)] * [log(Model Capability)]` (mixed) raises MCC: one standard deviation of this term is worth +0.138 MCC, it moves predicted MCC by 0.355 across the middle 80% of its observed range, it carries 10.6% of the equation's weight mass, and it was selected in 95% of folds.
+2. `[log(nr_inst)] * [nr_outliers]` (dataset) lowers MCC: one standard deviation of this term is worth -0.134 MCC, it moves predicted MCC by 0.117 across the middle 80% of its observed range, it carries 10.3% of the equation's weight mass, and it was selected in 15% of folds.
+3. `[log(eq_num_attr)] * [log(nr_class)]` (dataset) lowers MCC: one standard deviation of this term is worth -0.119 MCC, it moves predicted MCC by 0.399 across the middle 80% of its observed range, it carries 9.1% of the equation's weight mass, and it was selected in 85% of folds.
+4. `[log(eq_num_attr)] / [log(Processing Units Number)]` (mixed) lowers MCC: one standard deviation of this term is worth -0.111 MCC, it moves predicted MCC by 0.274 across the middle 80% of its observed range, it carries 8.5% of the equation's weight mass, and it was selected in 75% of folds.
+5. `[log(gravity)] / [log(Processing Units Number)]` (mixed) lowers MCC: one standard deviation of this term is worth -0.100 MCC, it moves predicted MCC by 0.256 across the middle 80% of its observed range, it carries 7.7% of the equation's weight mass, and it was selected in every fold.
+6. `[log(Processing Units Number)] / [log(nr_class)]` (mixed) lowers MCC: one standard deviation of this term is worth -0.085 MCC, it moves predicted MCC by 0.230 across the middle 80% of its observed range, it carries 6.5% of the equation's weight mass, and it was selected in 85% of folds.
+7. `[nr_cor_attr] / [log(Processing Units Number)]` (mixed) lowers MCC: one standard deviation of this term is worth -0.083 MCC, it moves predicted MCC by 0.210 across the middle 80% of its observed range, it carries 6.4% of the equation's weight mass, and it was selected in 45% of folds.
+8. `[nr_bin] * [log(Model Capability)]` (mixed) raises MCC: one standard deviation of this term is worth +0.081 MCC, it moves predicted MCC by 0.096 across the middle 80% of its observed range, it carries 6.2% of the equation's weight mass, and it was selected in 80% of folds.
 
 ### Large terms the folds disagreed on
 
-3 of the major terms were selected by fewer than half of the folds. A large weight and a low selection frequency together mean the term is doing its work for *this* training set and would be replaced by something else on another, which the equation as printed does not show. **Do not build guidance on these.**
+2 of the major terms were selected by fewer than half of the folds. A large weight and a low selection frequency together mean the term is doing its work for *this* training set and would be replaced by something else on another, which the equation as printed does not show. **Do not build guidance on these.**
 
 | rank | term | group | beta | share | stability |
 |---|---|---|---|---|---|
-| 1 | ([log(eq_num_attr)] + [log(gravity)]) / [log(Training Operations)] | mixed | -0.1279 | 0.0937 | 0.1000 |
-| 8 | [log(Processing Units Number)] / [log(nr_class)] | mixed | -0.0756 | 0.0554 | 0.2000 |
-| 12 | ([nr_cor_attr] + [Robust to Outliers]) / [Model Capability] | mixed | -0.0537 | 0.0393 | 0.3000 |
+| 2 | [log(nr_inst)] * [nr_outliers] | dataset | -0.1340 | 0.1026 | 0.1500 |
+| 7 | [nr_cor_attr] / [log(Processing Units Number)] | mixed | -0.0832 | 0.0637 | 0.4500 |
 
 ### Reading the terms in blocks
 
 An additive form invites reading one term at a time, and that works when one or two weights dominate. When they do not, the honest unit is larger than a term and smaller than the equation: terms whose per-row contributions move together say the same thing about a row and can be read as one block. Grouping is on the contributions rather than on shared features, because two terms can share no feature and still track each other.
 
-13 blocks over 20 terms, the largest holding 5 terms and 26% of the weight mass.
+12 blocks over 16 terms, the largest holding 4 terms and 25% of the weight mass.
 
 | group | n_terms | share | effect | direction | shared | terms |
 |---|---|---|---|---|---|---|
-| 1 | 5 | 0.2604 | 0.7153 | raises MCC |  | sqrt(Prediction Operations) ; [log(Processing Units Number)] * [Robust to Outliers] ; [log(Processing Units Number)] * [log(Model Capability)] ; [log(Model Capability)] / [log(nr_class)] ; [log(nr_inst)] * [Robust to Outliers] |
-| 2 | 2 | 0.0991 | 0.3069 | lowers MCC | Robust to Outliers | [log(Prediction Operations)] * [Robust to Outliers] ; ([nr_cor_attr] + [Robust to Outliers]) / [Model Capability] |
-| 3 | 1 | 0.0937 | 0.3720 | lowers MCC | Training Operations, eq_num_attr, gravity | ([log(eq_num_attr)] + [log(gravity)]) / [log(Training Operations)] |
-| 4 | 2 | 0.0920 | 0.3125 | lowers MCC | nr_class | [log(Processing Units Number)] / [log(nr_class)] ; [log(Prediction Operations)] / [log(nr_class)] |
-| 5 | 1 | 0.0890 | 0.4085 | lowers MCC | eq_num_attr, nr_class | [log(eq_num_attr)] * [log(nr_class)] |
-| 6 | 1 | 0.0887 | 0.3286 | lowers MCC | Processing Units Number, eq_num_attr, ns_ratio | ([log(eq_num_attr)] + [log(ns_ratio)]) / [log(Processing Units Number)] |
-| 7 | 2 | 0.0738 | 0.2639 | raises MCC | nr_norm | [log(inst_to_attr)] * [nr_norm] ; ([nr_bin] + [nr_norm]) / [log(nr_attr)] |
-| 8 | 1 | 0.0655 | 0.2399 | lowers MCC | nr_cor_attr, nr_norm | [nr_cor_attr] * [nr_norm] |
-| 9 | 1 | 0.0376 | 0.1352 | lowers MCC | Model Capability, Processing Units Number, nr_cor_attr | ([nr_cor_attr] + [log(Model Capability)]) / [log(Processing Units Number)] |
-| 10 | 1 | 0.0286 | 0.1036 | lowers MCC | Active Regularization Mechanisms, Training Operations, inst_to_attr | ([log(inst_to_attr)] + [Active Regularization Mechanisms]) / [log(Training Operations)] |
-| 11 | 1 | 0.0274 | 0.1127 | raises MCC | inst_to_attr, ns_ratio | [log(inst_to_attr)] * [log(ns_ratio)] |
-| 12 | 1 | 0.0271 | 0.0956 | lowers MCC | Processing Units Number, Training Operations, nr_class | ([log(nr_class)] + [log(Processing Units Number)]) / [log(Training Operations)] |
-| 13 | 1 | 0.0171 | 0.0552 | raises MCC | Training Operations, nr_cor_attr | [nr_cor_attr] * [log(Training Operations)] |
+| 1 | 4 | 0.2515 | 0.6077 | lowers MCC | gravity | 1/Fitting Regime ; [log(gravity)] / [log(nr_attr)] ; [log(gravity)] * [log(Fitting Regime)] ; [log(gravity)] / [log(Processing Units Number)] |
+| 2 | 2 | 0.1756 | 0.5023 | lowers MCC | eq_num_attr | [log(eq_num_attr)] * [log(nr_class)] ; [log(eq_num_attr)] / [log(Processing Units Number)] |
+| 3 | 1 | 0.1057 | 0.3546 | raises MCC | Model Capability, gravity | [log(gravity)] * [log(Model Capability)] |
+| 4 | 1 | 0.1026 | 0.1170 | lowers MCC | nr_inst, nr_outliers | [log(nr_inst)] * [nr_outliers] |
+| 5 | 1 | 0.0650 | 0.2296 | lowers MCC | Processing Units Number, nr_class | [log(Processing Units Number)] / [log(nr_class)] |
+| 6 | 1 | 0.0637 | 0.2098 | lowers MCC | Processing Units Number, nr_cor_attr | [nr_cor_attr] / [log(Processing Units Number)] |
+| 7 | 1 | 0.0623 | 0.0957 | raises MCC | Model Capability, nr_bin | [nr_bin] * [log(Model Capability)] |
+| 8 | 1 | 0.0536 | 0.1437 | lowers MCC | Input Distribution Modelling, Processing Units Number | [log(Input Distribution Modelling)] * [log(Processing Units Number)] |
+| 9 | 1 | 0.0485 | 0.1708 | lowers MCC | Processing Units Number, nr_class | [log(nr_class)] / [log(Processing Units Number)] |
+| 10 | 1 | 0.0286 | 0.0860 | raises MCC | Processing Units Number, nr_cor_attr | [nr_cor_attr] * [log(Processing Units Number)] |
+| 11 | 1 | 0.0216 | 0.0142 | raises MCC | gravity | 1/gravity |
+| 12 | 1 | 0.0213 | 0.0636 | raises MCC | Fitting Regime | Fitting Regime^2 |
 
 ### Which features the search reached for
 
-**16 of 18** available meta-features appear in the equation. `share` sums the weight mass of every term a feature appears in, so a feature in two terms is credited both and the column does not sum to 1 — it answers how much of the equation touches this feature, not how much it owns. A feature the search declined to use after seeing every transform of it is itself a result.
+**12 of 18** available meta-features appear in the equation. `share` sums the weight mass of every term a feature appears in, so a feature in two terms is credited both and the column does not sum to 1 — it answers how much of the equation touches this feature, not how much it owns. A feature the search declined to use after seeing every transform of it is itself a result.
 
 | feature | meaning | n_terms | share | transforms | operations |
 |---|---|---|---|---|---|
-| Processing Units Number | model capacity (log processing units) | 6 | 0.2946 | log | product, ratio, sum_ratio |
-| nr_class | number of classes | 5 | 0.2763 | log | product, ratio, sum_ratio |
-| eq_num_attr | equivalent number of attributes (effective feature count) | 3 | 0.2714 | log | product, sum_ratio |
-| Robust to Outliers | built-in robustness to outliers | 4 | 0.2036 | id | product, sum_ratio |
-| Model Capability | learner family's capability rank in the tabular-ML literature (1-10) | 4 | 0.1923 | id, log | product, ratio, sum_ratio |
-| Training Operations | training cost (log operations) | 4 | 0.1665 | log | product, sum_ratio |
-| nr_cor_attr | proportion of correlated attribute pairs | 4 | 0.1594 | id | product, sum_ratio |
-| nr_norm | number of normally distributed attributes | 3 | 0.1392 | id | product, sum_ratio |
-| Prediction Operations | inference cost (log operations) | 3 | 0.1368 | log, sqrt | atom, product, ratio |
-| ns_ratio | noise-to-signal ratio | 2 | 0.1162 | log | product, sum_ratio |
-| gravity | gravity (separation between the majority and minority class centres) | 1 | 0.0937 | log | sum_ratio |
-| inst_to_attr | instances per attribute | 3 | 0.0780 | log | product, sum_ratio |
-| nr_inst | number of instances in the source dataset (before sampling) | 1 | 0.0659 | log | product |
-| nr_attr | number of attributes | 1 | 0.0519 | log | sum_ratio |
-| nr_bin | number of binary attributes | 1 | 0.0519 | id | sum_ratio |
-| Active Regularization Mechanisms | number of active regularisation mechanisms | 1 | 0.0286 | id | sum_ratio |
+| Processing Units Number | model capacity (log processing units) | 7 | 0.4208 | log | product, ratio |
+| gravity | gravity (separation between the majority and minority class centres) | 5 | 0.3180 | inv, log | atom, product, ratio |
+| nr_class | number of classes | 3 | 0.2043 | log | product, ratio |
+| eq_num_attr | equivalent number of attributes (effective feature count) | 2 | 0.1756 | log | product, ratio |
+| Model Capability | learner family's capability rank in the tabular-ML literature (1-10) | 2 | 0.1681 | log | product |
+| Fitting Regime | how the parameters are reached, closed form to in-context (1-5) | 3 | 0.1370 | inv, log, sq | atom, product |
+| nr_inst | number of instances in the source dataset (before sampling) | 1 | 0.1026 | log | product |
+| nr_outliers | number of attributes containing outliers | 1 | 0.1026 | id | product |
+| nr_cor_attr | proportion of correlated attribute pairs | 2 | 0.0923 | id | product, ratio |
+| nr_bin | number of binary attributes | 1 | 0.0623 | id | product |
+| nr_attr | number of attributes | 1 | 0.0591 | log | ratio |
+| Input Distribution Modelling | how much of the input distribution the learner models (1-5) | 1 | 0.0536 | log | product |
 | class_ent | class entropy (how evenly the labels are spread) | 0 | 0.0000 |  |  |
-| nr_outliers | number of attributes containing outliers | 0 | 0.0000 |  |  |
+| inst_to_attr | instances per attribute | 0 | 0.0000 |  |  |
+| nr_norm | number of normally distributed attributes | 0 | 0.0000 |  |  |
+| ns_ratio | noise-to-signal ratio | 0 | 0.0000 |  |  |
+| Solution Stochasticity | how deep randomisation reaches into the fit (1-5) | 0 | 0.0000 |  |  |
+| Loss Margin Behaviour | how hard the loss penalises points far from the boundary (1-5) | 0 | 0.0000 |  |  |
 
 ### Which operations the equation needed
 
@@ -178,38 +168,38 @@ The vocabulary offers five operations and five transforms and the search is free
 
 | kind | name | offered | n_terms | share |
 |---|---|---|---|---|
-| operation | atom | yes | 1 | 0.0405 |
-| operation | ratio | yes | 3 | 0.1602 |
-| operation | product | yes | 9 | 0.4324 |
-| operation | sum_ratio | yes | 7 | 0.3669 |
+| operation | atom | yes | 3 | 0.1037 |
+| operation | ratio | yes | 6 | 0.3977 |
+| operation | product | yes | 7 | 0.4985 |
+| operation | sum_ratio | no | 0 | 0.0000 |
 | operation | ratio_of_sums | no | 0 | 0.0000 |
-| transform | id | yes | 10 | 0.4261 |
-| transform | log | yes | 17 | 0.8547 |
-| transform | sqrt | yes | 1 | 0.0405 |
-| transform | inv | yes | 0 | 0.0000 |
-| transform | sq | yes | 0 | 0.0000 |
+| transform | id | yes | 4 | 0.2572 |
+| transform | log | yes | 13 | 0.8963 |
+| transform | sqrt | yes | 0 | 0.0000 |
+| transform | inv | yes | 2 | 0.0824 |
+| transform | sq | yes | 1 | 0.0213 |
 
 ### Where the equation's variance comes from
 
-- terms over dataset meta-features alone (how hard is this data): 5 terms, 24.7% of the equation's output variance.
-- terms over model meta-features alone (how capable is this model): 4 terms, 16.4% of the equation's output variance.
-- terms mixing dataset and model features (which model suits which data): 11 terms, 59.0% of the equation's output variance.
+- terms over dataset meta-features alone (how hard is this data): 4 terms, 40.8% of the equation's output variance.
+- terms over model meta-features alone (how capable is this model): 3 terms, 3.4% of the equation's output variance.
+- terms mixing dataset and model features (which model suits which data): 9 terms, 55.9% of the equation's output variance.
 
 | group | n_terms | share | effect_sum |
 |---|---|---|---|
-| dataset | 5 | 0.2468 | 0.5012 |
-| model | 4 | 0.1636 | 0.2180 |
-| mixed | 11 | 0.5896 | 0.5215 |
+| dataset | 4 | 0.4077 | 0.3871 |
+| model | 3 | 0.0337 | 0.0352 |
+| mixed | 9 | 0.5586 | 0.5112 |
 
 ## 5. Best practices
 
 A best practice is general, transferable advice that already circulates in the field — not a property of this equation. So the practices below are taken from the literature and this study is used to *weigh* them: each verdict, and the numbers inside it, are computed from this run by `ml_meta_perf.guidance`, against a stated threshold, so other data can overturn any of them.
 
-10 practices assessed: 1 not tested, 1 qualified, 8 supported.
+10 practices assessed: 3 not tested, 2 qualified, 5 supported.
 
 ### 1. Characterise the dataset before choosing a model. What the data is like bounds what any model can reach, and that bound is usually the larger effect.
 
-**Verdict: supported.** Knowing only which dataset a row came from explains 35.4% of MCC variance; knowing only which model, 28.2%. The dataset side is also the better described: twelve dataset meta-features reach 98% of what dataset identity explains, while five model meta-features reach 99% of theirs. Both the effect and our ability to measure it favour the data.
+**Verdict: supported.** Knowing only which dataset a row came from explains 35.4% of MCC variance; knowing only which model, 28.2%. The dataset side is also the better described: twelve dataset meta-features reach 98% of what dataset identity explains, while five model meta-features reach 96% of theirs. Both the effect and our ability to measure it favour the data.
 
 *Practice from:* Zha et al., 'Data-centric AI: A Survey', arXiv:2303.10158 (2023). The data-centric position holds that returns from improving data exceed returns from swapping architectures. It is an argument about where to spend effort.
 
@@ -227,19 +217,19 @@ A best practice is general, transferable advice that already circulates in the f
 
 ### 4. When rows share a group -- a subject, a site, a dataset -- validate by holding out whole groups. A random split reports a number that will not survive deployment.
 
-**Verdict: supported.** The same equation scores R² 0.561 under a random 10-fold split and 0.478 when whole datasets are held out -- 0.083 of pure protocol. Dataset meta-features are constant within a dataset, so a random fold shows the equation rows from a dataset it is being scored on.
+**Verdict: qualified.** The same equation scores R² 0.651 under a random 10-fold split and 0.652 when whole datasets are held out -- -0.001 of pure protocol. Dataset meta-features are constant within a dataset, so a random fold shows the equation rows from a dataset it is being scored on.
 
 *Practice from:* Walsh et al., 'Machine learning reporting standards', Nature Methods 18 (2021). Any feature constant within a group lets the model recognise the group rather than generalise to it, and a random split puts the group on both sides.
 
 ### 5. Spend the first effort on reducing noise in the data, not on a larger model. Noise sets a ceiling that capacity cannot lift.
 
-**Verdict: supported.** Noise-to-signal ratio moves predicted MCC by -0.23 between its lowest and highest decile, and it is one of only two features whose direction inside the equation agrees with its own correlation against MCC -- so it is not an artefact of conditioning. Nothing on the model side of the equation offsets it.
+**Verdict: not tested.** No noise-to-signal practice survived the extraction filters in this run.
 
 *Practice from:* Zha et al., 'Data-centric AI: Perspectives and Challenges', arXiv:2301.04819 (2023). Irreducible error from noisy features or labels bounds every model on that data, so capacity spent against it buys nothing.
 
 ### 6. On real-world data that has not been carefully curated, prefer a learner with built-in robustness to outliers.
 
-**Verdict: supported.** Built-in robustness to outliers carries the largest feature effect in the equation, +0.07 MCC between its lowest and highest decile, and its direction agrees with its plain correlation against MCC. It is the single most actionable thing the equation says about model choice.
+**Verdict: not tested.** No robustness practice survived the extraction filters in this run.
 
 *Practice from:* Grinsztajn et al., arXiv:2207.08815 (2022), on non-smooth targets and outliers. Real tabular data carries outliers that a squared-error learner chases and a split-based or margin-based one largely ignores.
 
@@ -275,11 +265,11 @@ At a glance:
 | Characterise the dataset before choosing a model. What the data is like bounds what any model can reach, and that bound is usually the larger effect. | supported | 0.0718 |
 | On tabular data, start from tree ensembles. Reach for a neural architecture only when a tree ensemble has been tried and found wanting. | supported | 0.2675 |
 | Include a pretrained tabular model (TabPFN, TabICL) in the first round of candidates: it costs one fit and is frequently competitive with a tuned ensemble. | supported | 0.0028 |
-| When rows share a group -- a subject, a site, a dataset -- validate by holding out whole groups. A random split reports a number that will not survive deployment. | supported | 0.0832 |
-| Spend the first effort on reducing noise in the data, not on a larger model. Noise sets a ceiling that capacity cannot lift. | supported | -0.2292 |
-| On real-world data that has not been carefully curated, prefer a learner with built-in robustness to outliers. | supported | 0.0686 |
+| When rows share a group -- a subject, a site, a dataset -- validate by holding out whole groups. A random split reports a number that will not survive deployment. | qualified | -0.0012 |
+| Spend the first effort on reducing noise in the data, not on a larger model. Noise sets a ceiling that capacity cannot lift. | not tested |  |
+| On real-world data that has not been carefully curated, prefer a learner with built-in robustness to outliers. | not tested |  |
 | Match capacity to the problem. A larger, more expensive model is not a safer default; on small tabular problems it is usually a worse one. | supported | -0.4727 |
-| Before adopting a meta-learner to choose models, check it against 'use whatever usually works'. Ranking is an easier problem than prediction and often needs less. | qualified | -0.0029 |
+| Before adopting a meta-learner to choose models, check it against 'use whatever usually works'. Ranking is an easier problem than prediction and often needs less. | qualified | -0.0005 |
 | Report which (dataset, model) runs were excluded and why. Aggregate comparisons over an incomplete grid compare different models on different problems. | supported | 0.0480 |
 | Score imbalanced classification with a metric that accounts for all four confusion-matrix cells -- MCC rather than accuracy or F1. | not tested | 0.0315 |
 
@@ -289,48 +279,42 @@ What the fitted equation says about each raw feature it uses, kept only when the
 
 **These are associations across 20 datasets, not causal claims, and not practices on their own** — a statement about a meta-feature column is a measurement. Section 5 is where they become advice, by supporting or failing to support something a practitioner could already have been told.
 
- 1. [moderate] Higher equivalent number of attributes (effective feature count) went with lower MCC (about 0.37 MCC between its lowest and highest decile).
- 2. [moderate] Higher model capacity (log processing units) went with higher MCC (about 0.30 MCC between its lowest and highest decile).
- 3. [moderate] Higher learner family's capability rank in the tabular-ML literature (1-10) went with higher MCC (about 0.29 MCC between its lowest and highest decile).
- 4. [strong  ] Higher number of attributes went with higher MCC (about 0.24 MCC between its lowest and highest decile).
- 5. [strong  ] Higher number of binary attributes went with higher MCC (about 0.23 MCC between its lowest and highest decile).
- 6. [strong  ] Higher noise-to-signal ratio went with lower MCC (about 0.23 MCC between its lowest and highest decile).
- 7. [moderate] Higher number of classes went with lower MCC (about 0.14 MCC between its lowest and highest decile).
- 8. [moderate] Higher built-in robustness to outliers went with higher MCC (about 0.07 MCC between its lowest and highest decile).
- 9. [moderate] Higher number of instances in the source dataset (before sampling) went with higher MCC (about 0.06 MCC between its lowest and highest decile).
-10. [weak    ] Higher number of active regularisation mechanisms went with lower MCC (about 0.03 MCC between its lowest and highest decile).
+ 1. [moderate] Higher equivalent number of attributes (effective feature count) went with lower MCC (about 0.61 MCC between its lowest and highest decile).
+ 2. [moderate] Higher gravity (separation between the majority and minority class centres) went with lower MCC (about 0.36 MCC between its lowest and highest decile).
+ 3. [moderate] Higher model capacity (log processing units) went with higher MCC (about 0.36 MCC between its lowest and highest decile).
+ 4. [strong  ] Higher learner family's capability rank in the tabular-ML literature (1-10) went with higher MCC (about 0.31 MCC between its lowest and highest decile).
+ 5. [moderate] Higher how the parameters are reached, closed form to in-context (1-5) went with lower MCC (about 0.27 MCC between its lowest and highest decile).
+ 6. [moderate] Higher number of binary attributes went with higher MCC (about 0.25 MCC between its lowest and highest decile).
+ 7. [moderate] Higher how much of the input distribution the learner models (1-5) went with lower MCC (about 0.20 MCC between its lowest and highest decile).
+ 8. [moderate] Higher number of classes went with lower MCC (about 0.11 MCC between its lowest and highest decile).
 
 Evidence:
 
 | feature | meaning | n_terms | direction | effect | stability | confidence |
 |---|---|---|---|---|---|---|
-| eq_num_attr | equivalent number of attributes (effective feature count) | 3 | -0.5319 | -0.3727 | 0.6833 | moderate |
-| Processing Units Number | model capacity (log processing units) | 6 | 0.5022 | 0.3035 | 0.5583 | moderate |
-| Model Capability | learner family's capability rank in the tabular-ML literature (1-10) | 4 | 0.7329 | 0.2867 | 0.6500 | moderate |
-| nr_attr | number of attributes | 1 | 0.6006 | 0.2364 | 0.9500 | strong |
-| nr_bin | number of binary attributes | 1 | 0.9644 | 0.2346 | 0.9500 | strong |
-| ns_ratio | noise-to-signal ratio | 2 | -0.6175 | -0.2292 | 0.8500 | strong |
-| nr_class | number of classes | 5 | -0.4125 | -0.1424 | 0.5200 | moderate |
-| Robust to Outliers | built-in robustness to outliers | 4 | 0.3194 | 0.0686 | 0.7500 | moderate |
-| nr_inst | number of instances in the source dataset (before sampling) | 1 | 0.1509 | 0.0596 | 1.0000 | moderate |
-| Active Regularization Mechanisms | number of active regularisation mechanisms | 1 | -0.3896 | -0.0256 | 0.5000 | weak |
+| eq_num_attr | equivalent number of attributes (effective feature count) | 2 | -0.8399 | -0.6088 | 0.8000 | moderate |
+| gravity | gravity (separation between the majority and minority class centres) | 5 | -0.6053 | -0.3638 | 0.6700 | moderate |
+| Processing Units Number | model capacity (log processing units) | 7 | 0.5362 | 0.3633 | 0.7214 | moderate |
+| Model Capability | learner family's capability rank in the tabular-ML literature (1-10) | 2 | 0.5718 | 0.3101 | 0.8750 | strong |
+| Fitting Regime | how the parameters are reached, closed form to in-context (1-5) | 3 | -0.7842 | -0.2744 | 0.6000 | moderate |
+| nr_bin | number of binary attributes | 1 | 0.8439 | 0.2485 | 0.8000 | moderate |
+| Input Distribution Modelling | how much of the input distribution the learner models (1-5) | 1 | -0.9978 | -0.2049 | 0.8000 | moderate |
+| nr_class | number of classes | 3 | -0.4518 | -0.1071 | 0.8167 | moderate |
 
 ### These are conditional statements, not marginal ones
 
-A practice states what the *equation* does as a feature rises, with every other term present. A marginal correlation states what the feature does alone. They are different quantities, and here **9 of 10 agree** on the sign:
+A practice states what the *equation* does as a feature rises, with every other term present. A marginal correlation states what the feature does alone. They are different quantities, and here **7 of 8 agree** on the sign:
 
 | feature | meaning | marginal | conditional | practice_says | agrees |
 |---|---|---|---|---|---|
-| eq_num_attr | equivalent number of attributes (effective feature count) | -0.1781 | -0.5319 | lower | yes |
-| Processing Units Number | model capacity (log processing units) | 0.3080 | 0.5022 | higher | yes |
-| Model Capability | learner family's capability rank in the tabular-ML literature (1-10) | 0.3908 | 0.7329 | higher | yes |
-| nr_attr | number of attributes | -0.1066 | 0.6006 | higher | no |
-| nr_bin | number of binary attributes | 0.0368 | 0.9644 | higher | yes |
-| ns_ratio | noise-to-signal ratio | -0.3954 | -0.6175 | lower | yes |
-| nr_class | number of classes | -0.0726 | -0.4125 | lower | yes |
-| Robust to Outliers | built-in robustness to outliers | 0.2981 | 0.3194 | higher | yes |
-| nr_inst | number of instances in the source dataset (before sampling) | 0.0565 | 0.1509 | higher | yes |
-| Active Regularization Mechanisms | number of active regularisation mechanisms | -0.2941 | -0.3896 | lower | yes |
+| eq_num_attr | equivalent number of attributes (effective feature count) | -0.1781 | -0.8399 | lower | yes |
+| gravity | gravity (separation between the majority and minority class centres) | -0.2863 | -0.6053 | lower | yes |
+| Processing Units Number | model capacity (log processing units) | 0.3080 | 0.5362 | higher | yes |
+| Model Capability | learner family's capability rank in the tabular-ML literature (1-10) | 0.3908 | 0.5718 | higher | yes |
+| Fitting Regime | how the parameters are reached, closed form to in-context (1-5) | 0.0502 | -0.7842 | lower | no |
+| nr_bin | number of binary attributes | 0.0368 | 0.8439 | higher | yes |
+| Input Distribution Modelling | how much of the input distribution the learner models (1-5) | -0.1889 | -0.9978 | lower | yes |
+| nr_class | number of classes | -0.0726 | -0.4518 | lower | yes |
 
 Disagreement is what conditioning does, not a defect. A marginal correlation mixes a feature's effect with everything it travels with; inside the equation the terms carrying those companions are already present, so what is left for this feature is what it adds beyond them. The practical consequence: **these statements describe what to expect once the other factors are accounted for, not what a scatter plot of that one feature will show** — and the scatter plot is what a reader will accidentally check against.
 
@@ -338,18 +322,18 @@ Disagreement is what conditioning does, not a defect. A marginal correlation mix
 
 R² is the wrong question for a practitioner, who asks whether a model will work on some data rather than what its MCC will be to three decimals. Thresholding both the prediction and the truth turns the equation into a go/no-go rule, scored here on held-out datasets:
 
-| threshold | accuracy | majority | precision | recall | mcc | n_positive |
-|---|---|---|---|---|---|---|
-| 0.3000 | 0.8319 | 0.8130 | 0.8359 | 0.9871 | 0.2876 | 387 |
-| 0.5000 | 0.8382 | 0.7668 | 0.8582 | 0.9452 | 0.5038 | 365 |
-| 0.7000 | 0.8298 | 0.6681 | 0.9044 | 0.8333 | 0.6351 | 318 |
-| 0.8000 | 0.7479 | 0.6261 | 0.9450 | 0.6342 | 0.5611 | 298 |
-| 0.9000 | 0.7206 | 0.5084 | 0.9160 | 0.4959 | 0.5024 | 242 |
+| threshold | accuracy | majority | precision | recall | mcc | f1 | map | n_positive |
+|---|---|---|---|---|---|---|---|---|
+| 0.5000 | 0.8992 | 0.7668 | 0.9249 | 0.9452 | 0.7116 | 0.9350 | 0.9764 | 365 |
+| 0.6000 | 0.8824 | 0.7332 | 0.9246 | 0.9140 | 0.7024 | 0.9193 | 0.9780 | 349 |
+| 0.7000 | 0.8613 | 0.6681 | 0.9406 | 0.8459 | 0.7099 | 0.8907 | 0.9476 | 318 |
+| 0.8000 | 0.8067 | 0.6261 | 0.9518 | 0.7282 | 0.6454 | 0.8251 | 0.9485 | 298 |
+| 0.9000 | 0.7731 | 0.5084 | 0.9467 | 0.5868 | 0.5947 | 0.7245 | 0.9227 | 242 |
 
 Ranking models within a held-out dataset:
 
-- mean rank correlation **0.706**
-- mean top-1 regret **0.008** MCC — what you give up by taking the model the equation ranks first
+- mean rank correlation **0.703**
+- mean top-1 regret **0.006** MCC — what you give up by taking the model the equation ranks first
 
 ## 7. What bounds the result
 
@@ -376,9 +360,9 @@ Validation protocol, same equation, different splits:
 
 | protocol | r2 | mae | rmse | smape | spearman | n |
 |---|---|---|---|---|---|---|
-| random 10-fold (leaky) | 0.5611 | 0.1637 | 0.2273 | 37.2900 | 0.7805 | 476 |
-| leave-one-dataset-out | 0.4779 | 0.1788 | 0.2480 | 40.2098 | 0.7233 | 476 |
-| leave-one-model-out | 0.4276 | 0.1884 | 0.2596 | 42.7049 | 0.7164 | 476 |
+| random 10-fold (leaky) | 0.6510 | 0.1384 | 0.2027 | 34.8494 | 0.8201 | 476 |
+| leave-one-dataset-out | 0.6522 | 0.1378 | 0.2024 | 34.2301 | 0.8235 | 476 |
+| leave-one-model-out | 0.6334 | 0.1418 | 0.2078 | 35.4394 | 0.8150 | 476 |
 
 ## 8. Equation length
 
@@ -386,22 +370,22 @@ Where additional terms stop paying, by knee detection on the accuracy-versus-len
 
 | rule | n_terms | r2_in_sample | r2_loo_dataset |
 |---|---|---|---|
-| knee (in-sample) | 4 | 0.4884 | 0.2146 |
-| knee (loo-dataset) | 8 | 0.5631 | 0.4008 |
-| best loo-dataset | 20 | 0.6141 | 0.4779 |
+| knee (in-sample) | 4 | 0.5413 | 0.5075 |
+| knee (loo-dataset) | 4 | 0.5413 | 0.5075 |
+| best loo-dataset | 16 | 0.6716 | 0.6522 |
 
 | n_terms | r2_in_sample | mae_in_sample | smape_in_sample | r2_loo_dataset | mae_loo_dataset | smape_loo_dataset | r2_loo_model | mae_loo_model | smape_loo_model |
 |---|---|---|---|---|---|---|---|---|---|
-| 2 | 0.3919 | 0.1991 | 40.9992 | 0.2475 | 0.2195 | 43.0270 | 0.3534 | 0.2050 | 41.5836 |
-| 4 | 0.4884 | 0.1821 | 39.9101 | 0.2146 | 0.2226 | 45.1406 | 0.4242 | 0.1906 | 41.2283 |
-| 8 | 0.5631 | 0.1656 | 37.6346 | 0.4008 | 0.1916 | 42.5992 | 0.4926 | 0.1767 | 39.4163 |
-| 12 | 0.5827 | 0.1611 | 37.4330 | 0.4243 | 0.1864 | 41.2940 | 0.4441 | 0.1835 | 41.0332 |
-| 16 | 0.6033 | 0.1563 | 36.3174 | 0.4744 | 0.1776 | 39.5140 | 0.4740 | 0.1816 | 41.0136 |
-| 20 | 0.6141 | 0.1540 | 35.9191 | 0.4779 | 0.1788 | 40.2098 | 0.4276 | 0.1884 | 42.7049 |
-| 24 | 0.6171 | 0.1528 | 35.9010 | 0.4254 | 0.1849 | 41.1521 | 0.4331 | 0.1872 | 42.5160 |
-| 26 | 0.6185 | 0.1526 | 35.7724 | 0.4075 | 0.1882 | 41.0254 | 0.4360 | 0.1868 | 42.3960 |
-| 28 | 0.6192 | 0.1528 | 35.8393 | 0.3828 | 0.1887 | 40.7188 | 0.4441 | 0.1853 | 42.0595 |
-| 32 | 0.6208 | 0.1525 | 35.7301 | 0.4050 | 0.1869 | 40.6903 | 0.4421 | 0.1851 | 41.9706 |
+| 2 | 0.3686 | 0.2042 | 42.8897 | 0.3195 | 0.2116 | 43.9484 | 0.3559 | 0.2064 | 43.1920 |
+| 4 | 0.5413 | 0.1665 | 38.7672 | 0.5075 | 0.1721 | 39.7259 | 0.5197 | 0.1704 | 39.3395 |
+| 8 | 0.6274 | 0.1474 | 35.9672 | 0.5975 | 0.1533 | 36.2182 | 0.6047 | 0.1519 | 36.6175 |
+| 12 | 0.6448 | 0.1423 | 35.4968 | 0.6293 | 0.1458 | 35.9401 | 0.6110 | 0.1491 | 36.4776 |
+| 16 | 0.6716 | 0.1341 | 34.3070 | 0.6522 | 0.1378 | 34.2301 | 0.6334 | 0.1418 | 35.4394 |
+| 20 | 0.6790 | 0.1315 | 33.6893 | 0.6455 | 0.1393 | 34.3806 | 0.6235 | 0.1430 | 35.1486 |
+| 24 | 0.6873 | 0.1288 | 33.2461 | 0.6209 | 0.1479 | 35.7191 | 0.6303 | 0.1407 | 34.7519 |
+| 26 | 0.6876 | 0.1277 | 32.9892 | 0.6154 | 0.1482 | 35.7708 | 0.6234 | 0.1408 | 34.5409 |
+| 28 | 0.6886 | 0.1278 | 33.1362 | 0.5858 | 0.1542 | 36.6031 | 0.6230 | 0.1413 | 35.0438 |
+| 32 | 0.6915 | 0.1277 | 33.1467 | 0.6501 | 0.1381 | 35.4726 | 0.6214 | 0.1423 | 34.9463 |
 
 ## 9. The dataset-only and model-only controls
 
@@ -420,20 +404,16 @@ MCC = +1.24602
       +0.0057269 * ([nr_bin] + [nr_norm]) / [log(nr_attr)]        # beta=+0.0342
 ```
 
-**E2** (12 terms):
+**E2** (8 terms):
 
 ```
-MCC = +1.13288
-      -0.324353 * [log(Processing Units Number)] * [log(Prediction Operations)]  # beta=-0.5880
-      -0.66529 * log(Model Capability)                            # beta=-0.4469
-      +0.22896 * [log(Processing Units Number)] * [log(Model Capability)]  # beta=+0.4228
-      +0.418712 * Robust to Outliers                              # beta=+0.3335
-      -0.649095 * ([Robust to Outliers] + [log(Model Capability)]) / [log(Training Operations)]  # beta=-0.2780
-      +0.369043 * sqrt(Prediction Operations)                     # beta=+0.2645
-      +0.00733152 * Model Capability^2                            # beta=+0.2399
-      -0.940019 * 1/Model Capability                              # beta=-0.2294
-      +0.461942 * ([log(Prediction Operations)] + [Robust to Outliers]) / [log(Training Operations)]  # beta=+0.1618
-      -0.106968 * [log(Prediction Operations)] * [Robust to Outliers]  # beta=-0.1513
-      -0.992064 * [Robust to Outliers] / [Model Capability]       # beta=-0.1453
-      +0.0227057 * Processing Units Number                        # beta=+0.0970
+MCC = +0.46554
+      +0.00549788 * Model Capability^2                            # beta=+0.1799
+      +0.129776 * [log(Processing Units Number)] * [log(Solution Stochasticity)]  # beta=+0.1672
+      +0.559567 * 1/Loss Margin Behaviour                         # beta=+0.1554
+      +0.385192 * [log(Model Capability)] / [Solution Stochasticity]  # beta=+0.1485
+      -0.381236 * [log(Model Capability)] / [log(Processing Units Number)]  # beta=-0.1409
+      -0.196113 * sqrt(Processing Units Number)                   # beta=-0.1400
+      +0.317787 * [log(Loss Margin Behaviour)] / [Model Capability]  # beta=+0.0713
+      +0.0410675 * [log(Loss Margin Behaviour)] * [log(Model Capability)]  # beta=+0.0317
 ```

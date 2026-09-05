@@ -97,12 +97,13 @@ and the fix was to tell the equation, not to change how it was fitted.
 ## Model descriptors are thin, and one of them is asserted
 
 The five model features the corpus ships capture 63% of what model identity explains. That
-gap is what `Model Capability` was added to close, and it closes most of it: E2 goes from
-63% to 99% of its ceiling.
+gap is what the asserted ordinals were added to close, and they close most of it: E2 goes
+from 63% to 96% of its ceiling.
 
-**The column is asserted, not measured, and that is the sharpest limitation in this
-chapter.** Every other feature was computed from a trained instance; this one ranks the ten
-learner families on a ladder taken from the tabular-ML literature (Grinsztajn et al. 2022;
+**Five of the six model features are asserted, not measured, and that is the sharpest
+limitation in this chapter.** `Processing Units Number` is computed from a trained instance.
+`Model Capability` ranks the ten learner families on a ladder taken from the tabular-ML
+literature (Grinsztajn et al. 2022;
 Shwartz-Ziv & Armon 2022; McElfresh et al. 2023; Hollmann et al. 2023). Three consequences
 follow and none should be glossed:
 
@@ -115,8 +116,18 @@ follow and none should be glossed:
   the *lowest* family mean here, 0.454. The overall association is nonetheless strong
   (Spearman 0.733 conditional, 0.391 marginal).
 - **It does not extend to an unclassified model.** A new learner needs a human to place it
-  on the ladder, where the other five features are computed from the trained instance. This
-  is visible in the results: leave-one-model-out falls from 0.489 to 0.428.
+  on the ladder. So does each of `Solution Stochasticity`, `Loss Margin Behaviour`,
+  `Input Distribution Modelling` and `Fitting Regime` — all four are read off a published
+  description of the algorithm, not off a training run. Five of six model features therefore
+  require an act of classification before the equation can be applied to a genuinely new
+  method.
+
+The four mechanism ordinals share the first and third caveats and are **weaker than
+`Model Capability` on the second**, because they were not fitted against anything: each grades
+one mechanism on a stated scale, with `Loss Margin Behaviour` the least defensible of them —
+placing the perceptron criterion above hinge is a choice rather than a consensus. Any term
+over one of these columns is evidence about the ordering claimed here, not about a quantity
+anyone observed.
 
 Richer *measured* descriptors — inductive bias, hypothesis-space characteristics, optimiser
 behaviour — would carry none of these caveats and remain the better answer.
@@ -131,8 +142,10 @@ do both.
 
 ## A per-feature association can flip sign between equations
 
-`Training Operations` is the worked example, and it is the reason the study treats
-per-feature associations as evidence rather than as advice.
+`Training Operations` is the worked example. It is the reason the study treats per-feature
+associations as evidence rather than as advice — and, in the end, the reason the column was
+removed from the corpus altogether. The measurement below is retained because the retirement
+does not make the lesson go away; it is what the lesson cost.
 
 | equation | association | effect | confidence |
 |---|---|---|---|
@@ -149,6 +162,12 @@ rises with model capacity, which raises MCC, and it rises with dataset size, whi
 the hard datasets are. Which of the two an equation ends up expressing depends on what
 *other* terms it has available to absorb the other half — and that depends on the grammar,
 the penalty and the length, none of which the practitioner reading the practice can see.
+
+**The feature was eventually retired for exactly this.** A column that moves with model
+capacity and dataset size at once is not a model descriptor, and two of the other three
+retired columns had the same defect. That is a resolution of this particular case, not of the
+general problem: nothing guarantees the six current features are free of it, and the mitigations
+below are still what stands between a fitted weight and a stated practice.
 
 This generalises past this one feature, and it is the reason the study does not present
 per-feature associations as advice. A measurement like "higher training cost went with
@@ -167,8 +186,8 @@ Three mitigations are in place and none of them is sufficient:
 
 - terms selected in fewer than half the folds produce no practice, which catches
   instability *within* one configuration but says nothing about instability *across*
-  configurations — `Training Operations` sits at 0.66 fold stability in the published
-  equation;
+  configurations — `Training Operations` sat at 0.66 fold stability in the equation
+  published at the time, which was not low enough to suppress it;
 - the marginal correlation is printed beside the conditional direction
   ([chapter 10](10-report.md)), so a reader can at least see when the two disagree, as they
   do here;

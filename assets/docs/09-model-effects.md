@@ -7,8 +7,8 @@ section for why it was measured and then withdrawn.*
 of MCC variance and twelve dataset meta-features recover **99%** of it; model identity
 explains 0.282 and five model meta-features recover only **63%**. The missing third of
 model capability is real and is written down nowhere in this corpus — the features record
-what a model *costs* (`Processing Units Number`, `Training Operations`,
-`Prediction Operations`) and two facts about its construction, but nothing about what it
+what a model *is* — its capacity, and five asserted facts about how it is built — but
+nothing about what it
 is good at.
 
 [Chapter 5](05-oracles.md) measures the same gap from the other side: a rank-1 interaction
@@ -34,28 +34,30 @@ $$\text{correction}_m = b_m + c_m \cdot \log(\mathrm{gravity})$$
 
 | | LOO-dataset R² | MAE |
 |---|---|---|
-| E3, 20 terms | 0.4779 | 0.1788 |
-| + levels only | 0.5194 | 0.1702 |
-| **+ levels and slope** | **0.5839** | **0.1493** |
+| E3, 16 terms | 0.6522 | 0.1378 |
+| + levels only | 0.6693 | 0.1351 |
+| **+ levels and slope** | **0.6693** | **0.1351** |
 | *per-model mean baseline* | *0.2006* | *0.2382* |
 
-**+0.106 of leave-one-dataset-out R² is what perfect model descriptors would still be
-worth**, and it remains the largest number this study has attached to any single change:
-no modification to the equation itself — the grammar fix, the arity, the length, the
-penalty — moved transfer by more than 0.03.
+**+0.017 of leave-one-dataset-out R² is what perfect model descriptors would still be
+worth.** This chapter's whole reason for existing was that the number used to be **+0.106**,
+and before `Model Capability` was added, **+0.121** against an E3 scoring 0.4658. It is now
+small enough that the question it was asked to answer is closed.
 
-**It was +0.121 before `Model Capability` was added**, against an E3 that scored 0.4658.
-The column took roughly an eighth of the available headroom and left the rest, which is the
-cleanest statement of both what it is worth and what it is not: knowing which of ten
-families a learner belongs to is a real part of model identity, and a small part of it.
+That is the strongest evidence in the study that the model side is adequately described.
+Free per-model numbers are the best any descriptor set could do at telling these 25 models
+apart — they are model identity itself, fitted out of fold — so what they add on top of the
+equation is exactly the information the descriptors are missing. Six columns now leave 0.017
+of it on the table, where five columns left 0.106.
+
+**The slope adds nothing at all**, where it used to add +0.065 on top of the levels. A
+per-model slope on a dataset feature is an interaction the equation could not express; the
+equation now expresses it directly, in nine mixed terms out of sixteen. The row is kept at
+its unchanged value rather than deleted, because a measurement going to zero is the result.
+
 The rank columns of this table are dropped rather than refreshed, because the ranking
-comparison they fed now lives in [chapter 4](04-evaluation.md), where E3 no longer trails
-the baseline.
-
-The slope's carrier is `log(gravity)`, chosen by training residual sum of squares over all
-twelve dataset features, in **20 folds of 20**. `gravity` is the separation between class
-centres, and it enters log-compressed under the library's own rule
-([chapter 2](02-equation-form.md)).
+comparison they fed now lives in [chapter 4](04-evaluation.md), where E3 beats the baseline
+on every head-weighted measure.
 
 ## Why the model side, specifically
 
@@ -202,4 +204,4 @@ reason that argument now carries a number.
 `ml_meta_perf.identity` ships tested and is wired into no pipeline. It stays in the tree where
 the agglomerative-construction experiment of [chapter 3](03-search-and-fitting.md) did not,
 because this one produces a number the study quotes — the +0.106 ceiling — rather than only
-a conclusion. `ml_meta_perf.identity.correct_out_of_fold`, applied to a finished `cross_validate_path`, reproduces the table above.
+a conclusion. `ml_meta_perf.identity.correct_out_of_fold`, applied to a finished `cross_validate_fixed_form`, reproduces the table above.

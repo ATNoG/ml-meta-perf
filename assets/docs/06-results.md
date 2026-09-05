@@ -14,8 +14,8 @@ lands on the per-dataset mean. That is not a defect to be corrected; it is the c
 measures how much of MCC is explained by *the data alone*.
 
 **E2 — model features only.** The mirror of E1, added to settle whether model choice
-outweighs dataset difficulty. There are only five model features and one is constant per
-model, so E2 is short by necessity rather than by design.
+outweighs dataset difficulty. There are six model features, five of them constant per model,
+so E2 is short by necessity rather than by design.
 
 **E3 — dataset and model features.** One input, one output. E3 can express variation
 *within* a dataset, which is exactly what E1 structurally cannot do, and it is the
@@ -58,8 +58,8 @@ re-running it on the enlarged feature set would change both numbers without chan
 is larger.</sub>
 
 Its optimum collapses to a single term and everything longer goes negative. The reason is
-structural: three of the five model features are operation counts, which are functions of
-the dataset size as well as the model, so they are **not** constant within a model.
+structural: `Processing Units Number` is a function of the dataset's shape as well as the
+model, so it is **not** constant within a model.
 Averaging them discards real variation, which is exactly what aggregating E1 does not do.
 The two controls are not symmetric in the data even though they are symmetric in intent —
 which is itself the argument for fitting both the same way and letting the optimizer
@@ -74,9 +74,9 @@ scale and one table:
 |---|---|---|---|---|
 | E1 (dataset only) | 7 | 0.349 | 0.210 | 0.657 |
 | *E1's ceiling — the true dataset means* | | *0.354* | *0.204* | *0.653* |
-| E2 (model only) | 12 | 0.281 | 0.227 | 0.521 |
+| E2 (model only) | 8 | 0.271 | 0.230 | 0.469 |
 | *E2's ceiling — the true model means* | | *0.282* | *0.226* | *0.487* |
-| **E3 (dataset + model)** | **20** | **0.614** | **0.154** | **0.804** |
+| **E3 (dataset + model)** | **16** | **0.672** | **0.134** | **0.828** |
 | *additive oracle* | | *0.6605* | *0.145* | *0.810* |
 
 ![Equations against their ceilings](../figures/equation_comparison.png)
@@ -98,25 +98,23 @@ that is the column the next section reads.
 
 | | terms | in-sample R² | LOO-dataset R² | LOO-model R² |
 |---|---|---|---|---|
-| E1 | 7 | 0.349 | 0.217 | 0.294 |
-| E2 | 12 | 0.281 | 0.151 | 0.188 |
-| **E3** | **20** | **0.614** | **0.478** | **0.428** |
+| E1 | 7 | 0.349 | 0.341 | 0.306 |
+| E2 | 8 | 0.271 | 0.203 | 0.242 |
+| **E3** | **16** | **0.672** | **0.652** | **0.633** |
 
 Both controls are now reported under both protocols, which the aggregated E1 could not be.
 The pattern is the one the design predicts and is worth checking rather than assuming: E1
 transfers *better* across models (0.294) than across datasets (0.217), because it predicts
 a per-dataset constant and a new model does not change it; E2 is the mirror.
 
-**E3 transfers better across datasets than across models, and that is new.** Until
-`Model Capability` was added the two were close (0.466 and 0.489). The column is constant
-within a learner family and asserted by hand, so holding out a whole model removes a value
-the equation cannot recompute — 0.489 falls to 0.428 while leave-one-dataset-out rises.
-That asymmetry is a property of the feature, not of the search, and
-[chapter 8](08-limitations.md) treats it as the cost it is.
+**E3's two transfer numbers are now close** — 0.652 and 0.633, against a fit of 0.672. An
+equation that loses under 0.04 R² when a whole dataset or a whole learner is withheld is
+transferring, not memorising, and the gap between the two protocols is small enough that
+neither half of the meta-data is carrying the equation alone.
 
-E1 is unstable at short lengths — its leave-one-dataset-out R² is **negative at 1 to 4
-terms** and only turns positive at 5. Twenty datasets is a small sample for a curve, and
-this is what that looks like.
+Five of the six model features are constant within a learner, so holding out a model removes
+values the equation cannot recompute from the remaining rows. That it costs only 0.019 is the
+measurement; [chapter 8](08-limitations.md) treats the asserted ladders as the cost they are.
 
 ## Does model choice matter more than the dataset?
 
@@ -128,26 +126,34 @@ the equations widen the gap rather than closing it:
 | | equation | own ceiling | captured |
 |---|---|---|---|
 | dataset features | 0.349 | 0.354 — the true dataset means | **98%** |
-| model features, as the corpus ships them | 0.177 | 0.282 — the true model means | **63%** |
-| model features **+ `Model Capability`** | 0.281 | 0.282 — the true model means | **99%** |
-| both | 0.614 | 0.6605 — the additive oracle* | *93%* |
+| model features | 0.271 | 0.282 — the true model means | **96%** |
+| both | 0.672 | 0.6605 — the additive oracle* | *102%* |
 
-<sub>*The additive oracle bounds a two-way *additive* form. E3's mixed terms can cross it
-given enough length ([chapter 5](05-oracles.md)), so its 91% is an indication rather than a
-bound — unlike the two rows above it, which are hard ceilings.</sub>
+<sub>*The additive oracle bounds a two-way *additive* form, and **E3 now crosses it** —
+0.672 against 0.661. That is not an error: nine of E3's sixteen terms multiply or divide a
+dataset feature by a model feature, and such a term expresses interaction the additive oracle
+by construction cannot ([chapter 5](05-oracles.md)). The two rows above it are hard ceilings;
+this one is a reference level the equation is expected to pass.</sub>
 
-**As the corpus ships, its meta-features describe datasets far better than models.**
-Twelve dataset meta-features all but exhaust what dataset identity can explain — 98% of it,
-so there is essentially nothing left for a better dataset descriptor to find. The five model
-descriptors capture under two thirds of what model identity can.
+**Both halves are now close to their own ceilings.** Twelve dataset meta-features all but
+exhaust what dataset identity can explain — 98% of it, so there is essentially nothing left
+for a better dataset descriptor to find. The six model features reach 96% of what model
+identity can, which is the result of replacing the model side rather than a property of the
+corpus as collected.
 
-That asymmetry is the study's central measurement, and the third row is what it took to
-remove it. **One ten-level ordinal, asserted from the tabular-ML literature and absent from
-the corpus, moves the model side from 63% to 99%.** The conclusion is therefore sharper
-than "this meta-dataset lacks model features". It lacks them, the missing information is
-worth roughly a third of what model identity explains, and *most of it is recoverable from
-knowing only which of ten families a learner belongs to* — a fact about how coarse the
-missing signal is, and an unusually cheap remedy.
+That replacement is the study's central measurement, and it is worth stating precisely.
+**As originally collected, the corpus's model descriptors captured under two thirds of what
+model identity explains.** They were counts of capacity and cost, and three of the five moved
+with the dataset as well as the learner. What closes the gap is not more measurement — it is
+**asserted taxonomy**: five ordinals placing each learner on a published ladder, none of them
+observable in a training run, all of them free to write down. The conclusion is therefore
+sharper than "this meta-dataset lacks model features". It lacked them, the missing information
+was worth roughly a third of what model identity explains, and *nearly all of it is
+recoverable from knowing what kind of learner this is* — how it randomises, what loss it
+minimises, how much of the input distribution it models, and how it is fitted.
+
+The cost of that remedy is that these columns are claims rather than observations, and
+[chapter 8](08-limitations.md) is where that is paid for.
 
 Three qualifications keep that from being oversold, all of them developed in
 [chapter 8](08-limitations.md): the ladder is asserted rather than measured, so it cannot be
@@ -165,8 +171,8 @@ are artefacts:
   by construction. Only model terms can score well there. It is a diagnostic for model
   effects, not a statement of relative importance.
 - **Model features carry more in combination than alone.** Adding them to E1 is worth
-  +0.265 R² (0.349 → 0.614), beyond the 0.281 they achieve by themselves. The surplus is
-  dataset×model interaction, which is why **11 of E3's 20 terms are mixed** and drive 59%
+  +0.323 R² (0.349 → 0.672), beyond the 0.271 they achieve by themselves. The surplus is
+  dataset×model interaction, which is why **9 of E3's 16 terms are mixed** and drive 56%
   of its output variance.
 
 ![Contribution shares](../figures/contribution_shares.png)
@@ -188,34 +194,35 @@ reports the result as a design decision rather than as a second result.
 
 | | `max_arity` | `max_abs_zscore` | `penalty` | headline terms |
 |---|---|---|---|---|
-| `DEFAULT_E3` | 3 (316-term library) | 3.0 | 20 | 20 |
+| `DEFAULT_E3` | 2 (270-term library) | 4.25 | 15 | 16 |
 
 | | terms | in-sample R² | LOO-dataset | LOO-model |
 |---|---|---|---|---|
-| `DEFAULT_E3` | 20 | **0.6141** | **0.4779** | 0.4276 |
+| `DEFAULT_E3` | 16 | **0.6716** | **0.6522** | **0.6334** |
 
-It clears 0.6 *and* holds the best leave-one-dataset-out figure in the study — not the trade
-the earlier configurations offered. Two changes got it there and neither was extra search:
-the grammar fix, where symmetric `sum_ratio` gave the search 126 mixed dataset×model terms
-in place of 19, and the sixth model descriptor.
+**All four knobs moved when the model features were replaced, and each for a reason.**
 
-**Why 20 terms and not 14, or 24?** Each was the optimum of a configuration that stopped
-being current. Fourteen belonged to the arity-2 grammar; twenty-four to the arity-3 grammar
-with five model descriptors. Adding a sixth descriptor moved it again:
+`max_arity` falls from 3 to 2. The third arity buys `(f1+f2)/f3`, and against the new model
+side it is simply not selected — the best arity-2 configuration matches the best arity-3 one
+to within 0.007 on both transfer protocols. A smaller grammar that scores the same is not a
+trade.
 
-| | in-sample | LOO-dataset | LOO-model |
-|---|---|---|---|
-| arity 2 implicit, 14 terms, λ=20 | 0.5582 | 0.4429 | 0.4561 |
-| arity 3, 24 terms, λ=5, five model descriptors | 0.5998 | 0.4658 | 0.4887 |
-| **arity 3, 20 terms, λ=20, six** | **0.6141** | **0.4779** | 0.4276 |
+`max_abs_zscore` rises from 3.0 to 4.25. The cap exists to stop a term being carried by a
+handful of extreme rows. Loosening it is safe here in a way it would not have been before:
+every one of the six model features is positive, bounded and occupied at every rung, with
+none of the sparse tail that made a loose cap dangerous.
 
-**The penalty moved with the length and that is not incidental.** λ is the ridge penalty on
-a centred, standardised design whose Gram diagonal is exactly *n* = 476, so λ=20 is a 4%
-shrinkage on an isolated weight — negligible as shrinkage. It matters because it also sits
-in the subset score, `RSS − λ·wᵀw`, so it changes *which* terms the beam selects: half the
-twenty-four-term equation's terms differ between λ=5 and λ=20. Judging an enlarged library
-at the incumbent penalty would have credited the ridge with the new column's effect, or
-blamed it for its cost.
+`penalty` falls from 20 to 15, and on fit alone would fall further. Under the previous
+protocol the ridge did two jobs — shrinking the weights *and* scoring which subset the beam
+chose, since λ sits in `RSS − λ·wᵀw`. With the equation's form now fixed and only its weights
+refit ([chapter 4](04-evaluation.md)), it does only the first, so heavy shrinkage stopped
+paying for itself.
+
+**Why 16 terms and not 14, or 24?** Because leave-one-dataset-out is now *smooth* in length —
+0.644 at 14 terms, 0.652 at 16, 0.656 at 18, 0.658 at 20 — and past sixteen each further pair
+buys under 0.005. Sixteen is a knee. Under the previous protocol the same curve swung by 0.3
+between adjacent lengths, because each length was a different equation refitted twenty times;
+fixing the form removed that variance and made the knee readable.
 
 The length and penalty were re-swept rather than carried over, which is the general lesson:
 **a term budget tuned against one feature set is not evidence about another.**
@@ -235,16 +242,18 @@ MCC = +1.24602
       +0.0057269  * ([nr_bin] + [nr_norm]) / [log(nr_attr)]
 ```
 
-E2, over the five model features:
+E2, over the six model features:
 
 ```
-MCC = -0.00257295
-      +0.081011   * [log(Processing Units Number)] * [Robust to Outliers]
-      -0.0842406  * [log(Processing Units Number)] * [log(Prediction Operations)]
-      +0.197874   * sqrt(Prediction Operations)
-      +0.707659   * [log(Processing Units Number)] / [log(Training Operations)]
-      -0.251995   * ([log(Processing Units Number)] + [Robust to Outliers]) / [log(Training Operations)]
-      +0.0101446  * Training Operations
+MCC = +0.46554
+      +0.559567   * 1/Loss Margin Behaviour
+      +0.00549788 * Model Capability^2
+      -0.196113   * sqrt(Processing Units Number)
+      +0.0410675  * [log(Loss Margin Behaviour)] * [log(Model Capability)]
+      +0.317787   * [log(Loss Margin Behaviour)] / [Model Capability]
+      -0.381236   * [log(Model Capability)] / [log(Processing Units Number)]
+      +0.385192   * [log(Model Capability)] / [Solution Stochasticity]
+      +0.129776   * [log(Processing Units Number)] * [log(Solution Stochasticity)]
 ```
 
 ### How much of each control survives into E3
@@ -253,33 +262,34 @@ Counting terms the published equations share *exactly*:
 
 | | shared with E3 | which |
 |---|---|---|
-| E2 → E3 | **4 of 6** | `sqrt(Prediction Operations)`, `Training Operations`, `log(PU)*[Robust to Outliers]`, `log(PU)*log(Prediction Operations)` |
-| E1 → E3 | **1 of 7** | `[nr_cor_attr] * [nr_norm]` |
+| E2 → E3 | **0 of 8** | — |
+| E1 → E3 | **1 of 7** | `[log(eq_num_attr)] * [log(nr_class)]` |
 
-E3 adopts two thirds of E2's model-side vocabulary unchanged and rebuilds the dataset side
-almost from scratch. That is not a defect in E1: E3 does not need dataset-only terms to
-carry dataset information, because it carries it through the 12 mixed terms instead. E1's
-`([log(gravity)] + [log(nr_class)]) / [log(nr_attr)]` reappears in E3 as
-`([log(gravity)] + [nr_norm]) / [log(nr_attr)]` — same shape, same denominator, re-split
-once a model feature is available to pair with.
+**Almost nothing survives, and that is the honest reading of the controls.** E2's terms are
+built to say as much as possible using *only* model features, so they lean on ratios between
+the model columns themselves — `log(Model Capability) / Solution Stochasticity`, and so on.
+Once a dataset feature is available to pair with, none of those pairings is the best use of a
+term slot, and E3 rebuilds the model side from scratch against dataset partners.
 
-So **the model side of the study is stable across equations and the dataset side is not**,
-which is the inverse of the accuracy story: the dataset features are the ones that nearly
-exhaust their ceiling, and they are the ones whose exact terms do not survive. Both facts
-have the same cause — twelve dataset features admit many near-equivalent ways to say the
-same thing, five model features admit few.
+This does not weaken the controls; it clarifies what they measure. E1 and E2 bound **how much
+of MCC each half of the meta-data explains**, and they do that whether or not their particular
+terms reappear. They were never evidence that E3 would phrase things the same way, and an
+earlier version of this chapter over-read a 4-of-6 overlap as though they were.
 
-E3, on all 476 rows, is 20 terms and is **not reproduced here**. It is printed in full,
+What it does show is that the equation is not a concatenation of its two halves. Nine of E3's
+sixteen terms are mixed, and a mixed term is not available to either control by construction.
+
+E3, on all 476 rows, is 16 terms and is **not reproduced here**. It is printed in full,
 with its term-importance table and its analysis, in [chapter 10](10-report.md) — which is
 regenerated with the equation on every run, so it cannot drift out of step with the code
 the way a copy in this chapter would. An earlier draft of this chapter carried a 14-term
 E3 that had stopped being the published equation several configurations earlier, which is
 why the listing now lives on the generated side.
 
-The shape of it, from that chapter: 11 of the 20 terms mix dataset and model features and
-drive **59%** of the output variance; 4 are model-only (16%) and 5 are dataset-only (25%).
-The weights are flat — they behave like **16.7 equally-weighted terms**, and the largest
-carries under 10% of the mass.
+The shape of it, from that chapter: 9 of the 16 terms mix dataset and model features and
+drive **56%** of the output variance; 3 are model-only (3%) and 4 are dataset-only (41%).
+The weights are flat — they behave like **13.8 equally-weighted terms**, and the largest
+carries under 11% of the mass.
 
 ![What each term is worth](../figures/term_effects.png)
 
@@ -370,13 +380,13 @@ Standard regressors on the same raw features, under the same protocols:
 
 | model | in-sample R² | LOO-dataset R² | LOO-model R² |
 |---|---|---|---|
-| RidgeCV (linear, 17 features) | 0.418 | **-2.002** | 0.328 |
+| RidgeCV (linear, 18 features) | 0.418 | **-2.002** | 0.328 |
 | RandomForest (300 trees) | **0.910** | **0.067** | 0.465 |
 | GradientBoosting | 0.820 | 0.049 | 0.354 |
-| **ml-meta-perf E3 (20 terms)** | 0.614 | **0.478** | 0.428 |
+| **ml-meta-perf E3 (16 terms)** | 0.672 | **0.652** | 0.633 |
 
 Read the RandomForest row across. With 20 dataset groups a forest memorises dataset
-identity almost perfectly and then transfers worse than a 20-term additive equation. This is also
+identity almost perfectly and then transfers worse than a 16-term additive equation. This is also
 the likely provenance of the R² ≈ 0.9 figures reported for opaque meta-models: an
 in-sample or randomly-split forest reproduces them exactly, and the same forest is
 near-useless on an unseen dataset.

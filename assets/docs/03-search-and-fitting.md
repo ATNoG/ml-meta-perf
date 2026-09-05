@@ -237,10 +237,10 @@ Pairing features by their correlation with *each other* rather than with the tar
 0.7 correlation threshold the union library is **172 terms, unchanged**. Every term it
 proposes is already in the enumerated library.
 
-That is a fact about the size of this problem rather than about the idea. With 17 features,
+That is a fact about the size of this problem rather than about the idea. With 18 features,
 exhaustive depth-2 enumeration is *complete*, so any pair-selection heuristic can only
 return a subset of it. Selection heuristics start to pay when the space is too large to
-enumerate, which at 17 features it is not.
+enumerate, which at 18 features it is not.
 
 ### The dendrogram cut: clusters as the equation
 
@@ -401,27 +401,30 @@ Three rules are reported rather than one:
 
 | rule | terms | in-sample R² | LOO-dataset R² |
 |---|---|---|---|
-| knee of the in-sample curve | 4 | 0.488 | 0.215 |
-| knee of the cross-validated curve | 8 | 0.563 | 0.401 |
-| **best cross-validated** | **20** | **0.614** | **0.478** |
+| knee of the in-sample curve | 4 | 0.541 | 0.508 |
+| knee of the cross-validated curve | 8 | 0.627 | 0.598 |
+| **best cross-validated** | **16** | **0.672** | **0.652** |
 
-**Twenty is the headline, and the three rules still disagree.** Both knees land short of it,
-the in-sample knee badly so: it costs 0.26 of transfer to save sixteen terms. The knee is
-the right question for the in-sample curve, which is monotone and flattens; it is the wrong
-question for the cross-validated curve, which is not monotone at 20 groups.
+**Sixteen is the headline, and the three rules now nearly agree.** Both knees land short of
+it, but far less badly than they used to: the cross-validated knee at 8 terms costs 0.055 of
+transfer, where the same comparison against the previous configuration cost 0.26. The
+cross-validated curve is now smooth enough for a knee to mean something, which it was not
+when each length was a separately re-selected equation.
 
-### Sixteen terms is the shorter equation worth knowing about
+### Why not twenty, or twenty-four
 
 | terms | in-sample R² | LOO-dataset R² | LOO-dataset MAE |
 |---|---|---|---|
-| 16 | 0.6033 | 0.4744 | **0.1776** |
-| **20** | **0.6141** | **0.4779** | 0.1788 |
+| 8 | 0.6274 | 0.5975 | 0.1533 |
+| 12 | 0.6448 | 0.6293 | 0.1458 |
+| **16** | **0.6716** | **0.6522** | **0.1378** |
+| 20 | 0.6790 | 0.6455 | 0.1393 |
+| 24 | 0.6873 | 0.6209 | 0.1479 |
 
-Four more terms buy **+0.0035 of transfer** and +0.011 of fit, and *cost* a thousandth of
-MAE. On this configuration the two lengths are all but indistinguishable on transfer, so the
-choice is almost purely about readability — which is a better position to be in than the
-previous grammar's, where the same comparison was worth +0.051 and the trade was real.
-
+Past sixteen, in-sample keeps climbing and transfer turns over: four more terms buy +0.007 of
+fit and *lose* 0.007 of transfer, and by twenty-four the loss is 0.031. That is the shape a
+term budget is supposed to have, and the first configuration in this study to show it
+cleanly.
 The study publishes 20 because the stated rule selects it. Anyone reproducing this with a
 stricter readability budget should take 16 and lose essentially nothing. The rule was fixed
 before the numbers were in, and the fact that it now selects a length whose MAE is very

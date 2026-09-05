@@ -77,7 +77,7 @@ with published seed records, 52 average above 0.99 across all three.
 | model meta-features | 5 | — |
 | **usable features** | **17** | |
 
-Twenty CSV columns minus `Dataset`, `Model` and `MCC` leaves 17 features.
+Twenty-one CSV columns minus `Dataset`, `Model` and `MCC` leaves 18 features.
 
 ### Dataset features
 
@@ -86,12 +86,43 @@ Twenty CSV columns minus `Dataset`, `Model` and `MCC` leaves 17 features.
 
 ### Model features
 
-`Processing Units Number`, `Training Operations`, `Prediction Operations`,
-`Active Regularization Mechanisms`, `Robust to Outliers`.
+`Processing Units Number`, `Model Capability`, `Solution Stochasticity`,
+`Loss Margin Behaviour`, `Input Distribution Modelling`, `Fitting Regime`.
 
-`Robust to Outliers` is constant per model. The three operation counts are already
-log-scaled and vary with the dataset as well as the model, since they are functions of
-dataset size — which is why the model features are not purely model-level.
+Two of these are quantities the corpus measures and four are **asserted taxonomy**, and the
+split matters for how a term over them may be read.
+
+`Processing Units Number` is the measured one. It is a count of the units a learner fits —
+nodes, trees, parameters — and the corpus stores its natural log. That log is a modelling
+claim rather than a formatting choice: capacity has bounded returns, so twice the units is
+not twice the accuracy. Note that a term printed as `log(Processing Units Number)` therefore
+applies a *second* log. It is also the one model feature that varies with the dataset as well
+as the learner, since capacity scales with the data's shape — the model features are not
+purely model-level.
+
+`Model Capability` places a learner's family on a ten-rung ladder taken from the tabular-ML
+literature. Chapter 8 records what it is worth and what it is not; the short version is that
+it is a bijection with the ten families, so anything read off it is a claim about *family*.
+
+The remaining four grade a mechanism, low to high, and are asserted from published
+descriptions of the learners rather than measured from the runs:
+
+| feature | 1 | 5 | grounding |
+|---|---|---|---|
+| `Solution Stochasticity` | deterministic | randomised splits | Breiman (1996, 2001), Ho (1998), Geurts et al. (2006) |
+| `Loss Margin Behaviour` | squared / impurity | perceptron criterion | the standard robustness ordering over losses |
+| `Input Distribution Modelling` | discriminative | generative, per-class covariance | Ng & Jordan (2001); the LDA/QDA hierarchy |
+| `Fitting Regime` | closed form | amortised, in-context | — |
+
+All six are strictly positive with every rung occupied, so the whole term grammar — `log`,
+`sqrt`, `1/f`, `f^2` — is defined on all of them. `tests/test_model_features.py` pins that,
+along with each ladder being gapless and constant within a model.
+
+**Four earlier model columns were retired**: `Training Operations`, `Prediction Operations`,
+`Active Regularization Mechanisms` and `Robust to Outliers`. Removing any of them improves
+leave-one-model-out; three varied *within* a model, which made them partly dataset features
+wearing a model feature's name; and two were zero-based, so no log, root or reciprocal was
+defined on them at all.
 
 ### How the runs were produced, and what that rules out
 

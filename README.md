@@ -26,20 +26,28 @@ equation a practitioner can inspect, argue with, and derive guidance from.
 |---|---|
 | E1 — dataset features only, 7 terms | 0.349 |
 | *ceiling: the true dataset means* | *0.354* |
-| E2 — model features only, 12 terms | 0.281 |
+| E2 — model features only, 8 terms | 0.271 |
 | *ceiling: the true model means* | *0.282* |
-| **E3 — dataset + model, 20 terms** | **0.614** |
+| **E3 — dataset + model, 16 terms** | **0.672** |
 | *additive oracle* | *0.6605* |
 | *additive + rank-1 interaction* | *0.7828* |
 
 All three are fitted on the same 476 rows by the same function and scored under the same
 two protocols, so the gaps between them measure the features and nothing else.
 
+> **Updated 2026-09-05.** Two changes moved every number on this page. The model half of the
+> meta-data was replaced — four measured columns that varied with the dataset gave way to five
+> asserted mechanism ordinals — and cross-validation now fits the equation **once** and refits
+> only its weights per fold, rather than re-running term selection inside every fold. E3 went
+> from 20 terms at 0.613 / 0.474 / 0.428 to **16 terms at 0.672 / 0.652 / 0.633**. See
+> [chapter 4](assets/docs/04-evaluation.md) for the protocol and
+> [chapter 1](assets/docs/01-problem.md) for the features.
+
 | | in-sample | LOO-dataset | LOO-model |
 |---|---|---|---|
-| E1 | 0.349 | 0.217 | 0.294 |
-| E2 | 0.281 | 0.151 | 0.188 |
-| **E3** | **0.614** | **0.478** | **0.428** |
+| E1 | 0.349 | 0.341 | 0.306 |
+| E2 | 0.271 | 0.203 | 0.242 |
+| **E3** | **0.672** | **0.652** | **0.633** |
 
 The three equations differ only in which features they may draw on — **E1** sees the
 dataset, **E2** sees the model, **E3** sees both — so the gaps between them measure what
@@ -47,44 +55,63 @@ each half of the meta-data is worth.
 
 Their R² values share a scale but not a ceiling: E1 predicts one value per dataset, so
 0.354 is the most it could ever reach. The comparable quantity is how much of its own
-ceiling each one captures — **98% for the dataset features, 99% for the model features**.
+ceiling each one captures — **98% for the dataset features, 96% for the model features**.
 
-Reaching parity on the model side took one column that the corpus does not contain.
-`Model Capability` ranks the ten learner families on a capability ladder taken from the
-tabular-ML literature, and adding it moves E2 from **63% of its ceiling to 99%**. The
-finding is therefore sharper than "the corpus lacks model meta-features": the corpus lacks
-them, *and* a single ten-level ordinal asserted from outside it closes most of the gap.
-What that column cannot do is describe a model nobody has classified — see
-[chapter 8](assets/docs/08-limitations.md).
+Reaching parity on the model side took columns the corpus does not contain. As collected, its
+model descriptors were counts of capacity and cost and reached only **63%** of their ceiling;
+three of them varied with the dataset as well as the learner. They are replaced by five
+**asserted** ordinals — a capability ladder over the ten learner families, and four gradings
+of mechanism: how a learner randomises, what loss it minimises, how much of the input
+distribution it models, and how it is fitted. None is observable in a training run; all are
+read off published descriptions of the algorithms. What they cannot do is describe a method
+nobody has classified — see [chapter 8](assets/docs/08-limitations.md).
 
 ![Equations against their ceilings](assets/figures/equation_comparison.png)
 
 Four findings the documentation develops:
 
-- **A random split reports an equation that does not exist.** The same equation scores
-  far higher under random 10-fold than under leave-one-dataset-out, because dataset
-  features are constant within a dataset and a random fold puts the same dataset on both
-  sides. See [chapter 4](assets/docs/04-evaluation.md).
+- **One equation, refit — not one search per fold.** The equation's form is the claim; the
+  folds recalibrate its constants and test whether the claim survives unseen data. Re-running
+  term selection inside every fold answers a different question, and answering it as the first
+  made transfer swing by 0.3 when the length changed by two. See
+  [chapter 4](assets/docs/04-evaluation.md).
 - **The corpus describes datasets far better than models, and the fix comes from outside
-  it.** On the five descriptors the corpus ships, the model equation reaches 63% of its
-  ceiling against the dataset equation's 98%. One asserted capability ordinal takes it to
-  99%. See [chapter 6](assets/docs/06-results.md).
+  it.** As collected, its model descriptors reach 63% of their ceiling against the dataset
+  side's 98%. Five asserted ordinals take the model side to 96%. See
+  [chapter 6](assets/docs/06-results.md).
 - **One interaction component is worth +0.122 R²** and the equation captures none of it.
   Only about **+0.018** of that is reachable from meta-features on both sides, and the
   bottleneck is the model side. See [chapter 5](assets/docs/05-oracles.md).
-- **Better model descriptors are worth at most +0.106 leave-one-dataset-out R²** — measured
-  by replacing them with model identity itself, which is the best any descriptor set could
-  do. That is larger than any change to the equation measured here, and it is the one open
-  direction with room left in it. See [chapter 9](assets/docs/09-model-effects.md).
-- **Mixed dataset×model terms carry the equation.** 11 of 20 terms use features from both
-  groups and drive **59%** of the output variance; dataset-only terms drive 25% and
-  model-only terms 16%. "Which model suits which data" is where the signal is, not "how
+- **Better model descriptors are now worth at most +0.017 leave-one-dataset-out R²** —
+  measured by replacing them with model identity itself, the best any descriptor set could do.
+  That number was **+0.106** before the model side was replaced, so the direction that used to
+  hold all the remaining room is largely closed. See
+  [chapter 9](assets/docs/09-model-effects.md).
+- **Mixed dataset×model terms carry the equation.** 9 of 16 terms use features from both
+  groups and drive **56%** of the output variance; dataset-only terms drive 41% and
+  model-only terms 3%. "Which model suits which data" is where the signal is, not "how
   hard is this data" or "how good is this model". See
   [chapter 7](assets/docs/07-practices.md).
 - **Ten best practices from the literature, weighed against the corpus** — 8 supported,
   1 qualified, 1 untestable here. The strongest: tree-based families average MCC **0.927** against
   **0.660** for neural ones on the datasets where every model ran, with plain MLPs and DNNs
   last of ten families at 0.454. See [chapter 10](assets/docs/10-report.md).
+
+## Work in progress
+
+`main` is what this README describes. Active development is on
+**`feature/descriptor-selection`**, which is looking for a better `data.MODEL_FEATURES` and
+adding two practical evaluations — a binary above/below-threshold decision and a per-dataset
+ranking of models. That work has its own entry point: **[`TODO.md`](TODO.md)**, whose
+"Start here" section is written to bring a cold reader up to speed.
+
+Two things there that matter to anyone reading this file's numbers:
+
+- The feature replacement and the protocol change described above are **merged**; this README
+  and `assets/docs/` describe the current state.
+- What remains open is recorded in `TODO.md`: chiefly whether the study's claim is at learner
+  *family* resolution or individual *model* resolution, which decides whether two of the six
+  model features earn their place.
 
 ## Documentation
 
@@ -138,7 +165,7 @@ That takes about 25 seconds, reproduces every number in this README, and writes:
 | [`assets/docs/10-report.md`](assets/docs/10-report.md) | the generated report — equation, term analysis, practices |
 | `results/e1.json`, `e2.json`, `e3.json` | the fitted equations, reloadable |
 | `results/*.csv` | 17 tables — curves, baselines, oracles, stability, practices |
-| `assets/figures/*.png`, `*.pdf` | the 8 figures, raster and vector |
+| `assets/figures/*.png`, `*.pdf` | the 10 figures, raster and vector |
 
 Everything printed and written is derived from the run. **The report is generated by
 `ml_meta_perf.report`, not written by hand.** It ranks terms by standardised weight, writes a
@@ -230,7 +257,7 @@ practice_effects(practices, "practice_effects.png")
 
 ## Figures
 
-`--figures <dir>` writes 8 figures, each as a PNG and a PDF on a transparent background. **None carries a title or an annotation** — they are
+`--figures <dir>` writes 10 figures, each as a PNG and a PDF on a transparent background. **None carries a title or an annotation** — they are
 made for LaTeX `figure` environments where the caption does that work, and text baked into
 a PNG cannot be restyled or translated. `ml_meta_perf.figures.captions()` returns a suggested
 caption per file, including the disclosures deliberately kept out of the images.

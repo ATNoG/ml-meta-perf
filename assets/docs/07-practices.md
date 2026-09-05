@@ -157,7 +157,7 @@ models run here, the expensive ones were not the ones that scored well on the da
 where they were expensive — and training cost is partly a function of dataset size, so it
 is carrying data difficulty as well as model capacity.
 
-`Training Operations` in particular flips sign between the earlier 14-term equation and the
+`Training Operations` — since retired from the corpus — flipped sign between the earlier 14-term equation and the
 published one, and should not be acted on. It is written up as a limitation in
 [chapter 8](08-limitations.md#a-per-feature-association-can-flip-sign-between-equations), because the
 caveat it raises applies to the whole extraction rather than to that one row.
@@ -216,19 +216,13 @@ as one. Grouping is on the *contributions* rather than on shared features — tw
 share no feature and still track each other, and two terms over the same feature can move
 independently once their transforms differ.
 
-The 24 terms collapse to **11 blocks**, and the top three hold five terms each. `shared`
-names the features a strict majority of a block's terms contain — a genuine question, since
-the grouping never looked at what the terms contained:
+`shared` names the features a strict majority of a block's terms contain — a genuine
+question, since the grouping never looked at what the terms contained.
 
-| block | terms | share | direction | shared features |
-|---|---|---|---|---|
-| 1 | 5 | 22% | **raises** MCC | `Processing Units Number` |
-| 2 | 5 | 22% | **lowers** MCC | `Processing Units Number`, `Prediction Operations` |
-| 3 | 5 | 20% | **lowers** MCC | *(none)* |
-| 4–11 | 1–2 each | 39% between them | mixed | assorted |
-
-**Three blocks carry 64% of the equation**, and they read as three movements rather than 24
-fragments:
+**The block table is regenerated on every run and lives in [chapter 10](10-report.md).** An
+earlier draft copied it into this chapter, where it went on describing a 24-term equation over
+features the corpus no longer carries; the listing now stays on the generated side for the
+same reason E3 itself does.
 
 1. **Capacity helps.** Every term in block 1 rises with `Processing Units Number` — some
    with it in the numerator, some as a divisor with a negative weight, which is why
@@ -247,13 +241,15 @@ printed equation.
 ### 2. Which features the search reached for
 
 Asked of the vocabulary rather than of the weights, so a spread of weights does not blunt
-it. **15 of the 17 available meta-features appear in the equation.** Two do not:
-`nr_outliers` and `Active Regularization Mechanisms` — both were offered under every
-transform and neither earned a place, which is a result about the meta-data rather than
-about the search.
+it. **12 of the 18 available meta-features appear in the equation.** Six do not:
+`class_ent`, `inst_to_attr`, `nr_norm` and `ns_ratio` on the dataset side, and
+`Solution Stochasticity` and `Loss Margin Behaviour` on the model side. All were offered
+under every transform and none earned a place, which is a result about the meta-data rather
+than about the search — and, for the two model ordinals, a live tension: they are the columns
+that let the feature set tell individual learners apart, and the fit does not want them.
 
-`Processing Units Number` appears in 10 of 24 terms and `Training Operations` in 8; the
-dataset features are spread thinner, 2–4 terms each. The full table, with the transforms
+`Processing Units Number` appears in 7 of 16 terms and `gravity` in 5; everything else is
+spread thinner, 1–3 terms each. The full table, with the transforms
 and operations each feature was used under, is in [chapter 10](10-report.md).
 
 ### 3. Which operations the equation needed
@@ -289,10 +285,14 @@ built to avoid.
 including the very largest. A large standardised weight with a low selection frequency
 means the term is doing its work for *this* training set and would be replaced on another;
 printed as a coefficient it looks exactly like a stable one. `report.unstable_majors`
-extracts them so they cannot be quietly read as findings. On the published equation the
-rank-1 term — `(log(gravity) + log(ns_ratio)) / log(Training Operations)`, 8.9% of the mass
-— appears in only 20% of folds, which is why no practice in the table above rests on
-`gravity`.
+extracts them so they cannot be quietly read as findings.
+
+On the current equation the check passes rather than fires: the rank-1 term,
+`[log(gravity)] * [log(Model Capability)]` at 10.6% of the mass, appears in **95% of folds**.
+An earlier configuration's rank-1 term appeared in 20%, which is what the check exists for.
+That the same test now comes back clean is a property of the fixed-form protocol — the
+equation's terms are chosen once, so fold-to-fold reselection measures whether the *form*
+survives resampling rather than which of twenty different equations happened to be fitted.
 
 ## Reading a single prediction
 
@@ -303,13 +303,14 @@ interpretability payoff in its most direct form:
 dataset : 5G_Slicing
 model   : AdaBoost
 actual  : +1.0000
-predicted: +0.9602
+predicted: +1.0000
 
 contribution breakdown:
-     +0.8295   intercept
-     +0.3296   Training Operations
-     -0.3094   [log(eq_num_attr)] * [log(nr_class)]
-     +0.2032   sqrt(Prediction Operations)
+     +1.4787   intercept
+     -0.2843   [log(eq_num_attr)] / [log(Processing Units Number)]
+     -0.2214   [log(eq_num_attr)] * [log(nr_class)]
+     -0.1426   [log(Processing Units Number)] / [log(nr_class)]
+     +0.1417   1/Fitting Regime
      ...
 ```
 

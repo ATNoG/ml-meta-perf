@@ -230,7 +230,7 @@ compression applied to every composite operand. The obvious extensions — highe
 polynomials and `exp` — were measured rather than argued about. **None is technically
 difficult; each is a one-line addition. The constraint is statistical.**
 
-How many of the 17 features survive each transform's admissibility rules, and the best
+How many of the 18 features survive each transform's admissibility rules, and the best
 absolute correlation with MCC among those that do:
 
 | transform | admissible | overflow | single-row spike | best \|r\| |
@@ -246,8 +246,11 @@ absolute correlation with MCC among those that do:
 | `exp(-f)` | 16/17 | 0 | 1 | 0.317 |
 | `exp(f / max f)` | 17/17 | 0 | 0 | 0.372 |
 
-`log` and `1/f` reach only 11 of 17 features because the remaining six contain zeros or
-negatives — that is a property of the data, not a restriction of the grammar.
+`log` and `1/f` reach only 14 of 18 features because `nr_bin`, `nr_cor_attr`, `nr_norm` and
+`nr_outliers` contain zeros — that is a property of the data, not a restriction of the
+grammar. **All four columns that block them are dataset features**: every model feature is
+strictly positive, which is a requirement the model side is now held to by
+`tests/test_model_features.py` rather than a coincidence.
 
 ### Polynomials
 
@@ -306,7 +309,7 @@ published equation rather than from a sweep:
 | `f^2` | **0** | **0%** |
 
 `log` is the workhorse by a wide margin, `sqrt` survives on a single term, and inversion
-and squaring earn nothing at all despite being admissible on 11 and 16 of the 17 features
+and squaring earn nothing at all despite being admissible on 14 and 18 of the 18 features
 respectively. This is the strongest available evidence that the transform vocabulary is
 already past the point of usefulness rather than short of it: the search had these shapes
 available, screened them, and declined them. Trimming `1/f` and `f^2` would shrink the
@@ -330,7 +333,7 @@ between rows is what matters and none of it depends on the baseline.)
 
 Three separate reasons it does not help.
 
-**Standard scaling destroys the vocabulary.** Centring makes **all 17 features take
+**Standard scaling destroys the vocabulary.** Centring makes **all 18 features take
 non-positive values**, so `log`, `sqrt` and `1/f` become undefined for every one of them.
 The library collapses from 172 terms to 97 — only identity, squares and products survive.
 The transforms doing most of the work are precisely the ones that require positivity.
@@ -394,7 +397,7 @@ already met without it. Selection runs on standardised terms and both weight vec
 kept, so every printed equation carries the standardised weight beside the raw one:
 
 ```
--0.0398193 * [log(gravity)] / [log(Training Operations)]   # beta=-0.1371
++0.00702424 * [log(gravity)] * [log(Model Capability)]   # beta=+0.1381
 ```
 
 The raw weight is what you evaluate; `beta` is what you compare. `attribution.term_effects`
