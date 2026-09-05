@@ -333,8 +333,7 @@ CATALOGUE: tuple[Practice, ...] = (
         ),
         source="Chicco & Jurman, BMC Genomics 21:6 (2020)",
         rationale=(
-            "Accuracy and F1 can both look strong on a classifier that has learned only the "
-            "majority class; MCC cannot."
+            "Accuracy and F1 can both look strong on a classifier that has learned only the majority class; MCC cannot."
         ),
     ),
 )
@@ -344,8 +343,7 @@ _BY_ID = {practice.id: practice for practice in CATALOGUE}
 
 def _profile_the_data_first(evidence: Evidence) -> Verdict:
     rows = {
-        row["knowing only"]: float(row["variance_explained"])
-        for row in evidence.decomposition.iter_rows(named=True)
+        row["knowing only"]: float(row["variance_explained"]) for row in evidence.decomposition.iter_rows(named=True)
     }
     dataset, model = rows.get("dataset identity", float("nan")), rows.get("model identity", float("nan"))
     captured_dataset = evidence.scored("E1 (dataset only)") / dataset if dataset else float("nan")

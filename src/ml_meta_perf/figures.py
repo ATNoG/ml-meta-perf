@@ -16,11 +16,13 @@ from ml_meta_perf.experiment import Report
 from ml_meta_perf.plots import (
     contribution_shares,
     count_below_floor,
+    decision_quality,
     equation_comparison,
     error_curve,
     per_group_quality,
     practice_effects,
     predicted_versus_actual,
+    ranking_quality,
     term_count_curve,
     term_effects,
 )
@@ -77,6 +79,8 @@ def generate(report: Report, destination: str | Path, data: str | Path | None = 
         practice_effects(report.practices, folder / "practice_effects.png"),
         contribution_shares(report.shares, folder / "contribution_shares.png"),
         per_group_quality(report.selection, folder / "per_group_quality.png"),
+        decision_quality(report.decision, folder / "decision_quality.png"),
+        ranking_quality(report.selection, folder / "ranking_quality.png"),
     ]
     return written
 
@@ -121,7 +125,17 @@ def captions(report: Report, data: str | Path | None = None) -> dict[str, str]:
             "model features only, and both. Shares are covariance-based and sum to 1."
         ),
         "per_group_quality.png": (
-            "Rank correlation and top-1 regret for each held-out dataset under "
-            "leave-one-dataset-out validation."
+            "Rank correlation and top-1 regret for each held-out dataset under leave-one-dataset-out validation."
+        ),
+        "decision_quality.png": (
+            "Accuracy and F1 of the above-or-below-threshold decision, against the threshold, "
+            "with the majority-class baseline any such rule has to clear. Both curves are "
+            "shown because the classes are unbalanced at the outer thresholds, where the "
+            "baseline reaches high accuracy at an F1 of zero."
+        ),
+        "ranking_quality.png": (
+            "Head-of-list ranking quality for each held-out dataset: average precision and "
+            "mean reciprocal rank over the models, with a star where the equation ranked the "
+            "best model first. Relevance is being within 0.01 MCC of the dataset's best."
         ),
     }

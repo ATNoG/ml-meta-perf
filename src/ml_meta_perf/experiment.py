@@ -42,12 +42,14 @@ from ml_meta_perf.validate import (
     Scores,
     additive_oracle,
     baseline_group_mean,
-    cross_validate_path,
+    cross_validate_fixed_form,
     decision_report,
+    fold_selections,
     oracle_ladder,
     random_kfold_groups,
     ranking_report,
     score,
+    term_stability,
 )
 
 
@@ -74,19 +76,37 @@ class Configuration:
 # removes the caveat entirely. See [chapter 6](../../assets/docs/06-results.md).
 DEFAULT_E1 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=200, max_terms=8, headline_terms=7)
 
-# Model features only. There are six of them, so the library is small and the equation is
-# short by necessity rather than by choice.
-DEFAULT_E2 = Configuration(max_abs_zscore=3.0, penalty=1.0, pool_size=100, max_terms=16, headline_terms=12)
+# Model features only. Re-swept over penalty x length x z-cap x arity on the fixed-form
+# protocol, after `MODEL_FEATURES` was replaced and the reported protocol changed on
+# 2026-09-05. Eight terms is the knee: every longer equation gains under 0.005 on either
+# transfer protocol.
+DEFAULT_E2 = Configuration(max_abs_zscore=3.0, penalty=5.0, pool_size=100, max_terms=12, headline_terms=8, max_arity=2)
 
-# Re-swept over penalty x length on leave-one-dataset-out after `Model Capability` joined
-# the model side. Reusing the previous point (penalty 5, 24 terms) would have credited the
-# ridge with the column's effect or blamed it for its cost: at penalty 5 the enlarged
-# library reaches 0.361 and at penalty 20 it reaches 0.478, and the difference is which
-# terms the beam selects rather than how hard their weights are shrunk -- the penalty is in
-# the selection score, not only in the solve. Penalty 20 is a 4% shrinkage on a 476-row
-# standardised design, which is mild; it is the subset scoring that moves.
+# Re-swept over penalty x length x z-cap x arity after `MODEL_FEATURES` was replaced and the
+# reported protocol changed to fixed form, both on 2026-09-05. All four knobs moved.
+#
+# `penalty` falls from 20 to 15, and would fall further on fit alone. Under the previous
+# protocol the ridge did two jobs -- shrinking the weights *and* scoring which subset the beam
+# chose, since the penalty sits in the selection score. With the form fixed it only does the
+# first, so heavy shrinkage stopped paying for itself. Fifteen rather than the sweep's optimum
+# of one or three: across that whole range the difference is under 0.01 on either transfer
+# protocol, and an essentially unregularised ridge on a 476-row design is not worth that.
+#
+# `max_arity` drops from 3 to 2. The third arity buys `(f1+f2)/f3` and it is not selected --
+# the best arity-2 point matches the best arity-3 point to within 0.007. A smaller grammar
+# that scores the same is not a trade.
+#
+# `max_abs_zscore` rises from 3.0 to 4.25. The cap exists to stop a term being carried by a
+# handful of extreme rows, and it is safe to loosen here in a way it was not before: all six
+# model features are positive, bounded and fully supported, with none of the low-support tail
+# that made a loose cap dangerous when hyperparameter columns were in the pool.
+#
+# Length falls from 20 to 16, and this is the knee rather than the maximum. Leave-one-dataset-
+# out is now *smooth* in length -- 0.644 at 14 terms, 0.652 at 16, 0.656 at 18, 0.658 at 20 --
+# because fixing the form removed the twenty-different-equations variance that made it swing
+# by 0.3 under the previous protocol. Past sixteen terms each further pair buys under 0.005.
 DEFAULT_E3 = Configuration(
-    max_abs_zscore=3.0, penalty=20.0, pool_size=600, max_terms=32, headline_terms=20, max_arity=3
+    max_abs_zscore=4.25, penalty=15.0, pool_size=600, max_terms=32, headline_terms=16, max_arity=2
 )
 
 SWEEP_SIZES: tuple[int, ...] = (2, 4, 8, 12, 16, 20, 24, 26, 28, 32)
@@ -138,6 +158,40 @@ def _curve(
     return pl.DataFrame(rows)
 
 
+def _fixed_form_path(
+    columns: dict[str, np.ndarray],
+    truth: np.ndarray,
+    labels: np.ndarray,
+    config: Configuration,
+    library: Library | None = None,
+) -> tuple[dict[int, CrossValidation], Library]:
+    """Fit once, then cross-validate the resulting forms with only their weights refit.
+
+    The fallback used when a caller has no precomputed path to reuse. It exists so that every
+    cross-validated number in this module comes from the same protocol: one equation, its
+    terms fixed, its constants recalibrated per fold. Re-running selection inside the folds
+    would answer a different question and is never done for a reported figure.
+    """
+    if library is None:
+        library = build_library(
+            DATASET_FEATURES,
+            MODEL_FEATURES,
+            columns,
+            max_arity=config.max_arity,
+            max_abs_zscore=config.max_abs_zscore,
+        )
+    result = fit(
+        library,
+        truth,
+        max_terms=config.max_terms,
+        penalty=config.penalty,
+        pool_size=config.pool_size,
+        beam_width=config.beam_width,
+    )
+    path = cross_validate_fixed_form(library, columns, truth, labels, result.equations, penalty=config.penalty)
+    return path, library
+
+
 def run_equation(
     frame: pl.DataFrame,
     dataset_features: tuple[str, ...],
@@ -178,19 +232,24 @@ def run_equation(
     )
     available = max(result.equations)
     size = min(config.headline_terms, available)
+    # Fixed form: the terms are chosen once, here, and only the weights are refit in each
+    # fold. See `validate.cross_validate_fixed_form` for why that is the reported protocol.
     paths = {
-        label: cross_validate_path(
-            library,
-            columns,
-            truth,
-            labels,
-            max_terms=available,
-            penalty=config.penalty,
-            pool_size=config.pool_size,
-            beam_width=config.beam_width,
-        )
+        label: cross_validate_fixed_form(library, columns, truth, labels, result.equations, penalty=config.penalty)
         for label, labels in (("loo_dataset", datasets), ("loo_model", models))
     }
+    # The same folds with selection re-run inside them, kept only for `stability`: the share
+    # of the equation's terms that survive when a fifth of the data is removed. That is what
+    # licenses fixing the form, and it is not part of any reported score.
+    reselected = fold_selections(
+        library,
+        truth,
+        datasets,
+        n_terms=size,
+        penalty=config.penalty,
+        pool_size=config.pool_size,
+        beam_width=config.beam_width,
+    )
     in_sample = {k: score(truth, eq.predict(columns)) for k, eq in result.equations.items()}
     equation = prune(result.equations[size], columns, truth, penalty=config.penalty)
 
@@ -198,8 +257,10 @@ def run_equation(
         equation=equation,
         in_sample=score(truth, equation.predict(columns)).as_dict(),
         curve=_curve(sizes or tuple(sorted(result.equations)), in_sample, paths, truth),
-        cross_validated={label: path[size].scores(truth).as_dict() for label, path in paths.items()},
-        stability=paths["loo_dataset"][size].stability(),
+        cross_validated={
+            label: path[size].scores(truth).as_dict() | path[size].dispersion() for label, path in paths.items()
+        },
+        stability=term_stability(reselected),
         paths=paths,
     )
 
@@ -257,9 +318,7 @@ def correlation_analysis(frame: pl.DataFrame, config: Configuration = DEFAULT_E3
         max_abs_zscore=config.max_abs_zscore,
     )
     table = screen(library, target(frame), groups(frame, DATASET_COLUMN))
-    return table.with_columns(
-        (pl.col("spearman").abs() - pl.col("pearson").abs()).alias("monotone_gap")
-    ).head(top)
+    return table.with_columns((pl.col("spearman").abs() - pl.col("pearson").abs()).alias("monotone_gap")).head(top)
 
 
 def baselines(frame: pl.DataFrame) -> pl.DataFrame:
@@ -323,24 +382,7 @@ def leakage_demonstration(
     for label, (key, labels) in protocols.items():
         path = (known or {}).get(key)
         if path is None or config.headline_terms not in path:
-            if library is None:
-                library = build_library(
-                    DATASET_FEATURES,
-                    MODEL_FEATURES,
-                    columns,
-                    max_arity=config.max_arity,
-                    max_abs_zscore=config.max_abs_zscore,
-                )
-            path = cross_validate_path(
-                library,
-                columns,
-                truth,
-                labels,
-                max_terms=config.headline_terms,
-                penalty=config.penalty,
-                pool_size=config.pool_size,
-                beam_width=config.beam_width,
-            )
+            path, library = _fixed_form_path(columns, truth, labels, config, library)
         rows.append({"protocol": label, **path[config.headline_terms].scores(truth).as_dict()})
     return pl.DataFrame(rows)
 
@@ -411,24 +453,8 @@ def decision_quality(
     truth = target(frame)
     path = known
     if path is None or config.headline_terms not in path:
-        library = build_library(
-            DATASET_FEATURES,
-            MODEL_FEATURES,
-            columns,
-            max_arity=config.max_arity,
-            max_abs_zscore=config.max_abs_zscore,
-        )
-        path = cross_validate_path(
-            library,
-            columns,
-            truth,
-            groups(frame, DATASET_COLUMN),
-            max_terms=config.headline_terms,
-            penalty=config.penalty,
-            pool_size=config.pool_size,
-            beam_width=config.beam_width,
-        )
-    return decision_report(truth, path[config.headline_terms].predictions)
+        path, _ = _fixed_form_path(columns, truth, groups(frame, DATASET_COLUMN), config)
+    return decision_report(truth, path[config.headline_terms].predictions, groups(frame, DATASET_COLUMN))
 
 
 def model_selection(frame: pl.DataFrame, e3: EquationReport) -> pl.DataFrame:
@@ -495,9 +521,7 @@ def run(
         practices=best_practices(e3.equation, columns, e3.stability),
         effects=term_effects(e3.equation, columns, DATASET_FEATURES, MODEL_FEATURES),
         shares=group_shares(e3.equation, columns, DATASET_FEATURES, MODEL_FEATURES),
-        decomposition=variance_decomposition(
-            target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)
-        ),
+        decomposition=variance_decomposition(target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)),
         correlations=correlation_analysis(frame, config_e3),
         baselines=baselines(frame),
         comparison=comparison(frame, e1, e3, e2),
@@ -506,7 +530,5 @@ def run(
         decision=decision_quality(frame, config_e3, e3.paths.get("loo_dataset")),
         term_choice=recommend(e3.curve),
         pareto=pareto_table(e3.curve),
-        oracles=oracle_ladder(
-            target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)
-        ),
+        oracles=oracle_ladder(target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)),
     )

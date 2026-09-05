@@ -178,7 +178,8 @@ def fit_effects(
         scaled = (carrier - centre) / spread
         gradient = {
             name: float(
-                scaled[labels == name] @ inner[labels == name]
+                scaled[labels == name]
+                @ inner[labels == name]
                 / (float(scaled[labels == name] @ scaled[labels == name]) + slope_shrinkage)
             )
             for name in names
@@ -212,7 +213,7 @@ def correct_out_of_fold(
     """Re-score a finished cross-validation with per-model effects fitted in each fold.
 
     The effects are cheap and the beam search is not, so this consumes the per-fold
-    equations a completed `ml_meta_perf.validate.cross_validate_path` already recorded rather
+    equations a completed `ml_meta_perf.validate.cross_validate_fixed_form` already recorded rather
     than searching again. Each fold's effects are fitted on that fold's training rows
     only, from that fold's own equation, and applied to the rows it held out -- so the
     protocol is the one the path was run under, unchanged.
@@ -268,9 +269,7 @@ def carrier_stability(
         if equation is None:
             continue
         trained = {name: values[train] for name, values in columns.items()}
-        effects = fit_effects(
-            target[train] - equation.evaluate(trained), trained, models[train], features
-        )
+        effects = fit_effects(target[train] - equation.evaluate(trained), trained, models[train], features)
         name = "none" if effects.atom is None else effects.atom.name
         counts[name] = counts.get(name, 0) + 1
     total = max(sum(counts.values()), 1)

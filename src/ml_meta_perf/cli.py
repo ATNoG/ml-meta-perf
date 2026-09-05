@@ -103,11 +103,7 @@ def render(
         _show(report.shares)
 
         _section("Term importance -- ranked by standardised weight, major terms flagged")
-        _show(
-            term_importance(
-                report.e3.equation, columns, DATASET_FEATURES, MODEL_FEATURES, report.e3.stability
-            )
-        )
+        _show(term_importance(report.e3.equation, columns, DATASET_FEATURES, MODEL_FEATURES, report.e3.stability))
 
         _section("Extracted practices")
         print(render_practices(report.practices))

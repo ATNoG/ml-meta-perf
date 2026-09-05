@@ -16,7 +16,7 @@ from ml_meta_perf.identity import (
 )
 from ml_meta_perf.model import Equation
 from ml_meta_perf.terms import Atom, Library, Term
-from ml_meta_perf.validate import CrossValidation, cross_validate_path
+from ml_meta_perf.validate import CrossValidation, cross_validate_fixed_form
 
 
 def _grid(n_datasets: int = 6, n_models: int = 5) -> tuple[dict[str, np.ndarray], np.ndarray, np.ndarray]:
@@ -147,15 +147,11 @@ class TestCorrectOutOfFold(unittest.TestCase):
             Term("atom", (Atom("capacity"),)),
         ]
         self.library = Library(terms, self.columns)
-        self.path = cross_validate_path(
-            self.library,
-            self.columns,
-            self.target,
-            self.datasets,
-            max_terms=2,
-            penalty=0.0,
-            pool_size=2,
-            beam_width=2,
+        from ml_meta_perf.fit import fit
+
+        self.equations = fit(self.library, self.target, max_terms=2, penalty=0.0, pool_size=2).equations
+        self.path = cross_validate_fixed_form(
+            self.library, self.columns, self.target, self.datasets, self.equations, penalty=0.0
         )
 
     def test_the_path_records_an_equation_per_fold(self) -> None:
@@ -175,26 +171,20 @@ class TestCorrectOutOfFold(unittest.TestCase):
         # Under leave-one-model-out the held-out model has no training row, so there is no
         # effect to apply and the correction must be exactly the identity. This is the
         # boundary of the method and it is asserted rather than described.
-        path = cross_validate_path(
-            self.library,
-            self.columns,
-            self.target,
-            self.models,
-            max_terms=2,
-            penalty=0.0,
-            pool_size=2,
-            beam_width=2,
+        path = cross_validate_fixed_form(
+            self.library, self.columns, self.target, self.models, self.equations, penalty=0.0
         )
-        corrected = correct_out_of_fold(
-            path[2], self.columns, self.target, self.models, self.models, ("difficulty",)
-        )
-        np.testing.assert_array_equal(corrected, path[2].predictions)
+        corrected = correct_out_of_fold(path[2], self.columns, self.target, self.models, self.models, ("difficulty",))
+        # `assert_allclose` rather than exact equality: under the fixed-form protocol each fold
+        # rebuilds its equation with the standardisation folded back into the weights, so
+        # re-evaluating it reproduces the stored prediction to floating point rather than
+        # bit-for-bit. The claim under test is that the correction adds *nothing*, and 1e-12
+        # says that as well as equality did.
+        np.testing.assert_allclose(corrected, path[2].predictions, rtol=1e-12, atol=1e-12)
 
     def test_a_fold_without_an_equation_keeps_its_prediction(self) -> None:
         empty = CrossValidation(predictions=np.full_like(self.target, 0.25))
-        corrected = correct_out_of_fold(
-            empty, self.columns, self.target, self.datasets, self.models
-        )
+        corrected = correct_out_of_fold(empty, self.columns, self.target, self.datasets, self.models)
         np.testing.assert_array_equal(corrected, empty.predictions)
 
     def test_carrier_stability_counts_folds(self) -> None:

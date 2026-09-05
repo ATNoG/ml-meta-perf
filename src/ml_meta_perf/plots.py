@@ -86,16 +86,15 @@ def term_count_curve(
 
     axes.plot(sizes, curve["r2_in_sample"].to_numpy(), "o-", color=IN_SAMPLE, label="in-sample", linewidth=2)
     if "r2_loo_dataset" in curve.columns:
-        axes.plot(
-            sizes, curve["r2_loo_dataset"].to_numpy(), "s--", color=LOO_DATASET, label="leave-one-dataset-out"
-        )
+        axes.plot(sizes, curve["r2_loo_dataset"].to_numpy(), "s--", color=LOO_DATASET, label="leave-one-dataset-out")
     if "r2_loo_model" in curve.columns:
-        axes.plot(
-            sizes, curve["r2_loo_model"].to_numpy(), "^:", color=LOO_MODEL, label="leave-one-model-out"
-        )
+        axes.plot(sizes, curve["r2_loo_model"].to_numpy(), "^:", color=LOO_MODEL, label="leave-one-model-out")
     if oracle is not None:
         axes.axhline(
-            oracle, color=CEILING, linestyle="-.", linewidth=1.2,
+            oracle,
+            color=CEILING,
+            linestyle="-.",
+            linewidth=1.2,
             label=f"additive ceiling ({oracle:.3f})",
         )
         axes.set_ylim(top=oracle + 0.05)
@@ -203,8 +202,13 @@ def predicted_versus_actual(
     axes.scatter(truth, predicted, s=18, alpha=0.55, color=IN_SAMPLE, edgecolor="none", zorder=2)
     if groups is not None:
         axes.plot(
-            truth, np.full_like(truth, limits[0]), "|", color=IN_SAMPLE, alpha=0.35,
-            markersize=6, zorder=1,
+            truth,
+            np.full_like(truth, limits[0]),
+            "|",
+            color=IN_SAMPLE,
+            alpha=0.35,
+            markersize=6,
+            zorder=1,
         )
     axes.set_xlim(limits)
     axes.set_ylim(limits)
@@ -247,7 +251,6 @@ def equation_comparison(comparison: pl.DataFrame, destination: str | Path) -> Pa
     hatched = Rectangle((0, 0), 1, 1, facecolor=CEILING, alpha=0.85, hatch="//")
     axes.legend([solid, hatched], ["fitted equation", "ceiling"], frameon=False, fontsize=9)
     return _finish(figure, destination)
-
 
 
 def term_effects(effects: pl.DataFrame, destination: str | Path, *, top: int = 12) -> Path:
@@ -293,10 +296,7 @@ def practice_effects(practices: pl.DataFrame, destination: str | Path) -> Path:
     axes.grid(axis="x", alpha=0.25, linestyle=":")
 
     if "confidence" in table.columns:
-        handles = [
-            Rectangle((0, 0), 1, 1, facecolor=CEILING, alpha=alpha)
-            for alpha in (0.95, 0.6, 0.3)
-        ]
+        handles = [Rectangle((0, 0), 1, 1, facecolor=CEILING, alpha=alpha) for alpha in (0.95, 0.6, 0.3)]
         axes.legend(handles, ["strong", "moderate", "weak"], frameon=False, fontsize=8, loc="lower right")
     return _finish(figure, destination)
 
@@ -306,7 +306,6 @@ def _confidence_alpha(table: pl.DataFrame) -> list[float]:
     if "confidence" not in table.columns:
         return [0.85] * table.height
     return [scale.get(str(value), 0.6) for value in table["confidence"].to_list()]
-
 
 
 def contribution_shares(shares: pl.DataFrame, destination: str | Path) -> Path:
@@ -323,8 +322,6 @@ def contribution_shares(shares: pl.DataFrame, destination: str | Path) -> Path:
     return _finish(figure, destination)
 
 
-
-
 def per_group_quality(report: pl.DataFrame, destination: str | Path) -> Path:
     """Rank correlation and top-1 regret for each held-out dataset.
 
@@ -337,9 +334,7 @@ def per_group_quality(report: pl.DataFrame, destination: str | Path) -> Path:
 
     figure, axes = plt.subplots(figsize=(7.4, 0.34 * len(labels) + 1.4))
     axes.barh(positions, table["spearman"].to_numpy(), color=IN_SAMPLE, alpha=0.85, label="Spearman")
-    axes.plot(
-        table["regret"].to_numpy(), positions, "o", color=NEGATIVE, markersize=5, label="top-1 regret"
-    )
+    axes.plot(table["regret"].to_numpy(), positions, "o", color=NEGATIVE, markersize=5, label="top-1 regret")
     axes.set_yticks(positions)
     axes.set_yticklabels(labels, fontsize=8)
     axes.axvline(0.0, color="black", linewidth=0.8)
@@ -367,3 +362,55 @@ def _wrap(label: str, width: int = 18) -> str:
     if current:
         lines.append(current)
     return "\n".join(lines)
+
+
+def decision_quality(decision: pl.DataFrame, destination: str | Path) -> Path:
+    """Accuracy and F1 of the go/no-go decision against threshold, over the majority baseline.
+
+    Two lines rather than one because the classes are unbalanced at the outer thresholds and
+    accuracy alone hides it: always answering with the larger class reaches 0.51 accuracy at a
+    threshold of 0.9 and an F1 of exactly zero. The baseline is drawn rather than described,
+    so the gap the equation buys is visible instead of asserted.
+    """
+    figure, axes = plt.subplots(figsize=(6.0, 4.0))
+    table = decision.sort("threshold")
+    axes.plot(table["threshold"], table["accuracy"], color=IN_SAMPLE, marker="o", label="accuracy")
+    axes.plot(
+        table["threshold"], table["f1"], color=LOO_MODEL, marker="^", linestyle="--", markerfacecolor="none", label="F1"
+    )
+    axes.plot(
+        table["threshold"], table["majority"], color=CEILING, marker="x", linestyle=":", label="majority-class baseline"
+    )
+    axes.set_xlabel("MCC threshold")
+    axes.set_ylabel("score")
+    axes.set_ylim(0.0, 1.0)
+    axes.set_xticks(list(table["threshold"]))
+    axes.grid(alpha=0.25, linewidth=0.6)
+    axes.legend(fontsize=8, loc="lower left", framealpha=0.0)
+    return _finish(figure, destination)
+
+
+def ranking_quality(selection: pl.DataFrame, destination: str | Path) -> Path:
+    """Per-dataset head-of-list ranking quality, one bar group per dataset.
+
+    ``hit@1`` is 0 or 1 per dataset, so it is drawn as the marker rather than a bar: what it
+    adds is *which* datasets the first pick was right on, which the averages cannot show.
+    Sorted by average precision so the hard datasets group at one end.
+    """
+    table = selection.sort("ap")
+    positions = np.arange(table.height)
+    figure, axes = plt.subplots(figsize=(7.0, 4.2))
+    axes.barh(positions - 0.2, table["ap"], height=0.38, color=IN_SAMPLE, label="average precision")
+    axes.barh(positions + 0.2, table["mrr"], height=0.38, color=LOO_DATASET, label="reciprocal rank")
+    hits = [index for index, value in enumerate(table["hit_at_1"]) if value >= 1.0]
+    if hits:
+        axes.scatter([1.02] * len(hits), hits, marker="*", s=55, color=POSITIVE, label="best model ranked first")
+    axes.set_yticks(positions)
+    axes.set_yticklabels([_shorten(name, 24) for name in table["group"]], fontsize=7)
+    axes.set_xlabel("score")
+    axes.set_xlim(0.0, 1.1)
+    axes.grid(alpha=0.25, linewidth=0.6, axis="x")
+    # Below the axes rather than inside it: the bars are sorted, so whichever corner the
+    # legend takes it covers either the best or the worst datasets.
+    axes.legend(fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.13), ncol=3, framealpha=0.0)
+    return _finish(figure, destination)

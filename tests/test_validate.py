@@ -7,19 +7,22 @@ import numpy as np
 import polars as pl
 
 from ml_meta_perf.analysis import redundancy_groups, screen
+from ml_meta_perf.fit import fit
 from ml_meta_perf.terms import build_library
 from ml_meta_perf.validate import (
+    CrossValidation,
     additive_oracle,
     baseline_group_mean,
-    cross_validate,
-    cross_validate_path,
+    cross_validate_fixed_form,
     decision_report,
+    fold_selections,
     interaction_oracle,
     leave_one_group_out,
     oracle_ladder,
     random_kfold_groups,
     ranking_report,
     score,
+    term_stability,
 )
 
 
@@ -78,50 +81,71 @@ class TestScores(unittest.TestCase):
 
 
 class TestCrossValidation(unittest.TestCase):
+    """The reported protocol: one equation, its form fixed, its weights refit per fold."""
+
+    def setUp(self) -> None:
+        self.columns, self.target, self.outer, self.inner = grid()
+        self.library = build_library(("f1", "f2"), ("g1", "g2"), self.columns)
+        result = fit(self.library, self.target, max_terms=4, penalty=1.0, pool_size=30)
+        self.equations = result.equations
+
+    def path(self, penalty: float = 1.0) -> dict[int, CrossValidation]:
+        return cross_validate_fixed_form(
+            self.library, self.columns, self.target, self.outer, self.equations, penalty=penalty
+        )
+
+    def test_predicts_every_row(self) -> None:
+        result = self.path()[2]
+        self.assertEqual(result.predictions.shape, self.target.shape)
+        self.assertTrue(np.all(np.isfinite(result.predictions)))
+
+    def test_returns_every_size_it_was_given(self) -> None:
+        self.assertEqual(sorted(self.path()), sorted(self.equations))
+
+    def test_predictions_stay_inside_each_training_fold_range(self) -> None:
+        """Tighter than the theoretical MCC range, and the reason `_clip_to_training` exists.
+
+        A fold predicted outside the values its own training rows took is extrapolating, and
+        one such fold once reached 89% of the corpus's total squared error on its own.
+        """
+        predictions = self.path()[3].predictions
+        for _, train, test in leave_one_group_out(self.outer):
+            self.assertGreaterEqual(predictions[test].min(), self.target[train].min())
+            self.assertLessEqual(predictions[test].max(), self.target[train].max())
+
+    def test_records_one_fold_score_per_group(self) -> None:
+        result = self.path()[2]
+        self.assertEqual(set(result.per_fold), set(np.unique(self.outer).tolist()))
+
+    def test_the_form_is_identical_in_every_fold(self) -> None:
+        """That is what "fixed form" means; only the weights may move."""
+        result = self.path()[3]
+        self.assertEqual(len({tuple(names) for names in result.selected}), 1)
+
+    def test_dispersion_summarises_the_per_fold_scores(self) -> None:
+        result = self.path()[2]
+        dispersion = result.dispersion()
+        folds = [fold.r2 for fold in result.per_fold.values()]
+        self.assertAlmostEqual(dispersion["worst_fold_r2"], min(folds))
+        self.assertEqual(dispersion["folds"], float(len(folds)))
+
+
+class TestFoldSelections(unittest.TestCase):
+    """Re-selection is kept for `term_stability` only, and cannot produce a score."""
+
     def setUp(self) -> None:
         self.columns, self.target, self.outer, self.inner = grid()
         self.library = build_library(("f1", "f2"), ("g1", "g2"), self.columns)
 
-    def test_predicts_every_row(self) -> None:
-        result = cross_validate(
-            self.library, self.columns, self.target, self.outer, n_terms=2, penalty=1.0, pool_size=30
-        )
-        self.assertEqual(result.predictions.shape, self.target.shape)
-        self.assertTrue(np.all(np.isfinite(result.predictions)))
-
-    def test_predictions_respect_the_mcc_range(self) -> None:
-        result = cross_validate(
-            self.library, self.columns, self.target, self.outer, n_terms=3, penalty=1.0, pool_size=30
-        )
-        self.assertGreaterEqual(result.predictions.min(), -1.0)
-        self.assertLessEqual(result.predictions.max(), 1.0)
-
-    def test_path_returns_every_size(self) -> None:
-        path = cross_validate_path(
-            self.library, self.columns, self.target, self.outer, max_terms=4, penalty=1.0, pool_size=30
-        )
-        self.assertEqual(sorted(path), [1, 2, 3, 4])
-
-    def test_path_agrees_with_the_single_size_call(self) -> None:
-        path = cross_validate_path(
-            self.library, self.columns, self.target, self.outer, max_terms=3, penalty=1.0, pool_size=30
-        )
-        single = cross_validate(
-            self.library, self.columns, self.target, self.outer, n_terms=3, penalty=1.0, pool_size=30
-        )
-        np.testing.assert_allclose(path[3].predictions, single.predictions)
-
-    def test_records_one_fold_score_per_group(self) -> None:
-        result = cross_validate(
-            self.library, self.columns, self.target, self.outer, n_terms=2, penalty=1.0, pool_size=30
-        )
-        self.assertEqual(set(result.per_fold), set(np.unique(self.outer).tolist()))
+    def test_returns_one_term_list_per_fold(self) -> None:
+        selections = fold_selections(self.library, self.target, self.outer, n_terms=2, penalty=1.0, pool_size=30)
+        self.assertLessEqual(len(selections), len(np.unique(self.outer)))
+        for names in selections:
+            self.assertEqual(len(names), 2)
 
     def test_stability_counts_never_exceed_the_fold_count(self) -> None:
-        result = cross_validate(
-            self.library, self.columns, self.target, self.outer, n_terms=2, penalty=1.0, pool_size=30
-        )
-        stability = result.stability()
+        selections = fold_selections(self.library, self.target, self.outer, n_terms=2, penalty=1.0, pool_size=30)
+        stability = term_stability(selections)
         self.assertLessEqual(int(stability["folds"].max()), len(np.unique(self.outer)))  # pyright: ignore[reportArgumentType]
         self.assertLessEqual(float(stability["frequency"].max()), 1.0)  # pyright: ignore[reportArgumentType]
 
@@ -138,9 +162,7 @@ class TestBaselines(unittest.TestCase):
     def test_conditioning_on_the_inner_group_helps(self) -> None:
         plain = baseline_group_mean(self.target, self.outer)
         conditioned = baseline_group_mean(self.target, self.outer, self.inner)
-        self.assertLess(
-            float(np.abs(self.target - conditioned).mean()), float(np.abs(self.target - plain).mean())
-        )
+        self.assertLess(float(np.abs(self.target - conditioned).mean()), float(np.abs(self.target - plain).mean()))
 
     def test_additive_oracle_beats_either_group_alone(self) -> None:
         oracle = additive_oracle(self.target, self.outer, self.inner)
@@ -173,8 +195,7 @@ class TestInteractionOracle(unittest.TestCase):
         from ml_meta_perf.stats import r2_score
 
         scores = [
-            r2_score(self.target, interaction_oracle(self.target, self.outer, self.inner, rank))
-            for rank in range(5)
+            r2_score(self.target, interaction_oracle(self.target, self.outer, self.inner, rank)) for rank in range(5)
         ]
         for earlier, later in itertools.pairwise(scores):
             self.assertGreaterEqual(later, earlier - 1e-9)
@@ -260,7 +281,6 @@ class TestRanking(unittest.TestCase):
         target = np.array([0.1, 0.9])
         report = ranking_report(target, np.array([1.0, 0.0]), np.array(["a", "a"]))
         self.assertAlmostEqual(float(report["regret"][0]), 0.8)
-
 
 
 class TestAnalysis(unittest.TestCase):

@@ -48,14 +48,30 @@ DATASET_FEATURES: tuple[str, ...] = (
     "ns_ratio",
 )
 
+#: The six columns an equation may use to describe a *learner*.
+#:
+#: Four are new as of 2026-09-05, replacing four that were dropped from the corpus entirely:
+#: ``Training Operations``, ``Prediction Operations``, ``Active Regularization Mechanisms`` and
+#: ``Robust to Outliers``. Three measurements retired them together:
+#:
+#: * removing any of the four *helps* leave-one-model-out (+0.007 to +0.022 each, paired over
+#:   60 configurations), and adding any back to ``Model Capability`` +
+#:   ``Processing Units Number`` hurts it -- ``Prediction Operations`` in 60 cells of 60;
+#: * three of them vary *within* a model, so they are partly dataset features wearing a model
+#:   feature's name, which is why they help transfer to a new dataset and hurt transfer to a
+#:   new learner;
+#: * ``Active Regularization Mechanisms`` and ``Robust to Outliers`` are zero-based, so the
+#:   grammar can only enter them as ``f`` and ``f^2`` -- every log, root and reciprocal is
+#:   undefined on them.
 MODEL_FEATURES: tuple[str, ...] = (
     "Processing Units Number",
-    "Training Operations",
-    "Prediction Operations",
-    "Active Regularization Mechanisms",
-    "Robust to Outliers",
     "Model Capability",
+    "Solution Stochasticity",
+    "Loss Margin Behaviour",
+    "Input Distribution Modelling",
+    "Fitting Regime",
 )
+
 
 #: Where each learner family sits on a capability ladder, low to high.
 #:
@@ -86,6 +102,178 @@ MODEL_CAPABILITY: dict[str, int] = {
     "bagged trees": 8,
     "boosted trees": 9,
     "tabular foundation": 10,
+}
+
+#: The four asserted mechanism ordinals, by learner.
+#:
+#: These are the **provenance** of four columns the CSV carries like any other feature. They
+#: live here, and are checked against the CSV by ``test_data``, so the columns can be
+#: regenerated and a reader can see where the numbers came from.
+#:
+#: Each is defined for all twenty-five learners, so none carries a "this learner has no such
+#: thing" sentinel, and every rung is occupied and positive, so the whole grammar is defined
+#: on all of them. That is what distinguishes them from the sixty-one hyperparameter
+#: descriptors measured and rejected in chapter 11: a hyperparameter a learner does not have
+#: has no value, and encoding that absence as zero collapses applicability into magnitude.
+#:
+#: **They are asserted, not measured**, and carry chapter 8's caveat in full: a term over one
+#: of them is evidence about the ordering claimed here, not about a quantity anyone observed.
+
+#: How deep randomisation reaches into the fitted solution, low to high.
+#:
+#: 1 deterministic given the data | 2 stochastic optimisation (random init or shuffling) |
+#: 3 randomised over training examples (bootstrap) | 4 randomised over features (subspace or
+#: column subsampling) | 5 randomised over the split or parameter values themselves.
+#:
+#: Asserted from published descriptions of the learners: Breiman (1996) on bagging, Ho (1998)
+#: on the random subspace method, Breiman (2001) on random forests, and Geurts, Ernst &
+#: Wehenkel (2006) on extremely randomized trees. The top two rungs are what separate ``DT``
+#: from ``ExtraTree`` and ``LightGBM_RF`` from ``LightGBM_ExtraTrees`` -- pairs that no
+#: measured descriptor in this corpus, and none of sixty-one proposed ones, can tell apart.
+SOLUTION_STOCHASTICITY: dict[str, int] = {
+    "BernoulliNB": 1,
+    "DT": 1,
+    "GaussianNB": 1,
+    "KNN": 1,
+    "LDA": 1,
+    "LR": 1,
+    "LinearSVC": 1,
+    "QDA": 1,
+    "Ridge": 1,
+    "DNN": 2,
+    "FT-Transformer": 2,
+    "MLP": 2,
+    "PassiveAggressive": 2,
+    "Perceptron": 2,
+    "SGD": 2,
+    "TabICL": 2,
+    "TabNet": 2,
+    "TabPFN": 2,
+    "TabTransformer": 2,
+    "AdaBoost": 3,
+    "Bagging": 3,
+    "LightGBM_RF": 4,
+    "XGBoost": 4,
+    "ExtraTree": 5,
+    "LightGBM_ExtraTrees": 5,
+}
+
+
+#: How hard the objective penalises points far from the decision boundary.
+#:
+#: 1 squared error or an impurity criterion | 2 logistic / cross-entropy | 3 exponential |
+#: 4 hinge | 5 the perceptron criterion.
+#:
+#: The standard robustness ordering over losses. This is the weakest claim of the four --
+#: placing the perceptron criterion above hinge is a choice rather than a consensus -- and
+#: chapter 8's caveat about ``Model Capability`` applies here with more force.
+LOSS_MARGIN_BEHAVIOUR: dict[str, int] = {
+    "Bagging": 1,
+    "DT": 1,
+    "ExtraTree": 1,
+    "KNN": 1,
+    "LDA": 1,
+    "QDA": 1,
+    "Ridge": 1,
+    "BernoulliNB": 2,
+    "DNN": 2,
+    "FT-Transformer": 2,
+    "GaussianNB": 2,
+    "LR": 2,
+    "LightGBM_ExtraTrees": 2,
+    "LightGBM_RF": 2,
+    "MLP": 2,
+    "TabICL": 2,
+    "TabNet": 2,
+    "TabPFN": 2,
+    "TabTransformer": 2,
+    "XGBoost": 2,
+    "AdaBoost": 3,
+    "LinearSVC": 4,
+    "PassiveAggressive": 4,
+    "SGD": 4,
+    "Perceptron": 5,
+}
+
+
+#: How much of P(x) the learner commits to modelling.
+#:
+#: 1 discriminative, models P(y|x) only | 2 instance-based, retains the sample and models no
+#: density | 3 generative assuming conditional independence | 4 generative with a shared
+#: covariance | 5 generative with a per-class covariance.
+#:
+#: Ng & Jordan (2001) on discriminative versus generative classifiers, and the classical
+#: LDA/QDA covariance hierarchy. **Lopsided**: rung 1 holds 376 of 476 rows and the other four
+#: hold 20-40 each, so three of its five rungs sit below the ten-percent-of-rows floor the
+#: z-score cap imposes elsewhere. Every value is a real reading -- there is no
+#: not-applicable sentinel -- but a term over this column speaks mostly about one rung.
+INPUT_DISTRIBUTION_MODELLING: dict[str, int] = {
+    "AdaBoost": 1,
+    "Bagging": 1,
+    "DNN": 1,
+    "DT": 1,
+    "ExtraTree": 1,
+    "FT-Transformer": 1,
+    "LR": 1,
+    "LightGBM_ExtraTrees": 1,
+    "LightGBM_RF": 1,
+    "LinearSVC": 1,
+    "MLP": 1,
+    "PassiveAggressive": 1,
+    "Perceptron": 1,
+    "Ridge": 1,
+    "SGD": 1,
+    "TabICL": 1,
+    "TabNet": 1,
+    "TabPFN": 1,
+    "TabTransformer": 1,
+    "XGBoost": 1,
+    "KNN": 2,
+    "BernoulliNB": 3,
+    "GaussianNB": 3,
+    "LDA": 4,
+    "QDA": 5,
+}
+
+
+#: How the parameters are reached.
+#:
+#: 1 closed form | 2 batch iterative | 3 mini-batch stochastic | 4 per-sample online |
+#: 5 amortised, fitted in-context at prediction time.
+FITTING_REGIME: dict[str, int] = {
+    "BernoulliNB": 1,
+    "GaussianNB": 1,
+    "KNN": 1,
+    "LDA": 1,
+    "QDA": 1,
+    "Ridge": 1,
+    "AdaBoost": 2,
+    "Bagging": 2,
+    "DT": 2,
+    "ExtraTree": 2,
+    "LR": 2,
+    "LightGBM_ExtraTrees": 2,
+    "LightGBM_RF": 2,
+    "LinearSVC": 2,
+    "XGBoost": 2,
+    "DNN": 3,
+    "FT-Transformer": 3,
+    "MLP": 3,
+    "SGD": 3,
+    "TabNet": 3,
+    "TabTransformer": 3,
+    "PassiveAggressive": 4,
+    "Perceptron": 4,
+    "TabICL": 5,
+    "TabPFN": 5,
+}
+
+#: The four ordinals by name, for regeneration and for the test that checks them.
+MODEL_ORDINALS: dict[str, dict[str, int]] = {
+    "Solution Stochasticity": SOLUTION_STOCHASTICITY,
+    "Loss Margin Behaviour": LOSS_MARGIN_BEHAVIOUR,
+    "Input Distribution Modelling": INPUT_DISTRIBUTION_MODELLING,
+    "Fitting Regime": FITTING_REGIME,
 }
 
 ALL_FEATURES: tuple[str, ...] = DATASET_FEATURES + MODEL_FEATURES
@@ -150,11 +338,11 @@ FEATURE_GLOSSARY: dict[str, str] = {
     "nr_outliers": "number of attributes containing outliers",
     "ns_ratio": "noise-to-signal ratio",
     "Processing Units Number": "model capacity (log processing units)",
-    "Training Operations": "training cost (log operations)",
-    "Prediction Operations": "inference cost (log operations)",
-    "Active Regularization Mechanisms": "number of active regularisation mechanisms",
-    "Robust to Outliers": "built-in robustness to outliers",
     "Model Capability": "learner family's capability rank in the tabular-ML literature (1-10)",
+    "Solution Stochasticity": "how deep randomisation reaches into the fit (1-5)",
+    "Loss Margin Behaviour": "how hard the loss penalises points far from the boundary (1-5)",
+    "Input Distribution Modelling": "how much of the input distribution the learner models (1-5)",
+    "Fitting Regime": "how the parameters are reached, closed form to in-context (1-5)",
 }
 
 #: The shipped corpus, resolved next to this module rather than relative to a source

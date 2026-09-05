@@ -546,6 +546,18 @@ def build_library(
     a parameter rather than a constant because "three is enough" is a claim that has to be
     measured, and measuring it means being able to build the alternatives.
     """
+    # Sorted, so the library is a function of the feature *sets* and not of the order the
+    # caller happened to pass them in. It was not, and the consequence was not cosmetic:
+    # `pairwise_terms` names a product after whichever operand it sees first, so `A * B` and
+    # `B * A` -- the same column, multiplication being commutative -- entered under two names
+    # depending on declaration order. `Library` then de-duplicated by *correlation with terms
+    # already kept*, so which of a near-collinear pair survived also depended on order, and
+    # across five orderings of one six-feature set the library came out at 270, 270, 272, 270
+    # and 271 terms with 24 of 257 pool slots differing. That is the whole of the
+    # leave-one-dataset-out ordering band recorded in the branch notes;
+    # it was never the beam's tie-breaking.
+    dataset_features = tuple(sorted(dataset_features))
+    model_features = tuple(sorted(model_features))
     features = dataset_features + model_features
     terms = unary_terms(features, columns)
     terms += pairwise_terms(dataset_features, dataset_features, columns, both_directions=False)

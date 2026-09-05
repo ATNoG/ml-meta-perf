@@ -1,0 +1,138 @@
+"""The properties `MODEL_FEATURES` has to keep for the grammar and the identification claim.
+
+These are not style checks. Each one is a property some *other* part of the study relies on,
+and each was violated by the feature set retired on 2026-09-05:
+
+* the term grammar applies ``log``, ``sqrt`` and ``1/f``, all undefined at zero, so a
+  zero-based column can only ever enter as ``f`` and ``f^2`` -- the same narrowness that rules
+  out binary indicators;
+* a rung with no rows is a level the corpus cannot speak about, and a gap in a ladder makes
+  "one rung higher" mean different things at different points;
+* a model descriptor that varies *within* a model is partly a dataset feature, which is why
+  the retired columns helped transfer to a new dataset and hurt transfer to a new learner.
+
+The corpus carries exactly the twelve dataset features, the six model features and the target;
+the four retired columns were dropped from it, not merely unused.
+"""
+
+from __future__ import annotations
+
+import unittest
+
+import numpy as np
+
+from ml_meta_perf.data import (
+    MODEL_COLUMN,
+    MODEL_FEATURES,
+    MODEL_ORDINALS,
+    load,
+)
+
+
+class TestModelFeatures(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.frame = load()
+
+    def values(self, name: str) -> np.ndarray:
+        return self.frame[name].to_numpy().astype(float)
+
+    def test_every_model_feature_is_strictly_positive(self) -> None:
+        """So every transform in the grammar is defined on all of them."""
+        for name in MODEL_FEATURES:
+            with self.subTest(name):
+                self.assertGreater(float(self.values(name).min()), 0.0)
+
+    def test_every_ordinal_is_a_gapless_ladder_from_one(self) -> None:
+        for name in MODEL_ORDINALS:
+            with self.subTest(name):
+                levels = np.unique(self.values(name))
+                self.assertEqual(levels.min(), 1.0)
+                np.testing.assert_array_equal(levels, np.arange(1.0, levels.size + 1.0))
+
+    def test_every_rung_is_occupied(self) -> None:
+        """A level no learner takes is one the corpus cannot say anything about."""
+        for name, table in MODEL_ORDINALS.items():
+            with self.subTest(name):
+                self.assertEqual(set(np.unique(self.values(name)).astype(int)), set(table.values()))
+
+    def test_the_ordinals_are_constant_within_a_model(self) -> None:
+        """They describe the learner, so they must not move when the dataset does."""
+        models = self.frame[MODEL_COLUMN].to_numpy()
+        for name in MODEL_ORDINALS:
+            with self.subTest(name):
+                values = self.values(name)
+                for model in np.unique(models):
+                    self.assertEqual(len(np.unique(values[models == model])), 1, model)
+
+    def test_the_csv_matches_the_asserted_tables(self) -> None:
+        """The columns are provenance-checked, not just present."""
+        models = self.frame[MODEL_COLUMN].to_numpy()
+        for name, table in MODEL_ORDINALS.items():
+            with self.subTest(name):
+                values = self.values(name)
+                for model in np.unique(models):
+                    self.assertEqual(float(table[str(model)]), values[models == model][0], model)
+
+    def test_the_corpus_carries_only_the_features_in_use(self) -> None:
+        """One dataset file, and nothing in it that no equation may draw on."""
+        import polars as pl
+
+        from ml_meta_perf.data import ALL_FEATURES, DATASET_COLUMN, DEFAULT_PATH, TARGET_COLUMN
+
+        self.assertEqual(
+            list(pl.read_csv(DEFAULT_PATH).columns),
+            [DATASET_COLUMN, MODEL_COLUMN, *ALL_FEATURES, TARGET_COLUMN],
+        )
+
+    def test_every_learner_has_a_rung_in_every_ordinal(self) -> None:
+        """No applicability sentinel is possible if nothing is ever missing."""
+        models = {str(model) for model in self.frame[MODEL_COLUMN].unique()}
+        for name, table in MODEL_ORDINALS.items():
+            with self.subTest(name):
+                self.assertEqual(models - set(table), set())
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class TestReportedProtocol(unittest.TestCase):
+    """Every reported cross-validated number comes from the fixed form.
+
+    The study fits one equation and recalibrates only its weights per fold. Re-selecting the
+    terms inside each fold answers a question about the search rather than about the equation,
+    and it is used for nothing but `CrossValidation.stability`. This is pinned as a test
+    because the two paths differ by up to 0.3 R2 and a silent swap would be invisible.
+    """
+
+    def test_run_equation_reports_the_fixed_form(self) -> None:
+        from ml_meta_perf.data import DATASET_FEATURES, columns_as_arrays, groups, target
+        from ml_meta_perf.experiment import DEFAULT_E3, run_e3
+        from ml_meta_perf.terms import build_library
+        from ml_meta_perf.validate import cross_validate_fixed_form
+
+        frame = load()
+        report = run_e3(frame)
+        columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+        library = build_library(
+            DATASET_FEATURES,
+            MODEL_FEATURES,
+            columns,
+            max_arity=DEFAULT_E3.max_arity,
+            max_abs_zscore=DEFAULT_E3.max_abs_zscore,
+        )
+        size = len(report.equation.terms)
+        direct = cross_validate_fixed_form(
+            library,
+            columns,
+            target(frame),
+            groups(frame, "Dataset"),
+            {size: report.equation},
+            penalty=DEFAULT_E3.penalty,
+        )
+        self.assertAlmostEqual(
+            report.cross_validated["loo_dataset"]["r2"],
+            direct[size].scores(target(frame)).r2,
+            places=6,
+        )

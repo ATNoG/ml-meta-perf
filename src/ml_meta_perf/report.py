@@ -37,7 +37,7 @@ import numpy as np
 import polars as pl
 
 from ml_meta_perf.attribution import classify, contributions
-from ml_meta_perf.data import FEATURE_GLOSSARY
+from ml_meta_perf.data import ALL_FEATURES, FEATURE_GLOSSARY
 from ml_meta_perf.experiment import Configuration, Report
 from ml_meta_perf.guidance import as_table as as_guidance_table
 from ml_meta_perf.guidance import assess
@@ -348,9 +348,7 @@ def _shared_features(equation: Equation, members: list[int]) -> list[str]:
     # terms names, which is the opposite of shared.
     threshold = len(members) // 2 + 1
     return [
-        feature
-        for feature, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
-        if count >= threshold
+        feature for feature, count in sorted(counts.items(), key=lambda item: (-item[1], item[0])) if count >= threshold
     ]
 
 
@@ -429,9 +427,7 @@ def term_groups(
                 "terms": " ; ".join(equation.terms[index].name for index in members),
             }
         )
-    return pl.DataFrame(rows).sort("share", descending=True).with_columns(
-        pl.int_range(1, pl.len() + 1).alias("group")
-    )
+    return pl.DataFrame(rows).sort("share", descending=True).with_columns(pl.int_range(1, pl.len() + 1).alias("group"))
 
 
 def marginal_versus_conditional(
@@ -499,9 +495,7 @@ def _table(frame: pl.DataFrame, float_format: str = "{:.4f}") -> str:
 
     header = "| " + " | ".join(frame.columns) + " |"
     rule = "|" + "|".join("---" for _ in frame.columns) + "|"
-    body = [
-        "| " + " | ".join(cell(value) for value in row) + " |" for row in frame.iter_rows()
-    ]
+    body = ["| " + " | ".join(cell(value) for value in row) + " |" for row in frame.iter_rows()]
     return "\n".join([header, rule, *body])
 
 
@@ -514,12 +508,7 @@ def _scores(label: str, scores: dict[str, float | int]) -> str:
 
 def _configuration(config: Configuration) -> str:
     return _table(
-        pl.DataFrame(
-            [
-                {"setting": field.name, "value": str(getattr(config, field.name))}
-                for field in fields(config)
-            ]
-        )
+        pl.DataFrame([{"setting": field.name, "value": str(getattr(config, field.name))} for field in fields(config)])
     )
 
 
@@ -541,9 +530,7 @@ def render(
     it describes the *method*, which does not change between runs; anything describing
     the *result* is generated.
     """
-    importance = term_importance(
-        report.e3.equation, columns, dataset_features, model_features, report.e3.stability
-    )
+    importance = term_importance(report.e3.equation, columns, dataset_features, model_features, report.e3.stability)
     concentration = coverage(importance)
     equation = report.e3.equation
 
@@ -633,10 +620,7 @@ def render(
     unstable = unstable_majors(importance)
     parts.append("### Large terms the folds disagreed on\n")
     if unstable.height == 0:
-        parts.append(
-            "None: every major term was selected by at least half of the "
-            "leave-one-dataset-out folds.\n"
-        )
+        parts.append("None: every major term was selected by at least half of the leave-one-dataset-out folds.\n")
     else:
         parts.append(
             f"{unstable.height} of the major terms were selected by fewer than half of the "
@@ -682,9 +666,7 @@ def render(
     parts.append(_table(usage) + "\n")
 
     parts.append("### Which operations the equation needed\n")
-    operations = operation_usage(
-        report.e3.equation, importance, config.max_arity if config is not None else None
-    )
+    operations = operation_usage(report.e3.equation, importance, config.max_arity if config is not None else None)
     parts.append(
         "The vocabulary offers five operations and five transforms and the search is free "
         "to ignore any of them, so a row that was offered and went unused is a shape this "
@@ -733,9 +715,7 @@ def render(
     parts.append("Evidence:\n")
     parts.append(
         _table(
-            report.practices.select(
-                "feature", "meaning", "n_terms", "direction", "effect", "stability", "confidence"
-            )
+            report.practices.select("feature", "meaning", "n_terms", "direction", "effect", "stability", "confidence")
             if report.practices.height
             else report.practices
         )
@@ -786,9 +766,7 @@ def render(
         "handed the true group means, so it measures the ceiling rather than any equation:\n"
     )
     parts.append(_table(report.oracles) + "\n")
-    parts.append(
-        "Variance of MCC explained by group identity alone, with no equation involved:\n"
-    )
+    parts.append("Variance of MCC explained by group identity alone, with no equation involved:\n")
     parts.append(_table(report.decomposition) + "\n")
     parts.append("Validation protocol, same equation, different splits:\n")
     parts.append(_table(report.leakage) + "\n")
@@ -847,7 +825,10 @@ def write(
 
 
 def glossary() -> pl.DataFrame:
-    """The feature glossary as a table, for appending to a report or a paper."""
-    return pl.DataFrame(
-        [{"feature": name, "meaning": meaning} for name, meaning in FEATURE_GLOSSARY.items()]
-    )
+    """The feature glossary as a table, for appending to a report or a paper.
+
+    Restricted to `ALL_FEATURES`, which is narrower than `FEATURE_GLOSSARY`: the glossary also
+    explains the four model columns retired on 2026-09-05, because the corpus still carries
+    them, and a reader of *this* report should see only what the equations may draw on.
+    """
+    return pl.DataFrame([{"feature": name, "meaning": FEATURE_GLOSSARY[name]} for name in ALL_FEATURES])

@@ -60,8 +60,6 @@ def screen(
     return frame.with_columns(pl.col(key).abs().alias("strength")).sort("strength", descending=True)
 
 
-
-
 def redundancy_groups(library: Library, threshold: float = 0.99) -> list[list[str]]:
     """Cluster terms that are near-duplicates of one another.
 

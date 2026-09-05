@@ -155,6 +155,24 @@ def guided_screen(
     return kept
 
 
+def _descending(scores: np.ndarray) -> np.ndarray:
+    """Indices of ``scores`` from largest to smallest, ties broken by ascending index.
+
+    ``np.argsort(scores)[::-1]`` looks equivalent and is not, twice over: the default sort is
+    quicksort, which is unstable, and reversing even a stable ascending sort *inverts* the tie
+    order rather than preserving it. Either way ties were resolved by where a term happened to
+    land in the library, and `terms.build_library` emits terms in feature declaration order --
+    so handing `run_equation` the same columns in a different order produced a different
+    equation, and leave-one-dataset-out moved by as much as 0.286 across seven orderings of a
+    single ten-feature set.
+
+    Sorting the negated scores with an explicitly stable kind breaks ties by ascending library
+    index instead, which is a property of the library rather than of the caller's argument
+    order.
+    """
+    return np.argsort(-scores, kind="stable")
+
+
 class Selector:
     """Beam search over term subsets against a fixed, standardised design."""
 
@@ -287,7 +305,7 @@ class Selector:
             children: list[tuple[int, ...]] = []
             for parent in beam:
                 scores = self._residual_scores(parent)
-                ranked = available[np.argsort(scores[available])[::-1]]
+                ranked = available[_descending(scores[available])]
                 blocked = self._blocked(parent.indices)
                 taken = 0
                 for candidate in ranked:
@@ -334,7 +352,7 @@ class Selector:
                 remaining = tuple(x for i, x in enumerate(current.indices) if i != position)
                 probe = self._evaluate(remaining) if remaining else Subset((), np.zeros(0), self.total)
                 scores = self._residual_scores(probe) if remaining else np.abs(self.projection)
-                ranked = available[np.argsort(scores[available])[::-1]][:candidates]
+                ranked = available[_descending(scores[available])][:candidates]
                 blocked = self._blocked(remaining)
                 trials = [
                     tuple(sorted((*remaining, int(candidate))))
