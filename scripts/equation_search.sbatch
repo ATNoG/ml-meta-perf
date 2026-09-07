@@ -24,6 +24,14 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --time=06:00:00
+# 1G per worker against a measured peak of 216 MB on the *largest* grid point (6 features,
+# 28 terms, z-cap 5.0, arity 3) -- a five-fold margin. This has to be set explicitly: the
+# cluster default is 4G per CPU, which at `--cpus-per-task=62` asks for 248G, and the only
+# idle 64-core node on cpuPartition (`atari`) has 246G. The job was therefore unschedulable
+# on the one node that could have run it, and Slurm parked it five months out behind two
+# 128-core nodes with 16 free cores each. Every worker is an independent fit over a
+# 476 x 270 design; none of this is memory-bound.
+#SBATCH --mem-per-cpu=1G
 #SBATCH --output=results/cluster/slurm-%x-%j.out
 #SBATCH --error=results/cluster/slurm-%x-%j.out
 
