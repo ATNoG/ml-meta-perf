@@ -13,6 +13,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      # Both versions always run. Fail-fast cancels 3.12 the moment 3.14 fails,
+      # which hid whether 3.12 was healthy behind a 3.14-only import error.
+      fail-fast: false
       matrix:
         python-version: ["3.12", "3.14"]
 
@@ -32,7 +35,11 @@ jobs:
           # release that enables new rules by default fails a PR that changed
           # none of the code it flags -- which is what happened at ruff 0.16.
           pip install ruff==0.16.1 basedpyright==1.39.8 vulture==2.16
-          pip install .
+          # `.[search]`, not `.` -- basedpyright type-checks all of `src/ml_meta_perf`, and
+          # `equation_search_cli` imports joblib from the `search` extra. Installed base-only,
+          # the type-check fails on an unresolved import for code the study never runs.
+          # The local venv installs `-e .[search]` for the same reason (`requirements.txt`).
+          pip install '.[search]'
 
       - name: Lint with Ruff
         run: ruff check src
