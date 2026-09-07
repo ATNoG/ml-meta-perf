@@ -139,7 +139,7 @@ generating the report.
 venv/bin/ml-meta-perf          # or: PYTHONPATH=src venv/bin/python -m ml_meta_perf
 ```
 
-That takes about 25 seconds, reproduces every number in this README, and writes:
+That takes about 20 seconds, reproduces every number in this README, and writes:
 
 | | |
 |---|---|

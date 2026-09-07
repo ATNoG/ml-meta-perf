@@ -37,7 +37,14 @@ from ml_meta_perf.report import (
     term_sentences,
     unstable_majors,
 )
-from ml_meta_perf.selection import knee_index, knee_terms, pareto_front, pareto_table, recommend, simplify_curve
+from ml_meta_perf.selection import (
+    best_length,
+    consensus_curve,
+    pareto_front,
+    pareto_knee,
+    pareto_table,
+    recommend,
+)
 from ml_meta_perf.terms import Atom, Library, Term, build_library, ratio_of_sums_terms, simplify
 from ml_meta_perf.validate import (
     CrossValidation,
@@ -79,11 +86,13 @@ __all__ = [
     "assess",
     "baseline_group_centre",
     "baseline_group_mean",
+    "best_length",
     "best_practices",
     "build_library",
     "columns_as_arrays",
     "concordance",
     "concordance_summary",
+    "consensus_curve",
     "correct_out_of_fold",
     "coverage",
     "cross_validate_fixed_form",
@@ -95,12 +104,11 @@ __all__ = [
     "fold_selections",
     "group_shares",
     "groups",
-    "knee_index",
-    "knee_terms",
     "load",
     "marginal_versus_conditional",
     "operation_usage",
     "pareto_front",
+    "pareto_knee",
     "pareto_table",
     "prune",
     "ranking_report",
@@ -109,7 +117,6 @@ __all__ = [
     "redundancy_groups",
     "screen",
     "simplify",
-    "simplify_curve",
     "target",
     "term_effects",
     "term_groups",

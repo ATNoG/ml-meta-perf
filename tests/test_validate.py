@@ -7,8 +7,8 @@ import numpy as np
 import polars as pl
 
 from ml_meta_perf.analysis import feature_reach, grammar_ceiling, redundancy_groups, screen
-from ml_meta_perf.stats import mae, r2_score
 from ml_meta_perf.fit import fit
+from ml_meta_perf.stats import mae, r2_score
 from ml_meta_perf.terms import build_library
 from ml_meta_perf.validate import (
     CrossValidation,
@@ -482,8 +482,8 @@ class TestGrammarReach(unittest.TestCase):
         terms are not that, so exceeding it is expected -- and is the independent route to
         the same conclusion the additive oracle reaches.
         """
-        from ml_meta_perf.experiment import run_e3
         from ml_meta_perf.data import load
+        from ml_meta_perf.experiment import run_e3
 
         ladder = grammar_ceiling(self.library, self.truth, self.features)
         fitted = float(run_e3(load()).in_sample["r2"])

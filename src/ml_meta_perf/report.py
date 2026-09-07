@@ -506,6 +506,77 @@ def _scores(label: str, scores: dict[str, float | int]) -> str:
     )
 
 
+def _length_note(report: Report) -> str:
+    """How the length was chosen, and what the alternatives would have chosen.
+
+    Every rule the study computed is on the page. A selection rule is only defensible if what
+    it beats is visible beside it, and the geometric rules here disagree with the one adopted
+    by a wide margin.
+    """
+    if report.length_choice.height == 0:
+        return ""
+    rows = report.length_choice.to_dicts()
+    selected = next((row for row in rows if row["verdict"] == "selected"), None)
+    if selected is None:
+        return ""
+    ties = [row for row in rows if row["verdict"] in ("tie", "selected")]
+    shortest = min(ties, key=lambda row: int(row["n_terms"])) if ties else selected
+    worse = [row for row in rows if row["verdict"] == "worse"]
+
+    lines = [
+        f"The length is chosen by one rule with no threshold and no smoothing: **the argmax of "
+        f"the consensus curve** (`selection.best_length`), which here selects "
+        f"**{int(selected['n_terms'])} terms**. Nothing about that number is written down — it "
+        "falls out of the curve, and it re-derives itself if the corpus changes.\n",
+        "Every alternative rule is reported beside it, because a selection rule is only "
+        "defensible if what it beats is on the page:\n",
+        _table(report.term_choice) + "\n",
+        f"The geometric rules — the Pareto-front knee by its three standard forms — choose far "
+        f"shorter equations, and **{len(worse)} of the {len(rows)} lengths searched are "
+        "significantly worse** than the selected one when paired fold by fold over the "
+        "held-out datasets. A knee finds where the *marginal* return per term collapses, which "
+        "on a saturating curve is early; it does not ask whether the accuracy still being "
+        "added is real.\n",
+        f"The parsimony alternative is **{int(shortest['n_terms'])} terms** — the shortest "
+        "length whose paired interval against the selected one spans zero. It is reported and "
+        "not adopted: the accuracy it gives up is measurable "
+        f"({float(shortest['r2_loo_dataset']):.4f} against "
+        f"{float(selected['r2_loo_dataset']):.4f} leave-one-dataset-out) even where it is not "
+        "significant.\n",
+    ]
+    return "\n".join(lines)
+
+
+def _capability_note(report: Report) -> str:
+    """The same features under the full grammar: how far the additive form reaches."""
+    capability = report.e3_capability
+    if not capability.equation.terms:
+        return ""
+    published = float(report.e3.in_sample["r2"])
+    reached = float(capability.in_sample["r2"])
+    lines = [
+        f"The published equation is the **parsimonious** grammar (arity 2). The same features "
+        f"under the **full** grammar (arity 3), with the length chosen by the same rule, reach "
+        f"{len(capability.equation.terms)} terms at R² {reached:.4f} in-sample:\n",
+        "| | terms | in-sample | LOO-dataset | LOO-model |",
+        "|---|---|---|---|---|",
+        f"| published (arity 2) | {len(report.e3.equation.terms)} | {published:.4f} | "
+        f"{float(report.e3.cross_validated['loo_dataset']['r2']):.4f} | "
+        f"{float(report.e3.cross_validated['loo_model']['r2']):.4f} |",
+        f"| capability (arity 3) | {len(capability.equation.terms)} | {reached:.4f} | "
+        f"{float(capability.cross_validated['loo_dataset']['r2']):.4f} | "
+        f"{float(capability.cross_validated['loo_model']['r2']):.4f} |",
+        "",
+        "This is a **capability measurement, not a recommendation**. It answers the question "
+        "the published equation cannot answer about itself — whether the additive form is out "
+        f"of room or whether this equation is short of it — and the answer is that {reached - published:+.4f} "
+        "of in-sample R² is still available to a longer equation over a wider grammar. What "
+        "that costs is what the published equation is buying: more terms, an operation more, "
+        "and a form that reselects far less often across folds.\n",
+    ]
+    return "\n".join(lines)
+
+
 def _reach_note(report: Report) -> str:
     """The grammar's implied ceiling ladder, and where the equation lands on it.
 
@@ -699,6 +770,12 @@ def render(
     parts.append("### The trivial predictors, at both centres\n")
     parts.append(_table(report.baselines) + "\n")
     parts.append(_baseline_centre_note(report.baselines))
+
+    parts.append("### How many terms, and why\n")
+    parts.append(_length_note(report))
+
+    parts.append("### How far the additive form reaches\n")
+    parts.append(_capability_note(report))
 
     parts.append("### What the vocabulary could reach, before any search\n")
     parts.append(_reach_note(report))

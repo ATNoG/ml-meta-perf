@@ -26,7 +26,6 @@ from ml_meta_perf.data import (
     target,
 )
 from ml_meta_perf.experiment import (
-    interaction_reached,
     DEFAULT_E3,
     Configuration,
     Report,
@@ -34,11 +33,13 @@ from ml_meta_perf.experiment import (
     comparison,
     correlation_analysis,
     decision_baselines,
+    decision_quality,
+    interaction_reached,
+    leakage_demonstration,
+    length_comparison,
+    model_selection,
     ranking_baselines,
     reach_analysis,
-    decision_quality,
-    leakage_demonstration,
-    model_selection,
     run_e1,
     run_e2,
     run_e3,
@@ -235,6 +236,7 @@ class TestCli(unittest.TestCase):
             e1=e1,
             e2=e2,
             e3=e3,
+            e3_capability=e3,
             practices=best_practices(e3.equation, cols, e3.stability),
             effects=term_effects(e3.equation, cols, DATASET_FEATURES, MODEL_FEATURES),
             shares=group_shares(e3.equation, cols, DATASET_FEATURES, MODEL_FEATURES),
@@ -250,7 +252,8 @@ class TestCli(unittest.TestCase):
             decision=decision_quality(frame, FAST_E3),
             ranking_baselines=ranking_baselines(frame, e3),
             decision_baselines=decision_baselines(frame, FAST_E3),
-            term_choice=recommend(e3.curve),
+            term_choice=recommend(e3.curve, published=len(e3.equation.terms)),
+            length_choice=length_comparison(frame, e3, FAST_E3),
             pareto=pareto_table(e3.curve),
             oracles=oracle_ladder(
                 target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN), ranks=(0, 1)

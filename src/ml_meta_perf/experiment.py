@@ -35,7 +35,8 @@ from ml_meta_perf.data import (
 from ml_meta_perf.fit import fit, prune
 from ml_meta_perf.model import Equation
 from ml_meta_perf.practices import best_practices
-from ml_meta_perf.selection import pareto_table, recommend
+from ml_meta_perf.selection import best_length, pareto_table, recommend
+from ml_meta_perf.stats import mae
 from ml_meta_perf.terms import Library, build_library
 from ml_meta_perf.validate import (
     CrossValidation,
@@ -172,7 +173,44 @@ DEFAULT_E2 = Configuration(max_abs_zscore=3.0, penalty=5.0, pool_size=100, max_t
 # and is a tie when paired (p = 0.115) -- and on all six features the same knobs score 0.5798,
 # so the apparent gain is the feature drop rather than the shrinkage. Left unchanged.
 DEFAULT_E3 = Configuration(
-    max_abs_zscore=4.25, penalty=15.0, pool_size=600, max_terms=32, headline_terms=16, max_arity=2
+    max_abs_zscore=4.25, penalty=20.0, pool_size=600, max_terms=32, headline_terms=15, max_arity=2
+)
+
+# The same corpus and the same four features under the **full** grammar, arity 3. It is the
+# more accurate equation and it is reported beside the published one to show how far the
+# additive form reaches when brevity is not traded for: 23 terms, and on the 2026-09-07 sweep
+# the best leave-one-dataset-out of any configuration searched.
+#
+# Both lengths come from one rule -- `selection.best_length`, the argmax of the consensus
+# curve -- applied under each grammar. Neither 15 nor 23 is written down; both fall out.
+#
+# What it costs is what the published equation is buying. Twenty-three terms over a grammar
+# that also admits `(f1+f2)/f3` is a longer and less readable statement, and its form is far
+# less stable: terms reselect in roughly a seventh of the folds against the published
+# equation's third, and form stability is what licenses fixing the form at all. So this is
+# reported as a *capability measurement* rather than as the study's recommendation.
+DEFAULT_E3_CAPABILITY = Configuration(
+    max_abs_zscore=4.25, penalty=3.0, pool_size=600, max_terms=32, headline_terms=23, max_arity=3
+)
+
+#: The model features the **equation** may build terms from.
+#:
+#: Deliberately a subset of `data.MODEL_FEATURES`, which is the *corpus* schema. The two
+#: stages have different criteria and `data`'s module docstring sets them out: designing the
+#: corpus requires **identification**, so it carries all six columns and every learner is
+#: distinguishable on every dataset; fitting the equation requires **compression**, and an
+#: equation that used every available column would be one that had failed to generalise.
+#: Restricting the term pool removes nothing from the corpus.
+#:
+#: The 2026-09-07 sweep chose this subset, and it dominates the full six on every axis:
+#: objective 0.7297 against 0.7222, leave-one-dataset-out 0.6855 against 0.6716,
+#: leave-one-model-out 0.6543 against 0.6404. `Solution Stochasticity` and
+#: `Loss Margin Behaviour` stay in the corpus and out of the equation.
+EQUATION_MODEL_FEATURES: tuple[str, ...] = (
+    "Model Capability",
+    "Processing Units Number",
+    "Fitting Regime",
+    "Input Distribution Modelling",
 )
 
 #: Lengths the E3 curve is reported at.
@@ -375,9 +413,22 @@ def run_e2(frame: pl.DataFrame, config: Configuration = DEFAULT_E2) -> EquationR
     return run_equation(frame, (), MODEL_FEATURES, config, "E2")
 
 
+def run_e3_capability(
+    frame: pl.DataFrame, config: Configuration = DEFAULT_E3_CAPABILITY
+) -> EquationReport:
+    """The same features under the full grammar: how far the additive form reaches.
+
+    Not the study's recommendation and not what the chapters analyse term by term. It exists
+    so that the published equation's accuracy can be read against what the *form* could do
+    rather than only against oracles and baselines -- the question "is the additive model out
+    of room, or is this equation short of it" needs an answer, and this is it.
+    """
+    return run_equation(frame, DATASET_FEATURES, EQUATION_MODEL_FEATURES, config, "E3-capability", SWEEP_SIZES)
+
+
 def run_e3(frame: pl.DataFrame, config: Configuration = DEFAULT_E3) -> EquationReport:
     """Dataset and model features -- one input, one output, and the published equation."""
-    return run_equation(frame, DATASET_FEATURES, MODEL_FEATURES, config, "E3", SWEEP_SIZES)
+    return run_equation(frame, DATASET_FEATURES, EQUATION_MODEL_FEATURES, config, "E3", SWEEP_SIZES)
 
 
 def reach_analysis(frame: pl.DataFrame, config: Configuration = DEFAULT_E3) -> tuple[pl.DataFrame, pl.DataFrame]:
@@ -522,6 +573,7 @@ def comparison(
     e1: EquationReport,
     e3: EquationReport,
     e2: EquationReport | None = None,
+    e3_capability: EquationReport | None = None,
 ) -> pl.DataFrame:
     """E1 against E3 on the one scale where they are comparable: all rows.
 
@@ -565,6 +617,16 @@ def comparison(
                 **score(truth, model_ceiling).as_dict(),
             },
             {"equation": "E3 (dataset + model)", **score(truth, e3.equation.predict(columns)).as_dict()},
+            *(
+                [
+                    {
+                        "equation": f"E3 capability (arity 3; {len(e3_capability.equation.terms)} terms)",
+                        **score(truth, e3_capability.equation.predict(columns)).as_dict(),
+                    }
+                ]
+                if e3_capability is not None
+                else []
+            ),
             {
                 "equation": "additive oracle (ceiling)",
                 **score(truth, additive_oracle(truth, datasets, models)).as_dict(),
@@ -589,6 +651,67 @@ def decision_quality(
     if path is None or config.headline_terms not in path:
         path, _ = _fixed_form_path(columns, truth, groups(frame, DATASET_COLUMN), config)
     return decision_report(truth, path[config.headline_terms].predictions, groups(frame, DATASET_COLUMN))
+
+
+def length_comparison(frame: pl.DataFrame, e3: EquationReport, config: Configuration = DEFAULT_E3) -> pl.DataFrame:
+    """Every equation length paired against the published one, per held-out dataset.
+
+    **This is the rule that chooses the length**, and it replaced knee detection on
+    2026-09-07. Knee detectors, gRDP-smoothed knee detectors and the Pareto-front knee all
+    place the bend of this curve at four to eight terms, and every one of those lengths is
+    significantly worse than the published equation when the two are compared fold by fold.
+    A knee measures where the *marginal* return per term collapses; it does not measure
+    whether the accuracy still being added is real. `selection` keeps the geometric readings
+    as diagnostics and this is what decides.
+
+    Per-dataset **MAE** rather than per-dataset R2, because three datasets here have almost no
+    within-dataset variance -- `5G_Slicing`'s 25 models all score about 0.986 -- and an R2
+    over a near-constant target is dominated by its denominator. See
+    `validate.CrossValidation.dispersion`.
+
+    The published length is the shortest whose interval against the incumbent spans zero. A
+    row marked ``worse`` is one no brevity argument can justify.
+    """
+    truth = target(frame)
+    datasets = groups(frame, DATASET_COLUMN)
+    labels = np.unique(datasets)
+    path = e3.paths.get("loo_dataset", {})
+    if not path:
+        return pl.DataFrame()
+    # Referenced to what the rule chose, not to a length passed in: the table has to be able
+    # to say that the rule's own pick is the right one, which it cannot do if the pick is the
+    # thing being assumed.
+    chosen = best_length(e3.curve)
+    if chosen not in path:
+        chosen = min(config.headline_terms, max(path))
+    if chosen not in path:
+        return pl.DataFrame()
+    published = chosen
+
+    def per_fold(size: int) -> np.ndarray:
+        prediction = path[size].predictions
+        return np.array([mae(truth[datasets == label], prediction[datasets == label]) for label in labels])
+
+    reference = per_fold(published)
+    rows: list[dict[str, object]] = []
+    for size in sorted(path):
+        result = paired_comparison(reference, per_fold(size), lower_is_better=True)
+        # `mean` is positive when the first argument -- the published equation -- is better.
+        verdict = "selected" if size == published else ("worse" if result.significant and result.mean > 0 else
+                                                       ("better" if result.significant else "tie"))
+        rows.append(
+            {
+                "n_terms": size,
+                "r2_loo_dataset": path[size].scores(truth).r2,
+                "mae_loo_dataset": float(per_fold(size).mean()),
+                "mean_difference": result.mean,
+                "p_value": result.p_value,
+                "ci_low": result.low,
+                "ci_high": result.high,
+                "verdict": verdict,
+            }
+        )
+    return pl.DataFrame(rows)
 
 
 def model_selection(frame: pl.DataFrame, e3: EquationReport) -> pl.DataFrame:
@@ -690,6 +813,9 @@ class Report:
     e1: EquationReport
     e3: EquationReport
     e2: EquationReport
+    #: The same features under the full grammar (arity 3). Reported to show how far the
+    #: additive form reaches, not as the study's recommendation. See `run_e3_capability`.
+    e3_capability: EquationReport
     practices: pl.DataFrame
     effects: pl.DataFrame
     shares: pl.DataFrame
@@ -704,6 +830,9 @@ class Report:
     leakage: pl.DataFrame
     selection: pl.DataFrame
     term_choice: pl.DataFrame
+    #: Every length paired against the published one. This is the rule that chooses the
+    #: length; `term_choice` holds the geometric readings that disagree with it.
+    length_choice: pl.DataFrame
     pareto: pl.DataFrame
     oracles: pl.DataFrame
     #: How far the equation's own interactions lie along the leading component the
@@ -745,11 +874,13 @@ def run(
     e3 = run_e3(frame, config_e3)
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
     e2 = run_e2(frame)
+    e3_capability = run_e3_capability(frame)
     reach, ceiling = reach_analysis(frame, config_e3)
     return Report(
         e1=e1,
         e2=e2,
         e3=e3,
+        e3_capability=e3_capability,
         practices=best_practices(e3.equation, columns, e3.stability),
         effects=term_effects(e3.equation, columns, DATASET_FEATURES, MODEL_FEATURES),
         shares=group_shares(e3.equation, columns, DATASET_FEATURES, MODEL_FEATURES),
@@ -758,13 +889,14 @@ def run(
         reach=reach,
         ceiling=ceiling,
         baselines=baselines(frame),
-        comparison=comparison(frame, e1, e3, e2),
+        comparison=comparison(frame, e1, e3, e2, e3_capability),
         leakage=leakage_demonstration(frame, config_e3, e3.paths),
         selection=model_selection(frame, e3),
         decision=decision_quality(frame, config_e3, e3.paths.get("loo_dataset")),
         ranking_baselines=ranking_baselines(frame, e3),
         decision_baselines=decision_baselines(frame, config_e3, e3.paths.get("loo_dataset")),
-        term_choice=recommend(e3.curve),
+        term_choice=recommend(e3.curve, published=len(e3.equation.terms)),
+        length_choice=length_comparison(frame, e3, config_e3),
         pareto=pareto_table(e3.curve),
         oracles=oracle_ladder(target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)),
         interaction=interaction_reached(frame, e3),

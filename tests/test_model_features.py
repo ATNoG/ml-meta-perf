@@ -20,7 +20,6 @@ from __future__ import annotations
 import unittest
 
 import numpy as np
-
 import polars as pl
 
 from ml_meta_perf.data import (

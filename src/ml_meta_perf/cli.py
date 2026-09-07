@@ -208,6 +208,7 @@ def _save_tables(report: Report, folder: Path) -> list[Path]:
         "term_effects": report.effects,
         "practices": report.practices,
         "term_choice": report.term_choice,
+        "length_choice": report.length_choice,
         "pareto": report.pareto,
     }
     if report.e3.stability is not None:

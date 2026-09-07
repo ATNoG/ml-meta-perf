@@ -410,7 +410,7 @@ MCC to (0, 1] with a floor.
 # Reproducing
 
 ```bash
-venv/bin/python -m ml_meta_perf        # the whole study, ~5s
+venv/bin/python -m ml_meta_perf        # the whole study, ~15s
 venv/bin/pre-commit run --all-files    # the gate
 ```
 
