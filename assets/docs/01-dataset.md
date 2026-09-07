@@ -74,23 +74,75 @@ with published seed records, 52 average above 0.99 across all three.
 | | count | constant within |
 |---|---|---|
 | dataset meta-features | 12 | a dataset |
-| model meta-features | 5 | — |
-| **usable features** | **17** | |
+| model meta-features | 6 | a model, for five of the six |
+| **usable features** | **18** | |
 
 Twenty-one CSV columns minus `Dataset`, `Model` and `MCC` leaves 18 features.
 
 ### Dataset features
 
-`class_ent`, `eq_num_attr`, `gravity`, `inst_to_attr`, `nr_attr`, `nr_bin`, `nr_class`,
-`nr_cor_attr`, `nr_inst`, `nr_norm`, `nr_outliers`, `ns_ratio`.
+Twelve, all constant across a dataset's 25 rows — which is the single most consequential
+property of this corpus, and [chapter 5](05-evaluation.md) is built around it. They are
+standard dataset meta-features in the sense of the pymfe/OpenML vocabulary.
+
+| feature | what it measures |
+|---|---|
+| `nr_inst` | number of instances in the **source** dataset, before sampling |
+| `nr_attr` | number of attributes |
+| `nr_class` | number of classes |
+| `nr_bin` | number of binary attributes |
+| `nr_norm` | number of normally distributed attributes |
+| `nr_outliers` | number of attributes containing outliers |
+| `nr_cor_attr` | proportion of correlated attribute pairs |
+| `inst_to_attr` | instances per attribute |
+| `eq_num_attr` | equivalent number of attributes — an effective feature count, discounting redundancy |
+| `class_ent` | class entropy: how evenly the labels are spread |
+| `gravity` | separation between the majority and minority class centres |
+| `ns_ratio` | noise-to-signal ratio |
+
+Three of them carry warnings that matter downstream.
+
+**`nr_inst` is the source size, not the training size.** Every model was trained on a
+stratified sample capped at 100,000 rows and ten of the twenty datasets exceed that cap, so
+above it `nr_inst` describes a dataset nobody trained on. **No question about the effect of
+more training data is testable here** — see [chapter 7](07-limitations.md).
+
+**The set is deliberately redundant, and two of the redundancies are exact.** `nr_attr` and
+`nr_outliers` correlate at 0.9995. And `inst_to_attr` is defined as `nr_inst / nr_attr`, so
+
+```
+log(inst_to_attr) + log(nr_attr)  ==  log(nr_inst)
+```
+
+holds to 2e-15, and the term grammar generates both sides. That is the price of *identifying*
+all twenty datasets, which the corpus has to do before any equation over these features can
+tell two of them apart; `terms.Library` de-duplicates on column values rather than names so
+the pair cannot both enter an equation. **Any feature defined as a ratio of two others will
+do this again**, which is a rule for whoever regenerates the corpus.
+
+**`gravity` and `ns_ratio` span enormous ranges** — `gravity` runs from 1.6 to 1e16 — which
+is why the vocabulary is built on `log` and why [chapter 2](02-additive-model.md) declines to
+rescale the raw columns up front.
 
 ### Model features
 
-`Processing Units Number`, `Model Capability`, `Solution Stochasticity`,
-`Loss Margin Behaviour`, `Input Distribution Modelling`, `Fitting Regime`.
+Six, of which one is measured and five are asserted, and the split matters for how a term
+over them may be read.
 
-Two of these are quantities the corpus measures and four are **asserted taxonomy**, and the
-split matters for how a term over them may be read.
+| feature | what it measures | source |
+|---|---|---|
+| `Processing Units Number` | log count of the units a learner fits — nodes, trees, parameters | measured per run |
+| `Model Capability` | the learner family's rung on a ten-step capability ladder | asserted, from the literature |
+| `Solution Stochasticity` | how much randomness the fitting procedure introduces | asserted, 1–5 |
+| `Loss Margin Behaviour` | how hard the loss penalises points far from the boundary | asserted, 1–5 |
+| `Input Distribution Modelling` | how much of the input distribution the learner models | asserted, 1–5 |
+| `Fitting Regime` | closed form through to amortised, in-context | asserted, 1–5 |
+
+**Only one of the six is a measurement, and none of them describes what a model is *good
+at*.** `Processing Units Number` is a cost proxy and the other five are taxonomy. That is the
+study's central limitation rather than an incidental one: [chapter 7](07-limitations.md)
+measures the headroom a perfect model descriptor would buy, and records the five separate
+attempts to recover it by re-encoding what the corpus already has, all of which failed.
 
 `Processing Units Number` is the measured one. It is a count of the units a learner fits —
 nodes, trees, parameters — and the corpus stores its natural log. That log is a modelling
