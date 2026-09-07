@@ -75,35 +75,52 @@ never fall below 0.17, so those rows sit above the diagonal, but that is shrinka
 the middle of the observed range rather than an inability to recognise a failure mode the
 data does not contain.
 
-## Ranking: a limitation that closed, and how
+## Ranking: the equation caught up with the trivial baseline, and no further
 
 Through earlier drafts the trivial per-model-mean baseline out-ranked E3 on both measures —
 mean Spearman 0.703 against 0.648, top-1 regret 0.011 against 0.019 — while E3 won on
-predicting the MCC *value*. Two responses were tried and one worked.
+predicting the MCC *value*. Two responses were tried and one worked, but "worked" needs
+stating carefully, and an earlier version of this section did not state it carefully enough.
 
-A learning-to-rank objective was the obvious one and it **failed**. Squared error over
+A learning-to-rank objective was the obvious response and it **failed**. Squared error over
 within-dataset pairs is ordinary least squares after centring both the design and the target
-inside each dataset, so it costs one extra step and stays closed-form; it ranked *worse*
-than the objective it was meant to beat, 0.532 against 0.625
-(this chapter). The loss function was never the limitation.
+inside each dataset, so it costs one extra step and stays closed-form; it ranked *worse* than
+the objective it was meant to beat, 0.532 against 0.625 (below). The loss function was never
+the limitation.
 
-Adding `Model Capability` to the model side closed it, and "closed" is the right word only
-under a paired test. E3 now leads the baseline on every head-weighted metric — average
-precision 0.822 against 0.798, reciprocal rank 0.867 against 0.835, hit@1 0.800 against
-0.750, top-1 regret 0.008 against 0.011 — and **none of those margins survives pairing over
-the twenty held-out datasets**. On average precision E3 is the better of the two on 7 of the
-17 datasets where they differ at all; the favourable mean comes from a few large wins. Every
-bootstrap interval spans zero.
+Adding `Model Capability` to the model side is what moved it. On the means E3 now leads the
+per-model **mean** baseline on every head-weighted metric — average precision 0.850 against
+0.798, reciprocal rank 0.882 against 0.835, hit@1 0.800 against 0.750 — and **none of those
+margins survives pairing over the twenty held-out datasets** (average precision p = 0.21,
+interval spanning zero).
 
-So the honest statement is that the equation caught up with the baseline, not that it beat
-it. That is still the diagnosis confirming itself: a per-model mean out-ranked the equation
-because it knew something the equation did not — roughly, which models are good — and the
-fix was to tell the equation, not to change how it was fitted. But a study that stops at
-"E3 wins on all four" is reading four means over twenty folds, which is what
-[`validate.paired_comparison`](../../src/ml_meta_perf/validate.py) exists to prevent.
+**And the mean is not the hardest baseline.** The per-model **median** is a different ordering
+and a better one on two of the four measures: average precision 0.837, reciprocal rank 0.885,
+hit@1 0.850 against E3's 0.800, top-1 regret 0.009 against 0.015. That comparison does not
+survive pairing either (p = 0.14). Reporting only the mean baseline made the equation look
+like it had won a contest it had drawn.
+
+| | AP | MRR | hit@1 | top-1 regret |
+|---|---|---|---|---|
+| per-model mean | 0.798 | 0.835 | 0.750 | 0.011 |
+| **E3** | **0.850** | 0.882 | 0.800 | 0.015 |
+| per-model median | 0.837 | **0.885** | **0.850** | **0.009** |
+
+So the honest statement is that **the equation caught up with the trivial baselines and did
+not pass them**. That is still the diagnosis confirming itself — a per-model centre
+out-ranked the equation because it knew something the equation did not, roughly which models
+are good, and the fix was to tell the equation rather than to change how it was fitted. But a
+study that stops at "E3 wins on all four" is reading four means over twenty folds, which is
+what [`validate.paired_comparison`](../../src/ml_meta_perf/validate.py) exists to prevent,
+and hit@1 moves only in steps of 0.05 on twenty datasets.
+
+Where the equation does clear the trivial predictors, and clearly, is the two questions that
+are not ranking: predicting the MCC value (0.638 leave-one-dataset-out against 0.201) and the
+go/no-go threshold decision (MCC 0.683 against 0.439 and 0.304 at a threshold of 0.7).
+[Chapter 5](05-evaluation.md) reports all three together.
 
 Spearman does not enter any of this. It sits between 0.63 and 0.73 for every predictor and
-every baseline on this corpus, including a constant, and the two sides here differ by 0.003.
+every baseline on this corpus, including a constant.
 
 ## Model descriptors are thin, and one of them is asserted
 

@@ -96,6 +96,36 @@ same recommendation made by community reporting standards (Walsh et al., 2020).
 | SMAPE | % | scale-free, but see the caveat below |
 | Spearman | — | rank quality, insensitive to the MCC ceiling |
 
+### The three equations on every metric, under every protocol
+
+| | protocol | R² | MAE | SMAPE |
+|---|---|---|---|---|
+| E1 — dataset features | in-sample | 0.349 | 0.210 | 43.3 |
+| | leave-one-dataset-out | 0.341 | 0.214 | 43.6 |
+| | leave-one-model-out | 0.306 | 0.217 | 44.1 |
+| E2 — model features | in-sample | 0.248 | 0.234 | 46.3 |
+| | leave-one-dataset-out | 0.185 | 0.244 | 47.3 |
+| | leave-one-model-out | 0.228 | 0.237 | 46.5 |
+| **E3 — both** | **in-sample** | **0.658** | **0.137** | **34.5** |
+| | **leave-one-dataset-out** | **0.638** | **0.142** | **34.9** |
+| | **leave-one-model-out** | **0.622** | **0.145** | **35.4** |
+| E3 — full grammar | in-sample | 0.707 | 0.122 | 32.5 |
+| | leave-one-dataset-out | 0.678 | 0.130 | 33.8 |
+| | leave-one-model-out | 0.651 | 0.133 | 34.1 |
+
+Read against the hardest trivial predictor on each metric — which is a **different**
+predictor for R² than for MAE and SMAPE, for the reason the next section gives:
+
+| | R² | MAE | SMAPE |
+|---|---|---|---|
+| strongest mean baseline | 0.296 | 0.213 | 43.8 |
+| strongest median baseline | 0.129 | **0.192** | **40.3** |
+| **E3, leave-one-dataset-out** | **0.638** | **0.142** | **34.9** |
+
+E3 clears both on all three. The margin is widest on R² and narrowest on SMAPE, which is
+the caveat below doing its work: SMAPE is dominated by the 15 rows at exactly MCC = 0, and
+a median baseline predicting near zero on a low-scoring model scores well on them.
+
 ### A caveat on R²
 
 R² is computed against the mean of the **evaluated** rows, so its denominator is the
@@ -155,18 +185,27 @@ and a top-3 rule would score a correct answer as a miss.
 
 | metric | E3 |
 |---|---|
-| average precision | 0.822 |
-| mean reciprocal rank | 0.867 |
+| average precision | 0.850 |
+| mean reciprocal rank | 0.882 |
 | hit@1 — best model ranked first | 0.800 |
-| top-1 regret | 0.006 |
-| Spearman | 0.706 |
+| top-1 regret | 0.015 |
 
 ![Per-dataset ranking quality](../figures/ranking_quality.png)
 
-**Read the first four and treat Spearman as weak evidence.** Measured on this corpus it sits
-between 0.63 and 0.73 for every predictor *and* every baseline, including a constant, so it
-cannot separate the things this study compares. The regret figure is the one in the target's
-own units: picking the model E3 ranks first costs 0.006 MCC against the best available.
+Regret is the one of the four stated in the target's own units, so it is worth reading on its
+own: how much MCC a practitioner gives up by taking whichever model the equation ranks first.
+
+![MCC given up by taking the equation's top-ranked model](../figures/per_group_quality.png)
+
+On nine of the twenty held-out datasets the top pick is the dataset's best model to within the
+relevance tolerance, so the regret is exactly zero. Three datasets carry most of the average —
+KPI-KQI at 0.135, UNAC at 0.071 and IoT-APD at 0.058 — which is the spread a mean over twenty
+folds hides, and the reason this is plotted per dataset rather than summarised.
+
+**Spearman is deliberately absent from that table.** Measured on this corpus it sits between
+0.63 and 0.73 for every predictor *and* every baseline, including a constant, so it cannot
+separate any of the things this study compares. Average precision, reciprocal rank, hit@1 and
+regret all weight the head of the list, which is where a model recommendation is read.
 
 ## Baselines
 
