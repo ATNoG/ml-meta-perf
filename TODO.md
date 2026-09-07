@@ -4,8 +4,19 @@ Session closed 2026-09-07. Branch `feature/descriptor-selection`. Working tree c
 green — 416 tests, ruff, basedpyright, vulture, `venv/bin/pre-commit run --all-files`.
 
 The exploration that produced this state has been deleted along with its research inputs;
-what it found is in the two commit messages and in `assets/docs/`. This file is what is
-*left to do*, plus the things that would be expensive to rediscover.
+what it found is in the commit messages and in `assets/docs/`. This file is what is *left to
+do*, plus the things that would be expensive to rediscover.
+
+Six commits on this branch, oldest first: the protocol constraint (`a2159c3`), the paired
+test and three verdicts that asserted retired columns (`af8fbe8`), stale docstrings and one
+duplicated vocabulary (`d761ce4`), chapter 5's measurement and the chapters brought to the
+equation (`e995bd1`), this handoff (`50a85cf`), the Slurm sweep spec (`5217cb7`). Each
+message carries the numbers behind its change.
+
+Two things gained a home in the library this session and are worth knowing about before
+writing any new analysis: `validate.paired_comparison` (sign test plus bootstrap over
+groups) and `validate.interaction_capture` (how much of the leading interaction pattern the
+equation actually reaches — chapter 5 now rests on it).
 
 ## Where the study stands
 
@@ -127,8 +138,10 @@ fixing the form. `tests/test_model_features.py::TestReportedProtocol` pins this.
 **Numbers from the two protocols differ by up to 0.3 and must never share a table.** The old
 published 0.474 / 0.428 were re-selecting; anything current is fixed-form.
 
-**Re-sweep the configuration whenever the feature set changes.** This has now bitten three
-times. `DEFAULT_E3` tuned on the re-selecting metric scored 0.246 under fixed form.
+**Re-sweep the configuration whenever the feature set *or the grammar* changes.** This has
+now bitten four times. `DEFAULT_E3` tuned on the re-selecting metric scored 0.246 under
+fixed form. The fourth is open right now: the 2026-09-07 constraint changed the grammar and
+only length has been re-derived — see Remaining work, item 1.
 
 **Library construction is order-independent as of 2026-09-05** — `build_library` sorts both
 feature groups. Before that, `A * B` and `B * A` entered as two names for one column and the
@@ -183,5 +196,10 @@ venv/bin/pre-commit run --all-files    # the gate
 `ml-meta-perf-search` (`src/ml_meta_perf/equation_search_cli.py`,
 `scripts/equation_search.sbatch`) is how the equation's features, length and configuration
 were chosen. It scores seven weighted components — three R², the threshold decision, the
-ranking, term stability and brevity — and reproduces the shipped E3 exactly. A full grid is
-48,576 points, about an hour on 60 cores. Needs the `search` extra.
+ranking, term stability and brevity. A full grid is 48,576 points, about an hour on 62
+cores. Needs the `search` extra.
+
+**It no longer reproduces the shipped E3, and that is the open item.** It did under the
+pre-2026-09-07 grammar. The current configuration is a length read off a curve with the
+other knobs inherited, so the sweep has to be re-run before anyone can say the published
+equation is what a search chose. Remaining work, item 1.
