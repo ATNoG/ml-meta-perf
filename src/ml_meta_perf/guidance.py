@@ -60,6 +60,10 @@ CHALLENGED = "challenged"
 NOT_TESTED = "not tested"
 
 
+#: What a practice predicts a feature does to MCC as that feature rises.
+RAISES, LOWERS = "raises", "lowers"
+
+
 @dataclass(frozen=True)
 class Practice:
     """One general recommendation, and where it comes from."""
@@ -70,6 +74,18 @@ class Practice:
     #: Why the field believes it, in one line -- so a reader can judge whether this
     #: corpus is even the right place to test it.
     rationale: str
+    #: Raw features the practice makes a claim about, each with the direction it predicts
+    #: MCC moves as that feature rises. **This is what lets a practice be checked against
+    #: the published equation rather than only against corpus averages.** A verdict drawn
+    #: from family means says the advice holds on this data; a term-level agreement says the
+    #: *equation* encodes it, which is a stronger and more falsifiable claim -- and the one
+    #: an interpretability-first study is actually in a position to make.
+    #:
+    #: Empty for a practice that is not about a feature at all -- a protocol rule, a metric
+    #: choice, a statement about model families. That is not a gap to be filled: mapping
+    #: "hold out whole groups" onto a coefficient would be inventing a connection, and the
+    #: generated table says so in as many words rather than leaving a blank row.
+    expectations: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -258,11 +274,14 @@ CATALOGUE: tuple[Practice, ...] = (
             "Characterise the dataset before choosing a model. What the data is like bounds "
             "what any model can reach, and that bound is usually the larger effect."
         ),
-        source="Zha et al., 'Data-centric AI: A Survey', arXiv:2303.10158 (2023)",
+        source="Zha et al., 'Data-centric Artificial Intelligence: A Survey', ACM Computing Surveys 57(5) (2025)",
         rationale=(
             "The data-centric position holds that returns from improving data exceed returns "
             "from swapping architectures. It is an argument about where to spend effort."
         ),
+        # No single feature: the claim is that the *dataset half* of the meta-data matters
+        # more than the model half, which is a claim about the two blocks of the equation
+        # rather than about any one column. `group_shares` is where it is read.
     ),
     Practice(
         id="tree-ensembles-first",
@@ -271,8 +290,9 @@ CATALOGUE: tuple[Practice, ...] = (
             "when a tree ensemble has been tried and found wanting."
         ),
         source=(
-            "Grinsztajn et al., arXiv:2207.08815 (2022); "
-            "Shwartz-Ziv & Armon, 'Deep Learning is Not All You Need', arXiv:2106.03253 (2021)"
+            "Grinsztajn, Oyallon & Varoquaux, NeurIPS 2022 Datasets and Benchmarks Track; "
+            "Shwartz-Ziv & Armon, 'Tabular Data: Deep Learning is Not All You Need', "
+            "Information Fusion 81, 84-90 (2022)"
         ),
         rationale=(
             "Trees handle irregular, non-smooth target functions and uninformative features, "
@@ -285,7 +305,11 @@ CATALOGUE: tuple[Practice, ...] = (
             "Include a pretrained tabular model (TabPFN, TabICL) in the first round of "
             "candidates: it costs one fit and is frequently competitive with a tuned ensemble."
         ),
-        source="Hollmann et al., TabPFN, arXiv:2207.01848 (2022); TabICL, arXiv:2502.05564 (2025)",
+        source=(
+            "Hollmann et al., 'Accurate predictions on small data with a tabular foundation "
+            "model' (TabPFN), Nature 637, 319-326 (2025); "
+            "Qu, Holzmuller, Varoquaux & Le Morvan, 'TabICL', ICML 2025"
+        ),
         rationale=(
             "In-context learning on tabular data removes the tuning budget that usually "
             "separates a quick baseline from a competitive one."
@@ -309,11 +333,15 @@ CATALOGUE: tuple[Practice, ...] = (
             "Spend the first effort on reducing noise in the data, not on a larger model. "
             "Noise sets a ceiling that capacity cannot lift."
         ),
-        source="Zha et al., 'Data-centric AI: Perspectives and Challenges', arXiv:2301.04819 (2023)",
+        source=(
+            "Zha et al., 'Data-centric AI: Perspectives and Challenges', "
+            "SIAM International Conference on Data Mining (SDM) 2023, 945-948"
+        ),
         rationale=(
             "Irreducible error from noisy features or labels bounds every model on that data, "
             "so capacity spent against it buys nothing."
         ),
+        expectations=(("ns_ratio", LOWERS),),
     ),
     Practice(
         id="prefer-outlier-robust-learners",
@@ -321,11 +349,18 @@ CATALOGUE: tuple[Practice, ...] = (
             "On real-world data that has not been carefully curated, prefer a learner with "
             "built-in robustness to outliers."
         ),
-        source="Grinsztajn et al., arXiv:2207.08815 (2022), on non-smooth targets and outliers",
+        source=(
+            "Grinsztajn, Oyallon & Varoquaux, NeurIPS 2022 Datasets and Benchmarks Track, "
+            "on non-smooth targets and outliers"
+        ),
         rationale=(
             "Real tabular data carries outliers that a squared-error learner chases and a "
             "split-based or margin-based one largely ignores."
         ),
+        # `nr_outliers` counts outliers in the *data*; the practice is about resistance to
+        # them in the *learner*. The expectation is on the data side only, and the verdict
+        # says why that does not settle the practice.
+        expectations=(("nr_outliers", LOWERS),),
     ),
     Practice(
         id="capacity-is-not-free",
@@ -333,11 +368,16 @@ CATALOGUE: tuple[Practice, ...] = (
             "Match capacity to the problem. A larger, more expensive model is not a safer "
             "default; on small tabular problems it is usually a worse one."
         ),
-        source="Shwartz-Ziv & Armon, arXiv:2106.03253 (2021)",
+        source="Shwartz-Ziv & Armon, Information Fusion 81, 84-90 (2022)",
         rationale=(
             "Capacity beyond what the sample supports fits noise, and the cost is paid twice: "
             "in accuracy and in the tuning budget needed to recover it."
         ),
+        # The practice says more capacity is not safer, so it predicts that raising
+        # `Processing Units Number` does not raise MCC. `Model Capability` is the opposite
+        # claim in the same sentence -- capability *matched* to the problem does help -- and
+        # both are in the equation, so both are checkable.
+        expectations=(("Processing Units Number", LOWERS), ("Model Capability", RAISES)),
     ),
     Practice(
         id="beat-the-trivial-baseline",
@@ -675,6 +715,87 @@ def assess(frame: pl.DataFrame, report: Report) -> list[Verdict]:
     """Weigh every catalogued practice against this study, in catalogue order."""
     evidence = gather(frame, report)
     return [CHECKS[practice.id](evidence) for practice in CATALOGUE]
+
+
+def equation_evidence(report: Report) -> pl.DataFrame:
+    """Each practice's feature claims, checked against the published equation term by term.
+
+    **This is the check the study is uniquely able to make.** Every other verdict in this
+    module is drawn from corpus averages -- family means, variance shares, paired tests --
+    which any study with this corpus could compute and which say nothing about the equation.
+    A term-level check says something stronger: that the published equation *encodes* the
+    practice, in named terms, with a weight and a sign a reader can look up.
+
+    Three columns carry the check.
+
+    ``terms`` is how many of the equation's terms the feature appears in. A practice resting
+    on a feature the search never selected is not confirmed by this equation and not refuted
+    by it either -- it is silent, and silence is reported as such rather than as agreement.
+
+    ``direction`` is measured on the data by `ml_meta_perf.practices`, not read off a weight
+    sign. A feature can sit in several terms and inside denominators, so there is no single
+    coefficient whose sign answers the question; the measurement sweeps the feature across
+    its observed range with the rest of the equation in place and reports which way predicted
+    MCC actually moves.
+
+    ``effect`` is the size of that move across the feature's deciles -- the *strength* half
+    of the question. A feature that agrees in sign but moves predicted MCC by a thousandth is
+    agreement without evidence, and printing the two side by side is what stops the table
+    reading as ten confirmations.
+
+    Note that these are **conditional** statements: what the feature does with every other
+    term present, not what a scatter plot of it alone would show. The two disagree often, and
+    that is conditioning working rather than a defect.
+    """
+    measured = {row["feature"]: row for row in report.practices.to_dicts()}
+    # Counted from the equation itself, not from `report.practices`. The practices table is
+    # filtered -- a feature has to move MCC enough, monotonically enough, in terms stable
+    # enough -- so a feature can be *in* the equation and absent from it. Those two states
+    # mean different things to a practice and must not both read as "0 terms": one is the
+    # search declining the feature, the other is the equation using it in a way too weak or
+    # too non-monotone to state a direction for.
+    in_equation: dict[str, int] = {}
+    for term in report.e3.equation.terms:
+        for feature in set(term.features):
+            in_equation[feature] = in_equation.get(feature, 0) + 1
+
+    rows: list[dict[str, object]] = []
+    for practice in CATALOGUE:
+        for feature, expected in practice.expectations:
+            found = measured.get(feature)
+            terms = in_equation.get(feature, 0)
+            observed = "" if found is None else (RAISES if float(found["direction"]) > 0 else LOWERS)
+            if found is not None:
+                verdict = "yes" if observed == expected else "no"
+            elif terms:
+                verdict = "no direction"
+            else:
+                verdict = "not selected"
+            rows.append(
+                {
+                    "practice": practice.id,
+                    "feature": feature,
+                    "expected": expected,
+                    "terms": terms,
+                    "direction": observed,
+                    "effect": float("nan") if found is None else abs(float(found["effect"])),
+                    "stability": float("nan") if found is None else float(found["stability"]),
+                    "agrees": verdict,
+                }
+            )
+    return pl.DataFrame(
+        rows,
+        schema={
+            "practice": pl.String,
+            "feature": pl.String,
+            "expected": pl.String,
+            "terms": pl.Int64,
+            "direction": pl.String,
+            "effect": pl.Float64,
+            "stability": pl.Float64,
+            "agrees": pl.String,
+        },
+    )
 
 
 def as_table(verdicts: list[Verdict]) -> pl.DataFrame:

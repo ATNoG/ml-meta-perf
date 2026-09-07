@@ -70,6 +70,22 @@ def pearson(first: np.ndarray, second: np.ndarray) -> float:
     return float(a @ b / scale) if scale > 1e-15 else 0.0
 
 
+def pearson_columns(matrix: np.ndarray, target: np.ndarray) -> np.ndarray:
+    """`pearson` between every column of ``matrix`` and ``target``, in one pass.
+
+    `ml_meta_perf.fit.guided_screen` needs this correlation for every candidate term, twice
+    over -- once raw and once on ranks -- in every fold, which is tens of thousands of calls
+    to `pearson` for arithmetic that is a single matrix-vector product. Constant columns
+    return 0.0 here exactly as they do there. ``test_stats`` asserts the two agree column by
+    column, so `pearson` stays the definition and this stays a restatement of it.
+    """
+    centred = matrix - matrix.mean(axis=0)
+    other = target - target.mean()
+    norms = np.sqrt(np.einsum("ij,ij->j", centred, centred) * float(other @ other))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.where(norms > 1e-15, (centred.T @ other) / np.where(norms > 1e-15, norms, 1.0), 0.0)
+
+
 def spearman(first: np.ndarray, second: np.ndarray) -> float:
     """Rank correlation: monotone association, insensitive to the MCC ceiling."""
     if first.shape[0] < 2:

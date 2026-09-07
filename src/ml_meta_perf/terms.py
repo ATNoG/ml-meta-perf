@@ -491,8 +491,13 @@ class Library:
     ) -> None:
         kept: list[Term] = []
         vectors: list[np.ndarray] = []
-        units: list[np.ndarray] = []
         seen: set[str] = set()
+        # The survivors' unit vectors as one growing array rather than a list, so the
+        # duplicate test is a single matrix-vector product against everything kept so far
+        # instead of a Python loop of dot products over it. Identical arithmetic and
+        # identical order -- the first term of a pair still wins -- but the loop form ran
+        # 590k times per study and `fit.guided_screen` already does it this way.
+        accepted: np.ndarray | None = None
         for term in terms:
             if term.name in seen:
                 continue
@@ -501,12 +506,14 @@ class Library:
             if not is_admissible(values, max_abs_zscore):
                 continue
             unit = _unit(values)
-            if any(abs(float(other @ unit)) > COLLINEARITY_TOLERANCE for other in units):
+            if accepted is None:
+                accepted = np.empty((len(terms), values.shape[0]))
+            elif float(np.abs(accepted[: len(kept)] @ unit).max()) > COLLINEARITY_TOLERANCE:
                 continue
+            accepted[len(kept)] = unit
             seen.add(term.name)
             kept.append(term)
             vectors.append(values)
-            units.append(unit)
         if not kept:
             raise ValueError("term library is empty after filtering")
         self.terms: list[Term] = kept

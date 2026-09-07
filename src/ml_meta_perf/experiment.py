@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import polars as pl
 
-from ml_meta_perf.analysis import feature_reach, grammar_ceiling, screen
+from ml_meta_perf.analysis import feature_reach, grammar_ceiling, saturated_fit, screen
 from ml_meta_perf.attribution import group_shares, term_effects, variance_decomposition
 from ml_meta_perf.data import (
     DATASET_COLUMN,
@@ -33,10 +33,13 @@ from ml_meta_perf.data import (
     target,
 )
 from ml_meta_perf.fit import fit, prune
+from ml_meta_perf.identity import correct_out_of_fold
 from ml_meta_perf.model import Equation
+from ml_meta_perf.opaque import OpaqueRun
+from ml_meta_perf.opaque import evaluate as opaque_evaluate
 from ml_meta_perf.practices import best_practices
 from ml_meta_perf.selection import best_length, pareto_table, recommend
-from ml_meta_perf.stats import mae
+from ml_meta_perf.stats import mae, r2_score
 from ml_meta_perf.terms import Library, build_library
 from ml_meta_perf.validate import (
     CrossValidation,
@@ -455,6 +458,24 @@ def reach_analysis(frame: pl.DataFrame, config: Configuration = DEFAULT_E3) -> t
     return feature_reach(library, truth, features), pl.DataFrame([ladder])
 
 
+def saturated_analysis(frame: pl.DataFrame, config: Configuration = DEFAULT_E3) -> dict[str, float]:
+    """`analysis.saturated_fit` over the library E3 actually searches.
+
+    The library rather than the screened pool, and the E3 grammar rather than the capability
+    one, because the claim it supports is about the procedure the study publishes: handing
+    *these* candidates to least squares in one go is what selection is being compared with.
+    """
+    columns = columns_as_arrays(frame, DATASET_FEATURES + EQUATION_MODEL_FEATURES)
+    library = build_library(
+        DATASET_FEATURES,
+        EQUATION_MODEL_FEATURES,
+        columns,
+        max_arity=config.max_arity,
+        max_abs_zscore=config.max_abs_zscore,
+    )
+    return saturated_fit(library, target(frame), groups(frame, DATASET_COLUMN))
+
+
 def correlation_analysis(frame: pl.DataFrame, config: Configuration = DEFAULT_E3, top: int = 15) -> pl.DataFrame:
     """Rank candidate terms by how they relate to MCC, linearly and monotonically.
 
@@ -545,6 +566,49 @@ def leakage_demonstration(
             path, library = _fixed_form_path(columns, truth, labels, config, library)
         rows.append({"protocol": label, **path[config.headline_terms].scores(truth).as_dict()})
     return pl.DataFrame(rows)
+
+
+def identity_ceiling(frame: pl.DataFrame, e3: EquationReport) -> pl.DataFrame:
+    """The upper bound on what any model descriptor could add, measured rather than argued.
+
+    Under leave-one-dataset-out **every one of the 25 models appears in every training fold**,
+    so the equation's residual can be averaged per model on the training rows and applied to
+    the held-out dataset with no leak. That replaces the model descriptors with the best
+    possible substitute -- the model's *identity*, fitted freely -- and what it adds is
+    therefore a ceiling on what any descriptor set could reach by telling these classifiers
+    apart. It is the number the study's central negative result is measured against: every
+    rejected model-side encoding is rejected for failing to recover it.
+
+    Two rungs, because the ceiling depends on what the identity is allowed to carry. A level
+    per model shifts every one of its rows equally; a level and a slope on a dataset feature
+    lets a model's advantage depend on the data, which is what a *capability* descriptor would
+    have to do. `identity.correct_out_of_fold` reuses the per-fold equations the reported path
+    already recorded, so the protocol is unchanged and no search is repeated.
+
+    Generated because the chapter's hand-written copy of this table had all three rows wrong
+    and listed its two rungs as identical, which no run of this function can produce.
+    """
+    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+    truth = target(frame)
+    datasets, models = groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)
+    path = e3.paths.get("loo_dataset")
+    size = len(e3.equation.terms)
+    if path is None or size not in path:
+        return pl.DataFrame(schema={"correction": pl.String, "r2_loo_dataset": pl.Float64, "mae": pl.Float64})
+    fold = path[size]
+    rungs = {
+        f"none (E3, {size} terms)": fold.predictions,
+        "per-model level": correct_out_of_fold(fold, columns, truth, datasets, models),
+        "per-model level and slope": correct_out_of_fold(
+            fold, columns, truth, datasets, models, features=DATASET_FEATURES
+        ),
+    }
+    return pl.DataFrame(
+        [
+            {"correction": label, "r2_loo_dataset": r2_score(truth, values), "mae": mae(truth, values)}
+            for label, values in rungs.items()
+        ]
+    )
 
 
 def interaction_reached(frame: pl.DataFrame, e3: EquationReport) -> pl.DataFrame:
@@ -815,7 +879,10 @@ def model_selection(
 
 
 def ranking_baselines(
-    frame: pl.DataFrame, e3: EquationReport, config: Configuration = DEFAULT_E3
+    frame: pl.DataFrame,
+    e3: EquationReport,
+    config: Configuration = DEFAULT_E3,
+    opaque: OpaqueRun | None = None,
 ) -> pl.DataFrame:
     """The equation's ranking against the trivial rankings, averaged over datasets.
 
@@ -851,6 +918,12 @@ def ranking_baselines(
     # that hands them the model identity the loo-cell row of the equation is denied.
     candidates["per-model mean (loo-dataset)"] = baseline_group_centre(truth, datasets, models, centre="mean")
     candidates["per-model median (loo-dataset)"] = baseline_group_centre(truth, datasets, models, centre="median")
+    # The opaque opponent, under the same protocol as the equation's own leave-one-dataset-out
+    # row. It transfers badly at predicting the MCC *value*; whether it also loses at choosing
+    # a model is a different question, and one the study is only entitled to answer by asking.
+    if opaque is not None:
+        for label, held in opaque.predictions.items():
+            candidates[f"{label} (loo-dataset)"] = held["loo_dataset"]
 
     tables = {
         label: ranking_report(truth, prediction, datasets).sort("group")
@@ -886,6 +959,7 @@ def decision_baselines(
     config: Configuration = DEFAULT_E3,
     known: dict[int, CrossValidation] | None = None,
     e3: EquationReport | None = None,
+    opaque: OpaqueRun | None = None,
 ) -> pl.DataFrame:
     """The above-or-below-threshold decision, for the equation and both trivial centres.
 
@@ -919,6 +993,9 @@ def decision_baselines(
         candidates["equation (loo-dataset)"] = path[config.headline_terms].predictions
     candidates["per-model mean (loo-dataset)"] = baseline_group_centre(truth, datasets, models, centre="mean")
     candidates["per-model median (loo-dataset)"] = baseline_group_centre(truth, datasets, models, centre="median")
+    if opaque is not None:
+        for label, held in opaque.predictions.items():
+            candidates[f"{label} (loo-dataset)"] = held["loo_dataset"]
 
     rows: list[dict[str, object]] = []
     for label, prediction in candidates.items():
@@ -966,6 +1043,17 @@ class Report:
     #: whether it beats ordering the models by how well they usually do.
     ranking_baselines: pl.DataFrame
     decision_baselines: pl.DataFrame
+    #: Standard opaque regressors on the same rows under the same protocols. The priced
+    #: other side of the study's trade: see `ml_meta_perf.opaque`.
+    opaque: pl.DataFrame
+    #: What per-model *identity* adds to the reported path, which is the ceiling on what any
+    #: model descriptor could reach. See `identity_ceiling`.
+    identity: pl.DataFrame
+    #: What an unpenalised least-squares fit over the *whole* library reaches, in-sample and
+    #: held out. The control for the selection stage: if this transferred, the beam search
+    #: and the length rule would be machinery in search of a problem. See
+    #: `analysis.saturated_fit`.
+    saturated: pl.DataFrame
 
 
 # Small enough to run in a couple of seconds. Intended for smoke-testing the wiring,
@@ -997,7 +1085,13 @@ def run(
     e2 = run_e2(frame)
     e3_capability = run_e3_capability(frame)
     reach, ceiling = reach_analysis(frame, config_e3)
+    # Fitted once and shared: the folds are the expensive part, and the regression table and
+    # the two decision comparisons have to be scored from the same predictions or they can
+    # disagree with each other.
+    opaque_run = opaque_evaluate(frame)
     return Report(
+        opaque=opaque_run.table,
+        saturated=pl.DataFrame([saturated_analysis(frame, config_e3)]),
         e1=e1,
         e2=e2,
         e3=e3,
@@ -1014,11 +1108,12 @@ def run(
         leakage=leakage_demonstration(frame, config_e3, e3.paths),
         selection=model_selection(frame, e3, "loo_cell", config_e3),
         decision=decision_quality(frame, config_e3, e3.paths.get("loo_dataset")),
-        ranking_baselines=ranking_baselines(frame, e3, config_e3),
-        decision_baselines=decision_baselines(frame, config_e3, e3.paths.get("loo_dataset"), e3),
+        ranking_baselines=ranking_baselines(frame, e3, config_e3, opaque_run),
+        decision_baselines=decision_baselines(frame, config_e3, e3.paths.get("loo_dataset"), e3, opaque_run),
         term_choice=recommend(e3.curve, published=len(e3.equation.terms)),
         length_choice=length_comparison(frame, e3, config_e3),
         pareto=pareto_table(e3.curve),
         oracles=oracle_ladder(target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)),
         interaction=interaction_reached(frame, e3),
+        identity=identity_ceiling(frame, e3),
     )

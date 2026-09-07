@@ -41,7 +41,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from ml_meta_perf.model import Equation
-from ml_meta_perf.stats import pearson, rank_columns, rankdata, spearman
+from ml_meta_perf.stats import pearson, pearson_columns, rank_columns, rankdata, spearman
 from ml_meta_perf.terms import Library, Term, is_trivial, simplify
 
 RIDGE_DEFAULT = 10.0
@@ -134,22 +134,23 @@ def guided_screen(
     matrix = library.matrix
     # Ranking is the expensive half of a Spearman correlation -- it sorts, then averages
     # ties -- and screening a 600-term pool inside 20 folds asks for it tens of thousands
-    # of times. Two things are hoisted out of the loop: the target's ranks, which do not
-    # change from one candidate to the next, and the candidates' own ranks, which are one
-    # vectorised pass over the matrix rather than a call per column.
+    # of times. Nothing here is per-candidate: the target's ranks do not change from one
+    # candidate to the next, the candidates' own ranks are one vectorised pass over the
+    # matrix (`stats.rank_columns`), and both correlations are one matrix-vector product
+    # over the whole pool (`stats.pearson_columns`) rather than a `pearson` call per column.
     ranked_target = rankdata(target)
     ranked = rank_columns(matrix) if matrix.shape[0] > 1 else matrix
-    scored: list[tuple[float, int]] = []
-    for index in range(matrix.shape[1]):
-        column = matrix[:, index]
-        linear = abs(pearson(column, target))
-        monotone = abs(pearson(ranked[:, index], ranked_target)) if column.shape[0] > 1 else 0.0
-        gap = monotone - linear
-        # A term that is only monotone is still useful, but it is preferred a little
-        # less than an equally strong linear one: linear terms read more simply.
-        strength = max(linear, monotone) - (0.02 if gap > linear_gap else 0.0)
-        scored.append((strength, index))
-    scored.sort(key=lambda item: item[0], reverse=True)
+    linear = np.abs(pearson_columns(matrix, target))
+    monotone = (
+        np.abs(pearson_columns(ranked, ranked_target)) if matrix.shape[0] > 1 else np.zeros(matrix.shape[1])
+    )
+    # A term that is only monotone is still useful, but it is preferred a little
+    # less than an equally strong linear one: linear terms read more simply.
+    strength = np.maximum(linear, monotone) - np.where(monotone - linear > linear_gap, 0.02, 0.0)
+    # Descending by strength, ties broken by ascending library index, for the reason
+    # `_descending` sets out: the survivors of the duplicate pass below must be a property
+    # of the library rather than of the order a caller assembled it in.
+    scored = _descending(strength)
 
     standardized = Standardizer.fit(matrix).apply(matrix)
     rows = float(standardized.shape[0])
@@ -160,9 +161,10 @@ def guided_screen(
     # cross-validated sweep; this is the same arithmetic in one BLAS call per candidate.
     accepted = np.empty((standardized.shape[0], min(keep, standardized.shape[1])))
     kept: list[int] = []
-    for _, index in scored:
+    for position in scored:
         if len(kept) >= keep:
             break
+        index = int(position)
         column = standardized[:, index]
         if kept:
             correlations = np.abs(column @ accepted[:, : len(kept)]) / rows
@@ -218,6 +220,11 @@ class Selector:
         self.projection = design.T @ self.centered
         self.total = float(self.centered @ self.centered)
         self.normalizer = float(design.shape[0])
+        # The collinearity test as a boolean matrix, taken once. ``_blocked`` runs it for
+        # every parent of every beam step -- tens of thousands of times per fit -- and the
+        # arithmetic does not depend on the parent, only the columns selected out of it.
+        # Deciding it here turns each call into a bool gather over an eighth of the bytes.
+        self._collinear = np.abs(self.gram) / self.normalizer > COLLINEARITY_LIMIT
         self._cache: dict[tuple[int, ...], Subset] = {}
         # `terms.Library.feature_groups`, expanded once into a membership matrix so that
         # `_blocked` is a row gather and an `any`, not an `np.isin` over the pool on each
@@ -328,14 +335,17 @@ class Selector:
         if not indices:
             return None
         order = np.array(indices, dtype=np.intp)
-        blocked = (np.abs(self.gram[:, order]) / self.normalizer > COLLINEARITY_LIMIT).any(axis=1)
+        blocked = self._collinear[:, order].any(axis=1)
         if self._members is None or self.groups is None:
             return blocked
         chosen = self.groups[order]
         chosen = chosen[chosen >= 0]
         if chosen.size == 0:
             return blocked
-        return blocked | self._members[np.unique(chosen)].any(axis=0)
+        # No `np.unique` on the way in: a repeated group id gathers the same membership row
+        # twice and an `any` over it reduces to the same mask, so the sort it costs bought
+        # nothing across several hundred thousand calls.
+        return blocked | self._members[chosen].any(axis=0)
 
     def search(
         self,
@@ -399,7 +409,18 @@ class Selector:
         current = subset
         for _ in range(rounds):
             improved = False
+            warmed: tuple[int, ...] | None = None
             for position in range(len(current.indices)):
+                # The probe for every position of one subset is a leave-one-out of it, so all
+                # of them are the same size and price in a single stacked solve. Priced up
+                # front and read out of the cache position by position; `_evaluate_many` shares
+                # the cache with `_evaluate`, so this only changes when the solves happen.
+                if warmed != current.indices:
+                    warmed = current.indices
+                    if len(warmed) > 1:
+                        self._evaluate_many(
+                            [tuple(x for i, x in enumerate(warmed) if i != p) for p in range(len(warmed))]
+                        )
                 remaining = tuple(x for i, x in enumerate(current.indices) if i != position)
                 probe = self._evaluate(remaining) if remaining else Subset((), np.zeros(0), self.total)
                 scores = self._residual_scores(probe) if remaining else np.abs(self.projection)

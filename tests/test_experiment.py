@@ -6,10 +6,12 @@ reproduce the published numbers inside a commit hook.
 """
 
 import io
+import re
 import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from typing import ClassVar
 
 import numpy as np
 import polars as pl
@@ -35,6 +37,7 @@ from ml_meta_perf.experiment import (
     correlation_analysis,
     decision_baselines,
     decision_quality,
+    identity_ceiling,
     interaction_reached,
     leakage_demonstration,
     length_comparison,
@@ -44,6 +47,7 @@ from ml_meta_perf.experiment import (
     run_e1,
     run_e2,
     run_e3,
+    saturated_analysis,
 )
 from ml_meta_perf.model import Equation
 from ml_meta_perf.practices import best_practices
@@ -267,6 +271,9 @@ class TestCli(unittest.TestCase):
                 target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN), ranks=(0, 1)
             ),
             interaction=interaction_reached(frame, e3),
+            saturated=pl.DataFrame([saturated_analysis(frame, FAST_E3)]),
+            opaque=pl.DataFrame({"model": ["stub"], "r2_in_sample": [0.9], "r2_loo_dataset": [0.1]}),
+            identity=identity_ceiling(frame, e3),
         )
 
     def test_render_prints_every_section(self) -> None:
@@ -351,6 +358,47 @@ class TestCli(unittest.TestCase):
         parser = build_parser()
         _, e3 = configurations(parser.parse_args([]))
         self.assertEqual(e3, DEFAULT_E3)
+
+
+class TestDocumentedDefaults(unittest.TestCase):
+    """The README's parameter table must state the defaults the code actually has.
+
+    It stated four numbers that had all moved: 24 terms against 15, penalty 5 against 20,
+    arity 3 against 2, z-cap 3.0 against 4.25. Nothing was checking, because the README is
+    the one document the pipeline does not write -- so this reads the table and compares it
+    with `DEFAULT_E3` instead.
+    """
+
+    #: The README flag whose default each `Configuration` field is published as.
+    FLAGS: ClassVar[dict[str, str]] = {
+        "headline_terms": "--terms",
+        "max_terms": "--max-terms",
+        "penalty": "--penalty",
+        "max_arity": "--arity",
+        "pool_size": "--pool",
+        "beam_width": "--beam",
+        "max_abs_zscore": "--zscore",
+    }
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        readme = Path(__file__).resolve().parent.parent / "README.md"
+        if not readme.is_file():
+            raise unittest.SkipTest("README is not installed beside the package")
+        cls.documented = {
+            match.group(1): match.group(2)
+            for match in re.finditer(r"^\| `(--[\w-]+)` \| ([\d.]+) \|", readme.read_text(), re.MULTILINE)
+        }
+
+    def test_every_tuned_knob_is_documented(self) -> None:
+        missing = [flag for flag in self.FLAGS.values() if flag not in self.documented]
+        self.assertEqual(missing, [], f"README omits a default for {missing}")
+
+    def test_documented_defaults_match_the_configuration(self) -> None:
+        for field, flag in self.FLAGS.items():
+            with self.subTest(flag=flag):
+                actual = getattr(DEFAULT_E3, field)
+                self.assertEqual(float(self.documented[flag]), float(actual))
 
 
 if __name__ == "__main__":

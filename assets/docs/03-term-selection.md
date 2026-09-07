@@ -7,11 +7,12 @@ Two problems are involved and only one of them is hard.
 | problem | nature | method |
 |---|---|---|
 | Given a set of terms, what are the best weights? | linear | `numpy.linalg.solve` on the ridge normal equations — **exact, no iteration** |
-| Which $k$ of ~360 candidate terms? | combinatorial | beam search with local refinement |
+| Which $k$ of a few hundred candidate terms? | combinatorial | beam search with local refinement |
 
-Handing every term to `lstsq` at once gives in-sample R² 0.656 and leave-one-dataset-out
-R² of **-5.94**; the 14-term selected equation gets 0.443. The solver is not the hard
-part.
+Handing every term to `lstsq` at once fits *better* in-sample than the published equation and
+transfers catastrophically — the generated section at the foot of this chapter measures both,
+against the published equation, on this run. The solver is not the hard part; the sample size
+is, and everything below is about spending it well.
 
 ## Stage 1 — correlation screening
 
@@ -190,16 +191,21 @@ refinement rounds over an order of magnitude each:
 | more rounds | 6 | 24 | 6 | 0.5582 | 0.5662 |
 | maximal | 48 | 96 | 10 | 0.5582 | 0.5663 |
 
-(default library; the wider library gains ~0.01 non-monotonically, which is search noise
-rather than systematic improvement.)
+<sub>Default library. The wider library gains ~0.01 non-monotonically, which is search noise
+rather than systematic improvement. **Measured before the 2026-09-05 protocol change**, so
+these are re-selecting numbers and are not comparable with any current figure — the
+in-sample column here is not the in-sample column of chapter 5. What the table supports is a
+statement about *differences between search settings*, and those are internally consistent
+because every row was measured the same way.</sub>
 
 Spending eight times the compute changes the fourth decimal place. Together with the
 negative result on a richer vocabulary ([chapter 2](02-additive-model.md)), this locates
 the limit in the model *form*, not in the optimiser.
 
 **Per-length penalty tuning** was also tested: choosing $\lambda$ separately for each $k$
-lifts leave-one-dataset-out R² at $k=14$ from 0.4429 to 0.4456. A gain of 0.003 does not
-justify the extra configuration surface, and one global penalty is retained.
+lifted leave-one-dataset-out R² at $k=14$ from 0.4429 to 0.4456 — again on the pre-2026-09-05
+re-selecting protocol, so read the *gain* and not the level. A gain of 0.003 does not justify
+the extra configuration surface, and one global penalty is retained.
 
 ## Stage 3 — choosing the number of terms
 
@@ -220,16 +226,20 @@ A length chosen on it is chosen on the one curve that cannot express the trade t
 about.
 
 **And not one cross-validated curve either.** On twenty groups they wander, and
-leave-one-dataset-out on this corpus has genuine craters: at 15 terms it reads 0.393 against
-neighbours around 0.62. That is not noise but not a property of the length either — the
-held-out `ASNM-CDX-2009` fold sits outside the convex hull of the other nineteen datasets in
-term space, the equation extrapolates it to −2.41, and `validate._clip_to_training` pins the
-fold to the training floor. One fold's extrapolation should not choose the published length.
+leave-one-dataset-out on this corpus has genuine craters — lengths where the held-out number
+collapses by a fifth of the scale while its two neighbours are untouched. That is not noise,
+and it is not a property of the length either: at such a length one held-out dataset sits
+outside the convex hull of the other nineteen in term space, where a linear equation
+extrapolates without limit and `validate._clip_to_training` pins the fold to its training
+floor. `ASNM-CDX-2009` is the fold this happens to. One fold's extrapolation should not
+choose the published length.
 
 So the detector runs on a **consensus across all three protocols** — `selection.consensus_curve`,
-the per-length median. The median is what makes it robust: at 15 terms the three read
-0.659 / 0.393 / 0.616 and the median takes 0.616, ignoring the crater. A mean would be
-dragged to 0.556 by it. `min` is available as the conservative reading and is not the default.
+the per-length median. The median is what makes it robust: it discards the crater where a
+mean would be dragged down by it. **Which length craters moves with the configuration**, so
+the worked example is generated rather than written here — [chapter 5](05-evaluation.md)
+names the deepest one on the current curve and gives the median and the mean side by side.
+`min` is available as the conservative reading and is not the default.
 
 ### Which lengths the curve is reported at
 
@@ -240,7 +250,7 @@ such a curve is partly reading the grid: the same detector returns 4 terms on th
 on the dense one. Reporting every length costs nothing, because the beam search already builds
 the whole path.
 
-![Accuracy versus equation length](../figures/term_count_curve.png)
+![Accuracy versus equation length](../figures/02_term_count_curve.png)
 
 The craters are visible in that figure. They are a real property of leave-one-dataset-out on
 twenty groups and they belong on the plot.
@@ -300,6 +310,78 @@ Both **Pareto fronts** are also reported. Over (length, LOO-dataset R²) the fro
 (length, in-sample R²) *every* length is on the front, because fit is monotone in terms and
 so nothing is ever dominated. That is precisely why the in-sample curve cannot choose a
 length by itself.
+
+<!-- generated: do not edit below -->
+
+## Why a subset rather than every term
+
+The control for the whole selection stage. If handing every candidate term to unpenalised least squares in one go transferred well, the beam search and the length rule would be machinery in search of a problem.
+
+| terms | r2_in_sample | r2_loo_dataset_clipped | r2_loo_dataset_unclipped |
+|---|---|---|---|
+| 220.0000 | 0.7860 | -2.1696 | -1536.5000 |
+
+**The solver is not the hard part; the sample size is.** All 220 terms at once fit better in-sample than the published equation (0.7860 against 0.6578) and transfer at -2.1696 leave-one-dataset-out, against the published equation's 0.6381. The unclipped figure — -1536.5 — is what the fit does when a held-out dataset falls outside the convex hull of the other nineteen and nothing bounds the extrapolation. A design this much wider than 20 held-out groups can support has nothing to constrain it, which is what selection is for.
+
+## Equation length
+
+The length is chosen by one rule with no threshold and no smoothing: **the argmax of the consensus curve** (`selection.best_length`), which here selects **15 terms**. Nothing about that number is written down — it falls out of the curve, and it re-derives itself if the corpus changes.
+
+**Why the consensus is a median and not a mean.** The deepest crater on this curve is at **24 terms**, where the three protocols read 0.671 / 0.387 / 0.626. The median takes 0.626 and ignores it; a mean would be dragged to 0.562. The crater is 0.244 below the neighbouring lengths and is not a property of the length at all -- it is one held-out dataset sitting outside the convex hull of the other nineteen in term space, where a linear equation extrapolates without limit and `validate._clip_to_training` pins the fold to its training floor. One fold's extrapolation should not choose the published length.
+
+Every alternative rule is reported beside it, because a selection rule is only defensible if what it beats is on the page:
+
+| rule | n_terms | r2_in_sample | r2_loo_dataset |
+|---|---|---|---|
+| pareto front, closest to ideal | 4 | 0.5390 | 0.5053 |
+| pareto front, furthest from nadir | 4 | 0.5390 | 0.5053 |
+| pareto front, furthest from chord | 4 | 0.5390 | 0.5053 |
+| best loo-dataset | 15 | 0.6578 | 0.6381 |
+| best consensus (the rule) | 15 | 0.6578 | 0.6381 |
+| published | 15 | 0.6578 | 0.6381 |
+
+The geometric rules — the Pareto-front knee by its three standard forms — choose far shorter equations, and **11 of the 32 lengths searched are significantly worse** than the selected one when paired fold by fold over the held-out datasets. A knee finds where the *marginal* return per term collapses, which on a saturating curve is early; it does not ask whether the accuracy still being added is real.
+
+The parsimony alternative is **10 terms** — the shortest length whose paired interval against the selected one spans zero. It is reported and not adopted: the accuracy it gives up is measurable (0.6151 against 0.6381 leave-one-dataset-out) even where it is not significant.
+
+The full curve the rule reads, at every length under all three protocols:
+
+| n_terms | r2_in_sample | mae_in_sample | smape_in_sample | r2_loo_dataset | mae_loo_dataset | smape_loo_dataset | r2_loo_model | mae_loo_model | smape_loo_model |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | 0.2173 | 0.2440 | 46.8473 | 0.1654 | 0.2517 | 47.6765 | 0.1994 | 0.2472 | 47.1900 |
+| 2 | 0.3679 | 0.2048 | 42.9474 | 0.3191 | 0.2122 | 43.9902 | 0.3553 | 0.2070 | 43.2309 |
+| 3 | 0.4752 | 0.1843 | 40.9152 | 0.4277 | 0.1913 | 42.1394 | 0.4534 | 0.1881 | 41.3969 |
+| 4 | 0.5390 | 0.1676 | 38.8722 | 0.5053 | 0.1733 | 39.8140 | 0.5173 | 0.1716 | 39.4355 |
+| 5 | 0.5581 | 0.1635 | 38.2407 | 0.5315 | 0.1678 | 39.0066 | 0.5335 | 0.1682 | 38.9153 |
+| 6 | 0.5903 | 0.1560 | 37.7603 | 0.5659 | 0.1617 | 38.1458 | 0.5652 | 0.1607 | 38.2592 |
+| 7 | 0.6125 | 0.1499 | 36.0807 | 0.5876 | 0.1560 | 37.0900 | 0.5873 | 0.1548 | 36.9766 |
+| 8 | 0.6243 | 0.1486 | 36.1415 | 0.5965 | 0.1545 | 36.4395 | 0.6014 | 0.1532 | 36.5711 |
+| 9 | 0.6275 | 0.1482 | 36.0784 | 0.6059 | 0.1530 | 36.7461 | 0.6029 | 0.1534 | 36.7278 |
+| 10 | 0.6344 | 0.1448 | 35.8198 | 0.6151 | 0.1492 | 36.5028 | 0.6068 | 0.1502 | 36.6987 |
+| 11 | 0.6408 | 0.1435 | 35.7871 | 0.6187 | 0.1497 | 36.6836 | 0.6124 | 0.1493 | 36.6601 |
+| 12 | 0.6452 | 0.1421 | 35.4886 | 0.6231 | 0.1476 | 36.1081 | 0.6080 | 0.1491 | 36.4758 |
+| 13 | 0.6471 | 0.1416 | 35.4546 | 0.4829 | 0.1734 | 40.2100 | 0.6099 | 0.1488 | 36.2947 |
+| 14 | 0.6497 | 0.1410 | 34.9209 | 0.5003 | 0.1715 | 39.5174 | 0.6102 | 0.1487 | 36.1729 |
+| 15 | 0.6578 | 0.1371 | 34.4737 | 0.6381 | 0.1417 | 34.8803 | 0.6218 | 0.1449 | 35.4201 |
+| 16 | 0.6619 | 0.1357 | 33.8603 | 0.6317 | 0.1451 | 34.8130 | 0.6263 | 0.1431 | 34.7298 |
+| 17 | 0.6633 | 0.1357 | 34.0624 | 0.6299 | 0.1446 | 34.9541 | 0.6254 | 0.1435 | 34.8493 |
+| 18 | 0.6639 | 0.1360 | 34.0860 | 0.6343 | 0.1433 | 34.7439 | 0.6254 | 0.1438 | 34.8883 |
+| 19 | 0.6663 | 0.1350 | 33.8645 | 0.6289 | 0.1425 | 34.9076 | 0.6266 | 0.1430 | 34.9297 |
+| 20 | 0.6679 | 0.1343 | 33.8598 | 0.6379 | 0.1433 | 34.5722 | 0.6282 | 0.1423 | 34.5920 |
+| 21 | 0.6693 | 0.1342 | 33.9862 | 0.6337 | 0.1431 | 34.8863 | 0.6288 | 0.1422 | 34.7660 |
+| 22 | 0.6701 | 0.1338 | 33.8926 | 0.6255 | 0.1461 | 35.0555 | 0.6284 | 0.1421 | 34.6898 |
+| 23 | 0.6707 | 0.1335 | 33.8135 | 0.6306 | 0.1438 | 34.4890 | 0.6283 | 0.1419 | 34.8448 |
+| 24 | 0.6707 | 0.1337 | 33.8867 | 0.3874 | 0.1749 | 42.0258 | 0.6265 | 0.1424 | 35.1649 |
+| 25 | 0.6718 | 0.1341 | 33.8208 | 0.6331 | 0.1452 | 35.6574 | 0.6278 | 0.1429 | 34.9396 |
+| 26 | 0.6716 | 0.1337 | 33.8379 | 0.5574 | 0.1618 | 37.2894 | 0.6249 | 0.1432 | 35.1182 |
+| 27 | 0.6721 | 0.1333 | 33.7753 | 0.5683 | 0.1592 | 37.0522 | 0.6255 | 0.1427 | 35.2324 |
+| 28 | 0.6727 | 0.1333 | 33.8031 | 0.4801 | 0.1717 | 39.2600 | 0.6253 | 0.1429 | 35.2727 |
+| 29 | 0.6729 | 0.1334 | 33.8388 | 0.5165 | 0.1659 | 37.9845 | 0.6241 | 0.1433 | 35.3512 |
+| 30 | 0.6732 | 0.1334 | 33.8136 | 0.5371 | 0.1633 | 37.6430 | 0.6236 | 0.1434 | 35.3303 |
+| 31 | 0.6728 | 0.1334 | 33.7488 | 0.5373 | 0.1603 | 36.4489 | 0.6193 | 0.1439 | 35.3237 |
+| 32 | 0.6730 | 0.1333 | 33.7138 | 0.4202 | 0.1798 | 39.1599 | 0.6193 | 0.1438 | 35.3273 |
+
+<!-- end generated -->
 
 ## Limitations of the selection procedure
 

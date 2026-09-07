@@ -18,9 +18,12 @@ from ml_meta_perf.data import (
     SchemaError,
     aggregate_by_dataset,
     columns_as_arrays,
+    corpus_summary,
     groups,
     load,
+    missing_cells,
     target,
+    target_summary,
 )
 
 
@@ -135,6 +138,78 @@ class TestAccessors(unittest.TestCase):
 
     def test_groups_returns_labels(self) -> None:
         self.assertEqual(sorted(set(groups(synthetic(), MODEL_COLUMN).tolist())), ["m1", "m2", "m3"])
+
+
+class TestCorpusSummary(unittest.TestCase):
+    """The corpus description is generated, so these pin what it must keep saying.
+
+    Chapter 1 used to state its counts in prose, and they drifted. The point of moving them
+    into `corpus_summary` is lost if the function itself is unpinned.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.frame = load()
+        table = corpus_summary(cls.frame)
+        cls.summary = dict(zip(table["quantity"], table["count"], strict=True))
+
+    def test_counts_the_rows_groups_and_features(self) -> None:
+        self.assertEqual(self.summary["rows"], self.frame.height)
+        self.assertEqual(self.summary["datasets"], 20)
+        self.assertEqual(self.summary["models"], 25)
+        self.assertEqual(self.summary["dataset features"], len(DATASET_FEATURES))
+        self.assertEqual(self.summary["model features"], len(MODEL_FEATURES))
+
+    def test_absent_cells_are_the_difference_from_a_full_grid(self) -> None:
+        self.assertEqual(self.summary["cells absent of datasets x models"], 20 * 25 - self.frame.height)
+
+    def test_counts_are_integers_not_floats(self) -> None:
+        """A count rendered as `476.0000` in a chapter table is a formatting bug with a
+        cause: putting counts and a mean in one float column."""
+        self.assertEqual(corpus_summary(self.frame).schema["count"], pl.Int64)
+
+
+class TestTargetSummary(unittest.TestCase):
+    def setUp(self) -> None:
+        self.frame = load()
+        self.table = target_summary(self.frame)
+        self.rows = dict(zip(self.table["quantity"], self.table["rows"], strict=True))
+
+    def test_reports_the_pinned_rows(self) -> None:
+        values = target(self.frame)
+        self.assertEqual(self.rows["at exactly 1"], int((values == 1.0).sum()))
+        self.assertEqual(self.rows["at exactly 0"], int((values == 0.0).sum()))
+        self.assertEqual(self.rows["below 0"], int((values < 0.0).sum()))
+
+    def test_the_pinned_rows_are_a_third_of_the_corpus(self) -> None:
+        """The claim the generated section makes in prose beside this table."""
+        pinned = self.rows["at exactly 1"] + self.rows["at exactly 0"] + self.rows["below 0"]
+        self.assertGreater(pinned / self.frame.height, 0.15)
+
+    def test_extremes_match_the_column(self) -> None:
+        values = target(self.frame)
+        stats = dict(zip(self.table["quantity"], self.table["MCC"], strict=True))
+        self.assertAlmostEqual(stats["minimum"], float(values.min()))
+        self.assertAlmostEqual(stats["maximum"], float(values.max()))
+        self.assertAlmostEqual(stats["mean"], float(values.mean()))
+
+
+class TestMissingCells(unittest.TestCase):
+    def test_names_only_datasets_short_of_models(self) -> None:
+        frame = load()
+        table = missing_cells(frame)
+        self.assertGreater(table.height, 0)
+        for row in table.iter_rows(named=True):
+            present = frame.filter(pl.col(DATASET_COLUMN) == row["dataset"]).height
+            self.assertEqual(row["models_absent"], 25 - present)
+
+    def test_the_absences_are_in_the_smallest_datasets(self) -> None:
+        """The chapter's claim that the missingness is not at random, as a test."""
+        frame = load()
+        short = set(missing_cells(frame)["dataset"].to_list())
+        sizes = frame.group_by(DATASET_COLUMN).agg(pl.col("nr_inst").first()).sort("nr_inst")
+        smallest = set(sizes[DATASET_COLUMN].to_list()[: len(short)])
+        self.assertEqual(short, smallest)
 
 
 if __name__ == "__main__":

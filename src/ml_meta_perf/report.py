@@ -37,10 +37,18 @@ import numpy as np
 import polars as pl
 
 from ml_meta_perf.attribution import classify, contributions
-from ml_meta_perf.data import ALL_FEATURES, FEATURE_GLOSSARY
+from ml_meta_perf.data import (
+    ALL_FEATURES,
+    DATASET_COLUMN,
+    FEATURE_GLOSSARY,
+    MODEL_COLUMN,
+    corpus_summary,
+    missing_cells,
+    target_summary,
+)
 from ml_meta_perf.experiment import Configuration, Report
 from ml_meta_perf.guidance import as_table as as_guidance_table
-from ml_meta_perf.guidance import assess
+from ml_meta_perf.guidance import assess, equation_evidence
 from ml_meta_perf.guidance import render as render_guidance
 from ml_meta_perf.model import Equation, direction
 from ml_meta_perf.practices import render as render_practices
@@ -499,10 +507,227 @@ def _table(frame: pl.DataFrame, float_format: str = "{:.4f}") -> str:
     return "\n".join([header, rule, *body])
 
 
+def single_prediction(
+    equation: Equation,
+    columns: dict[str, np.ndarray],
+    truth: np.ndarray,
+    frame: pl.DataFrame,
+    *,
+    limit: int = 6,
+) -> str:
+    """One row's prediction broken into its terms, as a printed block.
+
+    The interpretability payoff in its most direct form: a reader can add the column up and
+    get the prediction back, which is a thing no opaque regressor lets anyone do.
+
+    **The row is chosen by a rule, not picked.** The equation's median absolute error is a
+    typical prediction rather than its best case, and choosing it arithmetically is what keeps
+    this example from being a flattering one somebody selected once. The chapter this lands in
+    is the chapter arguing that the analysis is generated rather than authored; it carried a
+    hand-written breakdown until 2026-09-07, and every figure in it had gone stale -- the
+    intercept it printed was 1.4787 against the equation's actual 1.3586.
+
+    Ties are broken by taking the first such row in corpus order, so the choice is a function
+    of the data and the equation alone.
+    """
+    predicted = equation.predict(columns)
+    error = np.abs(truth - predicted)
+    # The median error itself, not the row at the middle of the sorted order: with an even
+    # row count those differ, and `argmin` against the median value picks an actual row.
+    row = int(np.argmin(np.abs(error - float(np.median(error)))))
+
+    shares = contributions(equation, columns)[row]
+    ordered = sorted(zip(shares, equation.terms, strict=True), key=lambda pair: -abs(pair[0]))
+    total = equation.intercept + float(shares.sum())
+
+    lines = [
+        f"dataset  : {frame[DATASET_COLUMN][row]}",
+        f"model    : {frame[MODEL_COLUMN][row]}",
+        f"actual   : {truth[row]:+.4f}",
+        f"predicted: {predicted[row]:+.4f}",
+        "",
+        "contribution breakdown:",
+        f"    {equation.intercept:+.4f}   intercept",
+    ]
+    for value, term in ordered[:limit]:
+        lines.append(f"    {value:+.4f}   {term.name}")
+    if len(ordered) > limit:
+        remainder = sum(value for value, _ in ordered[limit:])
+        lines.append(f"    {remainder:+.4f}   the remaining {len(ordered) - limit} terms")
+    lines.append(f"  = {total:+.4f}   sum")
+    # `Equation.predict` clips to the range MCC can take at all, so on a row where the linear
+    # form runs past the end of that range the column does not add up to the number printed
+    # above it. Saying so is the honest form: a breakdown a reader cannot add up, with no
+    # explanation of why, is worse than no breakdown.
+    if abs(total - predicted[row]) > 5e-5:
+        lines.append(f"    clipped to {predicted[row]:+.4f}, the range MCC can take")
+    return "```\n" + "\n".join(lines) + "\n```"
+
+
+#: How each equation's own ceiling is labelled in `Report.comparison`. E1 and E2 are bounded
+#: by what their group identity can explain at all; E3 is bounded by the additive oracle only
+#: in the sense that passing it demonstrates interaction, so it is not given a ratio.
+CEILING_ROWS = {"E1": "E1 reference: true dataset means", "E2": "E2 reference: true model means"}
+
+
+def _headline(report: Report) -> pl.DataFrame:
+    """The three equations and the capability variant, each against its own ceiling.
+
+    The one table the study can be summarised by. It exists because the summary page kept a
+    hand-written copy of these numbers and had no way of noticing when they moved -- the same
+    failure the generated chapter sections were introduced to remove, reappearing one level
+    up. **The ``reached`` column is the point of the table**, not the R2 column: E1's
+    structural maximum is a per-dataset constant, so its 0.35 and E3's 0.66 are not
+    comparable as achievements, and printing the fraction of each equation's own ceiling
+    beside them is what stops a reader making that comparison anyway.
+    """
+    ceilings = dict(zip(report.comparison["equation"].to_list(), report.comparison["r2"].to_list(), strict=True))
+    rows: list[dict[str, object]] = []
+    listed = (("E1", report.e1), ("E2", report.e2), ("E3", report.e3), ("E3 capability", report.e3_capability))
+    for name, equation in listed:
+        ceiling = ceilings.get(CEILING_ROWS.get(name, ""))
+        in_sample = float(equation.in_sample["r2"])
+        rows.append(
+            {
+                "equation": name,
+                "features": {"E1": "dataset", "E2": "model"}.get(name, "both"),
+                "terms": equation.equation.n_terms,
+                "in-sample R2": in_sample,
+                "LOO-dataset R2": float(equation.cross_validated["loo_dataset"]["r2"]),
+                "LOO-model R2": float(equation.cross_validated["loo_model"]["r2"]),
+                "own ceiling": float(ceiling) if ceiling is not None else float("nan"),
+                "reached": in_sample / float(ceiling) if ceiling else float("nan"),
+            }
+        )
+    return pl.DataFrame(rows)
+
+
 def _scores(label: str, scores: dict[str, float | int]) -> str:
     return (
         f"| {label} | {float(scores['r2']):.4f} | {float(scores['mae']):.4f} | "
         f"{float(scores['rmse']):.4f} | {int(scores['n'])} |"
+    )
+
+
+def _crater_note(report: Report) -> str:
+    """The deepest leave-one-dataset-out crater on the length curve, and what it costs a mean.
+
+    The consensus curve takes a **median** across the three protocols rather than a mean, and
+    the argument for that is only convincing next to a length where the two disagree. Which
+    length that is moves whenever the configuration does -- chapter 3 named one in prose and
+    it had drifted onto the published length by the time anyone reread it, which turned the
+    illustration into a claim that the equation the study ships sits in a crater.
+
+    Deepest is measured against the neighbouring lengths, not against the curve's own mean: a
+    crater is a local collapse, and a length at the end of a declining run is not one.
+    """
+    curve = report.e3.curve
+    if curve.height < 3 or "r2_loo_dataset" not in curve.columns:
+        return ""
+    protocols = ["r2_in_sample", "r2_loo_dataset", "r2_loo_model"]
+    if any(name not in curve.columns for name in protocols):
+        return ""
+    values = np.column_stack([curve[name].to_numpy() for name in protocols])
+    held = curve["r2_loo_dataset"].to_numpy()
+    lengths = curve["n_terms"].to_numpy()
+    neighbours = (held[:-2] + held[2:]) / 2.0
+    index = int(np.argmax(neighbours - held[1:-1])) + 1
+    depth = float(neighbours[index - 1] - held[index])
+    if depth <= 0.0:
+        return ""
+    row = values[index]
+    return (
+        f"**Why the consensus is a median and not a mean.** The deepest crater on this curve "
+        f"is at **{int(lengths[index])} terms**, where the three protocols read "
+        f"{row[0]:.3f} / {row[1]:.3f} / {row[2]:.3f}. The median takes {float(np.median(row)):.3f} "
+        f"and ignores it; a mean would be dragged to {float(row.mean()):.3f}. The crater is "
+        f"{depth:.3f} below the neighbouring lengths and is not a property of the length at "
+        "all -- it is one held-out dataset sitting outside the convex hull of the other "
+        "nineteen in term space, where a linear equation extrapolates without limit and "
+        "`validate._clip_to_training` pins the fold to its training floor. One fold's "
+        "extrapolation should not choose the published length.\n"
+    )
+
+
+def _saturated_note(report: Report) -> str:
+    """Read the saturated fit against the published equation, in one generated sentence.
+
+    The comparison is the point, and stating it in prose beside the table is how it stops
+    being two numbers a reader has to subtract. Both sides come from this run, so the
+    sentence cannot drift from the table above it.
+    """
+    if report.saturated.height == 0:
+        return ""
+    row = report.saturated.to_dicts()[0]
+    published = float(report.e3.cross_validated["loo_dataset"]["r2"])
+    return (
+        f"**The solver is not the hard part; the sample size is.** All "
+        f"{int(row['terms'])} terms at once fit better in-sample than the published equation "
+        f"({float(row['r2_in_sample']):.4f} against "
+        f"{float(report.e3.in_sample['r2']):.4f}) and transfer at "
+        f"{float(row['r2_loo_dataset_clipped']):.4f} leave-one-dataset-out, against the "
+        f"published equation's {published:.4f}. The unclipped figure — "
+        f"{float(row['r2_loo_dataset_unclipped']):.1f} — is what the fit does when a held-out "
+        "dataset falls outside the convex hull of the other nineteen and nothing bounds the "
+        "extrapolation. A design this much wider than 20 held-out groups can support has "
+        "nothing to constrain it, which is what selection is for.\n"
+    )
+
+
+def _identity_note(report: Report) -> str:
+    """What the identity ceiling is worth, as one generated sentence.
+
+    The gap is the study's central negative result stated as a number: it is what every
+    rejected model-side encoding failed to recover, and it is a property of the corpus rather
+    than of the search.
+    """
+    if report.identity.height < 3:
+        return ""
+    rows = report.identity.to_dicts()
+    base, level, slope = (float(row["r2_loo_dataset"]) for row in rows[:3])
+    return (
+        f"**The gap is {slope - base:.3f} of leave-one-dataset-out R2**, of which a per-model "
+        f"level alone recovers {level - base:.3f} and the level-plus-slope form the rest. The "
+        "slope is the half that matters: a level shifts every one of a model's rows equally, "
+        "while a slope lets its advantage depend on the data, which is what a *capability* "
+        "descriptor would have to do and what none of the descriptors this corpus records "
+        "does. Every model-side encoding the study tried and rejected was rejected for "
+        "failing to recover this gap -- so it is a property of the corpus, not of the "
+        "search, and the one route to closing it that survives is measuring what a model is "
+        "good at rather than asserting it.\n"
+    )
+
+
+def _opaque_note(report: Report) -> str:
+    """Read the opaque table's own two columns against each other, and against the equation.
+
+    The comparison the study rests on, stated from this run rather than from a number
+    somebody measured once. The forest row is the one to read across: the gap between what it
+    fits and what it transfers is the whole argument, and it is a property of twenty dataset
+    groups rather than of that estimator.
+    """
+    if report.opaque.height == 0 or "r2_loo_dataset" not in report.opaque.columns:
+        return ""
+    rows = report.opaque.to_dicts()
+    best_fit = max(rows, key=lambda row: float(row["r2_in_sample"]))
+    best_transfer = max(rows, key=lambda row: float(row["r2_loo_dataset"]))
+    equation = float(report.e3.cross_validated["loo_dataset"]["r2"])
+    return (
+        f"**Read the {best_fit['model']} row across.** It fits this meta-data at R2 "
+        f"{float(best_fit['r2_in_sample']):.4f} and generalises to an unseen dataset at "
+        f"{float(best_fit['r2_loo_dataset']):.4f}, against the published equation's "
+        f"{equation:.4f}. With twenty dataset groups and dataset features constant within a "
+        "group, a flexible model can identify the dataset and look its answer up -- and "
+        "identification is worth nothing on a dataset nobody has run. This is also the likely "
+        "provenance of the R2 near 0.9 figures reported for opaque meta-models: an in-sample "
+        "or randomly-split forest reproduces them exactly, and the same forest is close to "
+        "useless out of fold.\n"
+        f"\nThe best opaque transfer here is {best_transfer['model']} at "
+        f"{float(best_transfer['r2_loo_dataset']):.4f}, still far below the equation. **None "
+        "of these is tuned**, and tuning them would be answering a different objection: the "
+        "failure is that the sample has twenty groups, which no amount of tuning changes. "
+        "What the table licenses is that the accuracy this study traded away was not there to "
+        "be had under the protocol it reports.\n"
     )
 
 
@@ -528,6 +753,7 @@ def _length_note(report: Report) -> str:
         f"the consensus curve** (`selection.best_length`), which here selects "
         f"**{int(selected['n_terms'])} terms**. Nothing about that number is written down — it "
         "falls out of the curve, and it re-derives itself if the corpus changes.\n",
+        _crater_note(report),
         "Every alternative rule is reported beside it, because a selection rule is only "
         "defensible if what it beats is on the page:\n",
         _table(report.term_choice) + "\n",
@@ -792,6 +1018,10 @@ def render(
     importance = term_importance(report.e3.equation, columns, dataset_features, model_features, report.e3.stability)
     concentration = coverage(importance)
     equation = report.e3.equation
+    # Counted from the corpus rather than written into the prose below it. A generated
+    # sentence carrying a literal "20 datasets" is the same staleness the generated sections
+    # exist to prevent, one level further in.
+    datasets = int(frame[DATASET_COLUMN].n_unique()) if frame is not None else 0
 
     parts: list[str] = []
     parts.append("# ml-meta-perf — fitted equation and extracted practices\n")
@@ -806,6 +1036,63 @@ def render(
         parts.append(f"Meta-dataset: `{source}`\n")
     if config is not None:
         parts.append(_configuration(config) + "\n")
+
+    parts.append("## 1b. The corpus\n")
+    parts.append(
+        "What the meta-dataset is, computed from the file the run was fitted on rather than "
+        "transcribed into prose beside it.\n"
+    )
+    if frame is not None:
+        parts.append(_table(corpus_summary(frame)) + "\n")
+        parts.append(
+            "**The absent cells are not missing at random.** Every dataset short of models is "
+            "one of the smallest in the corpus, which is what the instance counts show:\n"
+        )
+        parts.append(_table(missing_cells(frame), float_format="{:.0f}") + "\n")
+        parts.append("And how MCC is distributed over those rows:\n")
+        parts.append(_table(target_summary(frame)) + "\n")
+        parts.append(
+            "**A third of the corpus is pinned at one end of the range or the other.** That is "
+            "what makes MAE rather than SMAPE the reported error: SMAPE divides by "
+            "`|truth| + |prediction|`, so every row at exactly zero contributes the full 200% "
+            "unless the prediction is exactly zero too, and the metric ends up dominated by "
+            "the rows the equation is already known to handle worst.\n"
+        )
+        parts.append(
+            "Two things these tables cannot say, both of which bound every number in the study. "
+            "Each row is the **best of three seeds**, not their mean, so the target is "
+            "optimistic and has a noise floor no predictor can go below; and every model was "
+            "trained on a stratified sample **capped at 100,000 rows**, so `nr_inst` is the "
+            "source dataset's size rather than the training set's. Both are properties of the "
+            "corpus builder upstream, and are audited against it in the prose above.\n"
+        )
+    else:
+        parts.append("_(not summarised: the meta-dataset was not supplied to the renderer)_\n")
+
+    parts.append("## 1c. The headline\n")
+    parts.append(
+        "The one table the study is summarised by, so that the summary cannot drift from "
+        f"the chapters. Every row is scored on the same {int(report.e3.in_sample['n'])} rows "
+        "under the same protocols; the equations differ **only** in which features they may "
+        "draw on.\n"
+    )
+    parts.append(_table(_headline(report)) + "\n")
+    parts.append(
+        "**Do not read these R² values as achievements against each other.** They share a "
+        "scale but not a ceiling: E1 sees only dataset features, every row of a dataset "
+        "shares one feature vector, and so E1 can predict nothing but a per-dataset "
+        "constant. Its structural maximum is the `true dataset means` row, and reaching it "
+        "means E1 is *done* rather than weak. The comparable quantity is the fraction of "
+        "each equation's own ceiling, which the last column gives.\n"
+    )
+    parts.append(
+        "**E3's ceiling cells are blank because it has no structural one.** Nothing in the "
+        "feature set stops an equation over both halves of the meta-data from predicting "
+        "every cell, so there is no group-identity bound to divide by. The reference it is "
+        "read against instead is the additive oracle, in the comparison table of chapter 5 -- "
+        "and E3 is *expected* to pass that, because the oracle bounds only an equation "
+        "additive in dataset effect plus model effect, which E3's mixed terms are not.\n"
+    )
 
     parts.append("## 2. The equation\n")
     parts.append(
@@ -835,14 +1122,47 @@ def render(
     parts.append(_table(report.baselines) + "\n")
     parts.append(_baseline_centre_note(report.baselines))
 
-    parts.append("### How many terms, and why\n")
-    parts.append(_length_note(report))
-
+    parts.append("## 3c. How far the form could reach\n")
+    parts.append(
+        "Two ceilings, both computed from the library alone and so available *before* an "
+        "equation exists. Each is an expectation the fitted equation is then held against, "
+        "rather than a number read off it.\n"
+    )
     parts.append("### How far the additive form reaches\n")
     parts.append(_capability_note(report))
 
     parts.append("### What the vocabulary could reach, before any search\n")
     parts.append(_reach_note(report))
+
+    parts.append("### Where the variance is, before any equation\n")
+    parts.append("Variance of MCC explained by group identity alone, with no equation involved:\n")
+    parts.append(_table(report.decomposition) + "\n")
+
+    parts.append("### How fast interaction pays\n")
+    parts.append(
+        "The additive form cannot represent dataset-by-model interaction beyond what its mixed "
+        "terms reach. The ladder below adds interaction components to an oracle that is "
+        "handed the true group means, so it measures the ceiling rather than any equation:\n"
+    )
+    parts.append(_table(report.oracles) + "\n")
+    parts.append(
+        "That is a ceiling, not a score. Whether the equation reaches any of it is a separate "
+        "question, and the answer is that it reaches some: below, `alignment` is the squared "
+        "correlation between the equation's own interaction residual and the leading components "
+        "of the oracle's, over observed cells. `leading_share` is how much of the interaction "
+        "variance those components carry, and `interaction_share` how much of MCC's variance is "
+        "interaction at all.\n"
+    )
+    parts.append(_table(report.interaction) + "\n")
+
+    parts.append("## 3b. Why a subset rather than every term\n")
+    parts.append(
+        "The control for the whole selection stage. If handing every candidate term to "
+        "unpenalised least squares in one go transferred well, the beam search and the length "
+        "rule would be machinery in search of a problem.\n"
+    )
+    parts.append(_table(report.saturated) + "\n")
+    parts.append(_saturated_note(report))
 
     parts.append("## 4. Equation analysis\n")
     parts.append(
@@ -953,6 +1273,18 @@ def render(
     parts.append("")
     parts.append(_table(report.shares) + "\n")
 
+    parts.append("## 4b. The ceiling on model descriptors\n")
+    parts.append(
+        "Under leave-one-dataset-out every model appears in every training fold, so the "
+        "equation's residual can be averaged per model on the training rows and applied to "
+        "the held-out dataset with no leak. That replaces the model descriptors with the best "
+        "possible substitute -- the model's **identity**, fitted freely -- so what it adds is "
+        "a ceiling on what any descriptor set could reach by telling these classifiers "
+        "apart.\n"
+    )
+    parts.append(_table(report.identity) + "\n")
+    parts.append(_identity_note(report))
+
     parts.append("## 5. Best practices\n")
     parts.append(
         "A best practice is general, transferable advice that already circulates in the "
@@ -969,6 +1301,35 @@ def render(
     else:
         parts.append("_(not assessed: the meta-dataset was not supplied to the renderer)_\n")
 
+    parts.append("### Each practice against the equation's own terms\n")
+    parts.append(
+        "The verdicts above are drawn from corpus averages -- family means, variance shares, "
+        "paired tests -- which any study with this corpus could compute. This table asks the "
+        "stronger question, and the one an interpretability-first study is uniquely able to "
+        "ask: **does the published equation encode the practice, in named terms, with a sign "
+        "and a strength a reader can look up?**\n"
+    )
+    if frame is not None:
+        parts.append(_table(equation_evidence(report)) + "\n")
+        parts.append(
+            "`expected` is what the practice predicts as the feature rises; `direction` is "
+            "what the equation does, measured on the data rather than read off a weight sign, "
+            "because a feature can sit in several terms and inside denominators. `effect` is "
+            "the size of that move across the feature's deciles -- **agreement in sign with a "
+            "negligible effect is agreement without evidence**, which is why the two are "
+            "printed together. `not selected` means the search never took the feature, so the "
+            "equation is silent on that practice rather than supporting it; `no direction` "
+            "means the feature is in the equation but moves MCC too weakly or too "
+            "non-monotonically for a direction to be stated.\n"
+        )
+        parts.append(
+            "Only practices that make a claim about a raw feature appear here. A protocol "
+            "rule, a metric choice or a statement about model families has no coefficient to "
+            "check it against, and mapping one onto a term would be inventing a connection.\n"
+        )
+    else:
+        parts.append("_(not checked: the meta-dataset was not supplied to the renderer)_\n")
+
     parts.append("## 5b. The measurements underneath\n")
     parts.append(
         "What the fitted equation says about each raw feature it uses, kept only when the "
@@ -978,7 +1339,7 @@ def render(
         "feature can appear in several terms and inside denominators.\n"
     )
     parts.append(
-        "**These are associations across 20 datasets, not causal claims, and not practices "
+        f"**These are associations across {datasets} datasets, not causal claims, and not practices "
         "on their own** — a statement about a meta-feature column is a measurement. Section "
         "5 is where they become advice, by supporting or failing to support something a "
         "practitioner could already have been told.\n"
@@ -1014,6 +1375,19 @@ def render(
         "accidentally check against.\n"
     )
 
+    parts.append("## 5c. Reading a single prediction\n")
+    parts.append(
+        "The same equation on one row, term by term. The column adds up, and a reader can "
+        "check that it does, which is the interpretability payoff in its most direct form "
+        "-- and the row is "
+        "chosen arithmetically, at the equation's **median absolute error**, so the example "
+        "is a typical prediction rather than a flattering one somebody picked.\n"
+    )
+    if frame is not None:
+        parts.append(single_prediction(equation, columns, truth, frame) + "\n")
+    else:
+        parts.append("_(not shown: the meta-dataset was not supplied to the renderer)_\n")
+
     parts.append("## 6. Acting on it\n")
     parts.append(
         "R² is the wrong question for a practitioner, who asks whether a model will work on "
@@ -1040,33 +1414,27 @@ def render(
     parts.append(_table(report.ranking_baselines) + "\n")
     parts.append(_ranking_verdict(report.ranking_baselines))
 
-    parts.append("## 7. What bounds the result\n")
+    parts.append("## 6b. What an opaque model reaches, and does not\n")
     parts.append(
-        "The additive form cannot represent dataset-by-model interaction beyond what its mixed "
-        "terms reach. The ladder below adds interaction components to an oracle that is "
-        "handed the true group means, so it measures the ceiling rather than any equation:\n"
+        "The other side of the trade, priced. Three standard regressors on the same "
+        "eighteen raw columns, under the same protocols, with the same clip to the training "
+        "fold's range that every reported number uses.\n"
     )
-    parts.append(_table(report.oracles) + "\n")
+    parts.append(_table(report.opaque) + "\n")
+    parts.append(_opaque_note(report))
+
+    parts.append("## 7. Why a random split is not a protocol\n")
     parts.append(
-        "That is a ceiling, not a score. Whether the equation reaches any of it is a separate "
-        "question, and the answer is that it reaches some: below, `alignment` is the squared "
-        "correlation between the equation's own interaction residual and the leading components "
-        "of the oracle's, over observed cells. `leading_share` is how much of the interaction "
-        "variance those components carry, and `interaction_share` how much of MCC's variance is "
-        "interaction at all.\n"
+        "The same equation under three splits. A random k-fold puts rows of one dataset on "
+        "both sides of the fold, and since the dataset features are constant within a dataset "
+        "the equation can memorise dataset identity rather than predict from features. The "
+        "gap between the first row and the other two is what that memorisation is worth:\n"
     )
-    parts.append(_table(report.interaction) + "\n")
-    parts.append("Variance of MCC explained by group identity alone, with no equation involved:\n")
-    parts.append(_table(report.decomposition) + "\n")
-    parts.append("Validation protocol, same equation, different splits:\n")
     parts.append(_table(report.leakage) + "\n")
 
     parts.append("## 8. Equation length\n")
-    parts.append(
-        "Where additional terms stop paying, by knee detection on the accuracy-versus-length "
-        "curve and by Pareto dominance:\n"
-    )
-    parts.append(_table(report.term_choice) + "\n")
+    parts.append(_length_note(report))
+    parts.append("The full curve the rule reads, at every length under all three protocols:\n")
     parts.append(_table(report.e3.curve) + "\n")
 
     parts.append("## 9. The dataset-only and model-only controls\n")
@@ -1080,6 +1448,30 @@ def render(
     parts.append(f"**E2** ({report.e2.equation.n_terms} terms):\n")
     parts.append("```\n" + str(report.e2.equation) + "\n```\n")
 
+    parts.append("### The capability variant, in full\n")
+    parts.append(
+        "The same feature sets under the looser arity-3 grammar. It is **not** the study's "
+        "recommendation and not what the term-by-term analysis above is about; it exists so "
+        "that the published equation's accuracy can be read against what the additive *form* "
+        "can do, rather than only against oracles and baselines. It is printed here in full "
+        "because a ceiling quoted as a number and never shown is a ceiling a reader has to "
+        "take on trust -- and because the reason it is not recommended is visible only in the "
+        f"reading: {report.e3_capability.equation.n_terms} terms over three-feature "
+        "expressions is past the point where the equation can be reasoned about a term at a "
+        "time, which is the whole thing this study is trading accuracy for.\n"
+    )
+    capability_scores = report.e3_capability.cross_validated
+    parts.append(
+        f"It reaches **{float(report.e3_capability.in_sample['r2']):.4f}** in-sample against "
+        f"the published equation's {float(report.e3.in_sample['r2']):.4f}, and "
+        f"**{float(capability_scores['loo_dataset']['r2']):.4f}** leave-one-dataset-out "
+        f"against {float(report.e3.cross_validated['loo_dataset']['r2']):.4f}.\n"
+    )
+    parts.append(f"**E3 capability** ({report.e3_capability.equation.n_terms} terms):\n")
+    parts.append("```\n" + str(report.e3_capability.equation) + "\n```\n")
+    parts.append("LaTeX:\n")
+    parts.append("```latex\n" + report.e3_capability.equation.to_latex() + "\n```\n")
+
     return "\n".join(parts)
 
 
@@ -1089,10 +1481,21 @@ def render(
 #: it, which kept the numbers from going stale and left the results dispersed across two
 #: places a reader had to hold at once.
 CHAPTER_SECTIONS: dict[str, tuple[str, ...]] = {
-    "04-equation.md": ("2. The equation", "4. Equation analysis", "8. Equation length",
+    "index.md": ("1c. The headline",),
+    "01-dataset.md": ("1b. The corpus",),
+    # Ownership, one topic to one chapter. The length rule lives with the selection procedure
+    # that applies it, the ceilings with the equation they bound, the protocols with the
+    # evaluation. `term_choice` and the length note were rendered into two chapters at once
+    # until 2026-09-07, which is most of what made chapters 4 and 5 read as repetitive.
+    "03-term-selection.md": ("3b. Why a subset rather than every term", "8. Equation length"),
+    "04-equation.md": ("2. The equation", "3c. How far the form could reach", "4. Equation analysis",
+                       "4b. The ceiling on model descriptors",
                        "9. The dataset-only and model-only controls"),
-    "05-evaluation.md": ("3. How well it does", "6. Acting on it", "7. What bounds the result"),
-    "06-practices.md": ("5. Best practices", "5b. The measurements underneath"),
+    "05-evaluation.md": ("3. How well it does", "6. Acting on it",
+                        "6b. What an opaque model reaches, and does not",
+                        "7. Why a random split is not a protocol"),
+    "06-practices.md": ("5. Best practices", "5b. The measurements underneath",
+                        "5c. Reading a single prediction"),
 }
 
 #: The markers a generated block sits between. Everything between them is replaced on every

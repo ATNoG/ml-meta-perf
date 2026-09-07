@@ -42,7 +42,7 @@ jobs:
           pip install '.[search]'
 
       - name: Lint with Ruff
-        run: ruff check src
+        run: ruff check src tests
 
       - name: Type-check with basedpyright
         # --pythonpath, because pyproject.toml deliberately pins no venv: without it

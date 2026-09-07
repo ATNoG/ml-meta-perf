@@ -26,6 +26,27 @@ from ml_meta_perf.plots import (
 
 ORACLE_ROW = "reference: additive oracle"
 
+#: The figure set in the order the study presents it. **The order is the identity**: files
+#: are written as ``01_equation_comparison.png`` and so on, so a figure can be named by its
+#: number in a review comment or a caption without anyone having to agree on which
+#: "comparison" plot is meant. Position in this tuple is the only place a number is written
+#: down -- `figure_name` derives it -- so re-ordering the set renumbers the files and the
+#: captions together and cannot leave the two disagreeing.
+FIGURE_ORDER: tuple[str, ...] = (
+    "equation_comparison",
+    "term_count_curve",
+    "predicted_vs_actual",
+    "term_effects",
+    "practice_effects",
+    "ranking_quality",
+    "decision_quality",
+)
+
+
+def figure_name(stem: str) -> str:
+    """The published filename for a figure, ``NN_stem.png``, numbered from `FIGURE_ORDER`."""
+    return f"{FIGURE_ORDER.index(stem) + 1:02d}_{stem}.png"
+
 
 def _oracle(report: Report) -> float | None:
     """The additive ceiling as this run computed it.
@@ -68,20 +89,26 @@ def generate(report: Report, destination: str | Path, data: str | Path | None = 
     predicted = report.e3.equation.predict(columns)
 
     written = [
-        equation_comparison(report.comparison, folder / "equation_comparison.png"),
+        equation_comparison(report.comparison, folder / figure_name("equation_comparison")),
         term_count_curve(
             report.e3.curve,
-            folder / "term_count_curve.png",
+            folder / figure_name("term_count_curve"),
             oracle=_oracle(report),
             marker=_published_length(report),
             marker_label="selected term count",
         ),
-        predicted_versus_actual(truth, predicted, folder / "predicted_vs_actual.png"),
-        term_effects(report.effects, folder / "term_effects.png"),
-        practice_effects(report.practices, folder / "practice_effects.png"),
-        ranking_quality(report.selection, folder / "ranking_quality.png"),
-        decision_quality(report.decision_baselines, folder / "decision_quality.png"),
+        predicted_versus_actual(truth, predicted, folder / figure_name("predicted_vs_actual")),
+        term_effects(report.effects, folder / figure_name("term_effects")),
+        practice_effects(report.practices, folder / figure_name("practice_effects")),
+        ranking_quality(report.selection, folder / figure_name("ranking_quality")),
+        decision_quality(report.decision_baselines, folder / figure_name("decision_quality")),
     ]
+    # The list is what the README and the chapters index against, so it has to come back in
+    # `FIGURE_ORDER`. Asserting it here means a call added out of order fails the run rather
+    # than shipping a figure numbered one thing and referenced as another.
+    expected = [folder / figure_name(stem) for stem in FIGURE_ORDER]
+    if written != expected:
+        raise AssertionError(f"figures written out of FIGURE_ORDER: {[path.name for path in written]}")
     return written
 
 
@@ -93,14 +120,14 @@ def captions(report: Report, data: str | Path | None = None) -> dict[str, str]:
     hidden = count_below_floor(truth, report.e3.equation.predict(columns))
 
     return {
-        "equation_comparison.png": (
+        figure_name("equation_comparison"): (
             "Each fitted equation against the level it is read against, all scored on the "
-            "same 476 rows. Dataset-only and model-only equations are bounded by what "
+            f"same {frame.height} rows. Dataset-only and model-only equations are bounded by what "
             "their group identity can explain. The additive oracle bounds only an equation "
             "additive in dataset and model effects, which E3 is not: its mixed terms carry "
             "interactions, and it scores above the oracle. All bars are in-sample."
         ),
-        "term_count_curve.png": (
+        figure_name("term_count_curve"): (
             "Accuracy against equation length for E3, in-sample and under both "
             "cross-validation protocols. The vertical line is the length chosen by "
             "`selection.best_length`, the argmax of the consensus over the three protocols. "
@@ -108,28 +135,28 @@ def captions(report: Report, data: str | Path | None = None) -> dict[str, str]:
             "dataset and model effects; an equation passes it only by representing the "
             "dataset-by-model interaction the oracle cannot."
         ),
-        "predicted_vs_actual.png": (
+        figure_name("predicted_vs_actual"): (
             "Predicted against actual MCC for E3. Axes start at 0; "
             f"{hidden} point below that is not shown. The equation compresses toward the "
             "middle of the range, as a shrunk linear fit will."
         ),
-        "term_effects.png": (
+        figure_name("term_effects"): (
             "Per-term effect on predicted MCC, measured as the swing between the term's "
             "10th and 90th percentile. Sign follows the fitted weight."
         ),
-        "practice_effects.png": (
+        figure_name("practice_effects"): (
             "Per-feature effect on predicted MCC between the feature's lowest and highest "
             "decile, shaded by the confidence its practice was rated at. Only the confidence "
             "levels present in the table appear in the legend."
         ),
-        "decision_quality.png": (
+        figure_name("decision_quality"): (
             "F1 of the above-or-below-threshold decision against the threshold, one line per "
             "protocol. The four differ only in what the equation was allowed to see, so the "
             "spread between them is the cost of generalisation on this task. F1 rather than "
             "accuracy because the classes are unbalanced at the outer thresholds, where "
             "always answering with the larger class reaches 0.51 accuracy at an F1 of zero."
         ),
-        "ranking_quality.png": (
+        figure_name("ranking_quality"): (
             "Head-of-list ranking quality per held-out dataset, beside what a bad ranking "
             "costs. Left: average precision and reciprocal rank, with a star where the "
             "equation ranked the best model first; relevance is being within 0.01 MCC of the "

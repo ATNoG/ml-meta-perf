@@ -200,5 +200,49 @@ class TestCorrectOutOfFold(unittest.TestCase):
         self.assertAlmostEqual(float(table["frequency"].sum()), 1.0)
 
 
+class TestIdentityCeiling(unittest.TestCase):
+    """The ceiling is generated now, and these pin the properties its reading rests on.
+
+    It was hand-copied into chapter 4 for months and drifted by a factor of three, with the
+    two rungs recorded as identical -- which is the one shape a real run cannot produce,
+    since adding a slope to a level cannot leave the fit unchanged. That is what the second
+    test here refuses.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        from ml_meta_perf.data import load
+        from ml_meta_perf.experiment import identity_ceiling, run_e3
+
+        frame = load()
+        cls.table = identity_ceiling(frame, run_e3(frame))
+
+    def test_reports_both_rungs_against_the_uncorrected_equation(self) -> None:
+        self.assertEqual(self.table.height, 3)
+        self.assertEqual(self.table["correction"][1], "per-model level")
+        self.assertEqual(self.table["correction"][2], "per-model level and slope")
+
+    def test_each_rung_is_a_strict_improvement_on_the_one_before(self) -> None:
+        """A level is free information and a slope strictly more of it, so R2 must rise at
+        each rung. Equal rows mean a copied table, not a measurement."""
+        scores = self.table["r2_loo_dataset"].to_list()
+        self.assertLess(scores[0], scores[1])
+        self.assertLess(scores[1], scores[2])
+
+    def test_mae_falls_as_r2_rises(self) -> None:
+        errors = self.table["mae"].to_list()
+        self.assertGreater(errors[0], errors[1])
+        self.assertGreater(errors[1], errors[2])
+
+    def test_the_uncorrected_row_is_the_reported_equation(self) -> None:
+        """The ceiling is only a ceiling *for* the published equation, so its baseline row has
+        to be that equation's own reported leave-one-dataset-out score."""
+        from ml_meta_perf.data import load
+        from ml_meta_perf.experiment import run_e3
+
+        reported = float(run_e3(load()).cross_validated["loo_dataset"]["r2"])
+        self.assertAlmostEqual(self.table["r2_loo_dataset"][0], reported, places=9)
+
+
 if __name__ == "__main__":
     unittest.main()

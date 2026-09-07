@@ -19,6 +19,7 @@ from ml_meta_perf.report import (
     group_sentences,
     marginal_versus_conditional,
     operation_usage,
+    single_prediction,
     term_groups,
     term_importance,
     term_sentences,
@@ -379,6 +380,67 @@ class TestGlossary(unittest.TestCase):
 
         table = glossary()
         self.assertEqual(set(table["feature"].to_list()), set(ALL_FEATURES))
+
+
+class TestSinglePrediction(unittest.TestCase):
+    """The worked example is generated, and has to stay tied to the row it names.
+
+    The block this replaced was hand-written and every figure in it had gone stale --
+    including the intercept, in the chapter whose argument is that the analysis is generated
+    rather than authored. These pin the three properties that make the generated one safe:
+    it names a real row, it reports that row's own numbers, and it picks the row by a rule.
+    """
+
+    def setUp(self) -> None:
+        self.columns = _columns()
+        self.equation = _equation(self.columns)
+        self.truth = self.equation.predict(self.columns) + np.linspace(-0.2, 0.2, 40)
+        self.frame = pl.DataFrame(
+            {"Dataset": [f"d{i // 8}" for i in range(40)], "Model": [f"m{i % 8}" for i in range(40)]}
+        )
+        self.block = single_prediction(self.equation, self.columns, self.truth, self.frame)
+
+    def test_names_a_row_that_exists(self) -> None:
+        lines = self.block.split("\n")
+        named = [line.split(":", 1)[1].strip() for line in lines if line.startswith(("dataset", "model "))]
+        self.assertIn(named[0], self.frame["Dataset"].to_list())
+        self.assertIn(named[1], self.frame["Model"].to_list())
+
+    def test_picks_the_row_at_the_median_absolute_error(self) -> None:
+        errors = np.abs(self.truth - self.equation.predict(self.columns))
+        expected = int(np.argmin(np.abs(errors - float(np.median(errors)))))
+        self.assertIn(f"{self.truth[expected]:+.4f}", self.block)
+
+    def test_reports_the_intercept_the_equation_actually_has(self) -> None:
+        self.assertIn(f"{self.equation.intercept:+.4f}   intercept", self.block)
+
+    def test_the_contributions_add_up_to_the_printed_sum(self) -> None:
+        """The whole point of printing the breakdown: a reader can check the arithmetic."""
+        printed = [
+            float(line.strip().split()[0])
+            for line in self.block.split("\n")
+            if line.startswith("    ") and line.strip().startswith(("+", "-"))
+        ]
+        stated = next(line for line in self.block.split("\n") if line.strip().endswith("sum"))
+        self.assertAlmostEqual(sum(printed), float(stated.strip().split()[1]), places=3)
+
+    def test_says_so_when_the_clip_fires(self) -> None:
+        """`Equation.predict` clips to MCC's range, and on a clipped row the column does not
+        add up to the prediction. A breakdown a reader cannot add up has to explain itself."""
+        self.assertIn("clipped to", self.block)
+
+    def test_stays_silent_about_the_clip_when_it_does_not_fire(self) -> None:
+        columns = _columns()
+        equation = Equation(intercept=0.5, terms=(), weights=(), standardized_weights=(), name="flat")
+        frame = pl.DataFrame({"Dataset": ["d"] * 40, "Model": ["m"] * 40})
+        self.assertNotIn("clipped to", single_prediction(equation, columns, np.full(40, 0.5), frame))
+
+    def test_folds_the_tail_into_one_remainder_line(self) -> None:
+        block = single_prediction(self.equation, self.columns, self.truth, self.frame, limit=1)
+        self.assertIn("the remaining 2 terms", block)
+
+    def test_is_deterministic(self) -> None:
+        self.assertEqual(self.block, single_prediction(self.equation, self.columns, self.truth, self.frame))
 
 
 if __name__ == "__main__":

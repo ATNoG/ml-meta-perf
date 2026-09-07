@@ -6,7 +6,7 @@ import unittest
 import numpy as np
 import polars as pl
 
-from ml_meta_perf.analysis import feature_reach, grammar_ceiling, redundancy_groups, screen
+from ml_meta_perf.analysis import feature_reach, grammar_ceiling, redundancy_groups, saturated_fit, screen
 from ml_meta_perf.fit import fit
 from ml_meta_perf.stats import mae, r2_score
 from ml_meta_perf.terms import build_library
@@ -488,3 +488,48 @@ class TestGrammarReach(unittest.TestCase):
         ladder = grammar_ceiling(self.library, self.truth, self.features)
         fitted = float(run_e3(load()).in_sample["r2"])
         self.assertGreater(fitted, ladder["r2_all_single_feature"])
+
+
+class TestSaturatedFit(unittest.TestCase):
+    """The control for the selection stage: what every term at once actually does.
+
+    Chapter 3 opens on this comparison, and it opened on a stale copy of it for months. The
+    tests pin the two properties the argument rests on rather than the values themselves.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        from ml_meta_perf.data import DATASET_COLUMN, DATASET_FEATURES, columns_as_arrays, groups, load
+        from ml_meta_perf.data import target as load_target
+        from ml_meta_perf.experiment import DEFAULT_E3, EQUATION_MODEL_FEATURES
+
+        frame = load()
+        columns = columns_as_arrays(frame, DATASET_FEATURES + EQUATION_MODEL_FEATURES)
+        cls.library = build_library(
+            DATASET_FEATURES,
+            EQUATION_MODEL_FEATURES,
+            columns,
+            max_arity=DEFAULT_E3.max_arity,
+            max_abs_zscore=DEFAULT_E3.max_abs_zscore,
+        )
+        cls.result = saturated_fit(cls.library, load_target(frame), groups(frame, DATASET_COLUMN))
+
+    def test_counts_the_whole_library(self) -> None:
+        self.assertEqual(int(self.result["terms"]), len(self.library))
+
+    def test_it_fits_better_than_it_transfers(self) -> None:
+        """The finding: an unconstrained fit over a design this wide describes and does not
+        generalise. If this ever inverted, the selection stage would need justifying again."""
+        self.assertGreater(self.result["r2_in_sample"], 0.5)
+        self.assertLess(self.result["r2_loo_dataset_clipped"], 0.0)
+
+    def test_the_clip_is_what_stops_it_running_away(self) -> None:
+        """Both bounds are reported because the gap between them is the point."""
+        self.assertLess(self.result["r2_loo_dataset_unclipped"], self.result["r2_loo_dataset_clipped"])
+
+    def test_it_transfers_worse_than_the_published_equation(self) -> None:
+        from ml_meta_perf.data import load
+        from ml_meta_perf.experiment import run_e3
+
+        published = float(run_e3(load()).cross_validated["loo_dataset"]["r2"])
+        self.assertGreater(published, self.result["r2_loo_dataset_clipped"])

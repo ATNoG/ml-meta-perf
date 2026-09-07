@@ -51,6 +51,13 @@ on 25 per-model means:
 | **476 rows** | **0.177** | **0.090** | 6 |
 | 25 model means | 0.125 | 0.112 | **1** |
 
+<sub>**Measured before the 2026-09-05 protocol change**, unlike the E1 table above it, which
+is current. Read the two rows against each other and not against any figure elsewhere in the
+study: E2 on all 476 rows scores higher than 0.177 under the reported protocol — the
+generated tables have the current value — and three model features that varied within a model
+have since been retired, which is part of why. What the table supports is the *direction*,
+and that has been re-checked: aggregating E2 to per-model means is still worse.</sub>
+
 <sub>Both rows predate `Model Capability`; the comparison is between fitting scales, and
 re-running it on the enlarged feature set would change both numbers without changing which
 is larger.</sub>
@@ -68,52 +75,52 @@ handle the difference.
 Every equation is fitted on all 476 rows and scored on all 476 rows, so there is one
 scale and one table:
 
-| | terms | R² | MAE | Spearman |
-|---|---|---|---|---|
-| E1 (dataset only) | 7 | 0.349 | 0.210 | 0.657 |
-| *E1's ceiling — the true dataset means* | | *0.354* | *0.204* | *0.653* |
-| E2 (model only) | 6 | 0.248 | 0.234 | 0.459 |
-| *E2's ceiling — the true model means* | | *0.282* | *0.226* | *0.487* |
-| **E3 (dataset + model)** | **15** | **0.658** | **0.137** | **0.819** |
-| *additive oracle* | | *0.6605* | *0.145* | *0.810* |
-| *E3 under the full grammar (arity 3)* | *23* | *0.707* | *0.126* | *0.849* |
+Each equation, each equation's own ceiling, and the additive oracle are in one generated
+table — on the [index page](index.md), which carries the headline, and again with the full
+metric set in [chapter 5](05-evaluation.md). The figure is the same comparison drawn:
 
-![Equations against their ceilings](../figures/equation_comparison.png)
+![Equations against their ceilings](../figures/01_equation_comparison.png)
 
 ### One scale is not one ceiling
 
-Those R² values are now arithmetically comparable — same rows, same denominator. They are
+Those R² values are arithmetically comparable — same rows, same denominator. They are
 still **not comparable as achievements**, and no change to the fitting could make them so.
 
-E1 predicts one value per dataset. **0.354 is the most it could ever score**, however good
-its terms were, because that is all the variance a per-dataset constant can reach. E1 at
-0.349 is not "worse than E3 at 0.658"; it is at its own limit while E3 is not at its. The
-same applies to E2 against 0.282.
+E1 predicts one value per dataset, so **the true dataset means are the most it could ever
+score**, however good its terms were: that is all the variance a per-dataset constant can
+reach. E1 is not "worse than E3"; it is at its own limit while E3 is not at its. The same
+applies to E2 against the true model means.
 
-So the comparable quantity is the *fraction of its own ceiling* each equation reaches, and
-that is the column the next section reads.
+So the comparable quantity is the *fraction of its own ceiling* each equation reaches, which
+is the `reached` column of the generated headline table and what the next section reads.
 
 ## Under both protocols
 
-| | terms | in-sample R² | LOO-dataset R² | LOO-model R² |
-|---|---|---|---|---|
-| E1 | 7 | 0.349 | 0.341 | 0.306 |
-| E2 | 6 | 0.248 | 0.185 | 0.228 |
-| **E3** | **15** | **0.658** | **0.638** | **0.622** |
+All three equations are scored under both leave-one-group-out protocols. The numbers are on
+the [index page](index.md) and, with the full metric set, in
+[chapter 5](05-evaluation.md) — this chapter does not keep a second copy of them.
 
-Both controls are now reported under both protocols, which the aggregated E1 could not be.
-The pattern is the one the design predicts and is worth checking rather than assuming: E1
-transfers *better* across models (0.294) than across datasets (0.217), because it predicts
-a per-dataset constant and a new model does not change it; E2 is the mirror.
+What is worth stating here is what to look for in them.
 
-**E3's two transfer numbers are now close** — 0.638 and 0.622, against a fit of 0.658. An
-equation that loses under 0.04 R² when a whole dataset or a whole learner is withheld is
-transferring, not memorising, and the gap between the two protocols is small enough that
-neither half of the meta-data is carrying the equation alone.
+**E3's two transfer numbers should be close to each other and to its fit.** An equation that
+loses little R² when a whole dataset or a whole learner is withheld is transferring rather
+than memorising, and a small gap *between* the two protocols says that neither half of the
+meta-data is carrying the equation alone. That is what the table shows.
+
+**The two controls are not symmetric, and not in the direction the design suggests.** E1
+predicts a per-dataset constant, so holding out a *model* leaves its constant well estimated
+while holding out a *dataset* asks it to extrapolate — the naive expectation is that E1
+transfers better across models than across datasets. Measured, it is the other way round, and
+E2 mirrors it. The reason is the denominator rather than the fit: pooled R² is taken against
+the variance of all 476 rows under both protocols, and a fold that removes a whole model
+removes rows spread across every dataset, which is a different perturbation from removing a
+contiguous dataset block. Read the two controls each against its own ceiling — the `reached`
+column — and not against each other across protocols.
 
 Five of the six model features are constant within a learner, so holding out a model removes
-values the equation cannot recompute from the remaining rows. That it costs only 0.019 is the
-measurement; [chapter 4](04-equation.md) treats the asserted ladders as the cost they are.
+values the equation cannot recompute from the remaining rows. That this costs so little is
+the measurement; the [limitations](#limitations-of-the-equation) treat the asserted ladders
+as the cost they are.
 
 ## How much was there to explain? Three ceilings
 
@@ -138,20 +145,16 @@ hard every dataset is and how good every model is, **pure addition explains only
 MCC**. The remaining third is dataset×model interaction — a specific model being unusually
 well or badly suited to a specific dataset.
 
-The same construction with one group at a time gives the two ceilings that bound E1 and E2:
-
-| knowing only | R² |
-|---|---|
-| which **dataset** it is | 0.354 |
-| which **model** it is | 0.282 |
-| both, added | 0.6605 |
+The same construction with one group at a time gives the two ceilings that bound E1 and E2 —
+knowing only which dataset it is, and knowing only which model it is. All three are in the
+generated section below, under *Where the variance is, before any equation*.
 
 **This does not bound E3, and E3 passes it.** The additive oracle bounds a predictor that
 is a per-dataset value *plus* a per-model value. Half of E3's terms are *mixed* — each
 multiplying or dividing a dataset feature by a model feature — and those express precisely
 the interaction the two-way additive form cannot. E3 reaches 0.658 in-sample against the
-oracle's 0.6605 — just short of it — while the same features under the full grammar reach
-**0.707**, comfortably past it, at a leave-one-dataset-out of 0.678.
+oracle, while the same features under the full grammar pass it comfortably. The generated
+section gives all three.
 
 > The crossing has to be read under the reported protocol. Under a re-selecting protocol —
 > where every length is a separately searched equation — the transfer figures either side of
@@ -163,31 +166,22 @@ oracle's 0.6605 — just short of it — while the same features under the full 
 The oracle bounds a sum of *group* effects. A different and equally useful bound is a sum
 of *per-feature* functions — what an equation could explain if it never combined two
 features in one term. `analysis.grammar_ceiling` computes it as three least-squares fits
-over the term library, none of which needs the search to have run:
+over the term library, none of which needs the search to have run. The ladder — raw columns,
+the best single-feature term per feature, then every single-feature term at once — is in the
+generated section below, with the fitted equations beside it. Two readings:
 
-| level | terms | R² |
-|---|---|---|
-| every raw feature, untransformed | 18 | 0.476 |
-| the best single-feature term per feature | 18 | 0.544 |
-| every single-feature term at once | 75 | 0.644 |
-| **E3, fitted (arity 2)** | **15** | **0.658** |
-| **E3, full grammar (arity 3)** | **23** | **0.707** |
+**No single feature carries the equation.** The strongest reaches R² of about 0.14 on its
+own. There is no dominant driver to quote, which is why the equation needs a dozen-odd terms
+rather than two, and the per-feature table in the generated section is where to check it.
 
-Two readings, and the generated section below regenerates both from the run:
+**The transforms earn the gap between entering the raw columns and taking the best
+single-feature term of each.** `analysis.feature_reach` reports that per feature, and it is
+concentrated where a straight line was the wrong shape — `class_ent` and `inst_to_attr` are
+each worth an order of magnitude more as reciprocals than raw, and `gravity` under a log. For
+a good third of the features the grammar buys nothing at all: the raw column was already the
+best form of it.
 
-**No single feature carries the equation.** The strongest, `eq_num_attr`, reaches R² 0.142
-on its own; `Model Capability` 0.141; `Processing Units Number` 0.127. There is no dominant
-driver to quote, which is why the equation needs a dozen-odd terms rather than two.
-
-**The transforms earn about +0.068**, the gap between entering the raw columns and taking
-the best single-feature term of each. `analysis.feature_reach` reports that per feature,
-and it is concentrated where a straight line was the wrong shape: `class_ent` goes from
-R² 0.002 raw to 0.050 as `1/class_ent`, `inst_to_attr` from 0.001 to 0.040 as
-`1/inst_to_attr`, `gravity` from 0.002 to 0.031 under a log. For eight of the eighteen
-features the grammar buys nothing at all — the raw column was already the best form of it.
-
-**E3 passes this ceiling too**, with 15 terms against the 75 single-feature terms' 0.644,
-and the full-grammar equation passes it by 0.063.
+**E3 passes this ceiling too.**
 An equation cannot exceed it by describing features one at a time, so the excess is the
 work the cross-feature terms do. That is the same conclusion the additive oracle reaches,
 by an entirely independent route — one argues from group means, the other from the term
@@ -205,17 +199,8 @@ This is the **AMMI model** — additive main effects, multiplicative interaction
 for genotype-by-environment trials in agronomy, which is structurally the same problem: a
 grid of subjects crossed with conditions where particular pairings suit each other.
 Unobserved cells (24 of 500 here) contribute zero residual, so they neither distort the
-decomposition nor enter any score.
-
-| interaction rank | R² | gain |
-|---|---|---|
-| 0 (additive oracle) | 0.6605 | — |
-| **1** | **0.7828** | **+0.122** |
-| 2 | 0.8537 | +0.071 |
-| 3 | 0.8968 | +0.043 |
-| 4 | 0.9278 | +0.031 |
-| 8 | 0.9842 | +0.019 |
-| 20 (full) | 1.0000 | — |
+decomposition nor enter any score. The ladder is in the generated section below, under
+*How fast interaction pays*.
 
 At full rank it reproduces every observed cell, so the question is not where the ladder
 ends but **how fast it climbs**: the first interaction component alone is worth +0.122 R²,
@@ -240,29 +225,24 @@ MCC's variance once the additive part is removed, and the leading component carr
 It is also not obviously reachable. A rank-1 interaction is a product of a dataset-side
 latent and a model-side latent, both free numbers; the equation's mixed terms are products
 of *single raw features*, which recover that structure only where it happens to align with
-one feature pair. [chapter 4](04-equation.md) measures what is left once each latent has
-to be predicted rather than handed over: **+0.018 of the +0.122**, with the shortfall almost
-entirely on the model side.
+one feature pair. The [limitations](#why-the-model-side-specifically) measure what is left
+once each latent has to be predicted rather than handed over, and it is a small fraction of
+the rank-1 gain, with the shortfall almost entirely on the model side.
 
 ## Does model choice matter more than the dataset?
 
 Not on this meta-dataset — but the reason is more interesting than the answer.
 
-Dataset identity explains **0.354** of MCC variance against model identity's **0.282**, and
-the equations widen the gap rather than closing it:
+Dataset identity explains more of MCC's variance than model identity does — the
+decomposition is in the generated section above — and the equations widen the gap rather than
+closing it: the dataset features recover almost all of their ceiling, the model features a
+clearly smaller share of theirs. The `reached` column of the [index page](index.md)'s headline
+table is that comparison in one place.
 
-| | equation | own ceiling | captured |
-|---|---|---|---|
-| dataset features | 0.349 | 0.354 — the true dataset means | **98%** |
-| model features | 0.248 | 0.282 — the true model means | **88%** |
-| both | 0.658 | 0.6605 — the additive oracle* | *100%* |
-
-<sub>*The additive oracle bounds a two-way *additive* form, and **E3 now crosses it** —
-0.658 against 0.661 for the published equation and 0.707 for the full-grammar one. That is
-not an error: seven of E3's fifteen terms multiply or divide a
-dataset feature by a model feature, and such a term expresses interaction the additive oracle
-by construction cannot (this chapter). The two rows above it are hard ceilings;
-this one is a reference level the equation is expected to pass.</sub>
+The additive oracle is the third reference, and it is **not** a ceiling for E3: seven of the
+fifteen terms multiply or divide a dataset feature by a model feature, and such a term
+expresses interaction a two-way additive form by construction cannot. The two group-identity
+levels are hard ceilings; the oracle is a level the equation is expected to pass.
 
 **Both halves are now close to their own ceilings.** Twelve dataset meta-features all but
 exhaust what dataset identity can explain — 98% of it, so there is essentially nothing left
@@ -281,11 +261,12 @@ was worth roughly a third of what model identity explains, and *nearly all of it
 recoverable from knowing what kind of learner this is* — how it randomises, what loss it
 minimises, how much of the input distribution it models, and how it is fitted.
 
-The cost of that remedy is that these columns are claims rather than observations, and
-[chapter 4](04-equation.md) is where that is paid for.
+The cost of that remedy is that these columns are claims rather than observations, and the
+[limitations](#model-descriptors-are-thin-and-one-of-them-is-asserted) are where that is paid
+for.
 
-Three qualifications keep that from being oversold, all of them developed in
-[chapter 4](04-equation.md): the ladder is asserted rather than measured, so it cannot be
+Three qualifications keep that from being oversold, all of them developed there: the ladder
+is asserted rather than measured, so it cannot be
 evidence for the prior knowledge it encodes; the corpus agrees with it at only 6 of 9 steps,
 with `generic NN` conspicuously misplaced; and it does not extend to a learner nobody has
 classified, which is what the fall in leave-one-model-out records.
@@ -342,8 +323,9 @@ corpus carries six because the corpus is designed for *identification*
 Stochasticity` and `Loss Margin Behaviour` from its term pool. On the sweep's numbers the
 four-feature pool dominates the full six on every axis — objective 0.730 against 0.722,
 leave-one-dataset-out 0.686 against 0.672, leave-one-model-out 0.654 against 0.640. The
-published equation goes further and uses **12 of the 16 features available to it**; an
-equation that used all sixteen would be one that had failed to generalise.
+published equation goes further and uses fewer features than are available to it — the
+generated feature table below counts them — and an equation that used every one would be one
+that had failed to generalise.
 
 **The length is chosen by a rule, not written down** — the argmax of the consensus curve,
 `selection.best_length`. It selects 15 under arity 2 and 23 under arity 3 without either
@@ -410,10 +392,13 @@ listing would.
 
 Its shape: 7 of the 15 terms mix dataset and model features and
 drive **60%** of the output variance; 3 are model-only (3%) and 5 are dataset-only (37%).
-The weights are flat — they behave like **13.8 equally-weighted terms**, and the largest
-carries under 11% of the mass.
+The weights are flat: they behave like far more equally-weighted terms than any headline
+reading would suggest, and no single term carries a seventh of the mass. The generated
+section below gives the current figures — an inverse Simpson index over the standardised
+weight shares, and the largest term's share — rather than restating them here, because they
+move with every configuration and this sentence has drifted from them before.
 
-![What each term is worth](../figures/term_effects.png)
+![What each term is worth](../figures/04_term_effects.png)
 
 ## Reading the equation: what interpretability buys and what it costs
 
@@ -447,8 +432,9 @@ nothing: paired over the twenty folds, p = 0.503 with an interval spanning zero.
 
 ### The cost, stated plainly
 
-The weights are **flat**. They behave like about 13.8 equally-weighted terms out of 16, and
-the largest carries under 11% of the mass. There is no headline term to quote, and the
+The weights are **flat**: the effective number of terms, by the inverse Simpson index in the
+generated section below, is close to the number the equation has, and the largest carries a
+small fraction of the mass. There is no headline term to quote, and the
 [ceilings section](#ceiling-2--what-the-vocabulary-can-reach) says why: the strongest single
 feature reaches R² 0.142 on its own. MCC on this corpus is not driven by one thing.
 
@@ -473,7 +459,7 @@ argument for accepting the accuracy it gives up.
 
 ## Where the equation is weakest
 
-![Predicted versus actual MCC](../figures/predicted_vs_actual.png)
+![Predicted versus actual MCC](../figures/03_predicted_vs_actual.png)
 
 Predictions never fall below **0.17**, while 15 rows sit at exactly MCC = 0 — a short
 column of points hanging above the diagonal on the left. The equation compresses toward
@@ -486,7 +472,7 @@ classifier that converged and learned nothing useful — predicting the majority
 — not one that crashed. The equation is fitted on, and can only speak about, the
 population of runs that completed.
 
-What that costs is stated in [chapter 4](04-equation.md): every prediction is implicitly
+What that costs is stated in [chapter 1](01-dataset.md): every prediction is implicitly
 conditional on the training succeeding, and the study never measures how often that is
 true. It is the main reason the go/no-go rule in the generated section below should be read
 as "will this trained model be any good" rather than "should I try this at all".
@@ -524,6 +510,68 @@ LaTeX:
 ```latex
 \mathrm{MCC} = +1.359 +0.007707 \cdot \mathrm{[log(gravity)] * [log(Model Capability)]} -0.291 \cdot \mathrm{[log(eq\_num\_attr)] / [log(Processing Units Number)]} -0.0009581 \cdot \mathrm{[log(nr\_class)] * [nr\_outliers]} -0.01867 \cdot \mathrm{[log(gravity)] / [log(Processing Units Number)]} -0.06964 \cdot \mathrm{[log(eq\_num\_attr)] * [log(nr\_class)]} +0.2698 \cdot \mathrm{1/Fitting Regime} -0.01975 \cdot \mathrm{[log(gravity)] / [log(nr\_attr)]} -0.005704 \cdot \mathrm{[log(gravity)] * [log(Fitting Regime)]} -0.07158 \cdot \mathrm{[log(Input Distribution Modelling)] * [log(Processing Units Number)]} -1.903 \cdot \mathrm{[nr\_cor\_attr] / [log(Processing Units Number)]} +0.001259 \cdot \mathrm{[nr\_bin] * [log(Model Capability)]} -0.04859 \cdot \mathrm{[log(Processing Units Number)] / [log(nr\_class)]} -0.01269 \cdot \mathrm{class\_ent\^{}2} +0.2235 \cdot \mathrm{1/gravity} +0.003924 \cdot \mathrm{Fitting Regime\^{}2}
 ```
+
+## How far the form could reach
+
+Two ceilings, both computed from the library alone and so available *before* an equation exists. Each is an expectation the fitted equation is then held against, rather than a number read off it.
+
+#### How far the additive form reaches
+
+The published equation is the **parsimonious** grammar (arity 2). The same features under the **full** grammar (arity 3), with the length chosen by the same rule, reach 23 terms at R² 0.7068 in-sample:
+
+| | terms | in-sample | LOO-dataset | LOO-model |
+|---|---|---|---|---|
+| published (arity 2) | 15 | 0.6578 | 0.6381 | 0.6218 |
+| capability (arity 3) | 23 | 0.7068 | 0.6781 | 0.6512 |
+
+This is a **capability measurement, not a recommendation**. It answers the question the published equation cannot answer about itself — whether the additive form is out of room or whether this equation is short of it — and the answer is that +0.0490 of in-sample R² is still available to a longer equation over a wider grammar. What that costs is what the published equation is buying: more terms, an operation more, and a form that reselects far less often across folds.
+
+#### What the vocabulary could reach, before any search
+
+Three levels of what the vocabulary can explain, each a least-squares fit over the library and each computable before the search runs. They bound a *sum of per-feature functions*, which is a different question from the additive oracle above: that one bounds a per-dataset value plus a per-model value.
+
+| level | terms | R² |
+|---|---|---|
+| every raw feature, untransformed | 18 | 0.4763 |
+| the best single-feature term per feature | 18 | 0.5445 |
+| every single-feature term at once | 75 | 0.6437 |
+| **the fitted equation (E3)** | **15** | **0.6578** |
+
+No individual feature carries much: the strongest is `eq_num_attr` at R² 0.142, so any accuracy beyond that is combination rather than a single dominant driver. Transforming the features is worth +0.068 over entering them raw.
+
+E3 reaches 0.6578 with 15 terms, **above** the 0.6437 that all 75 single-feature terms reach together. An equation cannot pass that level by describing features one at a time, so the excess is what the cross-feature terms buy — the same conclusion the additive oracle reaches, by an independent route.
+
+#### Where the variance is, before any equation
+
+Variance of MCC explained by group identity alone, with no equation involved:
+
+| knowing only | n_groups | variance_explained |
+|---|---|---|
+| dataset identity | 20 | 0.3539 |
+| model identity | 25 | 0.2821 |
+
+#### How fast interaction pays
+
+The additive form cannot represent dataset-by-model interaction beyond what its mixed terms reach. The ladder below adds interaction components to an oracle that is handed the true group means, so it measures the ceiling rather than any equation:
+
+| interaction_rank | r2 | gain |
+|---|---|---|
+| 0 | 0.6605 |  |
+| 1 | 0.7828 | 0.1223 |
+| 2 | 0.8537 | 0.0709 |
+| 3 | 0.8968 | 0.0431 |
+| 4 | 0.9278 | 0.0310 |
+| 6 | 0.9651 | 0.0373 |
+| 8 | 0.9842 | 0.0191 |
+
+That is a ceiling, not a score. Whether the equation reaches any of it is a separate question, and the answer is that it reaches some: below, `alignment` is the squared correlation between the equation's own interaction residual and the leading components of the oracle's, over observed cells. `leading_share` is how much of the interaction variance those components carry, and `interaction_share` how much of MCC's variance is interaction at all.
+
+| protocol | rank | alignment | leading_share | interaction_share |
+|---|---|---|---|---|
+| in-sample | 1 | 0.3285 | 0.3757 | 0.3647 |
+| in-sample | 2 | 0.2590 | 0.5658 | 0.3647 |
+| leave-one-dataset-out | 1 | 0.3186 | 0.3757 | 0.3647 |
+| leave-one-dataset-out | 2 | 0.2243 | 0.5658 | 0.3647 |
 
 ## Equation analysis
 
@@ -646,53 +694,17 @@ The vocabulary offers five operations and five transforms and the search is free
 | model | 3 | 0.0316 | 0.0353 |
 | mixed | 7 | 0.5960 | 0.5135 |
 
-## Equation length
+## The ceiling on model descriptors
 
-Where additional terms stop paying, by knee detection on the accuracy-versus-length curve and by Pareto dominance:
+Under leave-one-dataset-out every model appears in every training fold, so the equation's residual can be averaged per model on the training rows and applied to the held-out dataset with no leak. That replaces the model descriptors with the best possible substitute -- the model's **identity**, fitted freely -- so what it adds is a ceiling on what any descriptor set could reach by telling these classifiers apart.
 
-| rule | n_terms | r2_in_sample | r2_loo_dataset |
-|---|---|---|---|
-| pareto front, closest to ideal | 4 | 0.5390 | 0.5053 |
-| pareto front, furthest from nadir | 4 | 0.5390 | 0.5053 |
-| pareto front, furthest from chord | 4 | 0.5390 | 0.5053 |
-| best loo-dataset | 15 | 0.6578 | 0.6381 |
-| best consensus (the rule) | 15 | 0.6578 | 0.6381 |
-| published | 15 | 0.6578 | 0.6381 |
+| correction | r2_loo_dataset | mae |
+|---|---|---|
+| none (E3, 15 terms) | 0.6381 | 0.1417 |
+| per-model level | 0.6583 | 0.1375 |
+| per-model level and slope | 0.6881 | 0.1252 |
 
-| n_terms | r2_in_sample | mae_in_sample | smape_in_sample | r2_loo_dataset | mae_loo_dataset | smape_loo_dataset | r2_loo_model | mae_loo_model | smape_loo_model |
-|---|---|---|---|---|---|---|---|---|---|
-| 1 | 0.2173 | 0.2440 | 46.8473 | 0.1654 | 0.2517 | 47.6765 | 0.1994 | 0.2472 | 47.1900 |
-| 2 | 0.3679 | 0.2048 | 42.9474 | 0.3191 | 0.2122 | 43.9902 | 0.3553 | 0.2070 | 43.2309 |
-| 3 | 0.4752 | 0.1843 | 40.9152 | 0.4277 | 0.1913 | 42.1394 | 0.4534 | 0.1881 | 41.3969 |
-| 4 | 0.5390 | 0.1676 | 38.8722 | 0.5053 | 0.1733 | 39.8140 | 0.5173 | 0.1716 | 39.4355 |
-| 5 | 0.5581 | 0.1635 | 38.2407 | 0.5315 | 0.1678 | 39.0066 | 0.5335 | 0.1682 | 38.9153 |
-| 6 | 0.5903 | 0.1560 | 37.7603 | 0.5659 | 0.1617 | 38.1458 | 0.5652 | 0.1607 | 38.2592 |
-| 7 | 0.6125 | 0.1499 | 36.0807 | 0.5876 | 0.1560 | 37.0900 | 0.5873 | 0.1548 | 36.9766 |
-| 8 | 0.6243 | 0.1486 | 36.1415 | 0.5965 | 0.1545 | 36.4395 | 0.6014 | 0.1532 | 36.5711 |
-| 9 | 0.6275 | 0.1482 | 36.0784 | 0.6059 | 0.1530 | 36.7461 | 0.6029 | 0.1534 | 36.7278 |
-| 10 | 0.6344 | 0.1448 | 35.8198 | 0.6151 | 0.1492 | 36.5028 | 0.6068 | 0.1502 | 36.6987 |
-| 11 | 0.6408 | 0.1435 | 35.7871 | 0.6187 | 0.1497 | 36.6836 | 0.6124 | 0.1493 | 36.6601 |
-| 12 | 0.6452 | 0.1421 | 35.4886 | 0.6231 | 0.1476 | 36.1081 | 0.6080 | 0.1491 | 36.4758 |
-| 13 | 0.6471 | 0.1416 | 35.4546 | 0.4829 | 0.1734 | 40.2100 | 0.6099 | 0.1488 | 36.2947 |
-| 14 | 0.6497 | 0.1410 | 34.9209 | 0.5003 | 0.1715 | 39.5174 | 0.6102 | 0.1487 | 36.1729 |
-| 15 | 0.6578 | 0.1371 | 34.4737 | 0.6381 | 0.1417 | 34.8803 | 0.6218 | 0.1449 | 35.4201 |
-| 16 | 0.6619 | 0.1357 | 33.8603 | 0.6317 | 0.1451 | 34.8130 | 0.6263 | 0.1431 | 34.7298 |
-| 17 | 0.6633 | 0.1357 | 34.0624 | 0.6299 | 0.1446 | 34.9541 | 0.6254 | 0.1435 | 34.8493 |
-| 18 | 0.6639 | 0.1360 | 34.0860 | 0.6343 | 0.1433 | 34.7439 | 0.6254 | 0.1438 | 34.8883 |
-| 19 | 0.6663 | 0.1350 | 33.8645 | 0.6289 | 0.1425 | 34.9076 | 0.6266 | 0.1430 | 34.9297 |
-| 20 | 0.6679 | 0.1343 | 33.8598 | 0.6379 | 0.1433 | 34.5722 | 0.6282 | 0.1423 | 34.5920 |
-| 21 | 0.6693 | 0.1342 | 33.9862 | 0.6337 | 0.1431 | 34.8863 | 0.6288 | 0.1422 | 34.7660 |
-| 22 | 0.6701 | 0.1338 | 33.8926 | 0.6255 | 0.1461 | 35.0555 | 0.6284 | 0.1421 | 34.6898 |
-| 23 | 0.6707 | 0.1335 | 33.8135 | 0.6306 | 0.1438 | 34.4890 | 0.6283 | 0.1419 | 34.8448 |
-| 24 | 0.6707 | 0.1337 | 33.8867 | 0.3874 | 0.1749 | 42.0258 | 0.6265 | 0.1424 | 35.1649 |
-| 25 | 0.6718 | 0.1341 | 33.8208 | 0.6331 | 0.1452 | 35.6574 | 0.6278 | 0.1429 | 34.9396 |
-| 26 | 0.6716 | 0.1337 | 33.8379 | 0.5574 | 0.1618 | 37.2894 | 0.6249 | 0.1432 | 35.1182 |
-| 27 | 0.6721 | 0.1333 | 33.7753 | 0.5683 | 0.1592 | 37.0522 | 0.6255 | 0.1427 | 35.2324 |
-| 28 | 0.6727 | 0.1333 | 33.8031 | 0.4801 | 0.1717 | 39.2600 | 0.6253 | 0.1429 | 35.2727 |
-| 29 | 0.6729 | 0.1334 | 33.8388 | 0.5165 | 0.1659 | 37.9845 | 0.6241 | 0.1433 | 35.3512 |
-| 30 | 0.6732 | 0.1334 | 33.8136 | 0.5371 | 0.1633 | 37.6430 | 0.6236 | 0.1434 | 35.3303 |
-| 31 | 0.6728 | 0.1334 | 33.7488 | 0.5373 | 0.1603 | 36.4489 | 0.6193 | 0.1439 | 35.3237 |
-| 32 | 0.6730 | 0.1333 | 33.7138 | 0.4202 | 0.1798 | 39.1599 | 0.6193 | 0.1438 | 35.3273 |
+**The gap is 0.050 of leave-one-dataset-out R2**, of which a per-model level alone recovers 0.020 and the level-plus-slope form the rest. The slope is the half that matters: a level shifts every one of a model's rows equally, while a slope lets its advantage depend on the data, which is what a *capability* descriptor would have to do and what none of the descriptors this corpus records does. Every model-side encoding the study tried and rejected was rejected for failing to recover this gap -- so it is a property of the corpus, not of the search, and the one route to closing it that survives is measuring what a model is good at rather than asserting it.
 
 ## The dataset-only and model-only controls
 
@@ -721,6 +733,47 @@ MCC = +0.374877
       +0.101647 * [log(Fitting Regime)] * [log(Processing Units Number)]  # beta=+0.1183
       +0.322689 * 1/Loss Margin Behaviour                         # beta=+0.0896
       +0.231211 * [log(Loss Margin Behaviour)] / [Model Capability]  # beta=+0.0519
+```
+
+#### The capability variant, in full
+
+The same feature sets under the looser arity-3 grammar. It is **not** the study's recommendation and not what the term-by-term analysis above is about; it exists so that the published equation's accuracy can be read against what the additive *form* can do, rather than only against oracles and baselines. It is printed here in full because a ceiling quoted as a number and never shown is a ceiling a reader has to take on trust -- and because the reason it is not recommended is visible only in the reading: 23 terms over three-feature expressions is past the point where the equation can be reasoned about a term at a time, which is the whole thing this study is trading accuracy for.
+
+It reaches **0.7068** in-sample against the published equation's 0.6578, and **0.6781** leave-one-dataset-out against 0.6381.
+
+**E3 capability** (23 terms):
+
+```
+MCC = +1.38199
+      -0.0371973 * ([log(gravity)] + [nr_norm]) / [log(Processing Units Number)]  # beta=-0.2665
+      +0.0125247 * [log(gravity)] * [log(Model Capability)]       # beta=+0.2463
+      +0.853208 * 1/Fitting Regime                                # beta=+0.2393
+      -0.188071 * ([log(eq_num_attr)] + [log(Processing Units Number)]) / [Fitting Regime]  # beta=-0.1988
+      -0.289067 * ([log(eq_num_attr)] + [log(nr_class)]) / [log(Processing Units Number)]  # beta=-0.1824
+      +0.012462 * ([log(class_ent)] + [nr_bin]) / [log(Processing Units Number)]  # beta=+0.1774
+      +0.141009 * ([log(nr_class)] + [log(Fitting Regime)]) / [log(eq_num_attr)]  # beta=+0.1646
+      +1.29483 * [nr_cor_attr] * [log(Processing Units Number)]   # beta=+0.1497
+      -0.0110339 * [log(gravity)] * [log(Fitting Regime)]         # beta=-0.1324
+      -0.132616 * ([log(Input Distribution Modelling)] + [log(Model Capability)]) / [log(eq_num_attr)]  # beta=-0.1300
+      -0.102309 * ([log(Input Distribution Modelling)] + [log(Processing Units Number)]) / [log(nr_class)]  # beta=-0.1143
+      -0.0934429 * ([log(class_ent)] + [log(Processing Units Number)]) / [log(eq_num_attr)]  # beta=-0.1103
+      +0.0023749 * [log(inst_to_attr)] * [nr_norm]                # beta=+0.1102
+      -1.3236 * [log(nr_class)] * [nr_cor_attr]                   # beta=-0.0990
+      +0.0976655 * ([log(class_ent)] + [log(Fitting Regime)]) / [log(eq_num_attr)]  # beta=+0.0887
+      -0.14122 * [nr_cor_attr] * [nr_norm]                        # beta=-0.0800
+      +0.040737 * ([log(inst_to_attr)] + [log(Input Distribution Modelling)]) / [log(Processing Units Number)]  # beta=+0.0786
+      +0.00963297 * ([nr_norm] + [log(Processing Units Number)]) / [Input Distribution Modelling]  # beta=+0.0730
+      -0.0120115 * ([log(gravity)] + [nr_bin]) / [log(nr_attr)]   # beta=-0.0694
+      -1.01469 * [nr_cor_attr] * [log(Fitting Regime)]            # beta=-0.0687
+      +0.0791699 * ([log(Input Distribution Modelling)] + [log(Model Capability)]) / [log(nr_class)]  # beta=+0.0671
+      -0.0549581 * ([log(nr_attr)] + [log(nr_class)]) / [log(Processing Units Number)]  # beta=-0.0386
+      -0.00890765 * ([log(inst_to_attr)] + [log(ns_ratio)]) / [Input Distribution Modelling]  # beta=-0.0327
+```
+
+LaTeX:
+
+```latex
+\mathrm{MCC} = +1.382 -0.0372 \cdot \mathrm{([log(gravity)] + [nr\_norm]) / [log(Processing Units Number)]} +0.01252 \cdot \mathrm{[log(gravity)] * [log(Model Capability)]} +0.8532 \cdot \mathrm{1/Fitting Regime} -0.1881 \cdot \mathrm{([log(eq\_num\_attr)] + [log(Processing Units Number)]) / [Fitting Regime]} -0.2891 \cdot \mathrm{([log(eq\_num\_attr)] + [log(nr\_class)]) / [log(Processing Units Number)]} +0.01246 \cdot \mathrm{([log(class\_ent)] + [nr\_bin]) / [log(Processing Units Number)]} +0.141 \cdot \mathrm{([log(nr\_class)] + [log(Fitting Regime)]) / [log(eq\_num\_attr)]} +1.295 \cdot \mathrm{[nr\_cor\_attr] * [log(Processing Units Number)]} -0.01103 \cdot \mathrm{[log(gravity)] * [log(Fitting Regime)]} -0.1326 \cdot \mathrm{([log(Input Distribution Modelling)] + [log(Model Capability)]) / [log(eq\_num\_attr)]} -0.1023 \cdot \mathrm{([log(Input Distribution Modelling)] + [log(Processing Units Number)]) / [log(nr\_class)]} -0.09344 \cdot \mathrm{([log(class\_ent)] + [log(Processing Units Number)]) / [log(eq\_num\_attr)]} +0.002375 \cdot \mathrm{[log(inst\_to\_attr)] * [nr\_norm]} -1.324 \cdot \mathrm{[log(nr\_class)] * [nr\_cor\_attr]} +0.09767 \cdot \mathrm{([log(class\_ent)] + [log(Fitting Regime)]) / [log(eq\_num\_attr)]} -0.1412 \cdot \mathrm{[nr\_cor\_attr] * [nr\_norm]} +0.04074 \cdot \mathrm{([log(inst\_to\_attr)] + [log(Input Distribution Modelling)]) / [log(Processing Units Number)]} +0.009633 \cdot \mathrm{([nr\_norm] + [log(Processing Units Number)]) / [Input Distribution Modelling]} -0.01201 \cdot \mathrm{([log(gravity)] + [nr\_bin]) / [log(nr\_attr)]} -1.015 \cdot \mathrm{[nr\_cor\_attr] * [log(Fitting Regime)]} +0.07917 \cdot \mathrm{([log(Input Distribution Modelling)] + [log(Model Capability)]) / [log(nr\_class)]} -0.05496 \cdot \mathrm{([log(nr\_attr)] + [log(nr\_class)]) / [log(Processing Units Number)]} -0.008908 \cdot \mathrm{([log(inst\_to\_attr)] + [log(ns\_ratio)]) / [Input Distribution Modelling]}
 ```
 
 <!-- end generated -->
@@ -766,10 +819,10 @@ Richer *measured* descriptors — inductive bias, hypothesis-space characteristi
 behaviour — would carry none of these caveats and remain the better answer.
 
 How much more is now measured rather than guessed. Tabulating that missing third per model
-instead of describing it is worth **+0.106** of leave-one-dataset-out R²
-(this chapter) — which is at most what a *perfect* set of extra
-descriptors would be worth, since free per-model numbers are the best any descriptor set
-could do at telling these 25 models apart. It is also why a table is not a substitute for
+instead of describing it is worth what the generated ceiling at the foot of this chapter
+measures — which is at most what a *perfect* set of extra descriptors would be worth, since
+free per-model numbers are the best any descriptor set could do at telling these 25 models
+apart. It is also why a table is not a substitute for
 descriptors: it transfers to a new dataset and not to a new model, while a descriptor would
 do both.
 
@@ -781,9 +834,10 @@ the descriptors the corpus records, which is a limitation rather than a result.*
 *Implemented in `ml_meta_perf.identity`. **Not part of the reported study** — see the last
 section for why it was measured and then withdrawn.*
 
-[Chapter 4](04-equation.md) measures a gap and stops there. Dataset identity explains 0.354
-of MCC variance and the twelve dataset meta-features recover **98%** of it; model identity
-explains 0.282 and the six model meta-features recover **88%**. What is left is written down
+The chapter above measures a gap and stops there: the dataset meta-features recover almost
+all of what dataset identity explains, and the model meta-features a clearly smaller share of
+what model identity explains — the `reached` column of the generated headline has both. What
+is left is written down
 nowhere in this corpus — the features record what a model *is*, its capacity and five
 asserted facts about how it is built, but nothing about what it is good at.
 
@@ -791,10 +845,10 @@ asserted facts about how it is built, but nothing about what it is good at.
 asserted ordinals merged on 2026-09-05 closed most of it, which is why the ceiling measured
 below is much smaller than the text originally described.
 
-[Chapter 4](04-equation.md) measures the same gap from the other side: a rank-1 interaction
-component is worth **+0.122 R²** over the additive oracle, and the equation reaches about a
-third of that pattern in-sample and a quarter out of fold — measured, not inferred from an
-R² comparison.
+The interaction ladder measures the same gap from the other side: the first interaction
+component is worth substantially more than the equation reaches, and the equation recovers
+about a third of that pattern in-sample and a quarter out of fold — measured, not inferred
+from an R² comparison. Both numbers are in the generated section above.
 
 Both are statements that something is missing. Neither says **how much** a better set of
 model descriptors would be worth, and that is a number a reader will want before deciding
@@ -813,32 +867,36 @@ Two numbers per model: a level, and a slope on one dataset feature chosen inside
 
 $$\text{correction}_m = b_m + c_m \cdot \log(\mathrm{gravity})$$
 
-| | LOO-dataset R² | MAE |
-|---|---|---|
-| E3, 15 terms | 0.6381 | 0.1425 |
-| + levels only | 0.6693 | 0.1351 |
-| **+ levels and slope** | **0.6693** | **0.1351** |
-| *per-model mean baseline* | *0.2006* | *0.2382* |
+The measurement is in the generated section at the foot of this chapter — both rungs, on
+this run, against the equation the study publishes. A hand-written copy stood here and had
+drifted badly enough to invert the chapter's conclusion: it recorded the two rungs as
+*identical*, which no run of `identity.correct_out_of_fold` can produce, and reported a gap
+of +0.017 where the measurement gives roughly three times that.
 
-**+0.017 of leave-one-dataset-out R² is what perfect model descriptors would still be
-worth.** This chapter's whole reason for existing was that the number used to be **+0.106**,
-and before `Model Capability` was added, **+0.121** against an E3 scoring 0.4658. It is now
-small enough that the question it was asked to answer is closed.
+**What the gap is worth is therefore an open question again, not a closed one.** The
+comparison that motivated this chapter still holds in direction — the gap was +0.121 against
+an E3 scoring 0.4658 before `Model Capability` was added, and +0.106 after — so the model
+side is far better described than it was. But the current figure is not small enough to say
+the question it was asked to answer is closed, and the reading that the model side is
+*adequately* described does not follow from it.
 
-That is the strongest evidence in the study that the model side is adequately described.
 Free per-model numbers are the best any descriptor set could do at telling these 25 models
 apart — they are model identity itself, fitted out of fold — so what they add on top of the
-equation is exactly the information the descriptors are missing. Six columns now leave 0.017
-of it on the table, where five columns left 0.106.
+equation is exactly the information the descriptors are missing. The rung that matters is the
+**slope**: a level shifts every one of a model's rows by the same amount, which is a
+per-model constant, while a slope lets a model's advantage depend on the data. That is what a
+*capability* descriptor would have to do, and it is the half of the gap the level cannot
+reach. It is also why the negative results in [the limitations](#limitations-of-the-equation)
+all fail the same way.
 
-**The slope adds nothing at all**, where it used to add +0.065 on top of the levels. A
-per-model slope on a dataset feature is an interaction the equation could not express; the
-equation now expresses it directly, in nine mixed terms out of sixteen. The row is kept at
-its unchanged value rather than deleted, because a measurement going to zero is the result.
+**The slope still adds more than the level does**, which is the reading that had been lost.
+A per-model slope on a dataset feature is an interaction, and the hope behind the mixed terms
+was that expressing it directly would leave the slope nothing to recover; the generated table
+says otherwise. That is the honest statement of where the study stands: the mixed terms
+capture some of this interaction and not the part that varies per model.
 
 The rank columns of this table are dropped rather than refreshed, because the ranking
-comparison they fed now lives in [chapter 5](05-evaluation.md), where E3 beats the baseline
-on every head-weighted measure.
+comparison they fed now lives in [chapter 5](05-evaluation.md).
 
 ### Why the model side, specifically
 
@@ -864,7 +922,7 @@ And the interaction those fitted latents reconstruct, scored on all 476 rows:
 the bottleneck is entirely the model side.** The dataset latent is largely predictable —
 one feature gets 0.597 of it — and the model latent is not, at 0.32 from its best two.
 
-This is the same conclusion as the +0.106 above, reached independently: the dataset half of
+This is the same conclusion as the identity ceiling above, reached independently: the dataset half of
 this meta-data is close to exhausted and the model half is not. Chapter 4 says it from the
 ceilings, chapter 4 from the interaction ladder, and this chapter from both directions at
 once. **Richer model descriptors — inductive bias, hypothesis-space characteristics,
@@ -893,8 +951,8 @@ The construction is a **factorial regression** in the sense used for genotype-by
 trials: a two-way table modelled with covariates on one margin and free coefficients on the
 other (Denis, 1988; van Eeuwijk, Denis & Kang, 1996). In machine-learning terms it is the
 collaborative half of a hybrid recommender, and algorithm selection has been posed as
-collaborative filtering before (Mısır & Sebag, 2017; Fusi et al., arXiv:1705.05355; Yang et
-al., arXiv:1808.03233).
+collaborative filtering before (Mısır & Sebag, 2017; Fusi, Sheth & Elibol, NeurIPS 2018;
+Yang et al., 'Oboe', KDD 2019).
 
 ### Two-stage, not backfitting
 
@@ -978,12 +1036,14 @@ not published as an equation are worth stating:
   the readable equation for a table does not even win the accuracy argument outright, so it
   wins nothing worth the trade.
 
-What survives is the **measurement**: +0.106 as the upper bound on better model descriptors,
-and +0.018 as the covariate-reachable part of the interaction ladder. Those belong to
-this chapter's argument about thin model descriptors, and they are the
-reason that argument now carries a number.
+What survives is the **measurement**: the per-model identity ceiling as the upper bound on
+better model descriptors, and +0.018 as the covariate-reachable part of the interaction
+ladder. Those belong to this chapter's argument about thin model descriptors, and they are
+the reason that argument now carries a number.
 
-`ml_meta_perf.identity` ships tested and is wired into no pipeline. It stays in the tree where
-the agglomerative-construction experiment of [chapter 3](03-term-selection.md) did not,
-because this one produces a number the study quotes — the +0.106 ceiling — rather than only
-a conclusion. `ml_meta_perf.identity.correct_out_of_fold`, applied to a finished `cross_validate_fixed_form`, reproduces the table above.
+`ml_meta_perf.identity` was for a long time tested and wired into no pipeline, and the
+consequence was that the ceiling it measures was hand-copied into this chapter and went
+stale by a factor of three. It is now run on every study:
+`identity_ceiling` calls `identity.correct_out_of_fold` against the finished
+`cross_validate_fixed_form` path, so the number costs no extra search and cannot drift from
+the equation it is a ceiling for.

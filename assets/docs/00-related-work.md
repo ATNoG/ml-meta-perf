@@ -18,7 +18,8 @@ performance metric. The features in the shipped corpus (`class_ent`, `gravity`,
   Machine Learning and Data Mining* (2nd ed., 2022) — the reference text for the
   meta-feature → performance framing.
 - Rice, "The Algorithm Selection Problem", *Advances in Computers* 15 (1976).
-- Vanschoren, "Meta-Learning: A Survey", arXiv:1810.03548 (2018).
+- Vanschoren, "Meta-Learning", in Hutter, Kotthoff & Vanschoren (eds), *Automated Machine
+  Learning: Methods, Systems, Challenges*, Springer (2019), ch. 2.
 
 **Relevance.** This project sits squarely in that tradition but inverts the usual
 priority: the deliverable is the *mapping itself*, in readable form, rather than its
@@ -28,7 +29,8 @@ accuracy.
 
 > Billa, Orlandi, Guidetti, Mandreoli, **"Interpretable ML Under the Microscope:
 > Performance, Meta-Features, and the Regression-Classification Predictability Gap"**,
-> arXiv:2601.00428 (2026). Sixteen interpretable methods across 216 tabular datasets.
+> arXiv:2601.00428 (2026). Preprint. Sixteen interpretable methods across 216 tabular
+> datasets.
 
 Their central result is directly relevant and worth quoting in full:
 
@@ -57,11 +59,12 @@ functions** — the same machinery as SINDy, applied to meta-learning rather tha
   identification of nonlinear dynamical systems", *PNAS* 113(15) (2016). The original
   library-plus-sparse-regression formulation.
 - Schmelzer, Dwight, Cinnella, **"Discovery of Algebraic Reynolds-Stress Models Using
-  Sparse Symbolic Regression"** (SpaRTA), arXiv:1905.07510 (2019). Deterministic sparse
-  regression over a candidate library, chosen explicitly over genetic programming for
-  the interpretability of the result. The closest methodological ancestor of this work.
-- Kaptanoglu et al., "Scalable Sparse Regression for Model Discovery", arXiv:2405.09579
-  (2024).
+  Sparse Symbolic Regression"** (SpaRTA), *Flow, Turbulence and Combustion* 104, 579-603
+  (2020). Deterministic sparse regression over a candidate library, chosen explicitly over
+  genetic programming for the interpretability of the result. The closest methodological
+  ancestor of this work.
+- Golden, "Scalable Sparse Regression for Model Discovery: The Fast Lane to Insight",
+  arXiv:2405.09579 (2024). Preprint.
 
 **Relevance.** These justify the deterministic-library approach against the GP
 alternative. SpaRTA's motivation — that GP produces expressions too unwieldy to interpret
@@ -76,17 +79,18 @@ long to interpret. That is a known and named failure mode.
   best-studied pathology in GP. Parsimony pressure and multi-objective (accuracy vs size)
   formulations are the standard mitigations.
 - de França, "Alleviating Overfitting in Transformation-Interaction-Rational Symbolic
-  Regression with Multi-Objective Optimization", arXiv:2501.01905 (2025). The
-  **Transformation-Interaction-Rational (TIR)** representation constrains SR to a ratio
-  of two nonlinear functions, each a linear regression over transformed variables —
-  a deliberate restriction of the search space to bias toward simpler expressions.
-- Cranmer, "Interpretable Machine Learning for Science with PySR", arXiv:2305.01582
-  (2023).
+  Regression with Multi-Objective Optimization", *Genetic Programming and Evolvable
+  Machines* 24(2) (2023). The **Transformation-Interaction-Rational (TIR)** representation
+  constrains SR to a ratio of two nonlinear functions, each a linear regression over
+  transformed variables — a deliberate restriction of the search space to bias toward
+  simpler expressions.
+- Cranmer, "Interpretable Machine Learning for Science with PySR and SymbolicRegression.jl",
+  arXiv:2305.01582 (2023). Preprint.
 - de França et al., "Call for Action: towards the next generation of symbolic regression
-  benchmark" (SRBench update), arXiv:2505.03977 (2025).
-- Virgolin et al., "Coefficient Mutation in GP-GOMEA for Symbolic Regression",
-  arXiv:2204.12159 (2022) — GP struggles to optimise real-valued coefficients, which
-  linear-in-the-weights methods get exactly and for free.
+  benchmark" (SRBench update), *GECCO 2025 Companion*.
+- Virgolin & Bosman, "Coefficient Mutation in the Gene-pool Optimal Mixing Evolutionary
+  Algorithm for Symbolic Regression", *GECCO 2022 Companion* — GP struggles to optimise
+  real-valued coefficients, which linear-in-the-weights methods get exactly and for free.
 
 **Relevance.** TIR is the strongest argument for our design: restricting the *form* up
 front (additive, linear in the weights, over a curated term vocabulary) is an established
@@ -119,13 +123,13 @@ structurally identical problem.
   fitted by stepwise forward/backward selection. That is `ml-meta-perf`'s model class and
   `ml-meta-perf`'s search strategy, arrived at independently for a different domain.
 - Velez et al., "White-Box Analysis over Machine Learning: Modeling Performance of
-  Configurable Systems", arXiv:2101.05362 (2021).
+  Configurable Systems", *ICSE 2021*, 1072-1084.
 - Velez et al., "ConfigCrusher: Towards White-Box Performance Analysis for Configurable
-  Systems", arXiv:1905.02066 (2019).
-- Jamshidi et al., "Transfer Learning for Performance Modeling of Configurable Systems",
-  arXiv:1709.02280 (2017).
+  Systems", *Automated Software Engineering* 27 (2020).
+- Jamshidi et al., "Transfer Learning for Performance Modeling of Configurable Systems:
+  An Exploratory Analysis", *ASE 2017*, 497-508.
 - Lesoil et al., "The Interaction between Inputs and Configurations fed to Software
-  Systems", arXiv:2112.07279 (2021).
+  Systems: an Empirical Study", arXiv:2112.07279 (2021). Preprint.
 
 **Why the analogy is tight.** Their configuration options map to our features, their
 software system to our classifier, and their *workload* to our dataset. Lesoil et al. study
@@ -186,9 +190,9 @@ in AutoML.
   meta-features used to place a *new* instance — the cold-start case, which is our
   leave-one-dataset-out protocol.
 - Fusi, Sheth, Elibol, "Probabilistic Matrix Factorization for Automated Machine Learning",
-  arXiv:1705.05355 (NeurIPS 2018).
-- Yang, Akimoto, Kim, Udell, "OBOE: Collaborative Filtering for AutoML Model Selection",
-  arXiv:1808.03233 (KDD 2019).
+  *NeurIPS 2018*, 3352-3361.
+- Yang, Akimoto, Kim, Udell, "Oboe: Collaborative Filtering for AutoML Model Selection",
+  *KDD 2019*.
 
 **Relevance.** These establish that latent-factor models over a pipeline-by-dataset matrix
 are standard practice for algorithm recommendation, and they are why the +0.106 measured in
@@ -222,7 +226,7 @@ the binding constraint here is the thinness of the model descriptors, not the lo
 - Chicco & Jurman, "The advantages of the Matthews correlation coefficient (MCC) over F1
   score and accuracy in binary classification evaluation", *BMC Genomics* 21 (2020).
 - Itaya et al., "Statistical Inference of the Matthews Correlation Coefficient for
-  Multiclass Classification", arXiv:2503.06450 (2025).
+  Multiclass Classification", arXiv:2503.06450 (2025). Preprint.
 
 **Relevance.** Justifies MCC as the target for imbalanced security/IoT datasets. It also
 raises a modelling caveat we handle explicitly: MCC is bounded in [-1, 1] and this
@@ -235,8 +239,8 @@ so predictions are clipped. A logit/`atanh` transform of the target was tried an
 The grouped-split requirement is standard practice wherever records share a group
 identity, and is the same concern as subject-wise splitting in clinical ML.
 
-- Walsh et al., "DOME: Recommendations for supervised machine learning validation in
-  biology", arXiv:2006.16189 (2020) — community standards on how validation should be
+- Walsh et al., "DOME: recommendations for supervised machine learning validation in
+  biology", *Nature Methods* 18, 1122-1127 (2021) — community standards on how validation should be
   reported, including the leakage traps.
 
 **Relevance.** Supports reporting leave-one-dataset-out as the headline and treating

@@ -16,8 +16,10 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 
+from ml_meta_perf.fit import Standardizer
 from ml_meta_perf.stats import pearson, r2_score, spearman
 from ml_meta_perf.terms import Library
+from ml_meta_perf.validate import leave_one_group_out
 
 
 def _center_within_groups(values: np.ndarray, groups: np.ndarray) -> np.ndarray:
@@ -188,4 +190,50 @@ def grammar_ceiling(
         "r2_best_per_feature": fit_r2([str(name) for name in reach["best_term"].to_list() if name]),
         "r2_all_single_feature": fit_r2([term.name for term in single]),
         "n_single_feature_terms": float(len(single)),
+    }
+
+
+def saturated_fit(
+    library: Library,
+    target: np.ndarray,
+    groups: np.ndarray,
+) -> dict[str, float]:
+    """What happens if every candidate term is handed to least squares at once.
+
+    The control for the whole selection stage. If an unpenalised fit over the entire library
+    transferred well, the beam search and the length rule would be machinery in search of a
+    problem, and the honest thing would be to delete them. It does not: the design is far
+    wider than 20 held-out groups can support, so the fit is excellent and the transfer is
+    catastrophic.
+
+    Reported at both bounds because the gap between them is itself the finding. Unclipped, a
+    held-out dataset outside the convex hull of the others is extrapolated without limit and
+    the pooled R2 goes to three or four figures negative; clipped to the training fold's own
+    observed range -- exactly what `validate._clip_to_training` does for every reported
+    number -- it lands somewhere merely bad. Quoting only the clipped figure would hide how
+    far the unconstrained fit actually goes.
+
+    No ridge penalty and no screening: this is the null procedure the study is measured
+    against, so giving it either would be measuring something else.
+    """
+    matrix = library.matrix
+    standardizer = Standardizer.fit(matrix)
+    offset = float(target.mean())
+    weights = np.linalg.lstsq(standardizer.apply(matrix), target - offset, rcond=None)[0]
+    in_sample = r2_score(target, standardizer.apply(matrix) @ weights + offset)
+
+    held = np.zeros_like(target)
+    bounded = np.zeros_like(target)
+    for _, train, test in leave_one_group_out(groups):
+        fold = Standardizer.fit(matrix[train])
+        design = fold.apply(matrix[train])
+        centre = float(target[train].mean())
+        fitted = np.linalg.lstsq(design, target[train] - centre, rcond=None)[0]
+        held[test] = fold.apply(matrix[test]) @ fitted + centre
+        bounded[test] = np.clip(held[test], float(target[train].min()), float(target[train].max()))
+    return {
+        "terms": float(len(library)),
+        "r2_in_sample": in_sample,
+        "r2_loo_dataset_clipped": r2_score(target, bounded),
+        "r2_loo_dataset_unclipped": r2_score(target, held),
     }

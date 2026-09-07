@@ -1,7 +1,140 @@
 # Working notes
 
-Session closed 2026-09-07 on branch `fix/ci-docs-plots`, 24 commits ahead of `main`. Working
-tree clean, gate green — `venv/bin/pre-commit run --all-files`, 432 tests.
+Session closed 2026-09-07 on branch `fix/ci-docs-plots`. Gate green —
+`venv/bin/pre-commit run --all-files`, 484 tests. The run is ~38s and byte-reproducible:
+two consecutive runs produce identical `results/*` and identical chapters. Most of the
+runtime is the opaque-regressor comparison, which refits a random forest 46 times; the
+equation half of the pipeline is 14s, down from 15.7s.
+
+## What the 2026-09-07 audit session changed, part two
+
+**scikit-learn is now a base dependency and the no-scipy rule is retired.** The
+opaque-regressor comparison — the priced other side of the study's whole trade — had been
+measured once by hand and quoted ever since, and the hand-copied numbers had drifted.
+`ml_meta_perf.opaque` computes it on every run: ridge, forest and boosting on the same
+eighteen raw columns, under the same protocols, with the same clip. **The rule it replaced
+still applies to `stats.py`** — four short statistics are not a reason to reach for a library,
+and `validate.paired_comparison` stays scipy-free.
+
+That comparison produced a **finding the study did not have**. The opaque models were only
+ever scored on predicting the MCC *value*. Scored on the two decisions a practitioner
+actually makes, they lose to the equation **and to the trivial per-model centres**: at the
+0.7 threshold the equation reaches MCC 0.70 under the strictest protocol, a per-model mean
+0.44, and the forest 0.33. On ranking they reach neither the equation nor the per-model
+median. The honest summary is not that opaque models are bad at this — it is that **the
+accuracy the study traded away was not there to be had** under a protocol where the dataset
+is genuinely unseen. The run is now 38s, most of it refitting a forest 46 times.
+
+**Chapter 6 was inverted.** It spent 270 lines on the equation — chapter 4's job — before
+reaching a practice. The practices and their verdicts now come first, immediately after the
+opening; the method that produces the evidence follows them. And each practice that makes a
+claim about a raw feature is now checked **against the equation's own terms**: expected
+direction against measured direction, with the effect size beside it, in
+`guidance.equation_evidence`. That check found that the equation *disagrees* with half of
+"capacity is not free" — it says `Processing Units Number` raises MCC — while agreeing on
+`Model Capability`. A verdict from family means says the advice holds on this corpus; a
+term-level agreement says the equation encodes it, and that is the stronger claim.
+
+**Citations no longer point at arXiv where a published version exists.** All ten practice
+sources and the two in chapter 4 were resolved; the related-work chapter went from sixteen
+arXiv references to five, each now marked `Preprint` explicitly. Two errors surfaced:
+arXiv:2405.09579 is **Golden**, not "Kaptanoglu et al.", and arXiv:2601.00428 — which looked
+like a placeholder ID — is real.
+
+**Chapters 4 and 5 read as repetitive because two generated sections were spliced into both.**
+`term_choice` and the length note went to chapter 4 *and* chapter 5. Section ownership is now
+one topic to one chapter: the length rule lives in chapter 3 with the selection procedure that
+applies it, the ceilings in chapter 4 with the equation they bound, the protocols and
+decisions in chapter 5. Four hand-written tables that duplicated generated ones were removed,
+including one that was a stale copy of a table 240 lines below it in the same file.
+
+Also: the 23-term capability equation is printed in full for the first time (it was quoted as
+a ceiling and never shown); the two "Spearman is deliberately absent" paragraphs are one
+sentence beside the metric it belongs to; and chapter 4's inverted claim about which protocol
+E1 transfers better under is corrected.
+
+## What the 2026-09-07 audit session changed
+
+**One finding needs a decision and is not mine to make.** The per-model identity ceiling —
+chapter 4's central number, the bound on what any model descriptor could add — was
+hand-written and **wrong by a factor of three**: the chapter recorded +0.017 and recorded its
+two rungs as *identical*, which no run of `identity.correct_out_of_fold` can produce. Measured
+now, it is **+0.050 of leave-one-dataset-out R2**, of which the per-model *level* recovers
++0.020 and the *slope* the remaining +0.030. The chapter concluded from +0.017 that "the model
+side is adequately described" and "the question is closed". **That conclusion does not follow
+from +0.050**, and I have marked it open rather than rewriting the study's position for you.
+The slope still adding more than the level is the part that matters: it is the interaction the
+mixed terms were supposed to absorb and have not.
+
+`identity` is now wired in — `experiment.identity_ceiling` reuses the finished
+`cross_validate_fixed_form` path, so it costs no extra search and cannot drift again.
+
+**Results the chapters stated by hand are now generated**, which is what let the above be
+found at all. New generated sections: `1b. The corpus` (into ch. 1), `1c. The headline` (into
+`index.md`), `3b. Why a subset rather than every term` (into ch. 3), `4b. The ceiling on model
+descriptors` (into ch. 4), `5c. Reading a single prediction` (into ch. 6). Six chapters now
+carry generated blocks, up from three.
+
+Other stale numbers found and corrected, each of which a reader would have hit:
+
+- **Chapter 6's worked example** was hand-written and every figure in it was stale — the
+  intercept read 1.4787 against the equation's 1.3586 — in the chapter arguing that the
+  analysis is generated rather than authored. Now `report.single_prediction`, on the row at
+  the equation's median absolute error, with the sum printed and the clip called out when it
+  fires.
+- **Chapter 3's crater illustration** named 15 terms, which is the *published* length and has
+  no crater. The deepest is 24. Now generated (`report._crater_note`), so it moves when the
+  curve does.
+- **Chapter 5's threshold table** was a stale hand copy of the generated table 240 lines below
+  it in the same file. Removed.
+- **Chapter 4's headline comparison** was a hand copy of `report.comparison`. Removed.
+- **The equation's flatness** was stated three times in two chapters at three different values
+  (13.2, 13.8, 13.8) against a generated 12.1, with the largest term's share at 10.8% against
+  13.0%. All now point at the generated section.
+- **Chapter 6's stability passage** claimed "four of the sixteen major terms" and put the
+  rank-1 term at 10.6% of mass in 95% of folds. It is 13.0% in 100% of folds, 10 terms are
+  major, and 10.6% belongs to a different term.
+- **The README documented four defaults that had all moved** — 24 terms against 15, penalty 5
+  against 20, arity 3 against 2, z-cap 3.0 against 4.25. Fixed, and
+  `test_experiment.TestDocumentedDefaults` now reads the README table and compares it with
+  `DEFAULT_E3`, so it cannot drift again. Also: 10 figures against 7, 17 tables, and a
+  `--report report.md` flag that no longer exists.
+
+**Chapters 2 and 3's historical tables are labelled, not deleted.** They support negative
+results and are internally consistent; what they lacked was a statement that they predate the
+2026-09-05 protocol change. A reader was free to compare a 0.5582 baseline against a current
+0.658. Chapter 4's E2-aggregation table is labelled the same way and sits directly under an
+E1 table that *is* current, which is how it went unnoticed.
+
+**Performance: 15.7s to 14.0s, while adding two new analyses to the pipeline.** Four changes,
+each verified to leave every table, chapter and equation byte-identical before the next was
+made:
+
+- `stats.pearson_columns` — `guided_screen` scored the pool one `pearson` call per column,
+  60k calls a study, for one matrix-vector product.
+- `Library.__init__`'s collinearity de-duplication was a Python loop of dot products over
+  everything kept so far (590k iterations); it is one BLAS call per candidate, as
+  `guided_screen` already was.
+- `Selector._collinear` — the collinearity test decided once at construction instead of per
+  parent per beam step.
+- `_blocked` dropped an `np.unique` that could not change an `any`, and `_refine` prices its
+  leave-one-out probes in one stacked solve.
+
+What is left is intrinsic: `_evaluate_many`'s Python overhead and the argsorts in
+`_descending`, whose stable tie-breaking is load-bearing and should not be traded for
+`argpartition`. The one large structural win remaining is parallelising `fold_selections`
+over its 20 independent folds — it is 10s of the 14s, and it is only used for `stability`.
+
+**The gate had a hole.** `pyproject.toml` scopes ruff to `["src", "tests"]`; the hook and CI
+ran `ruff check src`. basedpyright and vulture both read `tests`. Three lint errors had
+accumulated there. Hook and workflow now run `ruff check src tests`.
+
+**Figures** are numbered by position — `01_equation_comparison.png` through
+`07_decision_quality.png` — from `figures.FIGURE_ORDER`, which is the only place the order is
+written down; `generate` refuses a set that does not match it. `term_effects` labels are set
+inline (`a / b`, not a built-up `\frac`, which mathtext shrinks so that half the labels were
+two thirds the size of the other half), logarithms are parenthesised, and products use
+`\times`.
 
 **Nothing is pushed.** The CI fix in this branch is the thing that most needs pushing, and
 the workflow only runs on a push to `main` or a pull request, so it has not been verified on
@@ -208,10 +341,17 @@ way, or to accept the clip and justify it prominently in chapter 5.
 
 ## 5. Open, in the order it is worth picking up
 
-1. **Push, and confirm CI is green.** Nothing else in this branch has been seen by a runner.
-2. **Re-read the chapters end to end as a reader.** The structure and the numbers are right
-   and the prose has been cut and spliced repeatedly this session; it has not had a single
-   continuous read since.
+0. **Decide what +0.050 means.** The identity ceiling is three times what the chapter said,
+   and the chapter's "the model side is adequately described, the question is closed" does not
+   follow from it. Chapter 4 now states the gap and marks the reading open. Either the study
+   argues that +0.050 is small enough — in which case say so against the measured number and
+   not the old one — or the model-descriptor question reopens, and the behavioural-probing
+   direction below stops being future work and becomes the next step.
+1. **Push, and confirm CI is green.** Nothing else in this branch has been seen by a runner,
+   and CI now runs `ruff check src tests` rather than `src`.
+2. **Re-read chapters 0 and 2 end to end as a reader.** Chapters 1 and 3-6 had a continuous
+   read on 2026-09-07 and their numbers were audited against the generated output; 0 and 2
+   were not, beyond labelling chapter 2's historical tables.
 3. **`OBJECTIVE_WEIGHTS` may want re-weighting.** In the sweep, `stability` at 0.15 outvoted
    an accuracy gap that a paired test called significant, and put a 9-term equation on top.
    The objective is currently a shortlisting device with the paired test as the decision;
@@ -475,8 +615,23 @@ re-running: the cluster copy goes stale and the memory request is load-bearing.
 
 ## For the next session
 
-The branch is `fix/ci-docs-plots`, unpushed, 24 commits ahead of `main`. Item 5 above is the
-ordered list. Two working habits that cost time this session and are worth not repeating:
+The branch is `fix/ci-docs-plots`, unpushed. Item 5 above is the ordered list, and item 0 is
+the one that needs a person. Three working habits worth keeping:
+
+- **Audit prose numbers against `results/` mechanically, not by reading.** Harvest every
+  decimal from `results/*.csv|json` and the generated blocks, then flag every decimal in
+  hand-written prose that does not appear at the precision it is written. That is how the
+  identity ceiling, the crater at the wrong length, and three different values for one
+  flatness index were all found in one pass. Exclude `results/cluster/` — 48k sweep rows
+  match almost anything by chance and the filter goes useless.
+- **Verify an optimisation by byte-comparing every output, one change at a time.** Snapshot
+  `results/*` and the chapters, make one change, re-run, `cmp` everything. Four vectorisations
+  went in that way and every one was provably identical; a batch of four would not have been.
+- **When a number belongs in a chapter, generate it.** Every stale figure found this session
+  was in prose the pipeline does not write. The rule is not "check the numbers", it is "give
+  the chapter nowhere to keep a number of its own".
+
+Two habits that cost time in earlier sessions and are worth not repeating:
 
 - **`git checkout -- assets/docs/` twice destroyed uncommitted work.** Commit before any
   bulk restructure, and prefer moving files to a scratch directory over reverting.

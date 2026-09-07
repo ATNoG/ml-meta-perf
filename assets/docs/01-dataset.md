@@ -26,17 +26,19 @@ Three properties of this target shape every downstream decision:
 
 - **It is bounded.** A linear form is unaware of that, so predictions are clipped to
   [-1, 1] (`ml_meta_perf.model.Equation.predict`).
-- **It saturates.** 80 of the 476 rows (17%) sit at exactly 1.0. A logit or `atanh`
-  transform of the target was tried to handle the bound and **failed badly** —
-  cross-validated R² went negative, because the saturation point maps to infinity.
-- **It passes through zero.** 15 rows are exactly 0.0 and one is negative. This is why
-  MAE rather than SMAPE is the honest error headline: see
-  [chapter 5](05-evaluation.md).
+- **It saturates.** A sixth of the rows sit at exactly 1.0 — the generated table below
+  counts them. A logit or `atanh` transform of the target was tried to handle the bound and
+  **failed badly**: cross-validated R² went negative, because the saturation point maps to
+  infinity.
+- **It passes through zero.** Some rows are exactly 0.0 and one is negative, again counted
+  below. This is why MAE rather than SMAPE is the honest error headline: SMAPE divides by
+  `|truth| + |prediction|`, so every row at exactly zero contributes the full 200% unless
+  the prediction is exactly zero too. See [chapter 5](05-evaluation.md).
 
 ## The meta-dataset
 
-`src/ml_meta_perf/meta_dataset.csv` — 476 rows, no missing values. One row per (dataset, model) pair,
-covering **20 datasets × 25 models** (24 of the 500 possible pairs are absent).
+`src/ml_meta_perf/meta_dataset.csv` — one row per (dataset, model) pair, no missing values.
+Its shape, and which pairs are absent, are in the generated section below.
 
 ### Each row is the best of three seeds, not their mean
 
@@ -64,9 +66,10 @@ between models and the fitted weights are barely affected; the level is.
 
 **It sets a noise floor.** A quantity that moves by 0.05 between seeds of the *same*
 configuration cannot be predicted more precisely than that by anything. The study's
-leave-one-dataset-out MAE is 0.183, well above the floor, so the sample rather than the
-target's own noise is what binds — but the floor is where an error curve would stop, and
-it is worth knowing that it sits around 0.03–0.05.
+leave-one-dataset-out MAE — reported in [chapter 5](05-evaluation.md), where it is
+generated — sits well above the floor, so the sample rather than the target's own noise is
+what binds. The floor is still where an error curve would stop, and it is worth knowing that
+it sits around 0.03–0.05.
 
 The 80 rows at exactly 1.0 are not an artefact of the selection: of the 54 saturated pairs
 with published seed records, 52 average above 0.99 across all three.
@@ -208,16 +211,52 @@ standardised before selection (chapter 2).
 
 ## Range of the target
 
-| | value |
-|---|---|
-| minimum | -0.2898 (NSL-KDD / SGD, one row) |
-| rows at exactly 0.0 | 15 |
-| maximum | 1.0 |
-| rows at exactly 1.0 | 80 |
-| mean | 0.731 |
+The shape of the corpus and the distribution of MCC across it are **generated from the file
+itself**, in the section below, rather than transcribed into this prose. The single negative
+row is a legitimate measurement — a model that converged anti-correlated with the labels —
+and is retained; the rows at exactly 0.0 are not training failures, since those were
+discarded when the corpus was built, but classifiers that converged and learned nothing.
 
-The single negative row is a legitimate measurement — a model that converged
-anti-correlated with the labels — and is retained.
+<!-- generated: do not edit below -->
+
+## The corpus
+
+What the meta-dataset is, computed from the file the run was fitted on rather than transcribed into prose beside it.
+
+| quantity | count |
+|---|---|
+| rows | 476 |
+| datasets | 20 |
+| models | 25 |
+| cells absent of datasets x models | 24 |
+| dataset features | 12 |
+| model features | 6 |
+
+**The absent cells are not missing at random.** Every dataset short of models is one of the smallest in the corpus, which is what the instance counts show:
+
+| dataset | nr_inst | models_absent |
+|---|---|---|
+| KPI-KQI | 165 | 8 |
+| UNAC | 389 | 8 |
+| Social Network Ads | 400 | 8 |
+
+And how MCC is distributed over those rows:
+
+| quantity | MCC | rows |
+|---|---|---|
+| mean | 0.7305 | 476 |
+| standard deviation | 0.3432 | 476 |
+| minimum | -0.2898 | 1 |
+| maximum | 1.0000 | 1 |
+| at exactly 1 |  | 80 |
+| at exactly 0 |  | 15 |
+| below 0 |  | 1 |
+
+**A third of the corpus is pinned at one end of the range or the other.** That is what makes MAE rather than SMAPE the reported error: SMAPE divides by `|truth| + |prediction|`, so every row at exactly zero contributes the full 200% unless the prediction is exactly zero too, and the metric ends up dominated by the rows the equation is already known to handle worst.
+
+Two things these tables cannot say, both of which bound every number in the study. Each row is the **best of three seeds**, not their mean, so the target is optimistic and has a noise floor no predictor can go below; and every model was trained on a stratified sample **capped at 100,000 rows**, so `nr_inst` is the source dataset's size rather than the training set's. Both are properties of the corpus builder upstream, and are audited against it in the prose above.
+
+<!-- end generated -->
 
 ## Limitations of the corpus
 

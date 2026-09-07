@@ -12,7 +12,6 @@ from ml_meta_perf.model import LOWERS, RAISES
 from ml_meta_perf.plots import (
     CONFIDENCE_ALPHA,
     _confidence_levels,
-    term_to_math,
     count_below_floor,
     equation_comparison,
     practice_effects,
@@ -20,6 +19,7 @@ from ml_meta_perf.plots import (
     scatter_limits,
     term_count_curve,
     term_effects,
+    term_to_math,
 )
 
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
@@ -151,7 +151,11 @@ class TestPlots(PlotTestCase):
     def test_equation_comparison(self) -> None:
         table = pl.DataFrame(
             {
-                "equation": ["E1, dataset only (7 terms)", "E1 reference: true dataset means", "E3, dataset + model (15 terms)"],
+                "equation": [
+                    "E1, dataset only (7 terms)",
+                    "E1 reference: true dataset means",
+                    "E3, dataset + model (15 terms)",
+                ],
                 "r2": [0.337, 0.354, 0.556],
             }
         )
@@ -248,20 +252,81 @@ class TestFigureSet(PlotTestCase):
             self.assertIsPng(path)
 
 
-if __name__ == "__main__":
-    unittest.main()
+class TestFigureNaming(unittest.TestCase):
+    """Figures are numbered by their position in the set, so they can be named by number.
+
+    The number is derived from `FIGURE_ORDER` rather than written beside each call, which is
+    what stops a file called `04_term_effects.png` from being the fifth figure in the
+    chapters. `generate` asserts the same thing at runtime.
+    """
+
+    def test_numbers_run_from_one_in_order(self) -> None:
+        from ml_meta_perf.figures import FIGURE_ORDER, figure_name
+
+        self.assertEqual(
+            [figure_name(stem) for stem in FIGURE_ORDER],
+            [f"{index:02d}_{stem}.png" for index, stem in enumerate(FIGURE_ORDER, start=1)],
+        )
+
+    def test_every_figure_has_a_caption_under_its_published_name(self) -> None:
+        """A caption keyed by the unnumbered stem would silently go missing on rename."""
+        from ml_meta_perf.experiment import run
+        from ml_meta_perf.figures import FIGURE_ORDER, captions, figure_name
+
+        available = captions(run(quick=True))
+        self.assertEqual(set(available), {figure_name(stem) for stem in FIGURE_ORDER})
+
+    def test_an_unknown_stem_is_refused(self) -> None:
+        from ml_meta_perf.figures import figure_name
+
+        with self.assertRaises(ValueError):
+            figure_name("not_a_figure")
+
+    def test_the_chapters_reference_the_published_names(self) -> None:
+        """The markdown embeds are hand-written, so nothing else checks they were renamed."""
+        import re
+        from pathlib import Path
+
+        from ml_meta_perf.figures import FIGURE_ORDER, figure_name
+
+        published = {figure_name(stem) for stem in FIGURE_ORDER}
+        docs = Path(__file__).resolve().parent.parent / "assets" / "docs"
+        if not docs.is_dir():
+            self.skipTest("chapters are not installed beside the package")
+        for page in docs.glob("*.md"):
+            for referenced in re.findall(r"figures/([\w.]+\.png)", page.read_text()):
+                self.assertIn(referenced, published, f"{page.name} references {referenced}")
 
 
 class TestTermMath(unittest.TestCase):
-    """Term names render as mathematics: ratios become fractions, products centre dots."""
+    """Term names render as mathematics, set inline so every label is one height."""
 
-    def test_a_ratio_becomes_a_fraction(self) -> None:
+    def test_a_ratio_is_inline_rather_than_built_up(self) -> None:
+        """A built-up `\\frac` is set smaller than the line around it, and the figure mixes
+        ratios with products -- so half the labels came out at two thirds the size of the
+        other half. An inline slash keeps them comparable."""
         rendered = term_to_math("[log(eq_num_attr)] / [log(Processing Units Number)]")
         self.assertTrue(rendered.startswith("$") and rendered.endswith("$"))
-        self.assertIn(r"\frac", rendered)
+        self.assertNotIn(r"\frac", rendered)
+        self.assertIn("/", rendered)
 
-    def test_a_product_becomes_a_centre_dot(self) -> None:
-        self.assertIn(r"\cdot", term_to_math("[log(gravity)] * [log(Model Capability)]"))
+    def test_a_product_uses_times(self) -> None:
+        self.assertIn(r"\times", term_to_math("[log(gravity)] * [log(Model Capability)]"))
+        self.assertNotIn(r"\cdot", term_to_math("[log(gravity)] * [log(Model Capability)]"))
+
+    def test_a_logarithm_is_parenthesised(self) -> None:
+        """`\\log a \\times \\log b` does not say where the first logarithm stops."""
+        self.assertIn(r"\log(\mathrm{gravity})", term_to_math("[log(gravity)] * [log(Model Capability)]"))
+
+    def test_a_nested_reciprocal_is_parenthesised(self) -> None:
+        """Inline division is only unambiguous if `1/f` inside a ratio gets brackets:
+        `1 / f / g` is a different expression from `(1 / f) / g`."""
+        rendered = term_to_math("[1/gravity] / [log(nr_class)]")
+        self.assertIn(r"\left(", rendered)
+        self.assertIn(r"\right)", rendered)
+
+    def test_a_top_level_reciprocal_needs_no_brackets(self) -> None:
+        self.assertNotIn(r"\left(", term_to_math("1/Fitting Regime"))
 
     def test_model_features_are_abbreviated(self) -> None:
         """Five-syllable names do not fit fifteen to a figure; chapter 1 expands them."""
@@ -272,20 +337,22 @@ class TestTermMath(unittest.TestCase):
         self.assertIn(r"\_", term_to_math("class_ent^2"))
 
     def test_a_leading_numeral_stays_a_numeral(self) -> None:
-        self.assertIn(r"\frac{1}{", term_to_math("1/Fitting Regime"))
+        self.assertTrue(term_to_math("1/Fitting Regime").startswith("$1"))
 
     def test_a_sum_over_a_ratio_keeps_both_operands(self) -> None:
         rendered = term_to_math("([log(inst_to_attr)] + [nr_norm]) / [log(nr_attr)]")
         self.assertIn("inst", rendered)
         self.assertIn("nr", rendered)
-        self.assertIn(r"\frac", rendered)
+        # The sum is bracketed, or inline division would read as `a + b / c`.
+        self.assertIn(r"\left(", rendered)
 
     def test_every_published_shape_renders(self) -> None:
         """mathtext raises on malformed input, so a bad term would break the whole figure."""
         import matplotlib.pyplot as plt
 
         shapes = ["[a] * [b]", "[a] / [b]", "1/a", "a^2", "sqrt(a)", "log(a)",
-                  "([a] + [b]) / [c]", "[log(a)] / [log(b)]"]
+                  "([a] + [b]) / [c]", "[log(a)] / [log(b)]", "[1/a] / [b]", "[1/a] * [b]",
+                  "[sqrt(a)] / [1/b]"]
         figure, axes = plt.subplots()
         for index, shape in enumerate(shapes):
             axes.text(0.1, 0.05 * index, term_to_math(shape))
@@ -306,3 +373,7 @@ class TestConfidenceShading(unittest.TestCase):
 
     def test_no_levels_without_the_column(self) -> None:
         self.assertEqual(_confidence_levels(pl.DataFrame({"effect": [0.1]})), [])
+
+
+if __name__ == "__main__":
+    unittest.main()

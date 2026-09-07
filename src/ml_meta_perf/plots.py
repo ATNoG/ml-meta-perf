@@ -81,25 +81,54 @@ TERM_ABBREVIATIONS: dict[str, str] = {
 }
 
 
-def _math_atom(text: str) -> str:
-    """One operand of a term, as mathtext."""
+#: Division rendered inline, as ``\nicefrac`` would set it, rather than as a built-up
+#: ``\frac``. Mathtext shrinks the two levels of a built-up fraction to fit the line, so a
+#: figure mixing ``a * b`` with ``a / b`` labels drew half its terms at full size and half at
+#: roughly two thirds of it -- see the term-effect figure before 2026-09-07, where
+#: ``log(gravity) / log(PUN)`` was visibly smaller than the product above it. An inline slash
+#: keeps every label on one baseline at one size, which is the whole readability argument.
+DIVIDE = r"\,/\,"
+
+
+def _math_atom(text: str) -> tuple[str, bool]:
+    """One operand of a term as mathtext, and whether it nests without parentheses.
+
+    The flag is what keeps an inline slash unambiguous. ``1/f`` renders as ``1 / f``, so
+    dropping it into ``[1/f] / [g]`` unparenthesised would read ``1 / f / g`` -- a different
+    expression. Atoms that bracket themselves (a parenthesised ``\\log``, a radical, a power,
+    a bare name) need no help; the reciprocal is the only form that does.
+    """
     text = text.strip()
-    for pattern, wrap in ((r"log(", r"\log\,{}"), (r"sqrt(", r"\sqrt{{{}}}")):
+    # ``\log(x)``, not ``\log x``: without the parentheses a product reads as
+    # ``log gravity * log MC``, where nothing on the page says how far the first log extends.
+    for pattern, wrap in ((r"log(", r"\log({})"), (r"sqrt(", r"\sqrt{{{}}}")):
         if text.startswith(pattern) and text.endswith(")"):
-            return wrap.format(_math_atom(text[len(pattern) : -1]))
+            return wrap.format(_math_atom(text[len(pattern) : -1])[0]), True
     if text.endswith("^2"):
-        return _math_atom(text[:-2]) + "^{2}"
+        return _math_atom(text[:-2])[0] + "^{2}", True
     if text.startswith("1/"):
-        return r"\frac{1}{" + _math_atom(text[2:]) + "}"
+        return "1" + DIVIDE + _nested(text[2:]), False
     if all(character.isdigit() or character == "." for character in text):
-        return text
+        return text, True
     name = TERM_ABBREVIATIONS.get(text, text)
-    return r"\mathrm{" + name.replace("_", r"\_").replace(" ", r"\ ") + "}"
+    return r"\mathrm{" + name.replace("_", r"\_").replace(" ", r"\ ") + "}", True
+
+
+def _unwrap(text: str) -> str:
+    """Drop the ``[...]`` a term name puts around each operand."""
+    text = text.strip()
+    return text[1:-1] if text.startswith("[") and text.endswith("]") else text
 
 
 def _math_operand(text: str) -> str:
-    text = text.strip()
-    return _math_atom(text[1:-1] if text.startswith("[") and text.endswith("]") else text)
+    """An operand standing alone, where no parentheses are needed."""
+    return _math_atom(_unwrap(text))[0]
+
+
+def _nested(text: str) -> str:
+    """An operand standing inside a larger expression, parenthesised if it has to be."""
+    expression, atomic = _math_atom(_unwrap(text))
+    return expression if atomic else r"\left(" + expression + r"\right)"
 
 
 def _split_top(text: str, operator: str) -> tuple[str, str] | None:
@@ -116,11 +145,25 @@ def _split_top(text: str, operator: str) -> tuple[str, str] | None:
 
 
 def term_to_math(name: str) -> str:
-    """A term name as a mathtext expression: ratios as fractions, products as centre dots.
+    """A term name as a mathtext expression, set on one line at one size.
 
     Term names are written for a CSV -- ``[log(gravity)] / [log(Processing Units Number)]`` --
     and a figure of fifteen of those is a wall of brackets. Rendered as mathematics the same
-    term is one fraction, which is how it would appear in the paper the equation is for.
+    term is one expression, which is how it would appear in the paper the equation is for.
+
+    Three conventions, all chosen for a figure whose labels have to be read at a glance
+    beside each other rather than for typographic elegance in isolation:
+
+    * **Division inline, not built up.** ``a / b`` rather than a two-storey ``\\frac``; see
+      ``DIVIDE``. Every label then has the same x-height, which a mixed set does not.
+    * **Logarithms parenthesised.** ``\\log(a) \\times \\log(b)``, never ``\\log a \\log b``,
+      which does not say where the first logarithm stops.
+    * **Multiplication as ``\\times``.** A centre dot is easy to lose next to a decimal point
+      and next to the slash, at the size these labels are set.
+
+    Precedence is explicit rather than assumed: a term name has exactly one operator at the
+    top level, and any operand that is itself a division is parenthesised on the way in, so
+    ``[1/f] / [g]`` sets as ``(1 / f) / g`` and never as ``1 / f / g``.
     """
     text = name.strip()
     ratio = _split_top(text, " / ")
@@ -131,13 +174,13 @@ def term_to_math(name: str) -> str:
             summed = _split_top(inner[1:-1], " + ")
             if summed is not None:
                 left, right = summed
-                numerator_math = _math_operand(left) + " + " + _math_operand(right)
-                return r"$\frac{" + numerator_math + "}{" + _math_operand(denominator) + "}$"
-        return r"$\frac{" + _math_operand(numerator) + "}{" + _math_operand(denominator) + "}$"
+                summed_math = _math_operand(left) + " + " + _math_operand(right)
+                return "$" + r"\left(" + summed_math + r"\right)" + DIVIDE + _nested(denominator) + "$"
+        return "$" + _nested(numerator) + DIVIDE + _nested(denominator) + "$"
     product = _split_top(text, " * ")
     if product is not None:
         left, right = product
-        return "$" + _math_operand(left) + r" \cdot " + _math_operand(right) + "$"
+        return "$" + _nested(left) + r" \times " + _nested(right) + "$"
     return "$" + _math_operand(text) + "$"
 
 

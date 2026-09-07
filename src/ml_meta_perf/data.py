@@ -465,3 +465,69 @@ def target(frame: pl.DataFrame) -> np.ndarray:
 def groups(frame: pl.DataFrame, column: str) -> np.ndarray:
     """The grouping labels used by the leave-one-out splitters."""
     return frame[column].to_numpy()
+
+
+def corpus_summary(frame: pl.DataFrame) -> pl.DataFrame:
+    """The shape of the corpus: how many rows, groups, features, and how many cells absent.
+
+    Every fact a chapter would otherwise state about the size of the meta-dataset, computed
+    from the file rather than transcribed from it. Counts only -- the distribution of the
+    target is `target_summary`, kept separate so each table can print at its own precision
+    and neither has to render a count as ``476.0000``.
+    """
+    datasets = int(frame[DATASET_COLUMN].n_unique())
+    models = int(frame[MODEL_COLUMN].n_unique())
+    return pl.DataFrame(
+        [
+            {"quantity": "rows", "count": frame.height},
+            {"quantity": "datasets", "count": datasets},
+            {"quantity": "models", "count": models},
+            {"quantity": "cells absent of datasets x models", "count": datasets * models - frame.height},
+            {"quantity": "dataset features", "count": len(DATASET_FEATURES)},
+            {"quantity": "model features", "count": len(MODEL_FEATURES)},
+        ],
+        schema={"quantity": pl.String, "count": pl.Int64},
+    )
+
+
+def target_summary(frame: pl.DataFrame) -> pl.DataFrame:
+    """How MCC is distributed across the corpus, including how much of it is pinned.
+
+    The counts at exactly 0 and exactly 1 are here because they are the reason MAE and not
+    SMAPE is the reported error, and a reader checking that argument should be able to see
+    the counts it rests on. They are a third of the corpus.
+
+    Not included, because it cannot be: the spread across the three seeds each row is the
+    best of. That lives upstream, in the corpus builder, and chapter 1 cites it as an
+    external audit rather than pretending this file can recompute it.
+    """
+    values = target(frame)
+    pinned = [("at exactly 1", values == 1.0), ("at exactly 0", values == 0.0), ("below 0", values < 0.0)]
+    rows: list[dict[str, object]] = [
+        {"quantity": "mean", "MCC": float(values.mean()), "rows": frame.height},
+        {"quantity": "standard deviation", "MCC": float(values.std()), "rows": frame.height},
+        {"quantity": "minimum", "MCC": float(values.min()), "rows": 1},
+        {"quantity": "maximum", "MCC": float(values.max()), "rows": 1},
+    ]
+    rows += [{"quantity": label, "MCC": float("nan"), "rows": int(mask.sum())} for label, mask in pinned]
+    return pl.DataFrame(rows, schema={"quantity": pl.String, "MCC": pl.Float64, "rows": pl.Int64})
+
+
+def missing_cells(frame: pl.DataFrame) -> pl.DataFrame:
+    """Which datasets are short of models, and how large those datasets are.
+
+    The 24 absent cells are **not** missing at random, and the table says so on its face
+    rather than in a sentence beside it: the datasets with models missing are the smallest
+    ones in the corpus. Reported per dataset with its instance count, so a reader can see the
+    pattern instead of being told about it.
+    """
+    models = int(frame[MODEL_COLUMN].n_unique())
+    counts = (
+        frame.group_by(DATASET_COLUMN)
+        .agg(pl.len().alias("models_present"), pl.col("nr_inst").first().alias("nr_inst"))
+        .filter(pl.col("models_present") < models)
+        .sort("nr_inst")
+    )
+    return counts.with_columns((models - pl.col("models_present")).alias("models_absent")).select(
+        pl.col(DATASET_COLUMN).alias("dataset"), "nr_inst", "models_absent"
+    )

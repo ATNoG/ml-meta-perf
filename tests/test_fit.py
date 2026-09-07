@@ -18,7 +18,7 @@ from ml_meta_perf.fit import (
     transform_gap,
 )
 from ml_meta_perf.model import Equation
-from ml_meta_perf.terms import build_library
+from ml_meta_perf.terms import Term, build_library
 
 
 def synthetic_columns(n: int = 120, seed: int = 3) -> dict[str, np.ndarray]:
@@ -327,7 +327,9 @@ class TestOneTermPerFeatureCombination(unittest.TestCase):
         constrained = Selector(design, self.target, 1.0, self.library.feature_groups).search(
             pool, 8, beam_width=6
         )
-        picked = lambda subset: [self.library.terms[i] for i in subset.indices]
+        def picked(subset: Subset) -> list[Term]:
+            return [self.library.terms[i] for i in subset.indices]
+
         self.assertNotEqual(self.repeated(picked(unconstrained[8])), [])
         self.assertEqual(self.repeated(picked(constrained[8])), [])
 
