@@ -116,7 +116,8 @@ prefer the shortest configuration that is not significantly worse.
 
 - **Decide whether chapter 9 survives.** `identity` is wired into nothing and now backs a
   much smaller claim: the model side reaches 88% of its ceiling, not 58%, so the headroom a
-  per-model table can recover is roughly +0.017. Fold into chapter 6 or keep.
+  per-model table can recover is +0.016, measured: leave-one-dataset-out goes 0.627 to 0.643
+  with `identity.correct_out_of_fold` applied. Fold into chapter 6 or keep.
 - **Collinearity below the equation is still unaddressed.** The constraint fixed the
   *equation*; the pool and the raw features are untouched. Of 270 library terms, 399 pairs
   correlate above 0.95, 13 above 0.999, one at 0.99998, because `COLLINEARITY_TOLERANCE`
