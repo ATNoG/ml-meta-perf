@@ -203,50 +203,80 @@ justify the extra configuration surface, and one global penalty is retained.
 
 ## Stage 3 — choosing the number of terms
 
-Picking the bend of the curve by eye is the kind of judgement this project exists to
-remove from its results, so it is delegated to a detector.
+More terms fit better and read worse. Picking the bend of that curve by eye is the kind of
+judgement this project exists to remove from its results, so it is delegated to a detector.
 [kneeliverse](https://github.com/mariolpantunes/knee)'s `autoelbow` takes no threshold,
-sensitivity or smoothing window, so the chosen length is a property of the curve rather
-than of a parameter chosen to produce a preferred answer.
+sensitivity or smoothing window, so the chosen length is a property of the curve rather than
+of a parameter chosen to produce a preferred answer.
 
-Three rules are reported rather than one:
+Two decisions have to be made before the detector is run, and both were previously made
+badly enough to invalidate the answer.
+
+### Which curve the detector runs on
+
+**Not in-sample R², which is what `knee_terms` used to default to.** In-sample is monotone in
+the number of terms — adding a term cannot reduce the fit — so it can only ever say "more".
+A length chosen on it is chosen on the one curve that cannot express the trade the choice is
+about.
+
+**And not one cross-validated curve either.** On twenty groups they wander, and
+leave-one-dataset-out on this corpus has genuine craters: at 15 terms it reads 0.393 against
+neighbours around 0.62. That is not noise but not a property of the length either — the
+held-out `ASNM-CDX-2009` fold sits outside the convex hull of the other nineteen datasets in
+term space, the equation extrapolates it to −2.41, and `validate._clip_to_training` pins the
+fold to the training floor. One fold's extrapolation should not choose the published length.
+
+So the detector runs on a **consensus across all three protocols** — `selection.consensus_curve`,
+the per-length median. The median is what makes it robust: at 15 terms the three read
+0.659 / 0.393 / 0.616 and the median takes 0.616, ignoring the crater. A mean would be
+dragged to 0.556 by it. `min` is available as the conservative reading and is not the default.
+
+### Which lengths the curve is reported at
+
+**Every length from 1 to `max_terms`.** The curve used to be reported at
+`(2, 4, 8, 12, 16, 20, 24, 26, 28, 32)` — non-uniform, and skipping 13, 15, 17 and 31, which
+are exactly the four lengths where the transfer curve craters. The published curve was
+therefore much smoother than the real one, and the detector was partly reporting the grid:
+the same detector returns 4 terms on the ragged grid and 6 on the dense one. It costs
+nothing to fix, because the beam search already builds the whole path and `run_equation` was
+subsampling it.
+
+![Accuracy versus equation length](../figures/term_count_curve.png)
+
+The craters are visible in that figure. They are a real property of leave-one-dataset-out on
+twenty groups and they belong on the plot.
+
+### What the rules say
+
+With both decisions fixed, every rule is reported rather than one:
 
 | rule | terms | in-sample R² | LOO-dataset R² |
 |---|---|---|---|
-| knee of the in-sample curve | 4 | 0.541 | 0.508 |
-| knee of the cross-validated curve | 8 | 0.627 | 0.598 |
-| **best cross-validated** | **16** | **0.665** | **0.627** |
+| knee (consensus) | 6 | 0.593 | 0.568 |
+| knee (in-sample) | 6 | 0.593 | 0.568 |
+| knee (leave-one-dataset-out) | 6 | 0.593 | 0.568 |
+| knee (leave-one-model-out) | 6 | 0.593 | 0.568 |
+| best leave-one-dataset-out | 23 | 0.679 | 0.644 |
+| **published** | **16** | **0.665** | **0.627** |
 
-**Sixteen is the headline, and the three rules now nearly agree.** Both knees land short of
-it, but far less badly than they used to: the cross-validated knee at 8 terms costs 0.055 of
-transfer, where the same comparison against the previous configuration cost 0.26. The
-cross-validated curve is now smooth enough for a knee to mean something, which it was not
-when each length was a separately re-selected equation.
+**The four detectors now agree**, which they did not on the ragged grid, where in-sample gave
+4 and the cross-validated curves gave 8. That agreement is the evidence the grid was the
+problem.
 
-### Why not twenty, or twenty-four
+**The knee and the published length disagree, and that is the open question.** Six terms is
+where the steep gains stop: the curve climbs 0.165 → 0.593 over the first six terms and
+0.593 → 0.687 over the remaining twenty-six. Sixteen is where the study currently sits, on a
+brevity tie-break between candidates the accuracy could not separate.
 
-| terms | in-sample R² | LOO-dataset R² | LOO-dataset MAE |
-|---|---|---|---|
-| 8 | 0.6274 | 0.5975 | 0.1533 |
-| 12 | 0.6448 | 0.6293 | 0.1458 |
-| **16** | **0.6651** | **0.6270** | **0.1444** |
-| 20 | 0.6790 | 0.6455 | 0.1393 |
-| 24 | 0.6873 | 0.6209 | 0.1479 |
+Neither number is settled, because **the curve is a property of the configuration and the
+configuration has not been searched under the current grammar.** The one-term-per-feature-
+combination rule changed the grammar on 2026-09-07 and only the length was re-derived, off
+this curve, with penalty, z-cap and arity inherited from a sweep run under the previous
+rules. `ml-meta-perf-search` exists to settle that, and until it has, a knee detected here is
+a knee of a configuration nobody chose. `TODO.md` tracks it as the first item.
 
-Past sixteen, in-sample keeps climbing and transfer turns over: four more terms buy +0.007 of
-fit and *lose* 0.007 of transfer, and by twenty-four the loss is 0.031. That is the shape a
-term budget is supposed to have, and the first configuration in this study to show it
-cleanly.
-The study publishes 20 because the stated rule selects it. Anyone reproducing this with a
-stricter readability budget should take 16 and lose essentially nothing. The rule was fixed
-before the numbers were in, and the fact that it now selects a length whose MAE is very
-slightly worse than its neighbour's is exactly the kind of thing a pre-stated rule is
-supposed to survive.
-
-Both **Pareto fronts** are also reported. Over (length, LOO-dataset R²) the front is 2, 8,
-12, 16 and 20 — nothing longer than 20 terms earns its length on transfer. Over
+Both **Pareto fronts** are also reported. Over (length, LOO-dataset R²) the front is 1–8, 10,
+11, 14, 16, 19, 21 and 23 — nothing longer than 23 terms earns its length on transfer. Over
 (length, in-sample R²) *every* length is on the front, because fit is monotone in terms and
 so nothing is ever dominated. That is precisely why the in-sample curve cannot choose a
-length by itself and the knee detector exists for it.
-
-![Accuracy versus equation length](../figures/term_count_curve.png)
+length by itself.
