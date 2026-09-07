@@ -80,8 +80,13 @@ def _length_ticks(sizes: np.ndarray, limit: int = 16) -> np.ndarray:
         return sizes
     step = int(np.ceil(sizes.shape[0] / limit))
     kept = list(sizes[::step])
+    # Append the final length so the axis states its own range -- unless it would sit on top
+    # of the tick before it, which is what produced a "3132" smudge at the right-hand end.
     if sizes[-1] not in kept:
-        kept.append(sizes[-1])
+        if kept and sizes[-1] - kept[-1] < step:
+            kept[-1] = sizes[-1]
+        else:
+            kept.append(sizes[-1])
     return np.asarray(kept)
 
 
