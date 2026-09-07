@@ -506,6 +506,47 @@ def _scores(label: str, scores: dict[str, float | int]) -> str:
     )
 
 
+def _baseline_centre_note(baselines: pl.DataFrame) -> str:
+    """Which centre is the harder baseline, per metric, derived rather than asserted.
+
+    The mean minimises squared error and the median minimises absolute error, so the fair
+    opponent differs by metric. Rather than state that as a claim, the sentence is built from
+    the table: for each metric, the best mean row is compared with the best median row.
+    """
+    rows = {str(row["baseline"]): row for row in baselines.to_dicts()}
+    pairs = [(name, name.replace(" mean ", " median ")) for name in rows if " mean " in name]
+    if not pairs:
+        return ""
+
+    def best(names: list[str], metric: str, lower_is_better: bool) -> tuple[str, float]:
+        scored = [(name, float(rows[name][metric])) for name in names]
+        return min(scored, key=lambda item: item[1]) if lower_is_better else max(scored, key=lambda item: item[1])
+
+    means = [mean for mean, _ in pairs]
+    medians = [median for _, median in pairs if median in rows]
+    if not medians:
+        return ""
+
+    lines = [
+        "Every trivial predictor appears at its mean and at its median, because the metrics "
+        "disagree about which is the honest opponent: the mean minimises squared error and "
+        "the median minimises absolute error, so an MAE quoted against a mean baseline is "
+        "quoted against a predictor that is not minimising the metric it is judged on. "
+        "Reading the strongest baseline of each kind, per metric:\n",
+        "| metric | strongest mean baseline | strongest median baseline | harder |",
+        "|---|---|---|---|",
+    ]
+    for metric, lower_is_better in (("r2", False), ("mae", True), ("smape", True)):
+        mean_name, mean_value = best(means, metric, lower_is_better)
+        median_name, median_value = best(medians, metric, lower_is_better)
+        median_wins = median_value < mean_value if lower_is_better else median_value > mean_value
+        lines.append(
+            f"| {metric.upper()} | {mean_name} ({mean_value:.4f}) | "
+            f"{median_name} ({median_value:.4f}) | **{'median' if median_wins else 'mean'}** |"
+        )
+    return "\n".join(lines) + "\n"
+
+
 def _configuration(config: Configuration) -> str:
     return _table(
         pl.DataFrame([{"setting": field.name, "value": str(getattr(config, field.name))} for field in fields(config)])
@@ -571,6 +612,10 @@ def render(
     )
     parts.append("Against the baselines and the ceiling that bounds any additive equation:\n")
     parts.append(_table(report.comparison) + "\n")
+
+    parts.append("### The trivial predictors, at both centres\n")
+    parts.append(_table(report.baselines) + "\n")
+    parts.append(_baseline_centre_note(report.baselines))
 
     parts.append("## 4. Equation analysis\n")
     parts.append(

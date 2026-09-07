@@ -41,7 +41,7 @@ from ml_meta_perf.validate import (
     CrossValidation,
     Scores,
     additive_oracle,
-    baseline_group_mean,
+    baseline_group_centre,
     cross_validate_fixed_form,
     decision_report,
     fold_selections,
@@ -355,33 +355,36 @@ def correlation_analysis(frame: pl.DataFrame, config: Configuration = DEFAULT_E3
 
 
 def baselines(frame: pl.DataFrame) -> pl.DataFrame:
-    """What the equations have to beat, and the ceiling neither of them can pass."""
+    """What the equations have to beat, and the ceiling neither of them can pass.
+
+    Every trivial predictor is reported at both its mean and its median, because the metrics
+    disagree about which is the honest opponent. R2 and RMSE are squared-error metrics and the
+    mean minimises squared error; MAE is minimised by the median, and SMAPE is an
+    absolute-error ratio that behaves the same way. Quoting the equation's MAE against a
+    *mean* baseline compares it with a predictor that is not minimising the metric it is being
+    judged on, which flatters the equation. Both rows are here so each metric can be read
+    against whichever centre is hardest to beat on it.
+    """
     truth = target(frame)
     datasets = groups(frame, DATASET_COLUMN)
     models = groups(frame, MODEL_COLUMN)
 
-    rows = [
-        {
-            "baseline": "global mean (loo-dataset)",
-            **score(truth, baseline_group_mean(truth, datasets)).as_dict(),
-        },
-        {
-            "baseline": "per-model mean (loo-dataset)",
-            **score(truth, baseline_group_mean(truth, datasets, models)).as_dict(),
-        },
-        {
-            "baseline": "global mean (loo-model)",
-            **score(truth, baseline_group_mean(truth, models)).as_dict(),
-        },
-        {
-            "baseline": "per-dataset mean (loo-model)",
-            **score(truth, baseline_group_mean(truth, models, datasets)).as_dict(),
-        },
+    rows: list[dict[str, object]] = []
+    for centre in ("mean", "median"):
+        for label, outer, inner in (
+            (f"global {centre} (loo-dataset)", datasets, None),
+            (f"per-model {centre} (loo-dataset)", datasets, models),
+            (f"global {centre} (loo-model)", models, None),
+            (f"per-dataset {centre} (loo-model)", models, datasets),
+        ):
+            prediction = baseline_group_centre(truth, outer, inner, centre=centre)
+            rows.append({"baseline": label, **score(truth, prediction).as_dict()})
+    rows.append(
         {
             "baseline": "additive oracle (ceiling, in-sample)",
             **score(truth, additive_oracle(truth, datasets, models)).as_dict(),
-        },
-    ]
+        }
+    )
     return pl.DataFrame(rows)
 
 

@@ -7,11 +7,13 @@ import numpy as np
 import polars as pl
 
 from ml_meta_perf.analysis import redundancy_groups, screen
+from ml_meta_perf.stats import mae, r2_score
 from ml_meta_perf.fit import fit
 from ml_meta_perf.terms import build_library
 from ml_meta_perf.validate import (
     CrossValidation,
     additive_oracle,
+    baseline_group_centre,
     baseline_group_mean,
     cross_validate_fixed_form,
     decision_report,
@@ -385,3 +387,45 @@ class TestSignTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestGroupCentreBaselines(unittest.TestCase):
+    """Both centres, because the metrics disagree about which baseline is honest."""
+
+    def setUp(self) -> None:
+        rng = np.random.default_rng(11)
+        self.outer = np.repeat([f"d{i}" for i in range(6)], 8)
+        self.inner = np.tile([f"m{i}" for i in range(8)], 6)
+        self.truth = rng.uniform(0.0, 1.0, size=48)
+
+    def test_median_beats_mean_on_absolute_error(self) -> None:
+        """The reason the median rows exist: MAE is minimised by the median.
+
+        A skewed target makes the gap visible. Reporting the equation's MAE only against a
+        mean baseline compares it with a predictor not minimising the metric being reported.
+        """
+        skewed = np.concatenate([np.full(40, 0.9), np.linspace(0.0, 0.2, 8)])
+        mean = baseline_group_centre(skewed, self.outer, self.inner, centre="mean")
+        median = baseline_group_centre(skewed, self.outer, self.inner, centre="median")
+        self.assertLess(mae(skewed, median), mae(skewed, mean))
+
+    def test_mean_beats_median_on_squared_error(self) -> None:
+        """And the converse, which is why both are kept rather than one replacing the other."""
+        mean = baseline_group_centre(self.truth, self.outer, centre="mean")
+        median = baseline_group_centre(self.truth, self.outer, centre="median")
+        self.assertGreater(r2_score(self.truth, mean), r2_score(self.truth, median))
+
+    def test_the_mean_wrapper_is_the_centre_at_mean(self) -> None:
+        np.testing.assert_allclose(
+            baseline_group_mean(self.truth, self.outer, self.inner),
+            baseline_group_centre(self.truth, self.outer, self.inner, centre="mean"),
+        )
+
+    def test_no_row_sees_its_own_value(self) -> None:
+        """The leave-one-group-out loop is what keeps the baseline honest."""
+        for centre in ("mean", "median"):
+            prediction = baseline_group_centre(self.truth, self.outer, centre=centre)
+            for label in np.unique(self.outer):
+                mask = self.outer == label
+                expected = np.mean if centre == "mean" else np.median
+                self.assertAlmostEqual(float(prediction[mask][0]), float(expected(self.truth[~mask])))

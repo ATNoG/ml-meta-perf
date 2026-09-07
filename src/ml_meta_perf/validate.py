@@ -287,28 +287,52 @@ def _view(library: Library, mask: np.ndarray) -> Library:
     return clone
 
 
-def baseline_group_mean(
+def baseline_group_centre(
     target: np.ndarray,
     outer: np.ndarray,
     inner: np.ndarray | None = None,
+    *,
+    centre: str = "mean",
 ) -> np.ndarray:
-    """Predict the training mean, optionally conditioned on a second grouping.
+    """Predict a training-fold centre, optionally conditioned on a second grouping.
 
     With ``inner`` set to the model column under a leave-one-dataset-out split, this is
     "what does this model usually score", the baseline any meta-model has to beat to be
     worth writing down.
+
+    ``centre`` picks the summary. **Which one is the fair comparison depends on the metric
+    being reported, and using the mean for all of them understates the baseline.** The mean
+    minimises squared error, so it is the right opponent for R2 and RMSE. The *median*
+    minimises absolute error, so an MAE quoted against a mean baseline is quoted against a
+    baseline that is not even trying -- and SMAPE, being an absolute-error ratio, behaves the
+    same way. Both are reported so each metric is read against the baseline that is hardest
+    to beat on it.
+
+    The leave-one-group-out loop is not decoration: with 17-25 rows per group, including the
+    row being predicted inflates the per-model mean's R2 by 0.082. A naive group centre
+    computed over all rows is not this function.
     """
+    summarise = np.median if centre == "median" else np.mean
     predictions = np.zeros_like(target)
     for _, train, test in leave_one_group_out(outer):
-        fallback = float(target[train].mean())
+        fallback = float(summarise(target[train]))
         if inner is None:
             predictions[test] = fallback
             continue
         for label in np.unique(inner[test]):
             selected = test & (inner == label)
             source = train & (inner == label)
-            predictions[selected] = float(target[source].mean()) if source.any() else fallback
+            predictions[selected] = float(summarise(target[source])) if source.any() else fallback
     return np.clip(predictions, MCC_LOWER, MCC_UPPER)
+
+
+def baseline_group_mean(
+    target: np.ndarray,
+    outer: np.ndarray,
+    inner: np.ndarray | None = None,
+) -> np.ndarray:
+    """`baseline_group_centre` at the mean. Kept as the name the rest of the study uses."""
+    return baseline_group_centre(target, outer, inner, centre="mean")
 
 
 def additive_oracle(target: np.ndarray, first: np.ndarray, second: np.ndarray) -> np.ndarray:
