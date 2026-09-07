@@ -444,49 +444,51 @@ def _wrap(label: str, width: int = 18) -> str:
 
 
 def decision_quality(decision: pl.DataFrame, destination: str | Path) -> Path:
-    """Go/no-go decision quality against threshold: **one metric, several predictors**.
+    """The go/no-go decision against threshold, as **F1**, one line per protocol.
 
-    Previously this drew the equation's accuracy, the equation's F1 and a majority-class
-    baseline on one axis, so two of the three series were metrics and the third was a
-    predictor and no reader could tell which metric the baseline was being scored on. A
-    figure compares like with like: every line here is the same metric, and what differs
-    between them is who is being scored.
+    One metric, four lines, and what differs between them is only how much the equation was
+    allowed to see. Previously this drew the equation's accuracy, the equation's F1 and a
+    majority-class baseline on one axis -- two metrics and a predictor, so no reader could
+    tell which metric the baseline was being scored on.
 
-    The metric is the decision's **MCC**, which is what this study argues for on an unbalanced
-    binary outcome and what its own practice catalogue recommends. Accuracy and F1 are in the
-    tables. The majority-class rule scores exactly zero MCC by construction -- it never varies
-    with the input -- which is drawn as the floor rather than described.
+    F1 rather than accuracy: the classes are unbalanced at the outer thresholds, where always
+    answering with the larger one reaches 0.51 accuracy at an F1 of exactly zero. Accuracy
+    would draw four flattering lines and hide that. The trivial predictors stay in the table
+    rather than on the plot, because they cannot be computed under the strictest protocol at
+    all -- a model held out of every fold has no rows to average.
+
+    The four lines are the point: the gap between the top and the bottom one is the whole cost
+    of generalisation on this task, and on this corpus it is small.
     """
-    figure, axes = plt.subplots(figsize=(6.8, 4.4))
+    figure, axes = plt.subplots(figsize=(6.8, 4.2))
     table = decision.sort("threshold")
 
-    # Keyed to the predictor rather than rotated, so the equation's three protocols share a
-    # visual family and the two trivial predictors share another. A rotating cycle gave the
-    # fifth series the first one's style, which is the confusion this figure exists to remove.
-    def style_for(name: str) -> tuple[str, str, float]:
-        lowered = name.lower()
-        if "equation" in lowered:
-            if "loo-dataset" in lowered:
-                return LOO_DATASET, "s--", 2.0
-            if "loo-model" in lowered:
-                return LOO_MODEL, "^:", 1.8
-            return IN_SAMPLE, "o-", 1.8
-        return (CEILING, "v-.", 1.4) if "mean" in lowered else ("#9aa2ad", "d:", 1.4)
+    order = ["in-sample", "loo-dataset", "loo-model", "loo-cell"]
+    styles = {
+        "in-sample": (IN_SAMPLE, "o-", 1.8),
+        "loo-dataset": (LOO_DATASET, "s--", 1.8),
+        "loo-model": (LOO_MODEL, "^:", 1.8),
+        "loo-cell": ("#2f2f2f", "D-", 2.2),
+    }
 
     if "predictor" in table.columns:
-        for name in table["predictor"].unique(maintain_order=True):
+        names = [str(name) for name in table["predictor"].unique(maintain_order=True)]
+        equations = [name for name in names if "equation" in name.lower()]
+        equations.sort(key=lambda name: next((i for i, k in enumerate(order) if k in name), len(order)))
+        for name in equations:
             rows = table.filter(pl.col("predictor") == name).sort("threshold")
-            colour, marker, width = style_for(str(name))
-            axes.plot(rows["threshold"], rows["mcc"], marker, color=colour, label=str(name), linewidth=width)
+            key = next((k for k in order if k in name), "in-sample")
+            colour, marker, width = styles[key]
+            label = key + (" (both held out)" if key == "loo-cell" else "")
+            axes.plot(rows["threshold"], rows["f1"], marker, color=colour, label=label, linewidth=width)
     else:
-        axes.plot(table["threshold"], table["mcc"], "o-", color=IN_SAMPLE, label="equation", linewidth=2)
+        axes.plot(table["threshold"], table["f1"], "o-", color=IN_SAMPLE, label="equation", linewidth=2)
 
-    axes.axhline(0.0, color=CEILING, linestyle="-", linewidth=1.0, label="majority class (0 by construction)")
     axes.set_xlabel("MCC threshold for the go/no-go decision")
-    axes.set_ylabel("MCC of the decision")
+    axes.set_ylabel("F1 of the decision")
     axes.set_xticks(sorted({float(value) for value in table["threshold"]}))
     axes.grid(alpha=0.25, linewidth=0.6)
-    axes.legend(fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.14), ncol=2, framealpha=0.0)
+    axes.legend(fontsize=9, loc="lower left", framealpha=0.0, title="what the equation was shown")
     return _finish(figure, destination)
 
 

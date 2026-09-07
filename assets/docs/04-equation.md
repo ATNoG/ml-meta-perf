@@ -304,8 +304,6 @@ are artefacts:
   dataset×model interaction, which is why **7 of E3's 15 terms are mixed** and drive 60%
   of its output variance.
 
-![Contribution shares](../figures/contribution_shares.png)
-
 ### Why two configurations, and why that is not two headlines
 
 Reporting two equations risks quoting whichever number suits the argument. The capability

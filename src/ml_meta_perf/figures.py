@@ -109,13 +109,9 @@ def captions(report: Report, data: str | Path | None = None) -> dict[str, str]:
             "dataset-by-model interaction the oracle cannot."
         ),
         "predicted_vs_actual.png": (
-            "Predicted against actual MCC for E3, with the rug showing the marginal "
-            f"distribution of the target. Axes start at 0; {hidden} point below that is "
-            "not shown. Predictions never fall below 0.17 while 15 rows sit at exactly 0."
-        ),
-        "error_curve_mae.png": (
-            "Mean absolute error in MCC against equation length, under both protocols. "
-            "The vertical line marks the length of the published equation."
+            "Predicted against actual MCC for E3. Axes start at 0; "
+            f"{hidden} point below that is not shown. The equation compresses toward the "
+            "middle of the range, as a shrunk linear fit will."
         ),
         "term_effects.png": (
             "Per-term effect on predicted MCC, measured as the swing between the term's "
@@ -126,24 +122,18 @@ def captions(report: Report, data: str | Path | None = None) -> dict[str, str]:
             "decile, shaded by the confidence its practice was rated at. Only the confidence "
             "levels present in the table appear in the legend."
         ),
-        "contribution_shares.png": (
-            "Share of E3's output variance driven by terms using dataset features only, "
-            "model features only, and both. Shares are covariance-based and sum to 1."
-        ),
-        "per_group_quality.png": (
-            "MCC given up on each held-out dataset by taking the model the equation ranks "
-            "first, under leave-one-dataset-out validation. Zero means the top pick was the "
-            "dataset's best model, to within the 0.01 MCC relevance tolerance."
-        ),
         "decision_quality.png": (
-            "Accuracy and F1 of the above-or-below-threshold decision, against the threshold, "
-            "with the majority-class baseline any such rule has to clear. Both curves are "
-            "shown because the classes are unbalanced at the outer thresholds, where the "
-            "baseline reaches high accuracy at an F1 of zero."
+            "F1 of the above-or-below-threshold decision against the threshold, one line per "
+            "protocol. The four differ only in what the equation was allowed to see, so the "
+            "spread between them is the cost of generalisation on this task. F1 rather than "
+            "accuracy because the classes are unbalanced at the outer thresholds, where "
+            "always answering with the larger class reaches 0.51 accuracy at an F1 of zero."
         ),
         "ranking_quality.png": (
-            "Head-of-list ranking quality for each held-out dataset: average precision and "
-            "mean reciprocal rank over the models, with a star where the equation ranked the "
-            "best model first. Relevance is being within 0.01 MCC of the dataset's best."
+            "Head-of-list ranking quality per held-out dataset, beside what a bad ranking "
+            "costs. Left: average precision and reciprocal rank, with a star where the "
+            "equation ranked the best model first; relevance is being within 0.01 MCC of the "
+            "dataset's best. Right: the MCC given up by taking the top-ranked model. Both are "
+            "scored with the dataset and the model of every cell held out of the fit."
         ),
     }

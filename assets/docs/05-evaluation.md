@@ -147,8 +147,6 @@ dominated by the rows the equation is already known to handle worst rather than 
 typical error. It is reported because it is scale-free and was requested, but MAE is the
 honest headline for a target that legitimately passes through zero.
 
-![Mean absolute error against equation length](../figures/error_curve_mae.png)
-
 ## Two questions the R² does not answer
 
 An R² of 0.65 is a statement about how precisely the equation states an MCC. Nobody asks it
@@ -191,11 +189,6 @@ and a top-3 rule would score a correct answer as a miss.
 | top-1 regret | 0.015 |
 
 ![Per-dataset ranking quality](../figures/ranking_quality.png)
-
-Regret is the one of the four stated in the target's own units, so it is worth reading on its
-own: how much MCC a practitioner gives up by taking whichever model the equation ranks first.
-
-![MCC given up by taking the equation's top-ranked model](../figures/per_group_quality.png)
 
 On nine of the twenty held-out datasets the top pick is the dataset's best model to within the
 relevance tolerance, so the regret is exactly zero. Three datasets carry most of the average —
