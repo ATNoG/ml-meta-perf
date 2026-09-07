@@ -89,6 +89,21 @@ Every trivial predictor appears at its mean and at its median, because the metri
 | MAE | per-dataset mean (loo-model) (0.2132) | per-dataset median (loo-model) (0.1920) | **median** |
 | SMAPE | per-dataset mean (loo-model) (43.7772) | per-dataset median (loo-model) (40.3032) | **median** |
 
+### What the vocabulary could reach, before any search
+
+Three levels of what the vocabulary can explain, each a least-squares fit over the library and each computable before the search runs. They bound a *sum of per-feature functions*, which is a different question from the additive oracle above: that one bounds a per-dataset value plus a per-model value.
+
+| level | terms | R² |
+|---|---|---|
+| every raw feature, untransformed | 18 | 0.4763 |
+| the best single-feature term per feature | 18 | 0.5445 |
+| every single-feature term at once | 75 | 0.6437 |
+| **the fitted equation (E3)** | **16** | **0.6651** |
+
+No individual feature carries much: the strongest is `eq_num_attr` at R² 0.142, so any accuracy beyond that is combination rather than a single dominant driver. Transforming the features is worth +0.068 over entering them raw.
+
+E3 reaches 0.6651 with 16 terms, **above** the 0.6437 that all 75 single-feature terms reach together. An equation cannot pass that level by describing features one at a time, so the excess is what the cross-feature terms buy — the same conclusion the additive oracle reaches, by an independent route.
+
 ## 4. Equation analysis
 
 The equation has 16 terms, of which **10** carry 81% of the standardised weight mass; the single largest carries 10.8%, and the weights behave like **13.2 equally-weighted terms** (inverse Simpson index of the shares).

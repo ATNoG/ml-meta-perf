@@ -6,7 +6,7 @@ import unittest
 import numpy as np
 import polars as pl
 
-from ml_meta_perf.analysis import redundancy_groups, screen
+from ml_meta_perf.analysis import feature_reach, grammar_ceiling, redundancy_groups, screen
 from ml_meta_perf.stats import mae, r2_score
 from ml_meta_perf.fit import fit
 from ml_meta_perf.terms import build_library
@@ -429,3 +429,62 @@ class TestGroupCentreBaselines(unittest.TestCase):
                 mask = self.outer == label
                 expected = np.mean if centre == "mean" else np.median
                 self.assertAlmostEqual(float(prediction[mask][0]), float(expected(self.truth[~mask])))
+
+
+class TestGrammarReach(unittest.TestCase):
+    """The heuristic ceiling the vocabulary implies, before any search runs."""
+
+    def setUp(self) -> None:
+        from ml_meta_perf.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays, load
+        from ml_meta_perf.data import target as load_target
+        from ml_meta_perf.experiment import DEFAULT_E3
+
+        frame = load()
+        self.features = DATASET_FEATURES + MODEL_FEATURES
+        columns = columns_as_arrays(frame, self.features)
+        self.truth = load_target(frame)
+        self.library = build_library(
+            DATASET_FEATURES,
+            MODEL_FEATURES,
+            columns,
+            max_arity=DEFAULT_E3.max_arity,
+            max_abs_zscore=DEFAULT_E3.max_abs_zscore,
+        )
+
+    def test_a_feature_is_never_worse_after_the_grammar_than_before(self) -> None:
+        """`gain` measures what the transforms unlock, so it cannot be negative.
+
+        The raw column is itself an admissible term, so the best single-feature term is at
+        worst the raw one.
+        """
+        table = feature_reach(self.library, self.truth, self.features)
+        self.assertTrue((table["gain"].to_numpy() >= -1e-12).all())
+        self.assertTrue((table["r2_best"].to_numpy() >= table["r2_raw"].to_numpy() - 1e-12).all())
+
+    def test_only_single_feature_terms_are_credited(self) -> None:
+        """A product would otherwise be counted twice, once under each of its features."""
+        table = feature_reach(self.library, self.truth, self.features)
+        by_name = {term.name: term for term in self.library.terms}
+        for row in table.to_dicts():
+            if row["best_term"]:
+                self.assertEqual(set(by_name[row["best_term"]].features), {row["feature"]})
+
+    def test_the_ladder_is_monotone(self) -> None:
+        """Each rung is a superset of the one before it, so R2 cannot fall."""
+        ladder = grammar_ceiling(self.library, self.truth, self.features)
+        self.assertLessEqual(ladder["r2_raw_additive"], ladder["r2_best_per_feature"] + 1e-9)
+        self.assertLessEqual(ladder["r2_best_per_feature"], ladder["r2_all_single_feature"] + 1e-9)
+
+    def test_it_is_a_heuristic_and_not_a_bound(self) -> None:
+        """The published equation passes it, which is the reading the report gives.
+
+        `r2_all_single_feature` bounds a sum of per-feature functions. E3's cross-feature
+        terms are not that, so exceeding it is expected -- and is the independent route to
+        the same conclusion the additive oracle reaches.
+        """
+        from ml_meta_perf.experiment import run_e3
+        from ml_meta_perf.data import load
+
+        ladder = grammar_ceiling(self.library, self.truth, self.features)
+        fitted = float(run_e3(load()).in_sample["r2"])
+        self.assertGreater(fitted, ladder["r2_all_single_feature"])

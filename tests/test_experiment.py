@@ -33,6 +33,7 @@ from ml_meta_perf.experiment import (
     baselines,
     comparison,
     correlation_analysis,
+    reach_analysis,
     decision_quality,
     leakage_demonstration,
     model_selection,
@@ -239,6 +240,7 @@ class TestCli(unittest.TestCase):
                 target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)
             ),
             correlations=correlation_analysis(frame, FAST_E3, top=5),
+            **dict(zip(("reach", "ceiling"), reach_analysis(frame, FAST_E3), strict=True)),
             baselines=baselines(frame),
             comparison=comparison(frame, e1, e3, e2),
             leakage=leakage_demonstration(frame, FAST_E3),

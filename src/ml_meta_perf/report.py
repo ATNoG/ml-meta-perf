@@ -506,6 +506,58 @@ def _scores(label: str, scores: dict[str, float | int]) -> str:
     )
 
 
+def _reach_note(report: Report) -> str:
+    """The grammar's implied ceiling ladder, and where the equation lands on it.
+
+    Everything here is arithmetic over `analysis.grammar_ceiling` and the fitted R2. The
+    point of the section is that the three rungs are computable *before* any search runs, so
+    the equation's score can be read against an expectation rather than against nothing.
+    """
+    if report.ceiling.height == 0:
+        return ""
+    ladder = report.ceiling.to_dicts()[0]
+    raw = float(ladder["r2_raw_additive"])
+    best = float(ladder["r2_best_per_feature"])
+    single = float(ladder["r2_all_single_feature"])
+    fitted = float(report.e3.in_sample["r2"])
+    n_single = int(float(ladder["n_single_feature_terms"]))
+    n_terms = len(report.e3.equation.terms)
+
+    strongest = report.reach.head(1).to_dicts()[0] if report.reach.height else None
+    lines = [
+        "Three levels of what the vocabulary can explain, each a least-squares fit over the "
+        "library and each computable before the search runs. They bound a *sum of "
+        "per-feature functions*, which is a different question from the additive oracle "
+        "above: that one bounds a per-dataset value plus a per-model value.\n",
+        "| level | terms | R² |",
+        "|---|---|---|",
+        f"| every raw feature, untransformed | {len(ALL_FEATURES)} | {raw:.4f} |",
+        f"| the best single-feature term per feature | {len(ALL_FEATURES)} | {best:.4f} |",
+        f"| every single-feature term at once | {n_single} | {single:.4f} |",
+        f"| **the fitted equation (E3)** | **{n_terms}** | **{fitted:.4f}** |",
+        "",
+    ]
+    if strongest is not None:
+        lines.append(
+            f"No individual feature carries much: the strongest is `{strongest['feature']}` at "
+            f"R² {float(strongest['r2_best']):.3f}, so any accuracy beyond that is combination "
+            "rather than a single dominant driver. Transforming the features is worth "
+            f"{best - raw:+.3f} over entering them raw.\n"
+        )
+    verdict = (
+        f"E3 reaches {fitted:.4f} with {n_terms} terms, **above** the {single:.4f} that all "
+        f"{n_single} single-feature terms reach together. An equation cannot pass that level "
+        "by describing features one at a time, so the excess is what the cross-feature terms "
+        "buy — the same conclusion the additive oracle reaches, by an independent route."
+        if fitted > single
+        else f"E3 reaches {fitted:.4f} with {n_terms} terms against the {single:.4f} available "
+        f"from all {n_single} single-feature terms, so on this configuration its accuracy is "
+        "still within what per-feature description alone could explain."
+    )
+    lines.append(verdict + "\n")
+    return "\n".join(lines)
+
+
 def _baseline_centre_note(baselines: pl.DataFrame) -> str:
     """Which centre is the harder baseline, per metric, derived rather than asserted.
 
@@ -616,6 +668,9 @@ def render(
     parts.append("### The trivial predictors, at both centres\n")
     parts.append(_table(report.baselines) + "\n")
     parts.append(_baseline_centre_note(report.baselines))
+
+    parts.append("### What the vocabulary could reach, before any search\n")
+    parts.append(_reach_note(report))
 
     parts.append("## 4. Equation analysis\n")
     parts.append(

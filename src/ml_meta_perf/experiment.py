@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import polars as pl
 
-from ml_meta_perf.analysis import screen
+from ml_meta_perf.analysis import feature_reach, grammar_ceiling, screen
 from ml_meta_perf.attribution import group_shares, term_effects, variance_decomposition
 from ml_meta_perf.data import (
     DATASET_COLUMN,
@@ -331,6 +331,27 @@ def run_e3(frame: pl.DataFrame, config: Configuration = DEFAULT_E3) -> EquationR
     return run_equation(frame, DATASET_FEATURES, MODEL_FEATURES, config, "E3", SWEEP_SIZES)
 
 
+def reach_analysis(frame: pl.DataFrame, config: Configuration = DEFAULT_E3) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """What each raw feature is worth, and how far the grammar reaches before any search.
+
+    Returns the per-feature table and the three-level ceiling ladder as a one-row frame.
+    Both are computed from the library alone, so they are available *before* an equation
+    exists and can be read as an expectation the fitted equation is then held against.
+    """
+    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+    library = build_library(
+        DATASET_FEATURES,
+        MODEL_FEATURES,
+        columns,
+        max_arity=config.max_arity,
+        max_abs_zscore=config.max_abs_zscore,
+    )
+    truth = target(frame)
+    features = DATASET_FEATURES + MODEL_FEATURES
+    ladder = grammar_ceiling(library, truth, features)
+    return feature_reach(library, truth, features), pl.DataFrame([ladder])
+
+
 def correlation_analysis(frame: pl.DataFrame, config: Configuration = DEFAULT_E3, top: int = 15) -> pl.DataFrame:
     """Rank candidate terms by how they relate to MCC, linearly and monotonically.
 
@@ -541,6 +562,10 @@ class Report:
     shares: pl.DataFrame
     decomposition: pl.DataFrame
     correlations: pl.DataFrame
+    #: What each raw feature carries on its own, and the three-level ceiling the grammar
+    #: implies before any search runs. See `analysis.grammar_ceiling`.
+    reach: pl.DataFrame
+    ceiling: pl.DataFrame
     baselines: pl.DataFrame
     comparison: pl.DataFrame
     leakage: pl.DataFrame
@@ -582,6 +607,7 @@ def run(
     e3 = run_e3(frame, config_e3)
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
     e2 = run_e2(frame)
+    reach, ceiling = reach_analysis(frame, config_e3)
     return Report(
         e1=e1,
         e2=e2,
@@ -591,6 +617,8 @@ def run(
         shares=group_shares(e3.equation, columns, DATASET_FEATURES, MODEL_FEATURES),
         decomposition=variance_decomposition(target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)),
         correlations=correlation_analysis(frame, config_e3),
+        reach=reach,
+        ceiling=ceiling,
         baselines=baselines(frame),
         comparison=comparison(frame, e1, e3, e2),
         leakage=leakage_demonstration(frame, config_e3, e3.paths),

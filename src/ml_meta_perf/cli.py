@@ -189,6 +189,8 @@ def _save_tables(report: Report, folder: Path) -> list[Path]:
     """Every table the study produced, as CSV, for a paper's tables and plots."""
     tables: dict[str, pl.DataFrame] = {
         "correlations": report.correlations,
+        "reach": report.reach,
+        "ceiling": report.ceiling,
         "curve_e1": report.e1.curve,
         "curve_e2": report.e2.curve,
         "curve_e3": report.e3.curve,
