@@ -88,7 +88,7 @@ still **not comparable as achievements**, and no change to the fitting could mak
 
 E1 predicts one value per dataset. **0.354 is the most it could ever score**, however good
 its terms were, because that is all the variance a per-dataset constant can reach. E1 at
-0.349 is not "worse than E3 at 0.600"; it is at its own limit while E3 is not at its. The
+0.349 is not "worse than E3 at 0.665"; it is at its own limit while E3 is not at its. The
 same applies to E2 against 0.282.
 
 So the comparable quantity is the *fraction of its own ceiling* each equation reaches, and

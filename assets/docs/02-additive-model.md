@@ -109,6 +109,16 @@ Three conclusions, and the first two were invisible at fixed penalty:
 2. **Arity 4 is a fit-only option, and an expensive one.** It buys +0.035 in-sample over
    arity 3 and gives up **0.203** of transfer — roughly six units of transfer per unit of
    fit. That is the trade, stated properly.
+**The published configuration nevertheless uses arity 2, and that is not a contradiction.**
+The table above was measured under the re-selecting protocol and the five-descriptor model
+side. Re-swept on 2026-09-05 against the fixed-form protocol and the current features, the
+third arity stopped paying: `(f1+f2)/f3` is not selected, and the best arity-2 point matches
+the best arity-3 point to within 0.007. A smaller grammar that scores the same is not a
+trade, so `DEFAULT_E3` sets `max_arity=2`. What survives from this table is the *method* —
+sweep the penalty inside each arity, or the ridge gets credited with the arity's effect — and
+the arity-4 result, which is a fit-only option at roughly six units of transfer per unit of
+fit and is not worth revisiting.
+
 3. **The optimal penalty falls as arity rises** for transfer (20 → 5 → 50 is not monotone,
    but arity 4's best transfer needs both the heaviest shrinkage *and* the shortest
    equation, k=16, which is the signature of a grammar the sample cannot support).
