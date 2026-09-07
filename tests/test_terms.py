@@ -498,5 +498,40 @@ class TestCollinearTermsAreDropped(unittest.TestCase):
         self.assertLess(float(np.abs(correlation).max()), 1.0 - 1e-9)
 
 
+class TestFeatureGroups(unittest.TestCase):
+    """One term per combination of raw features -- the readability rule of the protocol."""
+
+    def setUp(self) -> None:
+        rng = np.random.default_rng(0)
+        self.columns = {name: rng.uniform(1.0, 9.0, 40) for name in ("f1", "f2", "f3")}
+
+    def test_a_single_feature_term_is_ungrouped(self) -> None:
+        library = Library([Term("atom", (Atom("f1", "log"),)), Term("atom", (Atom("f1", "sq"),))], self.columns)
+        self.assertTrue(np.all(library.feature_groups < 0))
+
+    def test_both_orientations_of_a_ratio_share_a_group(self) -> None:
+        forward = Term("ratio", (Atom("f1", "log"), Atom("f2", "log")))
+        reverse = Term("ratio", (Atom("f2", "log"), Atom("f1", "log")))
+        groups = Library([forward, reverse], self.columns).feature_groups
+        self.assertEqual(groups[0], groups[1])
+        self.assertGreaterEqual(groups[0], 0)
+
+    def test_a_product_and_a_ratio_over_one_pair_share_a_group(self) -> None:
+        product = Term("product", (Atom("f1"), Atom("f2", "log")))
+        ratio = Term("ratio", (Atom("f1"), Atom("f2", "log")))
+        groups = Library([product, ratio], self.columns).feature_groups
+        self.assertEqual(groups[0], groups[1])
+
+    def test_different_pairs_get_different_groups(self) -> None:
+        first = Term("product", (Atom("f1"), Atom("f2")))
+        second = Term("product", (Atom("f1"), Atom("f3")))
+        groups = Library([first, second], self.columns).feature_groups
+        self.assertNotEqual(groups[0], groups[1])
+
+    def test_one_id_per_term(self) -> None:
+        library = build_library(("f1", "f2"), ("f3",), self.columns)
+        self.assertEqual(library.feature_groups.shape, (len(library),))
+
+
 if __name__ == "__main__":
     unittest.main()

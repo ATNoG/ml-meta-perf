@@ -78,9 +78,16 @@ DEFAULT_E1 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=200, max_
 
 # Model features only. Re-swept over penalty x length x z-cap x arity on the fixed-form
 # protocol, after `MODEL_FEATURES` was replaced and the reported protocol changed on
-# 2026-09-05. Eight terms is the knee: every longer equation gains under 0.005 on either
-# transfer protocol.
-DEFAULT_E2 = Configuration(max_abs_zscore=3.0, penalty=5.0, pool_size=100, max_terms=12, headline_terms=8, max_arity=2)
+# 2026-09-05.
+#
+# Length falls from 8 to 6 on 2026-09-07, when `terms.Library.feature_groups` made one term
+# per feature combination a rule of the protocol. E2 draws on six features, so it has only
+# fifteen pairs to spend a term on and the constraint binds hardest here. Six is the knee by
+# the same rule that chose eight before it -- every longer equation gains under 0.005 on
+# either transfer protocol -- and six is now also *better* than eight on both of them
+# (0.185 against 0.183 leave-one-dataset-out, 0.229 against 0.226 leave-one-model-out) for
+# two fewer terms.
+DEFAULT_E2 = Configuration(max_abs_zscore=3.0, penalty=5.0, pool_size=100, max_terms=12, headline_terms=6, max_arity=2)
 
 # Re-swept over penalty x length x z-cap x arity after `MODEL_FEATURES` was replaced and the
 # reported protocol changed to fixed form, both on 2026-09-05. All four knobs moved.
@@ -101,10 +108,31 @@ DEFAULT_E2 = Configuration(max_abs_zscore=3.0, penalty=5.0, pool_size=100, max_t
 # model features are positive, bounded and fully supported, with none of the low-support tail
 # that made a loose cap dangerous when hyperparameter columns were in the pool.
 #
-# Length falls from 20 to 16, and this is the knee rather than the maximum. Leave-one-dataset-
-# out is now *smooth* in length -- 0.644 at 14 terms, 0.652 at 16, 0.656 at 18, 0.658 at 20 --
-# because fixing the form removed the twenty-different-equations variance that made it swing
-# by 0.3 under the previous protocol. Past sixteen terms each further pair buys under 0.005.
+# Length stays at 16 under the one-term-per-feature-combination protocol, and the reason is
+# brevity rather than accuracy, because on accuracy the two candidates cannot be separated.
+#
+# Twenty terms is the maximum of the transfer curve: 0.638 against 0.627 leave-one-dataset-out
+# and 0.677 against 0.665 in-sample. It is also better *within* a dataset, which is the half
+# of the variance a ranking sees -- 0.468 against 0.460 once each dataset's mean is removed
+# from both sides. Nothing about a longer equation is hurting the fit.
+#
+# The 20-term equation appears to rank worse -- average precision 0.778 against 0.819, hit@1
+# 0.700 against 0.800 -- and that appearance does not survive a paired test. It is two
+# datasets of twenty flipping their top-1 pick, ASNM-CDX-2009 and KPI-KQI; on twenty folds
+# hit@1 moves only in steps of 0.05, so 0.80 to 0.70 *is* those two. Per dataset, twenty terms
+# has the better average precision on nine of the seventeen that changed at all -- sign test
+# p = 1.000, bootstrap interval [-0.115, +0.023]. Do not read the ranking column as a trend in
+# length; it is a mean over twenty groups and a single group moves it by 0.03.
+#
+# So neither R2 nor ranking decides this, and what is left is the study's standing tie-break:
+# at indistinguishable measured performance, the shorter equation wins.
+# `equation_search.OBJECTIVE_WEIGHTS` agrees -- 0.689 at sixteen against 0.679 at twenty --
+# though that margin is drawn from the same twenty folds and should not be read as decisive
+# on its own either.
+#
+# Penalty, z-cap and arity are unchanged from the 2026-09-05 sweep. A full
+# penalty x length x z-cap x arity sweep under the constraint has not been run, and
+# `ml-meta-perf-search` is where it belongs -- see `TODO.md`.
 DEFAULT_E3 = Configuration(
     max_abs_zscore=4.25, penalty=15.0, pool_size=600, max_terms=32, headline_terms=16, max_arity=2
 )

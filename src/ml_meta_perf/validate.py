@@ -164,7 +164,7 @@ def fold_selections(
         standardizer = Standardizer.fit(train_matrix)
         design = standardizer.apply(train_matrix)
         pool = guided_screen(_view(library, train), target[train], keep=pool_size)
-        selector = Selector(design, target[train], penalty)
+        selector = Selector(design, target[train], penalty, library.feature_groups)
         subsets = selector.search(pool, n_terms, beam_width=beam_width)
         if n_terms in subsets:
             selections.append([library.terms[index].name for index in subsets[n_terms].indices])

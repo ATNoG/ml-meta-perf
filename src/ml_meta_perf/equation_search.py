@@ -274,7 +274,9 @@ def _fold_selections(
     picks: list[set[str]] = []
     for _, train, _ in leave_one_group_out(group):
         standardizer = Standardizer.fit(library.matrix[train])
-        selector = Selector(standardizer.apply(library.matrix[train]), truth[train], config.penalty)
+        selector = Selector(
+            standardizer.apply(library.matrix[train]), truth[train], config.penalty, library.feature_groups
+        )
         pool = guided_screen(_view(library, train), truth[train], keep=config.pool_size)
         subsets = selector.search(pool, config.max_terms, beam_width=config.beam_width)
         if size in subsets:

@@ -1,6 +1,6 @@
 """Selecting which terms enter the equation, and with what weights.
 
-Three ideas do the work here.
+Four ideas do the work here.
 
 *Correlation-guided term design.* Pearson and Spearman disagree in a informative way.
 A feature whose Pearson and Spearman correlations against MCC are similar is related to
@@ -19,6 +19,16 @@ subset at every size, one run yields the whole accuracy-versus-number-of-terms c
 *Gram-matrix arithmetic.* Every candidate refit is a k-by-k solve against a precomputed
 Gram matrix rather than a least-squares call against the full design, which is what
 makes an exhaustive sweep inside 20 cross-validation folds tractable.
+
+*One term per feature combination.* An equation that describes ``a`` against ``b`` twice --
+once as ``a/b`` and once as ``b/a`` -- cannot be read a term at a time, because neither
+term means on its own what the table says it means. The selector therefore refuses a
+candidate whose feature combination is already represented, which is a constraint on
+*form* rather than on fit and is not negotiable against R2: an equation nobody can reason
+about has failed at the only thing this study asks of it. It is measured, not assumed, to
+cost nothing -- see `terms.Library.feature_groups`. Note that this is a different test
+from ``COLLINEARITY_LIMIT``, which asks a numerical question; the pairs this removes were
+well inside that limit.
 
 Study chapter: [3. Search and fitting](../../assets/docs/03-search-and-fitting.md) -- the rationale, in
 prose, with the figures.
@@ -176,7 +186,13 @@ def _descending(scores: np.ndarray) -> np.ndarray:
 class Selector:
     """Beam search over term subsets against a fixed, standardised design."""
 
-    def __init__(self, design: np.ndarray, target: np.ndarray, penalty: float) -> None:
+    def __init__(
+        self,
+        design: np.ndarray,
+        target: np.ndarray,
+        penalty: float,
+        groups: np.ndarray | None = None,
+    ) -> None:
         self.design = design
         self.centered = target - target.mean()
         self.offset = float(target.mean())
@@ -195,6 +211,18 @@ class Selector:
         self.total = float(self.centered @ self.centered)
         self.normalizer = float(design.shape[0])
         self._cache: dict[tuple[int, ...], Subset] = {}
+        # `terms.Library.feature_groups`, expanded once into a membership matrix so that
+        # `_blocked` is a row gather and an `any`, not an `np.isin` over the pool on each
+        # of several hundred thousand calls. Row ``g`` marks every term in group ``g``.
+        self.groups = groups
+        self._members: np.ndarray | None = None
+        if groups is not None and groups.size:
+            count = int(groups.max()) + 1
+            if count > 0:
+                members = np.zeros((count, groups.shape[0]), dtype=bool)
+                present = groups >= 0
+                members[groups[present], np.flatnonzero(present)] = True
+                self._members = members
 
     def _evaluate(self, indices: tuple[int, ...]) -> Subset:
         """Fit one subset. Memoised, because the refinement pass revisits subsets.
@@ -275,16 +303,31 @@ class Selector:
         return np.abs(self.projection - self.gram[:, order] @ subset.weights)
 
     def _blocked(self, indices: tuple[int, ...]) -> np.ndarray | None:
-        """Which candidates are too collinear with ``indices``, as one boolean mask.
+        """Which candidates this parent may not take, as one boolean mask.
 
         Computed per parent rather than per candidate. The per-candidate form rebuilt an
         index array and took a max on every one of several hundred thousand calls; this
         does the same work as a single vectorised reduction over the Gram matrix.
+
+        Two independent refusals, and they answer different questions. The correlation
+        test asks whether a candidate is numerically redundant against what is already
+        chosen. The group test asks whether it would state an *already-stated relationship
+        a second time* -- see `terms.Library.feature_groups`. Neither implies the other:
+        the mirrored pairs the group test removes sat at 0.891 and 0.786, comfortably
+        inside ``COLLINEARITY_LIMIT``, and two terms may correlate above the limit while
+        describing different feature pairs entirely.
         """
         if not indices:
             return None
         order = np.array(indices, dtype=np.intp)
-        return (np.abs(self.gram[:, order]) / self.normalizer > COLLINEARITY_LIMIT).any(axis=1)
+        blocked = (np.abs(self.gram[:, order]) / self.normalizer > COLLINEARITY_LIMIT).any(axis=1)
+        if self._members is None or self.groups is None:
+            return blocked
+        chosen = self.groups[order]
+        chosen = chosen[chosen >= 0]
+        if chosen.size == 0:
+            return blocked
+        return blocked | self._members[np.unique(chosen)].any(axis=0)
 
     def search(
         self,
@@ -421,7 +464,7 @@ def fit(
     standardizer = Standardizer.fit(library.matrix)
     design = standardizer.apply(library.matrix)
     pool = guided_screen(library, target, keep=pool_size)
-    selector = Selector(design, target, penalty)
+    selector = Selector(design, target, penalty, library.feature_groups)
     subsets = selector.search(
         pool, max_terms, beam_width=beam_width, candidates=candidates, refine_rounds=refine_rounds
     )
@@ -489,7 +532,7 @@ def prune(
 
     library = Library(keep, columns)
     standardizer = Standardizer.fit(library.matrix)
-    selector = Selector(standardizer.apply(library.matrix), target, penalty)
+    selector = Selector(standardizer.apply(library.matrix), target, penalty, library.feature_groups)
     subset = selector._evaluate(tuple(range(len(library))))
     return to_equation(library, subset, standardizer, selector.offset, equation.name)
 

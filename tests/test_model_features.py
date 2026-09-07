@@ -93,6 +93,32 @@ class TestModelFeatures(unittest.TestCase):
                 self.assertEqual(models - set(table), set())
 
 
+class TestPublishedEquationsAreReadable(unittest.TestCase):
+    """No published equation states one relationship twice.
+
+    The constraint lives in `fit.Selector`, and `tests/test_fit.py` pins it there against a
+    synthetic library. This is the end-to-end guard: it runs the three equations the study
+    actually publishes, *after* `fit.prune` has simplified them, because `terms.simplify` can
+    rewrite a term into a different feature combination and the selector never sees that.
+    """
+
+    def repeated(self, equation) -> list[list[str]]:
+        seen: dict[frozenset[str], list[str]] = {}
+        for term in equation.terms:
+            features = frozenset(term.features)
+            if len(features) > 1:
+                seen.setdefault(features, []).append(term.name)
+        return [names for names in seen.values() if len(names) > 1]
+
+    def test_no_equation_repeats_a_feature_combination(self) -> None:
+        from ml_meta_perf.experiment import run_e1, run_e2, run_e3
+
+        frame = load()
+        for label, run in (("E1", run_e1), ("E2", run_e2), ("E3", run_e3)):
+            with self.subTest(label):
+                self.assertEqual(self.repeated(run(frame).equation), [])
+
+
 if __name__ == "__main__":
     unittest.main()
 

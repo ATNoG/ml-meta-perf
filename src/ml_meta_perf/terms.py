@@ -516,6 +516,45 @@ class Library:
     def names(self) -> list[str]:
         return [term.name for term in self.terms]
 
+    @property
+    def feature_groups(self) -> np.ndarray:
+        """Which terms describe the *same combination of raw features*, as group ids.
+
+        One id per term, ``-1`` for a term over a single feature. Two terms share an id
+        when their feature multisets reduce to the same set, however differently they
+        arrange it: ``[log(a)] / [log(b)]`` and ``[log(b)] / [log(a)]`` are one group, and
+        so are ``[a] * [log(b)]`` and ``[a] / [log(b)]``.
+
+        `ml_meta_perf.fit.Selector` refuses to place two terms of one group in the same
+        equation. That is a **readability** rule, not a numerical one, and the distinction
+        matters because the numerical guard already passes: the two mirrored pairs this
+        removed from the previous 16-term equation correlated at 0.891 and 0.786, both
+        under ``fit.COLLINEARITY_LIMIT``, in a design conditioned at 7.8. Nothing was
+        ill-posed. What was wrong is that the equation spent two of its sixteen slots
+        writing one relationship both ways up -- ``log(PUN)/log(nr_class)`` beside
+        ``log(nr_class)/log(PUN)``, *both* carrying negative weight -- and the term table
+        then reported them as two independent findings, each reading "lowers MCC". Jointly
+        they encode a curvature in one ratio; separately neither sentence is true.
+
+        An equation this study cannot reason about term by term has failed its purpose,
+        so the constraint is part of the protocol rather than an option. It costs nothing
+        measurable: paired over the twenty leave-one-dataset-out folds it moves mean
+        absolute error by +0.0018 at twenty terms, worse on ten of twenty datasets, sign
+        test p = 1.000 and a bootstrap interval of [-0.0039, +0.0084] that spans zero.
+
+        A term over one feature is left ungrouped, so ``1/f`` may still sit beside
+        ``f^2``. Those are two points of one curve over one feature, which reads as a
+        shape; the constraint is about a *relationship* being stated twice.
+        """
+        identifiers: dict[frozenset[str], int] = {}
+        groups = np.full(len(self.terms), -1, dtype=np.int64)
+        for index, term in enumerate(self.terms):
+            features = frozenset(term.features)
+            if len(features) < 2:
+                continue
+            groups[index] = identifiers.setdefault(features, len(identifiers))
+        return groups
+
     def __len__(self) -> int:
         return len(self.terms)
 

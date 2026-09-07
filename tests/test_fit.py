@@ -292,5 +292,62 @@ class TestPrune(unittest.TestCase):
         self.assertTrue(np.all(np.isfinite(pruned.predict(self.columns))))
 
 
+class TestOneTermPerFeatureCombination(unittest.TestCase):
+    """The selector may not state one relationship twice. See `Library.feature_groups`."""
+
+    def setUp(self) -> None:
+        self.columns = synthetic_columns()
+        self.library = build_library(("f1", "f2"), ("f3", "f4"), self.columns)
+        self.target = (
+            3.0 * np.log(self.columns["f1"]) / np.log(self.columns["f3"])
+            + 1.5 * np.log(self.columns["f2"])
+        )
+
+    def repeated(self, terms) -> list[list[str]]:
+        seen: dict[frozenset[str], list[str]] = {}
+        for term in terms:
+            features = frozenset(term.features)
+            if len(features) > 1:
+                seen.setdefault(features, []).append(term.name)
+        return [names for names in seen.values() if len(names) > 1]
+
+    def test_no_fitted_equation_repeats_a_feature_combination(self) -> None:
+        result = fit(self.library, self.target, max_terms=10, penalty=1.0, pool_size=len(self.library))
+        for size, equation in result.equations.items():
+            with self.subTest(size=size):
+                self.assertEqual(self.repeated(equation.terms), [])
+
+    def test_the_constraint_is_what_does_it(self) -> None:
+        # Without the group array the same search is free to take both orientations, so the
+        # test above would pass for the wrong reason if the mask were silently ineffective.
+        standardizer = Standardizer.fit(self.library.matrix)
+        design = standardizer.apply(self.library.matrix)
+        pool = list(range(len(self.library)))
+        unconstrained = Selector(design, self.target, 1.0).search(pool, 8, beam_width=6)
+        constrained = Selector(design, self.target, 1.0, self.library.feature_groups).search(
+            pool, 8, beam_width=6
+        )
+        picked = lambda subset: [self.library.terms[i] for i in subset.indices]
+        self.assertNotEqual(self.repeated(picked(unconstrained[8])), [])
+        self.assertEqual(self.repeated(picked(constrained[8])), [])
+
+    def test_a_group_blocks_only_its_own_members(self) -> None:
+        groups = self.library.feature_groups
+        selector = Selector(
+            Standardizer.fit(self.library.matrix).apply(self.library.matrix),
+            self.target,
+            0.0,
+            groups,
+        )
+        chosen = int(np.flatnonzero(groups >= 0)[0])
+        blocked = selector._blocked((chosen,))
+        self.assertIsNotNone(blocked)
+        assert blocked is not None
+        same = groups == groups[chosen]
+        self.assertTrue(bool(blocked[same].all()))
+        # Terms of no group are never blocked by the group rule, only by correlation.
+        self.assertFalse(bool(blocked[groups < 0].all()))
+
+
 if __name__ == "__main__":
     unittest.main()
