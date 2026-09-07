@@ -66,11 +66,18 @@ that compare two configurations.
 
 ## 1. The full sweep, on Slurm — running
 
-Submitted 2026-09-07 as job **15334** on `playstation` (`cpuPartition`, 62 cores). The
-cluster copy at `~/aiml-model` is an rsync of the tree, not a clone, and it was **stale by
-three weeks** — its `src/` predated the one-term-per-feature-combination constraint, so a
-sweep run there before the sync would have searched the wrong grammar. It has been synced;
-re-sync `src/`, `scripts/` and `pyproject.toml` before any future submission.
+Submitted 2026-09-07 as job **15335** on `playstation` (`cpuPartition`, 62 cores, node
+`atari`). Two things had to be fixed before it would run at all, and both will bite again:
+
+- **The cluster copy at `~/aiml-model` is an rsync of the tree, not a clone, and it was
+  stale by three weeks** — its `src/` predated the one-term-per-feature-combination
+  constraint, so a sweep run there would have searched the wrong grammar. Re-sync before
+  every submission.
+- **The sbatch script had no `--mem-per-cpu`.** The cluster default of 4G x 62 cores asks for
+  248G, and `atari` — the only idle 64-core node on the partition — has 246G. The job was
+  therefore unschedulable on the one node that could run it, and Slurm parked it five months
+  out behind two 128-core nodes with 16 free cores each. Measured peak RSS on the largest
+  grid point is 216 MB, so the script now asks for 1G per worker.
 
 ```bash
 rsync -av --delete --exclude='__pycache__' --exclude='*.egg-info' \
@@ -78,156 +85,114 @@ rsync -av --delete --exclude='__pycache__' --exclude='*.egg-info' \
 ssh playstation 'cd ~/aiml-model && sbatch --job-name=eqsrch --cpus-per-task=62 scripts/equation_search.sbatch'
 ```
 
-- **48,576 points**: 16 feature subsets x 11 penalties x 23 lengths (6-28) x 6 z-caps x 2
-  arities. Measured on the cluster at **5.66 s/point** single-threaded, so ~76 core-hours
-  and about 1.2 h wall-clock on 62 cores. `--time=06:00:00` is ample.
-- Writes `results/cluster/equation_search.csv`, 25 columns, sorted by `objective`.
-
-What it settles: whether `penalty=15`, `max_abs_zscore=4.25`, `max_arity=2` and the
-six-feature set survive a real search, and what the length curve looks like under the
-current grammar. The z-cap and the penalty were both tuned when three now-retired columns
-were in the pool.
+48,576 points at a measured 5.66 s/point — about 76 core-hours, or 70 minutes on 62 cores.
+Writes `results/cluster/equation_search.csv`, 25 columns, sorted by `objective`.
 
 **Do not read the top row as the answer.** `objective` is a weighted sum over seven
 components computed from the same twenty folds, so neighbouring rows are ties. Take the top
 band, pair the candidates against the incumbent with `validate.paired_comparison`, and
 prefer the shortest configuration that is not significantly worse.
 
-## 2. Term count: the reported knee is wrong, and wrongly sourced
+**Nothing about the equation length can be settled until this lands** — see item 2.
 
-**`results/term_choice.csv` reports a knee of 4 while the study publishes 16, and
-`assets/figures/error_curve_mae.png` draws a line labelled "knee (4 terms)".** A reviewer
-finds that contradiction immediately. Three separate defects sit under it:
+## 2. Term count: the machinery is fixed, the answer is not
 
-- **It is detected on in-sample R² alone.** `selection.knee_terms` defaults to
-  `r2_in_sample` and `selection.recommend` reports in-sample and loo-dataset separately.
-  Choosing a published length on the fit alone is not defensible. **Decide what the detector
-  runs on** — LOO-dataset, LOO-model, in-sample, or an aggregate of the three (sum, mean or
-  median across protocols). The median is the robust choice on this data: at k=15 the three
-  protocols read 0.659 / 0.393 / 0.616, and a median ignores the crater that item 3 explains.
-- **The grid biases it.** `experiment.SWEEP_SIZES` is `(2, 4, 8, 12, 16, 20, 24, 26, 28, 32)`
-  — non-uniform, and it **skips 13, 15, 17 and 31, which are exactly the four lengths where
-  the LOO-dataset curve craters** (0.532, 0.393, 0.562, 0.539). The published curve therefore
-  looks far smoother than the real one. The full path over every length 1..32 is already
-  computed — `run_equation` subsamples it for E3 only — so a dense curve is free.
-- **The detectors disagree and the docstring is stale.** On the dense curve, raw:
-  autoelbow 6, kneedle 8, lmethod 4. RDP-smoothed at t=0.01: 4, 8, 8. `simplify_curve`'s
-  docstring claims "run raw, the three report 12, 13 and 5 ... on the simplified curve they
-  all report 12", which is from an older configuration and no longer true.
+The reporting defects are fixed. `results/term_choice.csv` no longer contradicts the
+published equation, and `error_curve_mae.png` no longer draws a line labelled "knee" at a
+length the study does not use.
 
-Nothing here can be settled until the sweep lands: the curve is a property of the
-configuration, and the configuration is what the sweep is choosing. **Re-derive the knee on
-the swept configuration, on a dense uniform grid, against an agreed aggregate.**
+- **The detector no longer runs on in-sample R² alone.** `selection.consensus_curve`
+  combines every protocol per length and `knee_terms` runs on that; the median is the
+  default because it is robust to the craters item 3 explains. `recommend` still reports
+  each protocol separately so disagreement stays visible.
+- **The curve is reported at every length, not a hand-picked grid.** The old
+  `(2, 4, 8, 12, 16, 20, 24, 26, 28, 32)` skipped 13, 15, 17 and 31 — exactly the four
+  craters — and the detector was partly reporting the grid: 4 on the ragged grid, 6 on the
+  dense one.
+- **All four detectors now agree at 6 terms**, where they previously split 4 / 8. That
+  agreement is the evidence the grid was the problem.
 
-## 3. The LOO-dataset craters, diagnosed
+**What is left is the disagreement between the knee (6) and the published length (16)**, and
+it cannot be resolved on this curve, because the curve is a property of a configuration
+nobody searched: the 2026-09-07 constraint changed the grammar and only the length was
+re-derived, with penalty, z-cap and arity inherited. **Re-derive the knee on the swept
+configuration when job 15335 lands**, and decide then whether the published length follows
+the detector or the objective's brevity tie-break. Whichever it is, say which.
+
+## 3. The LOO-dataset craters — diagnosed and disclosed
 
 Two different things, previously conflated as "E3's worst fold is -10.62".
 
-**The negative per-fold R² is a metric artefact, not a fit failure.** `5G_Slicing` has a
-within-dataset MCC standard deviation of **0.0516** — every one of its 25 models scores about
-0.986. R² divides by that variance, so a fold whose target is nearly constant returns a large
-negative number for an almost-perfect prediction. `NSR` (0.0551) and `DeepSlice` (0.0639) are
-the same, and they are the only strongly negative folds. **Report per-fold MAE, not per-fold
-R², and say why.** Per-fold R² is not meaningful on a group with no variance to explain.
+**The negative per-fold R² was a metric artefact, not a fit failure.** `5G_Slicing` has a
+within-dataset MCC standard deviation of **0.0516** — all 25 of its models score about 0.986.
+R² divides by that, so an ordinary error returns a large negative number; its predictions are
+all within 0.05 of the truth. `NSR` (0.0551) and `DeepSlice` (0.0639) are the same, and those
+three are the only strongly negative folds. `CrossValidation.dispersion` now reports per-fold
+**MAE** alongside, plus `low_variance_folds`. The worst fold by MAE is 0.256 and is a
+different dataset — which is the one actually worth looking at.
 
 **The pooled craters are real, and they are extrapolation.** At k=15 the held-out
-`ASNM-CDX-2009` fold is predicted at **-2.41** — raw pooled LOO-dataset R² **-2.06** — and
-`validate._clip_to_training` pins the whole fold to the training floor of -0.29, recovering
-0.393. The design is *well* conditioned there (cond 10, max |w| 0.14), so this is not a
-numerical failure: a held-out dataset can sit outside the convex hull of the other 19 in term
-space, and a linear equation extrapolates without limit. k=13, 17 and 31 crater for the same
-reason with milder magnitudes (raw and clipped agree to ~0.005 there, so those are genuine
-fold sensitivity rather than clipping).
+`ASNM-CDX-2009` fold is predicted at **-2.41** — raw pooled R² **-2.06** — and
+`_clip_to_training` pins it to the training floor of -0.29, recovering 0.393. The design is
+*well* conditioned there (cond 10, max |w| 0.14): a held-out dataset can sit outside the
+convex hull of the other 19 in term space, and a linear equation extrapolates without limit.
 
-**The clip is load-bearing everywhere, not just in the pathological case.** Between **50 and
-78 of 476 predictions** hit the training-range bound at *every* length. That is 10-16% of the
-reported LOO-dataset predictions being decided by a clip rather than by the equation, and the
-chapters do not currently say so. Either justify it prominently or bound extrapolation some
-other way — but do not leave it undisclosed.
+**The clip is load-bearing everywhere**, now measured and reported: it moves **54 of 476**
+predictions under leave-one-dataset-out and **70** under leave-one-model-out, at every length.
+`CrossValidation.clipped` counts it. Still open: whether to bound extrapolation some other
+way, or to accept the clip and justify it prominently in chapter 5.
 
-## 4. Documentation — restructure as a paper
+## 4. Closed since 2026-09-07
 
-`assets/docs/` currently reads as a research log of additive-modelling pitfalls. It should
-read as a paper. Target structure, in order:
+- **CI was red on `main`.** `pip install .` omitted the `search` extra while basedpyright
+  type-checked all of `src/`, so `equation_search_cli`'s joblib import failed on a runner but
+  not locally. Fixed, plus `fail-fast: false` so a 3.14 failure stops cancelling 3.12.
+- **The two TODO files** are merged into this one.
+- **Seven figures that misread.** See the commit; the knee label, the "additive ceiling" that
+  E3 legitimately passes, Spearman sharing an axis with regret, a confidence legend where
+  every bar had the same opacity, truncated term names, a rug that read as data, and
+  overlapping bar series.
+- **The documentation** is restructured as a paper, chapters 0–8 plus the generated 10.
+- **The README** carried two wrong claims, not merely stale ones: that the equation captures
+  *none* of the leading interaction component (it reaches about a third, 0.31 in-sample) and
+  that the model features reach 96% of their ceiling (0.248/0.282 is 88%).
+- **Large opposing weights** — closed by measurement. E3's largest standardised weight is
+  **0.137**, against the 3.34 recorded under the pre-2026-09-05 protocol. The fixed-form
+  protocol and the one-term-per-feature-combination rule removed whatever was producing
+  cancelling near-collinear pairs. No weight-magnitude gate is needed.
+- **Collinearity below the equation** — measured, and the answer is to leave it. Tightening
+  `COLLINEARITY_TOLERANCE` from `1 - 1e-9` to 0.999 drops 6 of 270 terms and changes
+  in-sample, LOO-dataset and LOO-model by **nothing to four decimal places**. Tightening to
+  0.99 drops 27 terms and *costs* 0.029 of LOO-dataset (0.627 to 0.598). The pool was never
+  the binding constraint, which agrees with the beam-width result. **Do not change it while a
+  sweep is running** — it alters the library, and therefore the grammar being searched.
+- **Error metrics were scored against the wrong baseline.** MAE is minimised by the median,
+  so a mean baseline is not minimising the metric it is judged on. All four trivial
+  predictors are now reported at both centres, and it matters: the per-dataset median is the
+  tighter opponent on MAE (0.192 against 0.213) and SMAPE (40.3 against 43.8).
+- **The ranking and threshold decisions now have real rivals**, not just a majority-class
+  floor. The result is worth knowing: on ranking the equation is **indistinguishable** from
+  ordering models by how well they usually do, against either centre (AP paired p = 0.63 vs
+  the mean, p = 0.33 vs the median, both intervals spanning zero) — and note the median
+  baseline's *mean* AP is the higher one, which is exactly the trap. On the threshold
+  decision it wins clearly: MCC 0.683 against 0.439 and 0.304 at a threshold of 0.7.
 
-1. **Dataset** — the corpus, the features used, and what each one means.
-2. **Methodology** — the additive model (a linear model over terms); what a term is.
-3. **Model generation** — the optimisation that filters and selects terms under the grammar;
-   term-count selection by knee detection (item 2).
-4. **The equation** — presented and discussed for interpretability; linked forward to (6),
-   since best practices are matched onto its terms. Plus the heuristic ceiling implied by the
-   grammar and by raw-feature correlation with MCC.
-5. **Evaluation** — R² for E1/E2/E3; MAE and SMAPE against the median-of-means baseline;
-   binary and rank-based evaluation against mean/median baselines.
-6. **Best-practice evaluation** — published ML practices matched against E3's terms.
+## 5. Still open
 
-Keep related work and limitations as bookends; they are standard and they are where the
-negative results belong (see *What the negatives are worth* below). **The report is
-generated, never narrated** — that constraint is unchanged, and a chapter that copies a
-generated table goes stale silently.
-
-## 5. README
-
-Substantially out of step with the work. Bring it to the current equation, the current
-protocol and the restructured chapters.
-
-## 6. Plots
-
-Specific defects, each independent of the configuration:
-
-- `error_curve_mae.png` — marks "knee (4 terms)" against a published 16 (item 2).
-- `term_count_curve.png` / `equation_comparison.png` — E3 (0.665) is drawn above the
-  "additive ceiling" (0.661) with no explanation. That is not an error: `additive_oracle` is
-  the ceiling for a model that is *additive in dataset and model effects*, and E3 carries
-  mixed interaction terms, so exceeding it is the headline result. **Relabel and say so.**
-- `per_group_quality.png` — plots Spearman and top-1 regret on one shared x-axis. They are
-  not commensurable, and this file already records that **Spearman is useless here** (0.63 to
-  0.73 for every predictor *and* every baseline, including a constant). Use AP, MRR, hit@1
-  and regret.
-- `ranking_quality.png` — AP and reciprocal-rank bars overlap rather than group; the "best
-  model ranked first" stars sit outside the axis at x≈1.02.
-- `practice_effects.png` — the legend advertises strong/moderate/weak in grey, and the bars
-  are coloured by sign. The legend describes nothing on the plot.
-- `term_effects.png` — term labels are truncated mid-name ("[log(gravity)] / [log(Processing
-  Units Number…"), and only 12 of 16 terms are shown.
-- `predicted_vs_actual.png` — the rug at y=0 reads as a row of data points at zero. The one
-  negative row (-0.29) is off-axis.
-
-## 7. Everything else
-
-- **Decide whether chapter 9 survives.** `identity` is wired into nothing and now backs a
-  much smaller claim: the model side reaches 88% of its ceiling, not 58%, so the headroom a
-  per-model table can recover is +0.016, measured: leave-one-dataset-out goes 0.627 to 0.643
-  with `identity.correct_out_of_fold` applied. Fold into chapter 6 or keep.
-- **Collinearity below the equation is still unaddressed.** The constraint fixed the
-  *equation*; the pool and the raw features are untouched. Of 270 library terms, 399 pairs
-  correlate above 0.95, 13 above 0.999, one at 0.99998, because `COLLINEARITY_TOLERANCE`
-  drops only exact duplicates at `1 - 1e-9`. Tightening it toward 0.999 would reclaim ~13
-  pool slots; measure against a matched baseline before adopting. The raw-feature redundancy
-  is a corpus property and is documented rather than fixed.
-- **Large opposing weights, never investigated.** Under the *previous* protocol the largest
-  standardised weight was **3.34** at penalty 5 and 1.05 at penalty 20. A standardised weight
-  of 3.34 moves the prediction by ±3.34 target-scales across ±1 sd of its own term, which
-  MCC's range cannot absorb — so it is being cancelled by another near-collinear term. An
-  equation whose terms cancel at that magnitude is harder to reason about term by term, which
-  is the one property this study cannot compromise. `fit.is_admissible` guards the extreme
-  case (a near-constant term once produced a weight of -1.5e9 against an intercept of
-  +1.5e9); nothing guards the moderate case. **Re-measure under the current protocol** — the
-  one-term-per-feature-combination rule may already have fixed it — and if it has not, decide
-  whether a weight-magnitude gate belongs in `Selector`.
+- **Chapter 9's fate is decided** — folded into chapter 7 as the bound on what better model
+  descriptors could buy, which is what it measures. `identity` is still wired into nothing.
+  Remaining question: the headroom a per-model table recovers is +0.016 (LOO-dataset 0.627 to
+  0.643 with `identity.correct_out_of_fold`). Publish or keep as a ceiling?
 - **The per-family effect table.** The one measured model-side description that transfers to
   an *unseen* model: **+0.075 LOO-model**, where per-model identity gives exactly 0.000 by
-  construction (a held-out model has no training row). It is still a table rather than an
-  equation, so it fails the single-equation gate. **Open question for the author:** publish it
-  as a second component alongside E3, or keep it as a ceiling measurement the way chapter 9
-  keeps its own? Numbers are pre-2026-09-05 and would need re-measuring either way.
+  construction. It is a table rather than an equation, so it fails the single-equation gate.
+  **Open question for the author:** publish as a second component alongside E3, or keep as a
+  ceiling? Numbers are pre-2026-09-05 and need re-measuring either way.
 - **Correcting `Training Operations` for the 100k cap — blocked, not rejected.** Every model
   trained on a stratified sample capped at 100,000 rows and ten of twenty datasets exceed it,
-  but the column was computed from the *source* `nr_inst`, so above the cap it carries a
-  dataset-size signal corresponding to no training run. Recomputing needs each trained
-  instance's tuned hyperparameters; the committed upstream `results_stage_ml_eval.csv` covers
-  **348 of 476 rows**, and the 128 gaps are exactly the 8 GPU-trained models x 16 datasets.
-  Approximating it would put a hand-made formula inside the study's only cost column.
+  but the column was computed from the *source* `nr_inst`. Recomputing needs each trained
+  instance's tuned hyperparameters; the upstream `results_stage_ml_eval.csv` covers **348 of
+  476 rows**, and the 128 gaps are exactly the 8 GPU-trained models x 16 datasets.
 
 ---
 
