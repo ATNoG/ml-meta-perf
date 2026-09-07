@@ -22,7 +22,7 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 
-from ml_meta_perf.model import Equation
+from ml_meta_perf.model import Equation, direction
 
 DATASET_ONLY = "dataset"
 MODEL_ONLY = "model"
@@ -76,7 +76,7 @@ def term_effects(
                 "weight": equation.weights[index],
                 "beta": equation.standardized_weights[index],
                 "effect": float(high - low),
-                "direction": "increases MCC" if equation.standardized_weights[index] > 0 else "decreases MCC",
+                "direction": direction(equation.standardized_weights[index]),
             }
         )
     return pl.DataFrame(rows).sort(pl.col("effect").abs(), descending=True)

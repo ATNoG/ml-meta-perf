@@ -42,7 +42,7 @@ from ml_meta_perf.experiment import Configuration, Report
 from ml_meta_perf.guidance import as_table as as_guidance_table
 from ml_meta_perf.guidance import assess
 from ml_meta_perf.guidance import render as render_guidance
-from ml_meta_perf.model import Equation
+from ml_meta_perf.model import Equation, direction
 from ml_meta_perf.practices import render as render_practices
 from ml_meta_perf.stats import spearman
 from ml_meta_perf.terms import TRANSFORMS, Atom, Term
@@ -139,7 +139,7 @@ def term_importance(
                 # accounts for at least MAJOR_MASS rather than just short of it.
                 "major": bool(running - share < MAJOR_MASS),
                 "stability": float(frequency.get(term.name, float("nan"))),
-                "direction": "raises MCC" if beta > 0.0 else "lowers MCC",
+                "direction": direction(beta),
             }
         )
     return pl.DataFrame(rows)
@@ -422,7 +422,7 @@ def term_groups(
                 "n_terms": len(members),
                 "share": float(sum(mass.get(equation.terms[index].name, 0.0) for index in members)),
                 "effect": swing,
-                "direction": "raises MCC" if signed > 0.0 else "lowers MCC",
+                "direction": direction(signed),
                 "shared": ", ".join(_shared_features(equation, members)),
                 "terms": " ; ".join(equation.terms[index].name for index in members),
             }

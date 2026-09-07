@@ -14,7 +14,7 @@ from ml_meta_perf.attribution import (
     term_effects,
     variance_decomposition,
 )
-from ml_meta_perf.model import Equation
+from ml_meta_perf.model import Equation, LOWERS, RAISES
 from ml_meta_perf.terms import Atom, Term
 
 DATASET = ("d1", "d2")
@@ -82,7 +82,7 @@ class TestTermEffects(unittest.TestCase):
 
     def test_direction_follows_the_standardised_weight(self) -> None:
         for row in self.table.iter_rows(named=True):
-            expected = "increases MCC" if row["beta"] > 0 else "decreases MCC"
+            expected = RAISES if row["beta"] > 0 else LOWERS
             self.assertEqual(row["direction"], expected)
 
     def test_groups_are_labelled(self) -> None:

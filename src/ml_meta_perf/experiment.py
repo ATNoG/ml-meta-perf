@@ -310,13 +310,17 @@ def run_e1(frame: pl.DataFrame, config: Configuration = DEFAULT_E1) -> EquationR
 def run_e2(frame: pl.DataFrame, config: Configuration = DEFAULT_E2) -> EquationReport:
     """Model features only -- the mirror image of E1.
 
-    There are five model features and one is constant per model, so the library is tiny
-    and the equation is short by necessity rather than by choice. That is itself the
-    finding: the meta-data describes datasets far better than it describes models.
+    There are six model features and five of them are constant per model, so the library
+    is tiny and the equation is short by necessity rather than by choice. That is itself
+    the finding: the meta-data describes datasets far better than it describes models.
+    The constraint on repeated feature combinations binds hardest here for the same
+    reason -- six features offer only fifteen pairs -- which is why E2 is six terms.
 
     Aggregating this one to 25 per-model means -- the mirror of what E1 used to do -- was
-    measured and is worse, because three of the five features are functions of the
-    dataset as well as the model and averaging them discards real variation.
+    measured and is worse. It was worse for a stronger reason before 2026-09-05, when
+    three model features varied within a model; those are retired, and only
+    `Processing Units Number` still does. Averaging it away still discards real variation,
+    and the optimum collapses to a single term.
     """
     return run_equation(frame, (), MODEL_FEATURES, config, "E2")
 
@@ -423,9 +427,13 @@ def comparison(
 ) -> pl.DataFrame:
     """E1 against E3 on the one scale where they are comparable: all rows.
 
-    E1's own R2 is computed over 20 dataset means and E3's over 476 rows, so the two
-    headline numbers share no denominator. Evaluating E1's equation on every row puts
-    both on the same variance and makes the gap between them mean something.
+    All three equations are already fitted and scored on the same 476 rows, so this table
+    is not correcting a denominator -- an earlier version of E1 was fitted on 20 aggregated
+    dataset means and it was. What it adds is the two *ceilings* beside the equations: the
+    true per-dataset and per-model means, which are the most any equation restricted to
+    that half of the meta-data could reach. Without them a reader compares E1's 0.349 with
+    E3's 0.665 and concludes the dataset side is weak, when 0.349 against a ceiling of
+    0.354 means E1 is finished.
     """
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
     truth = target(frame)

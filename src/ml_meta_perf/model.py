@@ -115,3 +115,15 @@ class Equation:
 
 def _escape(name: str) -> str:
     return name.replace("_", r"\_").replace("^", r"\^{}")
+
+#: How a term's direction is written in every exported table.
+#:
+#: One spelling, in one place, because `attribution.term_effects` and `report` both write a
+#: ``direction`` column and used to disagree -- "increases MCC" in one CSV, "raises MCC" in
+#: the next -- which reads as two different quantities to anyone joining them.
+RAISES, LOWERS = "raises MCC", "lowers MCC"
+
+
+def direction(signed: float) -> str:
+    """The word for the sign of a standardised weight or effect."""
+    return RAISES if signed > 0.0 else LOWERS

@@ -70,7 +70,7 @@ def render(
         _show(report.correlations)
 
     if "equations" in phases:
-        _section("E1 -- dataset features only (fitted on 20 dataset means)")
+        _section("E1 -- dataset features only (fitted on all rows)")
         print(report.e1.equation)
         print(f"\nin-sample: {report.e1.in_sample}")
         for label, scores in report.e1.cross_validated.items():

@@ -73,6 +73,14 @@ class Subset:
 
     indices: tuple[int, ...]
     weights: np.ndarray
+    #: The **penalised** objective this subset reached, ``||y - Xw||^2 + lambda*||w||^2``,
+    #: not a residual sum of squares. It is only ever compared -- the beam sorts on it and
+    #: the refinement pass tests it against an incumbent -- so its scale does not matter,
+    #: but two things follow from the name. Ridge shrinkage can drive it slightly negative
+    #: on a near-perfect fit, which is harmless for ordering and would not be for anything
+    #: taking a square root of it; nothing does, and nothing should without clamping at the
+    #: point of use rather than here, since clamping would flatten the ordering the beam
+    #: depends on among near-perfect subsets.
     rss: float
 
 

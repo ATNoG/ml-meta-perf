@@ -5,8 +5,11 @@ and they behave very differently, which is why they are named separately here:
 
 * dataset features are constant across every row of a given dataset, so on their own
   they can only ever predict a per-dataset constant;
-* model features vary with the model, and three of them (the operation counts) also
-  vary with the dataset, since they are functions of the dataset size.
+* model features vary with the model, and one of them -- ``Processing Units Number`` --
+  also varies with the dataset, since it is a function of the dataset's shape. Three
+  others once did and were retired for it on 2026-09-05: a descriptor that moves within a
+  model is partly a dataset feature wearing a model feature's name, which is why they
+  helped transfer to a new dataset and hurt transfer to a new learner.
 
 That asymmetry is the whole point of the two-equation comparison, so the split is
 part of the public API rather than something each caller re-derives.

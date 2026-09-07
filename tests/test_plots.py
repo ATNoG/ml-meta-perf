@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import numpy as np
 import polars as pl
 
+from ml_meta_perf.model import LOWERS, RAISES
 from ml_meta_perf.plots import (
     contribution_shares,
     count_below_floor,
@@ -45,7 +46,7 @@ def effects() -> pl.DataFrame:
             "weight": [-0.13, 0.02, 0.09],
             "beta": [-0.17, 0.09, 0.06],
             "effect": [0.31, 0.22, 0.14],
-            "direction": ["decreases MCC", "increases MCC", "increases MCC"],
+            "direction": [LOWERS, RAISES, RAISES],
         }
     )
 

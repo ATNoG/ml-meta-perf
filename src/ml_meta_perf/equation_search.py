@@ -64,11 +64,15 @@ DEFAULT_POOL_SIZE = 600
 class SearchPoint:
     """A feature set together with the configuration it is to be fitted under."""
 
+    # No defaults. They were the pre-2026-09-05 configuration and stayed behind when
+    # `DEFAULT_E3` moved, which is a silent way to search a grid around the wrong point.
+    # `grid` passes all five explicitly and is the only construction site, so requiring
+    # them costs nothing and cannot drift again.
     features: tuple[str, ...]
-    penalty: float = 20.0
-    headline_terms: int = 20
-    max_abs_zscore: float = 3.0
-    max_arity: int = 3
+    penalty: float
+    headline_terms: int
+    max_abs_zscore: float
+    max_arity: int
 
     def configuration(self, *, pool_size: int = DEFAULT_POOL_SIZE) -> Configuration:
         """The `experiment.Configuration` this point stands for.

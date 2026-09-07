@@ -1,10 +1,17 @@
 """Model identity: the part of a classifier the meta-features do not describe.
 
-Chapter 6 measures a gap and leaves it open. Dataset identity explains 0.354 of MCC
-variance and twelve dataset meta-features recover 95% of that; model identity explains
-0.282 and five model meta-features recover only 58%. The missing 42% is real capability
-that this corpus records nowhere -- it is the difference between *what a model costs*,
-which the features state, and *what a model is good at*, which they do not.
+Chapter 6 measures a gap. Dataset identity explains 0.354 of MCC variance and the twelve
+dataset meta-features recover 98% of that; model identity explains 0.282 and the six model
+meta-features recover 88%. The residual 12% is capability this corpus records nowhere --
+the difference between *what a model costs*, which the features state, and *what a model
+is good at*, which they do not.
+
+**That gap was 42% when this module was written, and closing it is what shrank this
+module's claim.** The four asserted ordinals merged on 2026-09-05 took the model side from
+58% to the high eighties, so the headroom a per-model table can still recover is small.
+The module is kept because it measures the ceiling that bounds every model-side proposal,
+not because the correction it computes is worth publishing -- see the standing objections
+below and in chapter 9.
 
 This module writes that difference down. Under leave-one-dataset-out every one of the 25
 models appears in every training fold, so the residual of the fitted equation can be
