@@ -41,10 +41,19 @@ def _oracle(report: Report) -> float | None:
     return float(matched["r2"][0]) if matched.height else None
 
 
-def _knee(report: Report) -> int | None:
-    """The knee of the in-sample curve, as the run's own selection table reports it."""
-    matched = report.term_choice.filter(pl.col("rule") == "knee (in-sample)")
-    return int(matched["n_terms"][0]) if matched.height else None
+def _published_length(report: Report) -> int | None:
+    """How many terms the equation being reported actually has.
+
+    This figure used to mark `term_choice`'s in-sample knee instead, which on the current
+    configuration is 4 while the published equation has 16 -- so the line labelled "knee"
+    stood four fifths of the way from the equation it was drawn beside. Marking the length
+    the rest of the report is about cannot go out of step with it.
+
+    The knee itself is still reported, in `term_choice`, and it is under review: it is
+    detected on in-sample R2 alone and on a non-uniform grid that happens to skip every
+    length where the transfer curve craters. See `TODO.md`, item 2.
+    """
+    return len(report.e3.equation.terms) or None
 
 
 def generate(report: Report, destination: str | Path, data: str | Path | None = None) -> list[Path]:
@@ -73,7 +82,8 @@ def generate(report: Report, destination: str | Path, data: str | Path | None = 
             report.e3.curve,
             folder / "error_curve_mae.png",
             metric="mae",
-            marker=_knee(report),
+            marker=_published_length(report),
+            marker_label="published equation",
         ),
         term_effects(report.effects, folder / "term_effects.png"),
         practice_effects(report.practices, folder / "practice_effects.png"),
@@ -94,14 +104,17 @@ def captions(report: Report, data: str | Path | None = None) -> dict[str, str]:
 
     return {
         "equation_comparison.png": (
-            "Each fitted equation against the ceiling that bounds it, all scored on the "
+            "Each fitted equation against the level it is read against, all scored on the "
             "same 476 rows. Dataset-only and model-only equations are bounded by what "
-            "their group identity can explain; any additive equation is bounded by the "
-            "oracle. All bars are in-sample."
+            "their group identity can explain. The additive oracle bounds only an equation "
+            "additive in dataset and model effects, which E3 is not: its mixed terms carry "
+            "interactions, and it scores above the oracle. All bars are in-sample."
         ),
         "term_count_curve.png": (
             "Accuracy against equation length for E3, in-sample and under both "
-            "cross-validation protocols. The additive ceiling bounds every curve shown."
+            "cross-validation protocols. The additive oracle is the best score reachable "
+            "by an equation additive in dataset and model effects; E3 rises above it "
+            "because its mixed terms represent interactions the oracle cannot."
         ),
         "predicted_vs_actual.png": (
             "Predicted against actual MCC for E3, with the rug showing the marginal "
@@ -110,7 +123,7 @@ def captions(report: Report, data: str | Path | None = None) -> dict[str, str]:
         ),
         "error_curve_mae.png": (
             "Mean absolute error in MCC against equation length, under both protocols. "
-            "The vertical line marks the knee of the in-sample curve."
+            "The vertical line marks the length of the published equation."
         ),
         "term_effects.png": (
             "Per-term effect on predicted MCC, measured as the swing between the term's "
@@ -118,14 +131,17 @@ def captions(report: Report, data: str | Path | None = None) -> dict[str, str]:
         ),
         "practice_effects.png": (
             "Per-feature effect on predicted MCC between the feature's lowest and highest "
-            "decile, shaded by the confidence its practice was rated at."
+            "decile, shaded by the confidence its practice was rated at. Only the confidence "
+            "levels present in the table appear in the legend."
         ),
         "contribution_shares.png": (
             "Share of E3's output variance driven by terms using dataset features only, "
             "model features only, and both. Shares are covariance-based and sum to 1."
         ),
         "per_group_quality.png": (
-            "Rank correlation and top-1 regret for each held-out dataset under leave-one-dataset-out validation."
+            "MCC given up on each held-out dataset by taking the model the equation ranks "
+            "first, under leave-one-dataset-out validation. Zero means the top pick was the "
+            "dataset's best model, to within the 0.01 MCC relevance tolerance."
         ),
         "decision_quality.png": (
             "Accuracy and F1 of the above-or-below-threshold decision, against the threshold, "

@@ -80,6 +80,14 @@ def term_count_curve(
     The oracle line is the point of the figure. Without it a reader sees a curve still
     climbing and assumes more terms would keep paying, when the whole approach is bounded
     well below 1. It is drawn as a labelled line rather than described in text.
+
+    **It is labelled "additive oracle", not "additive ceiling", and E3 is expected to cross
+    it.** `validate.additive_oracle` is the best score reachable by a model that is additive
+    in *dataset effect plus model effect* -- perfect group means and nothing else. E3 carries
+    mixed terms, each multiplying a dataset feature by a model one, so it represents
+    interactions the oracle cannot and rises above it at 16 terms. Calling that line a
+    ceiling while a curve sits above it invited the reader to find an error where the
+    headline result is: the crossing is what the mixed terms buy.
     """
     figure, axes = plt.subplots(figsize=(7.0, 4.4))
     sizes = curve["n_terms"].to_numpy()
@@ -95,9 +103,12 @@ def term_count_curve(
             color=CEILING,
             linestyle="-.",
             linewidth=1.2,
-            label=f"additive ceiling ({oracle:.3f})",
+            label=f"additive oracle ({oracle:.3f})",
         )
-        axes.set_ylim(top=oracle + 0.05)
+        # Headroom above whichever is higher. Pinning the top to the oracle cropped the
+        # in-sample curve the moment it crossed -- which is exactly when it matters most.
+        highest = max(float(curve["r2_in_sample"].to_numpy().max()), oracle)
+        axes.set_ylim(top=highest + 0.05)
 
     axes.set_xlabel("number of terms")
     axes.set_ylabel("$R^2$")
@@ -113,6 +124,7 @@ def error_curve(
     *,
     metric: str = "mae",
     marker: int | None = None,
+    marker_label: str | None = None,
 ) -> Path:
     """Error against equation length, in the target's own units.
 
@@ -123,8 +135,11 @@ def error_curve(
 
     ``curve`` supplies all three protocols, so fit and transfer are read from one figure.
 
-    ``marker`` draws a vertical line at a chosen equation length -- the knee, typically --
-    as a labelled line rather than an annotation.
+    ``marker`` draws a vertical line at a chosen equation length, and ``marker_label`` says
+    what that length *is*. The label used to be hardcoded to "knee", which is how this figure
+    came to assert a knee of 4 terms while the study published an equation of 16 -- two
+    different quantities, one of them not what the caller was passing. Whoever draws the line
+    now has to name it.
     """
     label = {"mae": "mean absolute error (MCC)", "smape": "SMAPE (%)"}.get(metric, metric)
     figure, axes = plt.subplots(figsize=(7.0, 4.2))
@@ -138,7 +153,8 @@ def error_curve(
         if column in curve.columns:
             axes.plot(sizes, curve[column].to_numpy(), style, color=colour, label=name, linewidth=2)
     if marker is not None:
-        axes.axvline(marker, color=CEILING, linestyle="-.", linewidth=1.2, label=f"knee ({marker} terms)")
+        name = marker_label or "marked length"
+        axes.axvline(marker, color=CEILING, linestyle="-.", linewidth=1.2, label=f"{name} ({marker} terms)")
 
     axes.set_xlabel("number of terms")
     axes.set_ylabel(label)
@@ -201,13 +217,25 @@ def predicted_versus_actual(
     axes.plot(limits, limits, color=CEILING, linewidth=1.0, linestyle="--", label="perfect", zorder=1)
     axes.scatter(truth, predicted, s=18, alpha=0.55, color=IN_SAMPLE, edgecolor="none", zorder=2)
     if groups is not None:
+        # Drawn just *below* the axis floor with clipping off, in the neutral grey, so it
+        # reads as a marginal distribution against the frame rather than as a row of
+        # predictions sitting at MCC = 0. In the data colour and inside the axis it was
+        # indistinguishable from the scatter, and this target genuinely has 15 rows at
+        # exactly zero -- so a reader had no way to tell the rug from real points.
+        span = limits[1] - limits[0]
+        # `clip_on=False` frees the rug to sit under the frame, and would equally free the one
+        # row at MCC = -0.29 to render as a stray tick out in the left margin. The axis floor
+        # is a deliberate choice (`scatter_limits`) and the caption discloses the excluded
+        # point, so the rug is restricted to the range it annotates.
+        inside = truth[(truth >= limits[0]) & (truth <= limits[1])]
         axes.plot(
-            truth,
-            np.full_like(truth, limits[0]),
+            inside,
+            np.full_like(inside, limits[0] - 0.012 * span),
             "|",
-            color=IN_SAMPLE,
-            alpha=0.35,
-            markersize=6,
+            color=CEILING,
+            alpha=0.5,
+            markersize=5,
+            clip_on=False,
             zorder=1,
         )
     axes.set_xlim(limits)
@@ -223,10 +251,17 @@ def predicted_versus_actual(
 def equation_comparison(comparison: pl.DataFrame, destination: str | Path) -> Path:
     """Every equation and every ceiling on one scale.
 
-    The headline result of the study. Equations are drawn solid and the ceilings they are
-    bounded by are drawn hatched immediately beside them, so the gap each equation leaves
-    against its own limit is read directly off the figure instead of computed by the
-    reader from a table.
+    The headline result of the study. Equations are drawn solid and the reference levels
+    they are read against are drawn hatched immediately beside them, so the gap each
+    equation leaves against its own limit is read directly off the figure instead of
+    computed by the reader from a table.
+
+    **"Reference level", not "ceiling", because one of the three is not a ceiling for the
+    bar next to it.** The E1 and E2 references are genuine ceilings -- true per-group means
+    are the most a predictor constant within that group can achieve. The additive oracle is
+    a ceiling only for an equation additive in dataset *and* model effects, and E3 is not
+    one: its mixed terms carry interactions, and it scores above the oracle. A legend
+    calling every hatched bar a ceiling made the study's headline look like a bug.
     """
     labels = comparison["equation"].to_list()
     values = comparison["r2"].to_numpy()
@@ -249,17 +284,27 @@ def equation_comparison(comparison: pl.DataFrame, destination: str | Path) -> Pa
 
     solid = Rectangle((0, 0), 1, 1, facecolor=IN_SAMPLE, alpha=0.85)
     hatched = Rectangle((0, 0), 1, 1, facecolor=CEILING, alpha=0.85, hatch="//")
-    axes.legend([solid, hatched], ["fitted equation", "ceiling"], frameon=False, fontsize=9)
+    axes.legend([solid, hatched], ["fitted equation", "reference level"], frameon=False, fontsize=9)
     return _finish(figure, destination)
 
 
-def term_effects(effects: pl.DataFrame, destination: str | Path, *, top: int = 12) -> Path:
-    """Per-term effect sizes in MCC units, signed, strongest at the top."""
-    table = effects.head(top).reverse()
-    labels = [_shorten(name) for name in table["term"].to_list()]
+def term_effects(effects: pl.DataFrame, destination: str | Path, *, top: int | None = None) -> Path:
+    """Per-term effect sizes in MCC units, signed, strongest at the top.
+
+    ``top`` defaults to every term in the equation. It used to default to 12, which silently
+    dropped four of the published sixteen -- and the dropped ones were the small-effect terms
+    a reader most needs to see, since a term that survived selection while moving the
+    prediction barely at all is exactly what the brevity argument is about.
+
+    Term names are wrapped at their operators rather than truncated. Truncation cut names
+    mid-feature ("[log(gravity)] / [log(Processing Units Numbe...") which leaves the reader
+    unable to tell two terms over the same numerator apart.
+    """
+    table = (effects if top is None else effects.head(top)).reverse()
+    labels = [_wrap_term(name) for name in table["term"].to_list()]
     values = table["effect"].to_numpy() * np.sign(table["beta"].to_numpy())
 
-    figure, axes = plt.subplots(figsize=(8.2, 0.42 * len(labels) + 1.2))
+    figure, axes = plt.subplots(figsize=(8.6, 0.52 * len(labels) + 1.2))
     axes.barh(
         range(len(labels)),
         values,
@@ -295,17 +340,36 @@ def practice_effects(practices: pl.DataFrame, destination: str | Path) -> Path:
     axes.set_xlabel("MCC change from the feature's lowest decile to its highest")
     axes.grid(axis="x", alpha=0.25, linestyle=":")
 
-    if "confidence" in table.columns:
-        handles = [Rectangle((0, 0), 1, 1, facecolor=CEILING, alpha=alpha) for alpha in (0.95, 0.6, 0.3)]
-        axes.legend(handles, ["strong", "moderate", "weak"], frameon=False, fontsize=8, loc="lower right")
+    # Only the levels actually present, and drawn in the palette the bars use. The previous
+    # legend advertised strong/moderate/weak in grey against red and blue bars, which read as
+    # a third series; worse, `unrated` and `moderate` shared an alpha, so on a table of four
+    # moderate and two unrated rows every bar rendered identically and the legend described a
+    # distinction that was not on the plot.
+    present = _confidence_levels(table)
+    if present:
+        handles = [Rectangle((0, 0), 1, 1, facecolor=POSITIVE, alpha=CONFIDENCE_ALPHA[name]) for name in present]
+        axes.legend(handles, present, frameon=False, fontsize=8, loc="lower right", title="confidence")
     return _finish(figure, destination)
 
 
+#: Bar opacity per rated confidence. ``unrated`` is deliberately the faintest rather than
+#: sharing ``moderate``'s value: an unrated practice is one whose term never stabilised, which
+#: is weaker evidence than a moderate rating, not equal to it.
+CONFIDENCE_ALPHA: dict[str, float] = {"strong": 0.95, "moderate": 0.65, "weak": 0.4, "unrated": 0.25}
+
+
+def _confidence_levels(table: pl.DataFrame) -> list[str]:
+    """The rated levels present in ``table``, strongest first."""
+    if "confidence" not in table.columns:
+        return []
+    seen = {str(value) for value in table["confidence"].to_list()}
+    return [name for name in CONFIDENCE_ALPHA if name in seen]
+
+
 def _confidence_alpha(table: pl.DataFrame) -> list[float]:
-    scale = {"strong": 0.95, "moderate": 0.6, "weak": 0.3, "unrated": 0.6}
     if "confidence" not in table.columns:
         return [0.85] * table.height
-    return [scale.get(str(value), 0.6) for value in table["confidence"].to_list()]
+    return [CONFIDENCE_ALPHA.get(str(value), 0.25) for value in table["confidence"].to_list()]
 
 
 def contribution_shares(shares: pl.DataFrame, destination: str | Path) -> Path:
@@ -323,29 +387,61 @@ def contribution_shares(shares: pl.DataFrame, destination: str | Path) -> Path:
 
 
 def per_group_quality(report: pl.DataFrame, destination: str | Path) -> Path:
-    """Rank correlation and top-1 regret for each held-out dataset.
+    """What following the equation's top pick costs, per held-out dataset, in MCC.
 
-    Averages hide that the equation ranks some datasets almost perfectly and others no
-    better than chance. Plotting every fold shows the spread a mean cannot.
+    Regret is the practitioner's question stated in the target's own units: take the model
+    the equation ranks first, and this is how much MCC that gives up against the dataset's
+    genuinely best model. Zero means the pick was right.
+
+    **Spearman is deliberately not drawn here.** It was, and it should not have been, for
+    two reasons. It sits between 0.63 and 0.73 on this data for every predictor *and* every
+    baseline including a constant, so it separates nothing; and plotting it on the same
+    axis as regret put a unitless correlation and an MCC difference on one shared scale,
+    where neither could be read. Average precision, reciprocal rank and hit@1 are the
+    ranking metrics that do discriminate here, and `ranking_quality` draws those.
     """
-    table = report.sort("spearman")
+    table = report.sort("regret", descending=True)
     labels = table["group"].to_list()
     positions = np.arange(len(labels))
+    values = table["regret"].to_numpy()
 
-    figure, axes = plt.subplots(figsize=(7.4, 0.34 * len(labels) + 1.4))
-    axes.barh(positions, table["spearman"].to_numpy(), color=IN_SAMPLE, alpha=0.85, label="Spearman")
-    axes.plot(table["regret"].to_numpy(), positions, "o", color=NEGATIVE, markersize=5, label="top-1 regret")
+    figure, axes = plt.subplots(figsize=(7.0, 0.32 * len(labels) + 1.4))
+    axes.barh(positions, values, color=[CEILING if v <= 0.0 else NEGATIVE for v in values], alpha=0.85)
     axes.set_yticks(positions)
     axes.set_yticklabels(labels, fontsize=8)
+    axes.invert_yaxis()
     axes.axvline(0.0, color="black", linewidth=0.8)
-    axes.set_xlabel("Spearman correlation / MCC lost by picking the top-ranked model")
+    axes.set_xlabel("MCC given up by taking the equation's top-ranked model")
     axes.grid(axis="x", alpha=0.25, linestyle=":")
-    axes.legend(frameon=False, fontsize=9, loc="lower right")
     return _finish(figure, destination)
 
 
 def _shorten(name: str, limit: int = 46) -> str:
     return name if len(name) <= limit else name[: limit - 1] + "…"
+
+
+def _wrap_term(name: str, width: int = 34) -> str:
+    """Break a term name at its operators, so no feature name is ever cut in half.
+
+    Term names are `[a] * [b]`, `[a] / [b]` or `([a] + [b]) / [c]`, so the operators outside
+    the brackets are the only safe break points. Splitting on them keeps every bracketed
+    feature intact on one line.
+    """
+    if len(name) <= width:
+        return name
+    parts = name.replace(" * ", "\x00* ").replace(" / ", "\x00/ ").replace(" + ", "\x00+ ").split("\x00")
+    lines: list[str] = []
+    current = ""
+    for part in parts:
+        candidate = f"{current} {part}".strip() if current else part
+        if len(candidate) > width and current:
+            lines.append(current)
+            current = part
+        else:
+            current = candidate
+    if current:
+        lines.append(current)
+    return "\n".join(lines)
 
 
 def _wrap(label: str, width: int = 18) -> str:
@@ -399,16 +495,18 @@ def ranking_quality(selection: pl.DataFrame, destination: str | Path) -> Path:
     """
     table = selection.sort("ap")
     positions = np.arange(table.height)
-    figure, axes = plt.subplots(figsize=(7.0, 4.2))
-    axes.barh(positions - 0.2, table["ap"], height=0.38, color=IN_SAMPLE, label="average precision")
-    axes.barh(positions + 0.2, table["mrr"], height=0.38, color=LOO_DATASET, label="reciprocal rank")
+    figure, axes = plt.subplots(figsize=(7.0, 0.34 * table.height + 1.4))
+    axes.barh(positions - 0.19, table["ap"], height=0.36, color=IN_SAMPLE, label="average precision")
+    axes.barh(positions + 0.19, table["mrr"], height=0.36, color=LOO_DATASET, label="reciprocal rank")
+    # Inside the axis, against the tick label, rather than floating past x = 1 in the margin:
+    # a marker drawn beyond the data limit reads as a value on the scale it sits next to.
     hits = [index for index, value in enumerate(table["hit_at_1"]) if value >= 1.0]
     if hits:
-        axes.scatter([1.02] * len(hits), hits, marker="*", s=55, color=POSITIVE, label="best model ranked first")
+        axes.scatter([0.02] * len(hits), hits, marker="*", s=60, color=POSITIVE, label="best model ranked first")
     axes.set_yticks(positions)
     axes.set_yticklabels([_shorten(name, 24) for name in table["group"]], fontsize=7)
     axes.set_xlabel("score")
-    axes.set_xlim(0.0, 1.1)
+    axes.set_xlim(0.0, 1.0)
     axes.grid(alpha=0.25, linewidth=0.6, axis="x")
     # Below the axes rather than inside it: the bars are sorted, so whichever corner the
     # legend takes it covers either the best or the worst datasets.

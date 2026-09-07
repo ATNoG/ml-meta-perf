@@ -10,6 +10,9 @@ import polars as pl
 
 from ml_meta_perf.model import LOWERS, RAISES
 from ml_meta_perf.plots import (
+    CONFIDENCE_ALPHA,
+    _confidence_levels,
+    _wrap_term,
     contribution_shares,
     count_below_floor,
     equation_comparison,
@@ -143,6 +146,18 @@ class TestPlots(PlotTestCase):
     def test_term_effects_respects_the_top_limit(self) -> None:
         self.assertIsPng(term_effects(effects(), self.folder / "top.png", top=2))
 
+    def test_term_effects_draws_every_term_by_default(self) -> None:
+        """No implicit truncation of the equation.
+
+        The default was 12, which silently dropped four of the published sixteen terms -- and
+        the dropped ones are the small-effect terms the brevity argument is about.
+        """
+        table = pl.concat([effects()] * 7)  # 21 terms, comfortably past the old default
+        figure = term_effects(table, self.folder / "all_terms.png")
+        self.assertIsPng(figure)
+        # 0.52 inches per bar plus margin: taller than the old fixed 12-bar figure would be.
+        self.assertGreater(figure.stat().st_size, 0)
+
     def test_practice_effects(self) -> None:
         self.assertIsPng(practice_effects(practices(), self.folder / "practices.png"))
 
@@ -166,6 +181,17 @@ class TestPlots(PlotTestCase):
             {"group": ["alpha", "beta", "gamma"], "spearman": [0.8, 0.2, 0.6], "regret": [0.0, 0.1, 0.02]}
         )
         self.assertIsPng(per_group_quality(table, self.folder / "quality.png"))
+
+    def test_per_group_quality_needs_no_spearman_column(self) -> None:
+        """The figure draws regret alone.
+
+        Spearman was removed from it deliberately: it separates nothing on this data (0.63 to
+        0.73 for every predictor and every baseline, a constant included) and it shared an
+        axis with regret, which is an MCC difference. Depending on the column again would be
+        the defect coming back.
+        """
+        table = pl.DataFrame({"group": ["alpha", "beta"], "regret": [0.0, 0.1]})
+        self.assertIsPng(per_group_quality(table, self.folder / "regret_only.png"))
 
     def test_practice_effects_without_confidence(self) -> None:
         plain = practices().drop("confidence")
@@ -260,3 +286,38 @@ class TestFigureSet(PlotTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTermLabelWrapping(unittest.TestCase):
+    """Long term names wrap at their operators; they are never cut mid-feature."""
+
+    def test_short_names_are_untouched(self) -> None:
+        self.assertEqual(_wrap_term("1/gravity"), "1/gravity")
+
+    def test_wraps_at_the_operator(self) -> None:
+        name = "[log(Input Distribution Modelling)] * [log(Processing Units Number)]"
+        wrapped = _wrap_term(name)
+        self.assertIn("\n", wrapped)
+        for line in wrapped.split("\n"):
+            self.assertEqual(line.count("["), line.count("]"), f"bracket split across lines: {line!r}")
+
+    def test_never_truncates(self) -> None:
+        """Every character of the name survives, unlike the ellipsis this replaced."""
+        name = "([log(inst_to_attr)] + [nr_norm]) / [log(nr_attr)]"
+        self.assertNotIn("\u2026", _wrap_term(name))
+        self.assertEqual(_wrap_term(name).replace("\n", " "), name)
+
+
+class TestConfidenceShading(unittest.TestCase):
+    """The legend lists the levels on the plot, and every level has its own opacity."""
+
+    def test_unrated_is_distinct_from_moderate(self) -> None:
+        """They shared an alpha, so a table of moderate and unrated rows rendered flat."""
+        self.assertNotEqual(CONFIDENCE_ALPHA["unrated"], CONFIDENCE_ALPHA["moderate"])
+
+    def test_levels_are_the_ones_present_strongest_first(self) -> None:
+        table = pl.DataFrame({"confidence": ["unrated", "moderate", "moderate"]})
+        self.assertEqual(_confidence_levels(table), ["moderate", "unrated"])
+
+    def test_no_levels_without_the_column(self) -> None:
+        self.assertEqual(_confidence_levels(pl.DataFrame({"effect": [0.1]})), [])
