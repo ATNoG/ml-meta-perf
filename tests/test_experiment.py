@@ -26,6 +26,7 @@ from ml_meta_perf.data import (
     target,
 )
 from ml_meta_perf.experiment import (
+    interaction_reached,
     DEFAULT_E3,
     Configuration,
     Report,
@@ -220,6 +221,7 @@ class TestCli(unittest.TestCase):
             oracles=oracle_ladder(
                 target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN), ranks=(0, 1)
             ),
+            interaction=interaction_reached(frame, e3),
         )
 
     def test_render_prints_every_section(self) -> None:

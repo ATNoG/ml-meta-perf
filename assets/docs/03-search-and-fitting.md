@@ -403,7 +403,7 @@ Three rules are reported rather than one:
 |---|---|---|---|
 | knee of the in-sample curve | 4 | 0.541 | 0.508 |
 | knee of the cross-validated curve | 8 | 0.627 | 0.598 |
-| **best cross-validated** | **16** | **0.672** | **0.652** |
+| **best cross-validated** | **16** | **0.665** | **0.627** |
 
 **Sixteen is the headline, and the three rules now nearly agree.** Both knees land short of
 it, but far less badly than they used to: the cross-validated knee at 8 terms costs 0.055 of
@@ -417,7 +417,7 @@ when each length was a separately re-selected equation.
 |---|---|---|---|
 | 8 | 0.6274 | 0.5975 | 0.1533 |
 | 12 | 0.6448 | 0.6293 | 0.1458 |
-| **16** | **0.6716** | **0.6522** | **0.1378** |
+| **16** | **0.6651** | **0.6270** | **0.1444** |
 | 20 | 0.6790 | 0.6455 | 0.1393 |
 | 24 | 0.6873 | 0.6209 | 0.1479 |
 

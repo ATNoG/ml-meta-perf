@@ -74,9 +74,9 @@ scale and one table:
 |---|---|---|---|---|
 | E1 (dataset only) | 7 | 0.349 | 0.210 | 0.657 |
 | *E1's ceiling — the true dataset means* | | *0.354* | *0.204* | *0.653* |
-| E2 (model only) | 8 | 0.271 | 0.230 | 0.469 |
+| E2 (model only) | 6 | 0.248 | 0.234 | 0.459 |
 | *E2's ceiling — the true model means* | | *0.282* | *0.226* | *0.487* |
-| **E3 (dataset + model)** | **16** | **0.672** | **0.134** | **0.828** |
+| **E3 (dataset + model)** | **16** | **0.665** | **0.134** | **0.823** |
 | *additive oracle* | | *0.6605* | *0.145* | *0.810* |
 
 ![Equations against their ceilings](../figures/equation_comparison.png)
@@ -99,15 +99,15 @@ that is the column the next section reads.
 | | terms | in-sample R² | LOO-dataset R² | LOO-model R² |
 |---|---|---|---|---|
 | E1 | 7 | 0.349 | 0.341 | 0.306 |
-| E2 | 8 | 0.271 | 0.203 | 0.242 |
-| **E3** | **16** | **0.672** | **0.652** | **0.633** |
+| E2 | 6 | 0.248 | 0.185 | 0.228 |
+| **E3** | **16** | **0.665** | **0.627** | **0.622** |
 
 Both controls are now reported under both protocols, which the aggregated E1 could not be.
 The pattern is the one the design predicts and is worth checking rather than assuming: E1
 transfers *better* across models (0.294) than across datasets (0.217), because it predicts
 a per-dataset constant and a new model does not change it; E2 is the mirror.
 
-**E3's two transfer numbers are now close** — 0.652 and 0.633, against a fit of 0.672. An
+**E3's two transfer numbers are now close** — 0.627 and 0.622, against a fit of 0.665. An
 equation that loses under 0.04 R² when a whole dataset or a whole learner is withheld is
 transferring, not memorising, and the gap between the two protocols is small enough that
 neither half of the meta-data is carrying the equation alone.
@@ -126,18 +126,18 @@ the equations widen the gap rather than closing it:
 | | equation | own ceiling | captured |
 |---|---|---|---|
 | dataset features | 0.349 | 0.354 — the true dataset means | **98%** |
-| model features | 0.271 | 0.282 — the true model means | **96%** |
-| both | 0.672 | 0.6605 — the additive oracle* | *102%* |
+| model features | 0.248 | 0.282 — the true model means | **88%** |
+| both | 0.665 | 0.6605 — the additive oracle* | *101%* |
 
 <sub>*The additive oracle bounds a two-way *additive* form, and **E3 now crosses it** —
-0.672 against 0.661. That is not an error: nine of E3's sixteen terms multiply or divide a
+0.665 against 0.661. That is not an error: ten of E3's sixteen terms multiply or divide a
 dataset feature by a model feature, and such a term expresses interaction the additive oracle
 by construction cannot ([chapter 5](05-oracles.md)). The two rows above it are hard ceilings;
 this one is a reference level the equation is expected to pass.</sub>
 
 **Both halves are now close to their own ceilings.** Twelve dataset meta-features all but
 exhaust what dataset identity can explain — 98% of it, so there is essentially nothing left
-for a better dataset descriptor to find. The six model features reach 96% of what model
+for a better dataset descriptor to find. The six model features reach 88% of what model
 identity can, which is the result of replacing the model side rather than a property of the
 corpus as collected.
 
@@ -171,7 +171,7 @@ are artefacts:
   by construction. Only model terms can score well there. It is a diagnostic for model
   effects, not a statement of relative importance.
 - **Model features carry more in combination than alone.** Adding them to E1 is worth
-  +0.323 R² (0.349 → 0.672), beyond the 0.271 they achieve by themselves. The surplus is
+  +0.317 R² (0.349 → 0.665), beyond the 0.248 they achieve by themselves. The surplus is
   dataset×model interaction, which is why **9 of E3's 16 terms are mixed** and drive 56%
   of its output variance.
 
@@ -198,7 +198,7 @@ reports the result as a design decision rather than as a second result.
 
 | | terms | in-sample R² | LOO-dataset | LOO-model |
 |---|---|---|---|---|
-| `DEFAULT_E3` | 16 | **0.6716** | **0.6522** | **0.6334** |
+| `DEFAULT_E3` | 16 | **0.6651** | **0.6270** | **0.6220** |
 
 **All four knobs moved when the model features were replaced, and each for a reason.**
 
@@ -219,7 +219,7 @@ refit ([chapter 4](04-evaluation.md)), it does only the first, so heavy shrinkag
 paying for itself.
 
 **Why 16 terms and not 14, or 24?** Because leave-one-dataset-out is now *smooth* in length —
-0.644 at 14 terms, 0.652 at 16, 0.656 at 18, 0.658 at 20 — and past sixteen each further pair
+0.612 at 12 terms, 0.627 at 16, 0.638 at 20 — and past twenty it turns down, to 0.614 at 24
 buys under 0.005. Sixteen is a knee. Under the previous protocol the same curve swung by 0.3
 between adjacent lengths, because each length was a different equation refitted twenty times;
 fixing the form removed that variance and made the knee readable.
@@ -383,7 +383,7 @@ Standard regressors on the same raw features, under the same protocols:
 | RidgeCV (linear, 18 features) | 0.418 | **-2.002** | 0.328 |
 | RandomForest (300 trees) | **0.910** | **0.067** | 0.465 |
 | GradientBoosting | 0.820 | 0.049 | 0.354 |
-| **ml-meta-perf E3 (16 terms)** | 0.672 | **0.652** | 0.633 |
+| **ml-meta-perf E3 (16 terms)** | 0.665 | **0.627** | 0.622 |
 
 Read the RandomForest row across. With 20 dataset groups a forest memorises dataset
 identity almost perfectly and then transfers worse than a 16-term additive equation. This is also

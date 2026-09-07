@@ -30,7 +30,7 @@ import polars as pl
 
 from ml_meta_perf.fit import Selector, Standardizer, guided_screen
 from ml_meta_perf.model import MCC_LOWER, MCC_UPPER, Equation
-from ml_meta_perf.stats import mae, r2_score, rmse, smape, spearman
+from ml_meta_perf.stats import mae, pearson, r2_score, rmse, smape, spearman
 from ml_meta_perf.terms import Library
 
 
@@ -667,3 +667,62 @@ def paired_comparison(
         low=float(np.percentile(means, 2.5)),
         high=float(np.percentile(means, 97.5)),
     )
+
+
+def interaction_capture(
+    target: np.ndarray,
+    prediction: np.ndarray,
+    first: np.ndarray,
+    second: np.ndarray,
+    rank: int = 1,
+) -> dict[str, float]:
+    """How much of the leading interaction pattern the equation actually reaches.
+
+    `interaction_oracle` measures what a rank-``k`` interaction would be *worth* if
+    someone could predict it. It says nothing about whether the fitted equation gets any
+    of it, and chapter 5 originally answered that by comparing two R2 values -- which
+    cannot distinguish an equation that misses the pattern from one that finds it and is
+    inaccurate elsewhere.
+
+    This compares the two interaction *structures* directly. Both the truth and the
+    prediction are laid on the (dataset x model) grid and stripped of their own additive
+    part, leaving each side's interaction residual; the truth's is then reduced to its
+    leading ``rank`` components. ``alignment`` is the squared correlation between the two
+    over observed cells: 1.0 means the equation's interactions lie exactly along the
+    pattern the oracle found, 0.0 means they are unrelated to it.
+
+    Only observed cells count. The 24 absent ones contribute to neither side.
+    """
+    rows, columns = np.unique(first), np.unique(second)
+    row_index = {label: position for position, label in enumerate(rows)}
+    column_index = {label: position for position, label in enumerate(columns)}
+
+    def grid_of(values: np.ndarray) -> np.ndarray:
+        grid = np.full((rows.shape[0], columns.shape[0]), np.nan)
+        for value, row, column in zip(values, first, second, strict=True):
+            grid[row_index[row], column_index[column]] = value
+        return grid
+
+    def interaction(grid: np.ndarray) -> np.ndarray:
+        grand = float(np.nanmean(grid))
+        row_effect = np.nanmean(grid, axis=1) - grand
+        column_effect = np.nanmean(grid, axis=0) - grand
+        return grid - (grand + row_effect[:, None] + column_effect[None, :])
+
+    truth_grid = grid_of(target)
+    observed = ~np.isnan(truth_grid)
+    truth_interaction = np.where(observed, interaction(truth_grid), 0.0)
+    model_interaction = np.where(observed, interaction(grid_of(prediction)), 0.0)
+
+    left, values, right = np.linalg.svd(truth_interaction, full_matrices=False)
+    leading = (left[:, :rank] * values[:rank]) @ right[:rank]
+
+    wanted, reached = leading[observed], model_interaction[observed]
+    total = float((truth_interaction[observed] ** 2).sum())
+    return {
+        "alignment": float(pearson(wanted, reached) ** 2),
+        "leading_share": float((wanted**2).sum() / total) if total > 0.0 else float("nan"),
+        "interaction_share": total / float(((truth_grid[observed] - np.nanmean(truth_grid)) ** 2).sum())
+        if total > 0.0
+        else float("nan"),
+    }

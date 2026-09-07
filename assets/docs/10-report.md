@@ -350,6 +350,15 @@ The additive form cannot represent dataset-by-model interaction beyond what its 
 | 6 | 0.9651 | 0.0373 |
 | 8 | 0.9842 | 0.0191 |
 
+That is a ceiling, not a score. Whether the equation reaches any of it is a separate question, and the answer is that it reaches some: below, `alignment` is the squared correlation between the equation's own interaction residual and the leading components of the oracle's, over observed cells. `leading_share` is how much of the interaction variance those components carry, and `interaction_share` how much of MCC's variance is interaction at all.
+
+| protocol | rank | alignment | leading_share | interaction_share |
+|---|---|---|---|---|
+| in-sample | 1 | 0.3065 | 0.3757 | 0.3647 |
+| in-sample | 2 | 0.2837 | 0.5658 | 0.3647 |
+| leave-one-dataset-out | 1 | 0.2697 | 0.3757 | 0.3647 |
+| leave-one-dataset-out | 2 | 0.2145 | 0.5658 | 0.3647 |
+
 Variance of MCC explained by group identity alone, with no equation involved:
 
 | knowing only | n_groups | variance_explained |

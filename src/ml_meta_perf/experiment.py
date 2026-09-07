@@ -45,6 +45,7 @@ from ml_meta_perf.validate import (
     cross_validate_fixed_form,
     decision_report,
     fold_selections,
+    interaction_capture,
     oracle_ladder,
     random_kfold_groups,
     ranking_report,
@@ -419,6 +420,30 @@ def leakage_demonstration(
     return pl.DataFrame(rows)
 
 
+def interaction_reached(frame: pl.DataFrame, e3: EquationReport) -> pl.DataFrame:
+    """How much of the leading interaction pattern the fitted equation actually reaches.
+
+    The oracle ladder prices interaction components; this says whether E3 gets any of
+    them. Reported under both the fit and the held-out protocol, because an equation can
+    align with a pattern in-sample and lose it out of fold -- and that difference is the
+    whole question for a component nobody can predict from meta-features.
+    """
+    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+    truth = target(frame)
+    datasets, models = groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)
+    size = len(e3.equation.terms)
+    predictions = {"in-sample": e3.equation.predict(columns)}
+    path = e3.paths.get("loo_dataset")
+    if path is not None and size in path:
+        predictions["leave-one-dataset-out"] = path[size].predictions
+    rows = [
+        {"protocol": label, "rank": rank, **interaction_capture(truth, prediction, datasets, models, rank=rank)}
+        for label, prediction in predictions.items()
+        for rank in (1, 2)
+    ]
+    return pl.DataFrame(rows)
+
+
 def comparison(
     frame: pl.DataFrame,
     e1: EquationReport,
@@ -520,6 +545,10 @@ class Report:
     term_choice: pl.DataFrame
     pareto: pl.DataFrame
     oracles: pl.DataFrame
+    #: How far the equation's own interactions lie along the leading component the
+    #: oracle ladder finds. Without it the ladder measures a ceiling and says nothing
+    #: about whether the equation reaches any of it.
+    interaction: pl.DataFrame
     decision: pl.DataFrame
 
 
@@ -567,4 +596,5 @@ def run(
         term_choice=recommend(e3.curve),
         pareto=pareto_table(e3.curve),
         oracles=oracle_ladder(target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)),
+        interaction=interaction_reached(frame, e3),
     )

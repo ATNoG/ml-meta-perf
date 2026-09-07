@@ -31,16 +31,24 @@ citations are written by hand — a fitting procedure does not produce a citatio
 verdict and every number inside it is computed, against a stated threshold, so other data
 can overturn any of them.
 
-Verdicts are **supported**, **qualified**, **challenged** or **not tested**. Eight of the
-ten are supported, one is not tested — the balanced-metric practice, because the study
-adopts MCC and never compares it to accuracy or F1 — and one is **qualified**: the practice
-of checking a meta-learner against "use whatever usually works" now returns a verdict
-saying the equation clears that baseline, where in earlier runs it did not. Marking both
-rather than quietly counting them as wins is the point of having the verdict at all.
+Verdicts are **supported**, **qualified**, **challenged** or **not tested**. The tally is
+deliberately not written here: it moves whenever the equation does, and
+[chapter 10](10-report.md) opens the section with the current one. What is worth stating is
+the *shape* of it — most practices are supported, two or three sit at `not tested`, and
+that last group is the one to read first.
 
-**Eight of ten supported is a weak-looking result and should be read carefully.** It is not
+`not tested` is a real verdict rather than a gap. Two kinds of thing land there. The
+balanced-metric practice is untested because the study adopts MCC and never compares it to
+accuracy or F1, so it cannot be evidence about the choice. The outlier-robustness practice
+is untested because the column that recorded a *learner's* robustness was retired from the
+corpus, and the nearest surviving column, `nr_outliers`, describes the data instead —
+answering it with that number would produce a verdict that read as though the practice had
+been tested. Marking both rather than quietly counting them as wins is the point of having
+the verdict at all.
+
+**A high supported count is a weak-looking result and should be read carefully.** It is not
 that the catalogue was chosen to pass: each check has a stated threshold and returns
-`qualified` or `challenged` when the numbers say so, and one now does.
+`qualified` or `challenged` when the numbers say so, and some do.
 It is that the practices selected are ones a corpus of this shape *can* speak to. The
 honest reading is that this study corroborates established tabular-ML guidance on an
 independent corpus, not that it discovered anything the field disagreed about.
@@ -110,27 +118,17 @@ better left unwritten.
 
 ## The measured associations
 
-The evidence layer. Reproduced from the published 20-term E3; [chapter 10](10-report.md) is
-the generated version and is regenerated with the equation, so it is the one to trust if
-the two ever disagree.
+The evidence layer. **The table itself is not reproduced here.** It was, and it went on
+describing a 20-term equation over features the corpus no longer carries — the same failure
+the block table below was removed for. It lives in [chapter 10](10-report.md), which is
+regenerated with the equation on every run, and that is the version to quote.
 
-| # | association | effect (MCC) | confidence |
-|---|---|---|---|
-| 1 | Higher **equivalent number of attributes** → **lower** MCC | 0.37 | moderate |
-| 2 | Higher **model capacity** (log processing units) → **higher** MCC | 0.30 | moderate |
-| 3 | Higher **learner-family capability rank** → **higher** MCC | 0.29 | moderate |
-| 4 | Higher **number of attributes** → **higher** MCC | 0.24 | strong |
-| 5 | Higher **number of binary attributes** → **higher** MCC | 0.23 | strong |
-| 6 | Higher **noise-to-signal ratio** → **lower** MCC | 0.23 | strong |
-| 7 | Higher **number of classes** → **lower** MCC | 0.14 | moderate |
-| 8 | Higher **built-in outlier robustness** → **higher** MCC | 0.07 | moderate |
-| 9 | Higher **source-dataset size** → **higher** MCC | 0.06 | moderate |
-| 10 | Higher **count of active regularisation mechanisms** → **lower** MCC | 0.03 | weak |
+What belongs here is the caveat that has to travel with one of its rows wherever it is
+quoted. `Model Capability` is the one feature in the set that was *asserted* rather than
+measured, so "higher capability rank went with higher MCC" is partly the ladder being read
+back out.
 
-Row 3 needs its caveat carried with it wherever it is quoted. `Model Capability` is the one
-feature here that was *asserted* rather than measured, so "higher capability rank went with
-higher MCC" is partly the ladder being read back out. What is not built in is the
-conditional part — how family capability interacts with dataset properties — and
+What is not built in is the conditional part — how family capability interacts with dataset properties — and
 [chapter 8](08-limitations.md) sets out the three costs in full.
 
 ![Feature effects](../figures/practice_effects.png)
@@ -157,8 +155,9 @@ models run here, the expensive ones were not the ones that scored well on the da
 where they were expensive — and training cost is partly a function of dataset size, so it
 is carrying data difficulty as well as model capacity.
 
-`Training Operations` — since retired from the corpus — flipped sign between the earlier 14-term equation and the
-published one, and should not be acted on. It is written up as a limitation in
+`Training Operations` flipped sign between two equations fitted on the same data, and was
+one of four columns retired from the corpus on 2026-09-05 — so the example is now
+historical, and none of the associations in chapter 10 rests on it. It is written up as a limitation in
 [chapter 8](08-limitations.md#a-per-feature-association-can-flip-sign-between-equations), because the
 caveat it raises applies to the whole extraction rather than to that one row.
 
@@ -198,9 +197,12 @@ be read as a hypothesis this data is consistent with, not a finding established 
 
 ## Three ways to read a flat equation
 
-The published equation's 24 weights behave like **20.2 equally-weighted terms** (inverse
-Simpson index of the standardised-weight shares, $1/\sum_i s_i^2$), and the largest single
-term carries 8.9% of the mass. Sixteen terms are needed to reach 80%.
+The published equation's sixteen weights behave like **13.2 equally-weighted terms**
+(inverse Simpson index of the standardised-weight shares, $1/\sum_i s_i^2$); the largest
+single term carries 10.8% of the mass, and ten terms are needed to reach 80%. Those figures
+move with the equation — [chapter 10](10-report.md) is the regenerated version — but the
+*shape* is stable across every configuration tried: no term dominates, and no small handful
+of them accounts for the result.
 
 The additive form $f(X) = w_0t_0 + w_1t_1 + \dots$ invites reading one term at a time, and
 a flat equation refuses that. **This is a statement about the unit of explanation, not
@@ -224,16 +226,17 @@ earlier draft copied it into this chapter, where it went on describing a 24-term
 features the corpus no longer carries; the listing now stays on the generated side for the
 same reason E3 itself does.
 
-1. **Capacity helps.** Every term in block 1 rises with `Processing Units Number` — some
-   with it in the numerator, some as a divisor with a negative weight, which is why
-   grouping on *contributions* rather than on features finds them together.
-2. **Capacity spent on inference hurts.** Block 2 shares capacity *and* inference cost and
-   moves the other way. It is largely products of the two — where a model is both large and
-   expensive to run, MCC falls.
-3. **Block 3 has no shared feature at all.** Five terms over class entropy, effective
-   feature count, attribute counts and instance counts that nonetheless move together and
-   pull MCC down: dataset difficulty, expressed through no single feature. It is the block
-   that most justifies the method, because no feature-based grouping would have found it.
+The blocks themselves are **not listed here**, for the reason the table above is not: they
+are recomputed from the fitted equation on every run, and a copy in this chapter goes stale
+silently. An earlier version of this section described three blocks, one of which was said
+to pair capacity with inference cost — a reading of a 24-term equation over columns the
+corpus dropped in 2026-09-05.
+
+What survives restating is why the unit is worth having. A block can share no feature at
+all and still be one idea: the grouping is on per-row *contributions*, so it finds terms
+that move together for reasons no feature-based grouping would reach — dataset difficulty
+expressed through four different columns, say. That is the case that justifies the method,
+and it is the one a reader should look for in the generated table.
 
 That structure is invisible in the term-by-term table and is not recoverable by reading the
 printed equation.

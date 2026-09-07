@@ -83,19 +83,37 @@ where the ladder ends but **how fast it climbs**.
 
 **The first interaction component alone is worth +0.122 R².**
 
-That is more than the entire difference between a 2-term and a 14-term equation, and the
-fitted equation captures essentially none of it — 0.558 sits below even rank 0.
+That is more than the entire difference between a 2-term and a 14-term equation. The
+question is then whether the fitted equation reaches any of it, and comparing two R² values
+cannot answer that — a number below rank 0 is equally consistent with an equation that
+misses the pattern and one that finds it but is inaccurate elsewhere.
 
-So the headline number is not limited by term engineering within the additive family, and
-it is not limited by the optimiser ([chapter 3](03-search-and-fitting.md)) or by the
-transform vocabulary ([chapter 2](02-equation-form.md)). It is limited by **one strong
-interaction pattern in this data that the equation never reaches**.
+Comparing the two interaction *structures* does answer it. Lay both the truth and the
+equation's predictions on the (dataset × model) grid, strip each of its own additive part,
+and correlate what is left. `validate.interaction_capture` does this and
+[chapter 10](10-report.md) regenerates it with the equation:
+
+| protocol | alignment with rank 1 | with ranks 1–2 |
+|---|---|---|
+| in-sample | 0.31 | 0.28 |
+| leave-one-dataset-out | 0.27 | 0.21 |
+
+So the equation reaches **about a third** of the leading interaction pattern in-sample and
+a little over a quarter out of fold — not most of it, and not none. An earlier version of
+this chapter said "essentially none", read off an R² comparison against a 14-term equation
+that no longer exists; that claim was wrong in method as well as in number.
+
+Interaction is 36% of MCC's variance once the additive part is removed, and the leading
+component carries 38% of *that*. The remaining headroom is therefore real but smaller than
+the +0.122 makes it look, and it is not obviously reachable: the ceiling is set by an
+oracle handed 20 free dataset numbers and 25 free model numbers.
 
 A rank-1 interaction is a product of a dataset-side latent and a model-side latent. The
 equation's mixed terms are products of *single raw features*, which recover that structure
-only if it happens to align with one feature pair. Closing this gap without abandoning
-interpretability is the clearest direction for future work — and doing it with principal
-components would close it at the cost of the very thing the project exists to provide.
+only where it happens to align with one feature pair — and the alignment above is a
+measurement of how often that happens. Closing the rest without abandoning interpretability
+is the clearest direction for future work, and doing it with principal components would
+close it at the cost of the very thing the project exists to provide.
 
 ## How much of the ladder is reachable
 

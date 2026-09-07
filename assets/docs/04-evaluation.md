@@ -68,8 +68,8 @@ The **same equation**, three protocols:
 | protocol | R² | MAE |
 |---|---|---|
 | random 10-fold | **0.651** | 0.138 |
-| leave-one-dataset-out | **0.652** | 0.138 |
-| leave-one-model-out | **0.633** | 0.142 |
+| leave-one-dataset-out | **0.627** | 0.144 |
+| leave-one-model-out | **0.622** | 0.142 |
 
 **The three now agree, and that is itself the finding.** A random split used to score 0.083
 above leave-one-dataset-out, because putting rows from the same dataset on both sides of the
@@ -155,11 +155,11 @@ and a top-3 rule would score a correct answer as a miss.
 
 | metric | E3 |
 |---|---|
-| average precision | 0.829 |
-| mean reciprocal rank | 0.882 |
+| average precision | 0.822 |
+| mean reciprocal rank | 0.867 |
 | hit@1 — best model ranked first | 0.800 |
 | top-1 regret | 0.006 |
-| Spearman | 0.703 |
+| Spearman | 0.706 |
 
 ![Per-dataset ranking quality](../figures/ranking_quality.png)
 
@@ -188,7 +188,7 @@ It no longer does, on any head-weighted measure:
 | | AP | MRR | hit@1 | top-1 regret | Spearman |
 |---|---|---|---|---|---|
 | per-model mean (leave-one-dataset-out) | 0.798 | 0.835 | 0.750 | 0.011 | 0.703 |
-| **E3** | **0.829** | **0.882** | **0.800** | **0.006** | 0.703 |
+| **E3** | **0.822** | **0.867** | **0.800** | **0.008** | 0.706 |
 
 **Spearman is exactly tied at 0.703, and every metric that weights the head of the list is
 not.** That is the clearest single demonstration of why this chapter demotes rank correlation:
@@ -199,7 +199,7 @@ The baseline also has a limit no metric shows: it is **empty under leave-one-mod
 held-out model has no training row, so "average MCC of this model elsewhere" does not exist.
 It is a competitor on one protocol and undefined on the other.
 
-E3 also wins clearly on predicting the MCC *value* — 0.652 against the baseline's 0.201,
+E3 also wins clearly on predicting the MCC *value* — 0.627 against the baseline's 0.201,
 and that was always the larger gap. Knowing which models are generally good is most of what
 *ranking* needs, which is why the baseline was so hard to beat there; knowing *how well* a
 particular model will do on a particular dataset is what needs the meta-features, and the

@@ -4,16 +4,19 @@
 section for why it was measured and then withdrawn.*
 
 [Chapter 6](06-results.md) measures a gap and stops there. Dataset identity explains 0.354
-of MCC variance and twelve dataset meta-features recover **99%** of it; model identity
-explains 0.282 and five model meta-features recover only **63%**. The missing third of
-model capability is real and is written down nowhere in this corpus — the features record
-what a model *is* — its capacity, and five asserted facts about how it is built — but
-nothing about what it
-is good at.
+of MCC variance and the twelve dataset meta-features recover **98%** of it; model identity
+explains 0.282 and the six model meta-features recover **88%**. What is left is written down
+nowhere in this corpus — the features record what a model *is*, its capacity and five
+asserted facts about how it is built, but nothing about what it is good at.
+
+**That gap was a third when this chapter was written, and it is now an eighth.** The four
+asserted ordinals merged on 2026-09-05 closed most of it, which is why the ceiling measured
+below is much smaller than the text originally described.
 
 [Chapter 5](05-oracles.md) measures the same gap from the other side: a rank-1 interaction
-component is worth **+0.122 R²** over the additive oracle, and the equation captures
-essentially none of it.
+component is worth **+0.122 R²** over the additive oracle, and the equation reaches about a
+third of that pattern in-sample and a quarter out of fold — measured, not inferred from an
+R² comparison.
 
 Both are statements that something is missing. Neither says **how much** a better set of
 model descriptors would be worth, and that is a number a reader will want before deciding
@@ -34,7 +37,7 @@ $$\text{correction}_m = b_m + c_m \cdot \log(\mathrm{gravity})$$
 
 | | LOO-dataset R² | MAE |
 |---|---|---|
-| E3, 16 terms | 0.6522 | 0.1378 |
+| E3, 16 terms | 0.6270 | 0.1444 |
 | + levels only | 0.6693 | 0.1351 |
 | **+ levels and slope** | **0.6693** | **0.1351** |
 | *per-model mean baseline* | *0.2006* | *0.2382* |

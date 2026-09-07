@@ -766,6 +766,15 @@ def render(
         "handed the true group means, so it measures the ceiling rather than any equation:\n"
     )
     parts.append(_table(report.oracles) + "\n")
+    parts.append(
+        "That is a ceiling, not a score. Whether the equation reaches any of it is a separate "
+        "question, and the answer is that it reaches some: below, `alignment` is the squared "
+        "correlation between the equation's own interaction residual and the leading components "
+        "of the oracle's, over observed cells. `leading_share` is how much of the interaction "
+        "variance those components carry, and `interaction_share` how much of MCC's variance is "
+        "interaction at all.\n"
+    )
+    parts.append(_table(report.interaction) + "\n")
     parts.append("Variance of MCC explained by group identity alone, with no equation involved:\n")
     parts.append(_table(report.decomposition) + "\n")
     parts.append("Validation protocol, same equation, different splits:\n")

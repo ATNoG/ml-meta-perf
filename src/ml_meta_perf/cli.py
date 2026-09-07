@@ -124,6 +124,8 @@ def render(
 
         _section("Oracle ladder -- what each interaction component would be worth")
         _show(report.oracles)
+        _section("How much of the leading interaction the equation reaches")
+        _show(report.interaction)
 
         _section("Baselines")
         _show(report.baselines)
@@ -194,6 +196,7 @@ def _save_tables(report: Report, folder: Path) -> list[Path]:
         "baselines": report.baselines,
         "leakage": report.leakage,
         "oracles": report.oracles,
+        "interaction": report.interaction,
         "decision": report.decision,
         "selection": report.selection,
         "decomposition": report.decomposition,

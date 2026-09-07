@@ -87,18 +87,29 @@ inside each dataset, so it costs one extra step and stays closed-form; it ranked
 than the objective it was meant to beat, 0.532 against 0.625
 ([chapter 9](09-model-effects.md)). The loss function was never the limitation.
 
-Adding `Model Capability` to the model side closed it: E3 now reaches mean Spearman
-**0.706** and top-1 regret **0.008**. The rank-correlation margin over the baseline is
-0.003 and should be read as a tie; the regret figure, less than half the baseline's, is the
-real improvement. This is the diagnosis confirming itself. A per-model mean out-ranked the
-equation because it knew something the equation did not — roughly, which models are good —
-and the fix was to tell the equation, not to change how it was fitted.
+Adding `Model Capability` to the model side closed it, and "closed" is the right word only
+under a paired test. E3 now leads the baseline on every head-weighted metric — average
+precision 0.822 against 0.798, reciprocal rank 0.867 against 0.835, hit@1 0.800 against
+0.750, top-1 regret 0.008 against 0.011 — and **none of those margins survives pairing over
+the twenty held-out datasets**. On average precision E3 is the better of the two on 7 of the
+17 datasets where they differ at all; the favourable mean comes from a few large wins. Every
+bootstrap interval spans zero.
+
+So the honest statement is that the equation caught up with the baseline, not that it beat
+it. That is still the diagnosis confirming itself: a per-model mean out-ranked the equation
+because it knew something the equation did not — roughly, which models are good — and the
+fix was to tell the equation, not to change how it was fitted. But a study that stops at
+"E3 wins on all four" is reading four means over twenty folds, which is what
+[`validate.paired_comparison`](../../src/ml_meta_perf/validate.py) exists to prevent.
+
+Spearman does not enter any of this. It sits between 0.63 and 0.73 for every predictor and
+every baseline on this corpus, including a constant, and the two sides here differ by 0.003.
 
 ## Model descriptors are thin, and one of them is asserted
 
-The five model features the corpus ships capture 63% of what model identity explains. That
-gap is what the asserted ordinals were added to close, and they close most of it: E2 goes
-from 63% to 96% of its ceiling.
+The five model features the corpus originally shipped captured 63% of what model identity
+explains. That gap is what the asserted ordinals were added to close, and they close most of
+it: E2 goes from 63% to **88%** of its ceiling.
 
 **Five of the six model features are asserted, not measured, and that is the sharpest
 limitation in this chapter.** `Processing Units Number` is computed from a trained instance.

@@ -14,6 +14,47 @@ and they behave very differently, which is why they are named separately here:
 That asymmetry is the whole point of the two-equation comparison, so the split is
 part of the public API rather than something each caller re-derives.
 
+**Why there are eighteen features when the equation uses thirteen.**
+
+The two numbers answer different questions, asked at different stages, and reading the
+second as a criticism of the first is the most natural mistake to make about this study.
+
+*Designing the corpus* comes first, before any equation exists and before anyone knows
+which terms will be worth having. The requirement there is **identification**: the
+features must name every dataset and every learner the corpus contains, because two rows
+sharing a feature vector are two rows no equation over those features can ever tell
+apart, and a difference between them is then unexplainable rather than merely
+unexplained. The right move at that stage is a wide feature set chosen for coverage. This
+corpus meets the requirement exactly -- the twelve dataset features give twenty distinct
+vectors for twenty datasets, and the six model features separate all twenty-five learners
+on every dataset, with zero ambiguous rows of 476. ``tests/test_model_features.py`` pins
+both.
+
+Two caveats belong with that claim rather than after it. The model side is **joint**, not
+standalone: five of the six are constant per model and separate only 19 of the 25 on their
+own -- ``FT-Transformer``/``TabNet``/``TabTransformer``, ``LightGBM_RF``/``XGBoost``,
+``DNN``/``MLP``, ``TabICL``/``TabPFN`` and ``BernoulliNB``/``GaussianNB`` collide -- and it
+is ``Processing Units Number``, which varies with the dataset, that breaks those ties. So
+the six identify a learner *on a given dataset*. And identification was bought with
+redundancy: ``nr_attr`` and ``nr_outliers`` correlate at 0.9995, and
+``log(inst_to_attr) + log(nr_attr)`` **is** ``log(nr_inst)`` to 2e-15, because
+``inst_to_attr`` is defined as their ratio.
+
+*Fitting the equation* comes second, and its criterion is not coverage but **compression**.
+An equation is a statement about families of datasets and families of learners, not about
+individuals, so it is expected to need fewer features as it gets better -- and the
+redundancy above is part of what it is compressing away. E3 uses thirteen of the eighteen.
+That is the mechanism working, not a shortfall in the corpus, and an equation that used all
+eighteen would be one that had failed to generalise.
+
+So a column may earn its place at either stage. ``Solution Stochasticity`` and
+``Loss Margin Behaviour`` contribute no term to E3 and are kept regardless: they are what
+separate ``DT`` from ``ExtraTree``, ``LR`` from ``LinearSVC`` and ``LightGBM_RF`` from
+``LightGBM_ExtraTrees``, and without them 134 of the 476 rows stop being identifiable.
+**Do not read their absence from the equation as evidence against them**, and do not read
+it as robust either: it is a property of one equation length, and at twelve, twenty and
+twenty-four terms the fit uses one or both.
+
 **``nr_inst`` describes the source dataset, not the training set.** Every model was
 trained on a stratified sample capped at 100,000 rows, and ten of the twenty datasets are
 larger than that -- up to seven million. Nothing in the CSV records the sampled size,

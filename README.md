@@ -26,9 +26,9 @@ equation a practitioner can inspect, argue with, and derive guidance from.
 |---|---|
 | E1 — dataset features only, 7 terms | 0.349 |
 | *ceiling: the true dataset means* | *0.354* |
-| E2 — model features only, 8 terms | 0.271 |
+| E2 — model features only, 6 terms | 0.248 |
 | *ceiling: the true model means* | *0.282* |
-| **E3 — dataset + model, 16 terms** | **0.672** |
+| **E3 — dataset + model, 16 terms** | **0.665** |
 | *additive oracle* | *0.6605* |
 | *additive + rank-1 interaction* | *0.7828* |
 
@@ -39,15 +39,15 @@ two protocols, so the gaps between them measure the features and nothing else.
 > meta-data was replaced — four measured columns that varied with the dataset gave way to five
 > asserted mechanism ordinals — and cross-validation now fits the equation **once** and refits
 > only its weights per fold, rather than re-running term selection inside every fold. E3 went
-> from 20 terms at 0.613 / 0.474 / 0.428 to **16 terms at 0.672 / 0.652 / 0.633**. See
+> from 20 terms at 0.613 / 0.474 / 0.428 to **16 terms at 0.665 / 0.627 / 0.622**. See
 > [chapter 4](assets/docs/04-evaluation.md) for the protocol and
 > [chapter 1](assets/docs/01-problem.md) for the features.
 
 | | in-sample | LOO-dataset | LOO-model |
 |---|---|---|---|
 | E1 | 0.349 | 0.341 | 0.306 |
-| E2 | 0.271 | 0.203 | 0.242 |
-| **E3** | **0.672** | **0.652** | **0.633** |
+| E2 | 0.248 | 0.185 | 0.228 |
+| **E3** | **0.665** | **0.627** | **0.622** |
 
 The three equations differ only in which features they may draw on — **E1** sees the
 dataset, **E2** sees the model, **E3** sees both — so the gaps between them measure what

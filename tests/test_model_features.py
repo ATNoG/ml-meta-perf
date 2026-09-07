@@ -21,7 +21,11 @@ import unittest
 
 import numpy as np
 
+import polars as pl
+
 from ml_meta_perf.data import (
+    DATASET_COLUMN,
+    DATASET_FEATURES,
     MODEL_COLUMN,
     MODEL_FEATURES,
     MODEL_ORDINALS,
@@ -117,6 +121,76 @@ class TestPublishedEquationsAreReadable(unittest.TestCase):
         for label, run in (("E1", run_e1), ("E2", run_e2), ("E3", run_e3)):
             with self.subTest(label):
                 self.assertEqual(self.repeated(run(frame).equation), [])
+
+
+class TestIdentification(unittest.TestCase):
+    """The corpus must name every dataset and every learner it contains.
+
+    This is a requirement on the *corpus*, settled at design time and before any equation
+    exists, and it is the reason the feature set is as wide as it is. If two datasets share
+    a feature vector then no equation over those features can ever tell them apart, and a
+    difference between them is unexplainable rather than merely unexplained.
+
+    It is deliberately *not* a requirement on the equation, which uses 13 of the 18 and is
+    expected to use fewer as it improves -- see `TestCompression`.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.frame = load()
+
+    def test_the_dataset_features_name_every_dataset(self) -> None:
+        vectors = self.frame.select(list(DATASET_FEATURES)).unique().height
+        self.assertEqual(vectors, self.frame[DATASET_COLUMN].n_unique())
+
+    def test_the_model_features_name_every_learner_within_a_dataset(self) -> None:
+        # Jointly, not standalone: `Processing Units Number` varies with the dataset, and
+        # it is what separates the five colliding groups the other five leave ambiguous.
+        ambiguous = 0
+        for _, rows in self.frame.group_by(DATASET_COLUMN):
+            counts = rows.group_by(list(MODEL_FEATURES)).len()
+            ambiguous += int(counts.filter(pl.col("len") > 1)["len"].sum())
+        self.assertEqual(ambiguous, 0)
+
+    def test_the_dataset_independent_model_features_do_not_suffice_alone(self) -> None:
+        # The honest caveat, pinned so the paper cannot overstate the claim: five of the six
+        # are constant per model and separate only 19 of the 25 learners on their own.
+        constant = [name for name in MODEL_FEATURES if name != "Processing Units Number"]
+        distinct = self.frame.select(constant).unique().height
+        self.assertLess(distinct, self.frame[MODEL_COLUMN].n_unique())
+
+    def test_dropping_the_identification_only_columns_costs_identification(self) -> None:
+        # `Solution Stochasticity` and `Loss Margin Behaviour` earn their place here rather
+        # than in the fit. Without them the corpus stops naming its own learners.
+        reduced = [
+            name
+            for name in MODEL_FEATURES
+            if name not in ("Solution Stochasticity", "Loss Margin Behaviour")
+        ]
+        ambiguous = 0
+        for _, rows in self.frame.group_by(DATASET_COLUMN):
+            counts = rows.group_by(reduced).len()
+            ambiguous += int(counts.filter(pl.col("len") > 1)["len"].sum())
+        self.assertGreater(ambiguous, 0)
+
+
+class TestCompression(unittest.TestCase):
+    """The equation is allowed to use fewer features than the corpus carries.
+
+    Identification and compression are different stages with different criteria, and this
+    is the test that says the second is not held to the first. An equation that used all
+    eighteen would not be a better equation; it would be one that had failed to generalise
+    over families of learners and datasets.
+    """
+
+    def test_the_equation_uses_fewer_features_than_the_corpus_carries(self) -> None:
+        from ml_meta_perf.experiment import run_e3
+
+        equation = run_e3(load()).equation
+        used = {feature for term in equation.terms for feature in term.features}
+        available = set(DATASET_FEATURES) | set(MODEL_FEATURES)
+        self.assertTrue(used <= available)
+        self.assertLess(len(used), len(available))
 
 
 if __name__ == "__main__":
