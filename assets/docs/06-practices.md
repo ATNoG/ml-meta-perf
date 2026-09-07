@@ -251,7 +251,7 @@ under every transform and none earned a place, which is a result about the meta-
 than about the search — and, for the two model ordinals, a live tension: they are the columns
 that let the feature set tell individual learners apart, and the fit does not want them.
 
-`Processing Units Number` appears in 7 of 16 terms and `gravity` in 5; everything else is
+`Processing Units Number` appears in 6 of 15 terms and `gravity` in 5; everything else is
 spread thinner, 1–3 terms each. The full table, with the transforms
 and operations each feature was used under, is in [chapter 10](10-report.md).
 

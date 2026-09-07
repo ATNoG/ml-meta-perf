@@ -11,25 +11,41 @@ equation actually reaches — chapter 5 rests on it).
 
 ## Where the study stands
 
-| | terms | in-sample | LOO-dataset | LOO-model |
-|---|---:|---:|---:|---:|
-| E1 — dataset features | 7 | 0.349 | 0.341 | 0.306 |
-| E2 — model features | 6 | 0.248 | 0.185 | 0.228 |
-| **E3 — both** | **16** | **0.665** | **0.627** | **0.622** |
+| | grammar | terms | features used | in-sample | LOO-dataset | LOO-model |
+|---|---|---:|---:|---:|---:|---:|
+| E1 — dataset features | arity 3 | 7 | | 0.349 | 0.341 | 0.306 |
+| E2 — model features | arity 2 | 6 | | 0.248 | 0.185 | 0.228 |
+| **E3 — both (published)** | **arity 2** | **15** | **12 of 16** | **0.658** | **0.638** | **0.622** |
+| E3 — capability | arity 3 | 23 | | 0.707 | 0.678 | 0.651 |
 
-`DEFAULT_E3`: arity 2, z-cap 4.25, penalty 15, 16 terms, 270-term library.
+`DEFAULT_E3`: arity 2, z-cap 4.25, penalty 20, 15 terms, four-feature model pool.
+`DEFAULT_E3_CAPABILITY`: arity 3, z-cap 4.25, penalty 3, 23 terms, same pool.
+
+**The equation's model-feature pool is four, and the corpus keeps six.** `MODEL_FEATURES` is
+the corpus schema and identification is a corpus property; `EQUATION_MODEL_FEATURES` is what
+the equation may build terms from, because fitting is judged on *compression*. Dropping
+`Solution Stochasticity` and `Loss Margin Behaviour` from the term pool removes nothing from
+the corpus. The sweep chose the subset and it dominates the full six on every axis.
+
+**The length comes from a rule, not a constant.** `selection.best_length` is the argmax of the
+consensus curve — no threshold, no smoothing, no sensitivity parameter — and it selects 15
+under arity 2 and 23 under arity 3. Neither number is written down anywhere.
+
+**Knee detection was removed on 2026-09-07**, and `kneeliverse` left the dependency list with
+it. It was tried properly first: three detectors on four curves, raw and gRDP-smoothed at
+seven tolerances, plus the Pareto-front knee by three standard rules. The smoothing works —
+detectors that split 6/8/4 raw agree at 8 after it — and 8 is *significantly worse* than 15
+when paired over the twenty datasets. The alternatives are all still computed and reported
+(`results/term_choice.csv`, `results/length_choice.csv`); a selection rule is only defensible
+if what it beats is on the page.
 
 **The protocol gained a rule on 2026-09-07: one term per combination of raw features.**
 `terms.Library.feature_groups` groups terms by their feature set and `fit.Selector` refuses
-a second term from a group. It is a constraint on form, not on fit — the pairs it removed
-sat at 0.891 and 0.786, inside `COLLINEARITY_LIMIT`, in a design conditioned at 7.8 — and
-it is measured to cost nothing (paired over the 20 folds: p = 0.503, CI spanning zero).
-E1 was unaffected; E2 lost 8 terms for 6 and scores below its old form on every metric.
+a second term from a group. It is a constraint on form, not on fit, and it is measured to cost
+nothing (paired over the 20 folds: p = 0.503, CI spanning zero).
 
-`MODEL_FEATURES` is `Processing Units Number`, `Model Capability`, `Solution Stochasticity`,
-`Loss Margin Behaviour`, `Input Distribution Modelling`, `Fitting Regime`. The corpus is one
-file, `src/ml_meta_perf/meta_dataset.csv`: 2 identifiers, 12 dataset features, 6 model
-features, `MCC`.
+The corpus is one file, `src/ml_meta_perf/meta_dataset.csv`: 2 identifiers, 12 dataset
+features, 6 model features, `MCC`.
 
 ## Resolution: family or individual model? — settled
 
@@ -41,7 +57,7 @@ two rows no equation over those features can ever distinguish. The corpus meets 
 distinct dataset vectors for 20 datasets, and 0 ambiguous rows of 476 on the model side.
 
 *Fitting the equation* requires **compression**. An equation is a statement about families,
-so it is expected to use fewer features as it improves. E3 uses 13 of 18.
+so it is expected to use fewer features as it improves. E3 uses 12 of the 16 it may draw on.
 
 So `Solution Stochasticity` and `Loss Margin Behaviour` stay, earning their place at the
 first stage: without them 134 of 476 rows stop being identifiable. Do not resurrect the

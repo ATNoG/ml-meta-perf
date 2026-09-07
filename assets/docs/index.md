@@ -53,8 +53,10 @@ the meta-data is worth. They share a scale but **not a ceiling**: E1 can only pr
 per-dataset constant, so 0.354 is the most it could ever reach, and the comparable quantity
 is the fraction of its own ceiling each equation attains.
 
-**The result.** E3 reaches R² 0.665 in-sample, 0.627 leave-one-dataset-out and 0.622
-leave-one-model-out with 16 terms. It passes the additive oracle (0.6605) and the
+**The result.** E3 reaches R² 0.658 in-sample, 0.638 leave-one-dataset-out and 0.622
+leave-one-model-out with 15 terms, drawing on 12 of the 16 features it may use. The same
+features under the full grammar reach 0.707 with 23 terms, which is how far the additive form
+goes. E3 meets the additive oracle (0.6605) and passes the
 all-single-feature-terms ceiling (0.644), both of which it can only do by representing
 dataset×model interaction — which is what its mixed terms are for.
 

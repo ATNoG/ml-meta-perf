@@ -264,10 +264,10 @@ Standard regressors on the same raw features, under the same protocols:
 | RidgeCV (linear, 18 features) | 0.418 | **-2.002** | 0.328 |
 | RandomForest (300 trees) | **0.910** | **0.067** | 0.465 |
 | GradientBoosting | 0.820 | 0.049 | 0.354 |
-| **ml-meta-perf E3 (16 terms)** | 0.665 | **0.627** | 0.622 |
+| **ml-meta-perf E3 (15 terms)** | 0.658 | **0.638** | 0.622 |
 
 Read the RandomForest row across. With 20 dataset groups a forest memorises dataset
-identity almost perfectly and then transfers worse than a 16-term additive equation. This is also
+identity almost perfectly and then transfers worse than a 15-term additive equation. This is also
 the likely provenance of the R² ≈ 0.9 figures reported for opaque meta-models: an
 in-sample or randomly-split forest reproduces them exactly, and the same forest is
 near-useless on an unseen dataset.

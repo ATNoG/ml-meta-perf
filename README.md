@@ -26,7 +26,8 @@ equation a practitioner can inspect, argue with, and derive guidance from.
 |---|---|---|---|
 | E1 — dataset features only, 7 terms | 0.349 | 0.341 | 0.306 |
 | E2 — model features only, 6 terms | 0.248 | 0.185 | 0.228 |
-| **E3 — both, 16 terms** | **0.665** | **0.627** | **0.622** |
+| **E3 — both, 15 terms** | **0.658** | **0.638** | **0.622** |
+| *E3 under the full grammar, 23 terms* | *0.707* | *0.678* | *0.651* |
 
 The three equations differ only in which features they may draw on — **E1** sees the
 dataset, **E2** sees the model, **E3** sees both. All three are fitted on the same 476 rows
@@ -43,20 +44,27 @@ of its own ceiling each equation attains:
 |---|---|---|---|
 | E1 (dataset features) | 0.349 | 0.354 | **99%** |
 | E2 (model features) | 0.248 | 0.282 | **88%** |
-| E3 (both) | 0.665 | *see below* | — |
+| E3 (both) | 0.658 | *see below* | — |
 
 E3 has no ceiling of that kind, because it is not constant within either group. The two
-levels it can be read against are both *passed*, and passing them is the result:
+levels it can be read against are both reached or passed, and that is the result:
 
 | level | R² | what it bounds |
 |---|---|---|
-| additive oracle | 0.6605 | the best a per-dataset value **plus** a per-model value can do |
 | all 75 single-feature terms | 0.6437 | the best a sum of per-feature functions can do |
-| **E3, 16 terms** | **0.6651** | — |
+| additive oracle | 0.6605 | the best a per-dataset value **plus** a per-model value can do |
+| **E3, 15 terms** | **0.6578** | — |
+| **E3 under the full grammar, 23 terms** | **0.7068** | — |
 
 Both bounds describe predictors that never combine a dataset feature with a model one. E3
-does — 10 of its 16 terms are mixed — and clearing both by two independent routes is the
+does — 7 of its 15 terms are mixed — and clearing them by two independent routes is the
 evidence that dataset×model *interaction* is what the equation is capturing.
+
+**The second row is a capability measurement, not a second headline.** Same corpus, same four
+features, the same selection rule, but the full grammar (arity 3). It answers the one question
+the published equation cannot answer about itself — whether the additive form is out of room,
+or whether this equation is short of it. It is short of it by 0.049 in-sample, and what it
+buys for that is eight fewer terms and a far more stable form.
 
 ![Equations against the levels they are read against](assets/figures/equation_comparison.png)
 
@@ -73,9 +81,9 @@ evidence that dataset×model *interaction* is what the equation is capturing.
   all *asserted*, read off published descriptions rather than observed in a training run —
   takes the model side to 88%. What they cannot do is describe a method nobody has
   classified. [Chapter 7](assets/docs/07-limitations.md).
-- **Mixed dataset×model terms carry the equation.** 10 of 16 terms use features from both
-  groups and drive **53%** of the output variance; dataset-only terms drive 42% and
-  model-only terms 5%. "Which model suits which data" is where the signal is, not "how hard
+- **Mixed dataset×model terms carry the equation.** 7 of 15 terms use features from both
+  groups and drive **60%** of the output variance; dataset-only terms drive 37% and
+  model-only terms 3%. "Which model suits which data" is where the signal is, not "how hard
   is this data" or "how good is this model". [Chapter 6](assets/docs/06-practices.md).
 - **No single meta-feature carries it either.** The strongest, `eq_num_attr`, reaches
   R² 0.142 alone; the transforms in the grammar are worth about +0.068 over entering the raw

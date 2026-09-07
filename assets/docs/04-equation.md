@@ -76,8 +76,9 @@ scale and one table:
 | *E1's ceiling — the true dataset means* | | *0.354* | *0.204* | *0.653* |
 | E2 (model only) | 6 | 0.248 | 0.234 | 0.459 |
 | *E2's ceiling — the true model means* | | *0.282* | *0.226* | *0.487* |
-| **E3 (dataset + model)** | **16** | **0.665** | **0.134** | **0.823** |
+| **E3 (dataset + model)** | **15** | **0.658** | **0.137** | **0.819** |
 | *additive oracle* | | *0.6605* | *0.145* | *0.810* |
+| *E3 under the full grammar (arity 3)* | *23* | *0.707* | *0.126* | *0.849* |
 
 ![Equations against their ceilings](../figures/equation_comparison.png)
 
@@ -88,7 +89,7 @@ still **not comparable as achievements**, and no change to the fitting could mak
 
 E1 predicts one value per dataset. **0.354 is the most it could ever score**, however good
 its terms were, because that is all the variance a per-dataset constant can reach. E1 at
-0.349 is not "worse than E3 at 0.665"; it is at its own limit while E3 is not at its. The
+0.349 is not "worse than E3 at 0.658"; it is at its own limit while E3 is not at its. The
 same applies to E2 against 0.282.
 
 So the comparable quantity is the *fraction of its own ceiling* each equation reaches, and
@@ -100,14 +101,14 @@ that is the column the next section reads.
 |---|---|---|---|---|
 | E1 | 7 | 0.349 | 0.341 | 0.306 |
 | E2 | 6 | 0.248 | 0.185 | 0.228 |
-| **E3** | **16** | **0.665** | **0.627** | **0.622** |
+| **E3** | **15** | **0.658** | **0.638** | **0.622** |
 
 Both controls are now reported under both protocols, which the aggregated E1 could not be.
 The pattern is the one the design predicts and is worth checking rather than assuming: E1
 transfers *better* across models (0.294) than across datasets (0.217), because it predicts
 a per-dataset constant and a new model does not change it; E2 is the mirror.
 
-**E3's two transfer numbers are now close** — 0.627 and 0.622, against a fit of 0.665. An
+**E3's two transfer numbers are now close** — 0.638 and 0.622, against a fit of 0.658. An
 equation that loses under 0.04 R² when a whole dataset or a whole learner is withheld is
 transferring, not memorising, and the gap between the two protocols is small enough that
 neither half of the meta-data is carrying the equation alone.
@@ -150,14 +151,15 @@ The same construction with one group at a time gives the two ceilings that bound
 **This does not bound E3, and E3 passes it.** The additive oracle bounds a predictor that
 is a per-dataset value *plus* a per-model value. Half of E3's terms are *mixed* — each
 multiplying or dividing a dataset feature by a model feature — and those express precisely
-the interaction the two-way additive form cannot. E3 reaches 0.665 in-sample against the
-oracle's 0.6605, and its leave-one-dataset-out score at that length is 0.627.
+the interaction the two-way additive form cannot. E3 reaches 0.658 in-sample against the
+oracle's 0.6605 — just short of it — while the same features under the full grammar reach
+**0.707**, comfortably past it, at a leave-one-dataset-out of 0.678.
 
 > An earlier draft of this chapter read the crossing as a warning sign, on the grounds that
 > E3 passed the oracle "at exactly the point its cross-validated score collapses". That was
 > measured under the re-selecting protocol this study no longer reports, where the numbers
 > either side of the crossing were -0.283 and -0.591. Under the fixed-form protocol the
-> crossing happens at 16 terms with transfer intact. The claim has been withdrawn rather
+> crossing happens with transfer intact. The claim has been withdrawn rather
 > than restated: the crossing is what the mixed terms buy.
 
 ### Ceiling 2 — what the vocabulary can reach
@@ -172,7 +174,8 @@ over the term library, none of which needs the search to have run:
 | every raw feature, untransformed | 18 | 0.476 |
 | the best single-feature term per feature | 18 | 0.544 |
 | every single-feature term at once | 75 | 0.644 |
-| **E3, fitted** | **16** | **0.665** |
+| **E3, fitted (arity 2)** | **15** | **0.658** |
+| **E3, full grammar (arity 3)** | **23** | **0.707** |
 
 Two readings, and [chapter 10](10-report.md) regenerates both from the run:
 
@@ -187,7 +190,8 @@ R² 0.002 raw to 0.050 as `1/class_ent`, `inst_to_attr` from 0.001 to 0.040 as
 `1/inst_to_attr`, `gravity` from 0.002 to 0.031 under a log. For eight of the eighteen
 features the grammar buys nothing at all — the raw column was already the best form of it.
 
-**E3 passes this ceiling too**, with 16 terms against the 75 single-feature terms' 0.644.
+**E3 passes this ceiling too**, with 15 terms against the 75 single-feature terms' 0.644,
+and the full-grammar equation passes it by 0.063.
 An equation cannot exceed it by describing features one at a time, so the excess is the
 work the cross-feature terms do. That is the same conclusion the additive oracle reaches,
 by an entirely independent route — one argues from group means, the other from the term
@@ -255,10 +259,11 @@ the equations widen the gap rather than closing it:
 |---|---|---|---|
 | dataset features | 0.349 | 0.354 — the true dataset means | **98%** |
 | model features | 0.248 | 0.282 — the true model means | **88%** |
-| both | 0.665 | 0.6605 — the additive oracle* | *101%* |
+| both | 0.658 | 0.6605 — the additive oracle* | *100%* |
 
 <sub>*The additive oracle bounds a two-way *additive* form, and **E3 now crosses it** —
-0.665 against 0.661. That is not an error: ten of E3's sixteen terms multiply or divide a
+0.658 against 0.661 for the published equation and 0.707 for the full-grammar one. That is
+not an error: seven of E3's fifteen terms multiply or divide a
 dataset feature by a model feature, and such a term expresses interaction the additive oracle
 by construction cannot (this chapter). The two rows above it are hard ceilings;
 this one is a reference level the equation is expected to pass.</sub>
@@ -299,61 +304,65 @@ are artefacts:
   by construction. Only model terms can score well there. It is a diagnostic for model
   effects, not a statement of relative importance.
 - **Model features carry more in combination than alone.** Adding them to E1 is worth
-  +0.317 R² (0.349 → 0.665), beyond the 0.248 they achieve by themselves. The surplus is
-  dataset×model interaction, which is why **9 of E3's 16 terms are mixed** and drive 56%
+  +0.309 R² (0.349 → 0.658), beyond the 0.248 they achieve by themselves. The surplus is
+  dataset×model interaction, which is why **7 of E3's 15 terms are mixed** and drive 60%
   of its output variance.
 
 ![Contribution shares](../figures/contribution_shares.png)
 
-## One configuration, not two
+### The configuration that was dropped, and why this one is different
 
-Earlier drafts reported a second, accuracy-leaning configuration alongside the default:
-arity 4 over a 4610-term library, 32 terms, reaching 0.668 in-sample. **It has been
-dropped.** It existed to answer "how much fit is available if transfer is sacrificed", and
-that question stopped being interesting once the default reached 0.6 — the extra fit cost
-0.18 of leave-one-dataset-out R², which no reader of this study should want,
-and reporting two headline equations invites quoting whichever suits the argument.
+An earlier draft carried an accuracy-leaning arity-4 configuration — a 4610-term library, 32
+terms, 0.668 in-sample — and dropped it. It cost 0.18 of leave-one-dataset-out R² for that
+fit, which no reader of this study should want, and it was reported as a *second headline*,
+which invites quoting whichever number suits the argument.
 
-The arity trade it measured is still recorded, in the place it belongs:
-[chapter 2](02-additive-model.md) sweeps the penalty and the length inside each arity and
-reports the result as a design decision rather than as a second result.
+The capability equation below is not that. It gives up nothing on transfer — it is the better
+equation on both protocols — and it is reported as the answer to one stated question rather
+than as an alternative headline. The arity trade itself is recorded in
+[chapter 2](02-additive-model.md), which sweeps the penalty and the length inside each arity.
 
-`DEFAULT_E3` is the study:
+## The two configurations the study reports
 
-| | `max_arity` | `max_abs_zscore` | `penalty` | headline terms |
-|---|---|---|---|---|
-| `DEFAULT_E3` | 2 (270-term library) | 4.25 | 15 | 16 |
+`DEFAULT_E3` is what the study recommends. `DEFAULT_E3_CAPABILITY` is the same corpus and the
+same four model features under the **full** grammar, reported to answer a question the
+published equation cannot answer about itself.
 
-| | terms | in-sample R² | LOO-dataset | LOO-model |
-|---|---|---|---|---|
-| `DEFAULT_E3` | 16 | **0.6651** | **0.6270** | **0.6220** |
+| | grammar | z-cap | penalty | terms | in-sample | LOO-dataset | LOO-model |
+|---|---|---|---|---|---|---|---|
+| `DEFAULT_E3` | arity 2 | 4.25 | 20 | **15** | 0.6578 | **0.6381** | 0.6218 |
+| `DEFAULT_E3_CAPABILITY` | arity 3 | 4.25 | 3 | 23 | 0.7068 | 0.6781 | 0.6512 |
 
-**All four knobs moved when the model features were replaced, and each for a reason.**
+**Why two, and why this is not "quote whichever suits the argument".** An earlier draft
+carried a second accuracy-leaning configuration and dropped it for exactly that reason. The
+difference is that this one answers a specific question and is labelled as its answer:
+*is the additive form out of room, or is the published equation short of it?* Without it,
+the published R² can only be read against oracles and baselines, none of which is an
+equation of this shape. With it, the answer is that **+0.049 of in-sample R² and +0.040 of
+transfer are still available to the form** — so the published equation is not at the form's
+limit, and what it pays for that gap is eight fewer terms, one operation fewer, and a form
+that reselects far more often across folds. The capability equation is never analysed term by
+term and never used for guidance.
 
-`max_arity` falls from 3 to 2. The third arity buys `(f1+f2)/f3`, and against the new model
-side it is simply not selected — the best arity-2 configuration matches the best arity-3 one
-to within 0.007 on both transfer protocols. A smaller grammar that scores the same is not a
-trade.
+**Every knob comes from the 2026-09-07 sweep** — 48,576 configurations over feature subsets ×
+penalties × lengths × z-caps × arities. It confirmed arity 2 for the published equation
+outright (best arity-2 objective 0.730 against 0.687 for arity 3, and the whole top band is
+arity 2), and left penalty and z-cap unbeaten by any significant margin.
 
-`max_abs_zscore` rises from 3.0 to 4.25. The cap exists to stop a term being carried by a
-handful of extreme rows. Loosening it is safe here in a way it would not have been before:
-every one of the six model features is positive, bounded and occupied at every rung, with
-none of the sparse tail that made a loose cap dangerous.
+**The model-feature pool is four, not six, and that is compression rather than loss.** The
+corpus carries six because the corpus is designed for *identification*
+([chapter 1](01-dataset.md)); the equation is judged on *compression*, so it drops `Solution
+Stochasticity` and `Loss Margin Behaviour` from its term pool. On the sweep's numbers the
+four-feature pool dominates the full six on every axis — objective 0.730 against 0.722,
+leave-one-dataset-out 0.686 against 0.672, leave-one-model-out 0.654 against 0.640. The
+published equation goes further and uses **12 of the 16 features available to it**; an
+equation that used all sixteen would be one that had failed to generalise.
 
-`penalty` falls from 20 to 15, and on fit alone would fall further. Under the previous
-protocol the ridge did two jobs — shrinking the weights *and* scoring which subset the beam
-chose, since λ sits in `RSS − λ·wᵀw`. With the equation's form now fixed and only its weights
-refit ([chapter 5](05-evaluation.md)), it does only the first, so heavy shrinkage stopped
-paying for itself.
-
-**Why 16 terms and not 14, or 24?** Because leave-one-dataset-out is now *smooth* in length —
-0.612 at 12 terms, 0.627 at 16, 0.638 at 20 — and past twenty it turns down, to 0.614 at 24
-buys under 0.005. Sixteen is a knee. Under the previous protocol the same curve swung by 0.3
-between adjacent lengths, because each length was a different equation refitted twenty times;
-fixing the form removed that variance and made the knee readable.
-
-The length and penalty were re-swept rather than carried over, which is the general lesson:
-**a term budget tuned against one feature set is not evidence about another.**
+**The length is chosen by a rule, not written down** — the argmax of the consensus curve,
+`selection.best_length`. It selects 15 under arity 2 and 23 under arity 3 without either
+number appearing anywhere in the code.
+[Chapter 3](03-term-selection.md#stage-3--choosing-the-number-of-terms) sets out the rule,
+every alternative that was computed and rejected, and why the geometric ones disagree.
 
 ## The fitted equations
 
@@ -407,15 +416,15 @@ earlier version of this chapter over-read a 4-of-6 overlap as though they were.
 What it does show is that the equation is not a concatenation of its two halves. Nine of E3's
 sixteen terms are mixed, and a mixed term is not available to either control by construction.
 
-E3, on all 476 rows, is 16 terms and is **not reproduced here**. It is printed in full,
+E3, on all 476 rows, is 15 terms and is **not reproduced here**. It is printed in full,
 with its term-importance table and its analysis, in [chapter 10](10-report.md) — which is
 regenerated with the equation on every run, so it cannot drift out of step with the code
 the way a copy in this chapter would. An earlier draft of this chapter carried a 14-term
 E3 that had stopped being the published equation several configurations earlier, which is
 why the listing now lives on the generated side.
 
-The shape of it, from that chapter: 9 of the 16 terms mix dataset and model features and
-drive **56%** of the output variance; 3 are model-only (3%) and 4 are dataset-only (41%).
+The shape of it, from that chapter: 7 of the 15 terms mix dataset and model features and
+drive **60%** of the output variance; 3 are model-only (3%) and 5 are dataset-only (37%).
 The weights are flat — they behave like **13.8 equally-weighted terms**, and the largest
 carries under 11% of the mass.
 

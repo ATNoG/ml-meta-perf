@@ -246,65 +246,45 @@ subsampling it.
 The craters are visible in that figure. They are a real property of leave-one-dataset-out on
 twenty groups and they belong on the plot.
 
-### What the rules say
+### The rule, and everything it beats
 
-With both decisions fixed, every rule is reported rather than one:
+**The length is the argmax of the consensus curve** — `selection.best_length`. It has no
+threshold, no smoothing window and no sensitivity parameter, so it is a property of the curve
+rather than of a value chosen to produce a preferred answer, and it re-derives itself when the
+corpus changes. Applied under the two grammars the study reports it selects **15 terms** under
+arity 2 and **23** under arity 3. Neither number appears anywhere in the code.
+
+Every alternative that was computed is reported beside it, because a selection rule is only
+defensible if what it beats is on the page:
 
 | rule | terms | in-sample R² | LOO-dataset R² |
 |---|---|---|---|
-| knee (consensus) | 6 | 0.593 | 0.568 |
-| knee (in-sample) | 6 | 0.593 | 0.568 |
-| knee (leave-one-dataset-out) | 6 | 0.593 | 0.568 |
-| knee (leave-one-model-out) | 6 | 0.593 | 0.568 |
-| best leave-one-dataset-out | 23 | 0.679 | 0.644 |
-| sweep's top row (9 terms) | 9 | 0.606 | 0.575 |
-| **published** | **16** | **0.665** | **0.627** |
+| Pareto front, closest to the utopia point | 4 | 0.539 | 0.505 |
+| Pareto front, furthest from the nadir | 4 | 0.539 | 0.505 |
+| Pareto front, furthest from the chord | 4 | 0.539 | 0.505 |
+| knee detectors, gRDP-smoothed *(removed)* | 8 | 0.601 | 0.597 |
+| parsimony: shortest not significantly worse | 10 | 0.634 | 0.615 |
+| **argmax of the consensus curve — the rule** | **15** | **0.658** | **0.638** |
 
-**The four detectors now agree**, which they did not on the ragged grid, where in-sample gave
-4 and the cross-validated curves gave 8. That agreement is the evidence the grid was the
-problem.
+**The geometric rules and the paired test disagree, and the disagreement is the finding.**
+Every geometric reading of this curve — three knee detectors on four curves, raw and
+gRDP-smoothed at seven tolerances, plus the Pareto-front knee by all three standard forms —
+lands between 4 and 8 terms. Every one of those lengths is **significantly worse** than 15
+when the two are paired fold by fold over the twenty held-out datasets; 11 of the 32 lengths
+searched are. A knee finds where the *marginal* return per term collapses, which on a
+saturating curve is early. It does not ask whether the accuracy still being added is real,
+and here it is, for several terms past the bend.
 
-### The knee is not the published length, and the sweep says why
+**Knee detection has therefore been removed rather than reported.** It was tried properly
+first — the gRDP simplification works exactly as intended, taking three detectors that split
+6/8/4 on the raw curve to unanimous agreement at 8 — and `kneeliverse` left the dependency
+list with it. What replaced it is not a different detector but a different question.
 
-**Six is where the steep gains stop**: the curve climbs 0.165 → 0.593 over the first six
-terms and 0.593 → 0.687 over the remaining twenty-six. The published equation has sixteen.
-That gap is real and it is resolved by measurement rather than by preferring one rule.
-
-A full configuration sweep — 48,576 points over feature subsets × penalties × lengths ×
-z-caps × arities, run on Slurm — scores each candidate on seven weighted components and
-ranks a **9-term** equation first. Neither 6 nor 9 survives the comparison that matters:
-
-| configuration | terms | LOO-dataset R² | LOO-dataset MAE | paired against the published equation |
-|---|---|---|---|---|
-| sweep's top row | 9 | 0.575 | 0.164 | **significantly worse** — published wins on 16 of 20 datasets, p = 0.012, CI [+0.008, +0.030] |
-| published | 16 | 0.627 | 0.144 | — |
-| nearest rival | 16 | 0.632 | 0.145 | tie, p = 0.115 |
-
-The rule the study commits to is **the shortest configuration that is not significantly
-worse**, paired dataset by dataset with `validate.paired_comparison`. Nine terms does not
-qualify: the bootstrap interval on the per-dataset MAE difference lies entirely above zero.
-Sixteen stands, and it stands on a paired test rather than on a knee.
-
-**Why the objective prefers nine, and why that is not decisive.** Decomposed against
-`equation_search.OBJECTIVE_WEIGHTS`, the 9-term equation gains +0.053 on `stability` and
-+0.015 on `brevity` while losing 0.029 summed across the five accuracy components. The
-shorter form reselects in 88% of folds where the published one reselects in 53% — a genuine
-tension, since form stability is what licenses fixing the form at all ([chapter 5](05-evaluation.md)).
-But `stability` carries weight 0.15 against 0.40 for the three R² combined, so it should not
-overturn an accuracy gap of this size. **The objective is a shortlisting device; the paired
-test is the decision.**
-
-**What the sweep confirmed, and one thing it got wrong.** `max_arity = 2` is confirmed
-outright — the best arity-2 point scores 0.730 against 0.687 for the best arity-3 point, and
-every configuration in the top band is arity 2. Penalty and z-cap are left unchanged, no
-candidate beating them significantly. The sweep also prefers dropping `Solution
-Stochasticity` and `Loss Margin Behaviour` from the equation's term pool, and **that is the
-compression criterion working rather than a loss**. The corpus keeps all six columns because
-the corpus is designed for *identification*; the equation is judged on *compression*, and one
-that used every available column would be one that had failed to generalise
-([chapter 1](01-dataset.md)). On the sweep's numbers the four-feature pool dominates on every
-axis — objective 0.730 against 0.722, leave-one-dataset-out 0.686 against 0.672,
-leave-one-model-out 0.654 against 0.640.
+**The parsimony alternative is reported and not adopted.** Ten terms is the shortest length
+whose paired interval against 15 spans zero, and it is the right answer for a reader whose
+readability budget is tighter than this study's. It gives up 0.023 of leave-one-dataset-out
+R², which is measurable even where it is not significant, so the study takes the accuracy;
+`results/length_choice.csv` carries the whole table so that choice can be remade.
 
 Both **Pareto fronts** are also reported. Over (length, LOO-dataset R²) the front is 1–8, 10,
 11, 14, 16, 19, 21 and 23 — nothing longer than 23 terms earns its length on transfer. Over

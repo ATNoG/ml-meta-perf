@@ -268,7 +268,7 @@ $$\text{correction}_m = b_m + c_m \cdot \log(\mathrm{gravity})$$
 
 | | LOO-dataset R² | MAE |
 |---|---|---|
-| E3, 16 terms | 0.6270 | 0.1444 |
+| E3, 15 terms | 0.6381 | 0.1425 |
 | + levels only | 0.6693 | 0.1351 |
 | **+ levels and slope** | **0.6693** | **0.1351** |
 | *per-model mean baseline* | *0.2006* | *0.2382* |
