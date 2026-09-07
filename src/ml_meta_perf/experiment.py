@@ -9,6 +9,9 @@ over the term stability cap, the ridge penalty and the equation length, scored o
 leave-one-dataset-out rather than on fit. The sweep is reproducible through
 ``sweep_configurations``; ``DEFAULT_E1`` and ``DEFAULT_E3`` are simply where it landed.
 
+A full configuration sweep under the latest grammar constraint remains pending;
+the current defaults reproduce the reported study (see ``TODO.md``).
+
 Study chapter: [6. Results](../../assets/docs/06-results.md) -- the rationale, in
 prose, with the figures.
 """

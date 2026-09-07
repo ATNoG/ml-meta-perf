@@ -9,6 +9,9 @@ than by rerunning a notebook in the right order.
 Every knob that was tuned during the study is exposed as a flag. Defaults are the tuned
 values, so a bare ``python -m ml_meta_perf`` reproduces the reported numbers.
 
+A full configuration sweep under the latest grammar constraint remains pending;
+the current defaults reproduce the reported study (see ``TODO.md``).
+
 Study chapter: [6. Results](../../assets/docs/06-results.md) -- the rationale, in
 prose, with the figures.
 """

@@ -55,7 +55,7 @@ each half of the meta-data is worth.
 
 Their R² values share a scale but not a ceiling: E1 predicts one value per dataset, so
 0.354 is the most it could ever reach. The comparable quantity is how much of its own
-ceiling each one captures — **98% for the dataset features, 96% for the model features**.
+ceiling each one captures — **98% for the dataset features, 88% for the model features**.
 
 Reaching parity on the model side took columns the corpus does not contain. As collected, its
 model descriptors were counts of capacity and cost and reached only **63%** of their ceiling;
@@ -68,7 +68,7 @@ nobody has classified — see [chapter 8](assets/docs/08-limitations.md).
 
 ![Equations against their ceilings](assets/figures/equation_comparison.png)
 
-Four findings the documentation develops:
+Six findings the documentation develops:
 
 - **One equation, refit — not one search per fold.** The equation's form is the claim; the
   folds recalibrate its constants and test whether the claim survives unseen data. Re-running
@@ -77,7 +77,7 @@ Four findings the documentation develops:
   [chapter 4](assets/docs/04-evaluation.md).
 - **The corpus describes datasets far better than models, and the fix comes from outside
   it.** As collected, its model descriptors reach 63% of their ceiling against the dataset
-  side's 98%. Five asserted ordinals take the model side to 96%. See
+  side's 98%. Five asserted ordinals take the model side to 88%. See
   [chapter 6](assets/docs/06-results.md).
 - **One interaction component is worth +0.122 R²** and the equation captures none of it.
   Only about **+0.018** of that is reachable from meta-features on both sides, and the
@@ -87,9 +87,9 @@ Four findings the documentation develops:
   That number was **+0.106** before the model side was replaced, so the direction that used to
   hold all the remaining room is largely closed. See
   [chapter 9](assets/docs/09-model-effects.md).
-- **Mixed dataset×model terms carry the equation.** 9 of 16 terms use features from both
-  groups and drive **56%** of the output variance; dataset-only terms drive 41% and
-  model-only terms 3%. "Which model suits which data" is where the signal is, not "how
+- **Mixed dataset×model terms carry the equation.** 10 of 16 terms use features from both
+  groups and drive **53%** of the output variance; dataset-only terms drive 42% and
+  model-only terms 5%. "Which model suits which data" is where the signal is, not "how
   hard is this data" or "how good is this model". See
   [chapter 7](assets/docs/07-practices.md).
 - **Ten best practices from the literature, weighed against the corpus** — 8 supported,
@@ -109,9 +109,9 @@ Two things there that matter to anyone reading this file's numbers:
 
 - The feature replacement and the protocol change described above are **merged**; this README
   and `assets/docs/` describe the current state.
-- What remains open is recorded in `TODO.md`: chiefly whether the study's claim is at learner
-  *family* resolution or individual *model* resolution, which decides whether two of the six
-  model features earn their place.
+- What remains open is recorded in `TODO.md`: chiefly the full configuration sweep under the
+  current grammar constraint. The learner *family* versus individual *model* question is
+  settled: identification belongs to corpus design, compression to equation fitting.
 
 ## Documentation
 
@@ -205,13 +205,13 @@ PYTHONPATH=src venv/bin/python -m ml_meta_perf --data mine.csv --output runs/min
 | `--output` | `results` | where the equations and CSV tables go |
 | `--figures` | `assets/figures` | where the figures go |
 | `--report` | `assets/docs/10-report.md` | where the generated report goes |
-| `--terms` | 24 | terms in the published E3 equation |
+| `--terms` | 16 | terms in the published E3 equation |
 | `--max-terms` | 32 | longest equation the search explores (drives the curve) |
-| `--penalty` | 5.0 | ridge penalty on standardised terms |
-| `--arity` | 3 | raw features allowed per term — see [chapter 2](assets/docs/02-equation-form.md) |
-| `--pool` | 600 | terms surviving screening into the beam |
+| `--penalty` | E1: 20.0; E2: 5.0; E3: 15.0 | ridge penalty on standardised terms |
+| `--arity` | 2 | raw features allowed per E3 term — see [chapter 2](assets/docs/02-equation-form.md) |
+| `--pool` | E1: 200; E2: 100; E3: 600 | terms surviving screening into the beam |
 | `--beam` | 6 | beam width |
-| `--zscore` | 3.0 | largest standard score a term may reach before it is rejected as a spike |
+| `--zscore` | E1/E2: 3.0; E3: 4.25 | largest standard score a term may reach before it is rejected as a spike |
 | `--phase` | all | `screen`, `equations`, `validation`, `practices`, `figures`, `report`; repeatable |
 | `--quick` | off | a reduced configuration for smoke-testing; **not** the study |
 | `--no-figures`, `--no-tables`, `--no-report`, `--quiet` | off | skip an output |

@@ -7,13 +7,12 @@ honest about its own.
 
 **Twenty datasets is the binding constraint on every cross-validated number here.**
 
-- Leave-one-dataset-out R² varies by ±0.07 between adjacent term counts from fold noise
-  alone. The curve should be read, never a single cell.
+- Leave-one-dataset-out R² is sensitive to equation length and the small set of folds. The curve should be read, never a single cell.
 - E1's cross-validated numbers rest on 20 folds and are correspondingly unstable — its
-  leave-one-dataset-out R² is negative at 1–4 terms and 0.217 at 7.
+  leave-one-dataset-out R² ranges from 0.127 to 0.301 at 1–4 terms and reaches 0.341 at 7.
 - The knee detector, the Pareto front and the "best cross-validated" rule all operate on a
-  curve whose points carry that much noise. That they agree on 12–14 terms is reassuring,
-  not conclusive.
+  curve whose points carry sampling noise. The current choice of 16 terms favours brevity;
+  the full configuration sweep under the latest grammar constraint remains pending.
 
 Twenty-five models is more comfortable but still small for the leave-one-model-out
 protocol.
@@ -105,7 +104,7 @@ fix was to tell the equation, not to change how it was fitted. But a study that 
 Spearman does not enter any of this. It sits between 0.63 and 0.73 for every predictor and
 every baseline on this corpus, including a constant, and the two sides here differ by 0.003.
 
-## Model descriptors are thin, and one of them is asserted
+## Model descriptors are thin, and five of them are asserted
 
 The five model features the corpus originally shipped captured 63% of what model identity
 explains. That gap is what the asserted ordinals were added to close, and they close most of
@@ -143,8 +142,8 @@ anyone observed.
 Richer *measured* descriptors — inductive bias, hypothesis-space characteristics, optimiser
 behaviour — would carry none of these caveats and remain the better answer.
 
-How much more is now measured rather than guessed. Tabulating that missing third per model
-instead of describing it is worth **+0.106** of leave-one-dataset-out R²
+How much more is now measured rather than guessed. Tabulating the remaining model effects
+instead of describing them is worth **+0.017** of leave-one-dataset-out R²
 ([chapter 9](09-model-effects.md)) — which is at most what a *perfect* set of extra
 descriptors would be worth, since free per-model numbers are the best any descriptor set
 could do at telling these 25 models apart. It is also why a table is not a substitute for
@@ -191,7 +190,7 @@ That is why [chapter 10](10-report.md) states its practices at the level of rece
 guidance from the literature and uses this study to weigh each one, rather than reading new
 guidance out of the weights. A recommendation that survives being weighed against several
 independent measurements is worth something; one extracted from a single equation inherits
-that equation'"'"'s instabilities, of which this is a worked example.
+that equation's instabilities, of which this is a worked example.
 
 Three mitigations are in place and none of them is sufficient:
 
@@ -230,7 +229,7 @@ result biases the target upward.
 | if | then |
 |---|---|
 | more datasets (OpenML-scale) | would settle whether the 0.6605 additive ceiling is a property of this sample or of the approach |
-| richer model descriptors | would test whether the 42% unexplained model capability is reachable |
+| richer model descriptors | would test whether the remaining +0.017 LOO-dataset R² bound is reachable |
 | an interaction-aware but interpretable term family | would test whether the +0.122 rank-1 gap can be closed without abandoning readability |
 | a learning-to-rank objective | would test whether the ranking gap against the per-model-mean baseline closes |
 | refitting across a configuration grid | would separate evidence that describes the data from evidence that describes one equation |

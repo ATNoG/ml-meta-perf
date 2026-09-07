@@ -55,9 +55,9 @@ so it is expected to use fewer features as it improves. E3 uses 13 of 18.
 
 So `Solution Stochasticity` and `Loss Margin Behaviour` stay, earning their place at the
 first stage: without them 134 of 476 rows stop being identifiable. Do not resurrect the
-argument from their absence in the fit — and note that absence is not even robust. At 16
-terms neither appears; at 12, 20 and 24 the fit uses one or both. It is a property of one
-length.
+argument from absence in the fit — and note that absence is not even robust. At 16
+terms `Loss Margin Behaviour` appears and `Solution Stochasticity` does not. Selection
+is a property of one length and configuration.
 
 Two caveats to carry with the identification claim. It is **joint** on the model side: five
 of the six columns are constant per model and separate only 19 of 25 learners alone

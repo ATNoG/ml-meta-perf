@@ -302,19 +302,19 @@ published equation rather than from a sweep:
 
 | transform | terms using it | share of weight mass |
 |---|---|---|
-| `log` | 19 of 24 | 79% |
-| `id` | 12 of 24 | 41% |
-| `sqrt` | 1 of 24 | 6% |
-| `1/f` | **0** | **0%** |
+| `log` | 13 of 16 | 90.1% |
+| `id` | 6 of 16 | 30.1% |
+| `sqrt` | **0** | **0%** |
+| `1/f` | 2 of 16 | 7.2% |
 | `f^2` | **0** | **0%** |
 
-`log` is the workhorse by a wide margin, `sqrt` survives on a single term, and inversion
-and squaring earn nothing at all despite being admissible on 14 and 18 of the 18 features
-respectively. This is the strongest available evidence that the transform vocabulary is
-already past the point of usefulness rather than short of it: the search had these shapes
-available, screened them, and declined them. Trimming `1/f` and `f^2` would shrink the
-library at no measured cost — they are retained only because a vocabulary chosen to fit one
-meta-dataset's outcome is a worse default than one chosen on principle.
+`log` is the workhorse by a wide margin, inversion survives on two terms, and square
+roots and squaring earn nothing in the current equation despite being offered.
+Transform shares overlap when a term uses more than one transform. The search had these
+shapes available, screened them, and declined them in this fit; that does not establish
+that trimming them would have no cost under another configuration. They are retained
+because a vocabulary chosen to fit one meta-dataset's outcome is a worse default than
+one chosen on principle.
 
 ## Why the raw features are not scaled first
 

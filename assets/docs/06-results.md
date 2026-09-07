@@ -34,6 +34,8 @@ that a predictor constant inside a group can only predict that group's mean anyw
 aggregating merely made the structure explicit. Both halves of that are true and the
 choice was still wrong, for a reason that has nothing to do with the weights:
 
+*This aggregation comparison predates the fixed-form protocol used below.*
+
 | E1 fitted on | in-sample R² (476 rows) | LOO-dataset R² | comparable with E3? |
 |---|---|---|---|
 | 20 dataset means | 0.337 | **0.506** *(on 20 points)* | no |
@@ -103,9 +105,9 @@ that is the column the next section reads.
 | **E3** | **16** | **0.665** | **0.627** | **0.622** |
 
 Both controls are now reported under both protocols, which the aggregated E1 could not be.
-The pattern is the one the design predicts and is worth checking rather than assuming: E1
-transfers *better* across models (0.294) than across datasets (0.217), because it predicts
-a per-dataset constant and a new model does not change it; E2 is the mirror.
+The pattern is worth checking rather than assuming: E1 transfers *better* across datasets
+(0.341) than across models (0.306); E2 is the mirror. E1 predicts a per-dataset constant,
+but refitting its coefficients after holding out a model can still change that constant.
 
 **E3's two transfer numbers are now close** — 0.627 and 0.622, against a fit of 0.665. An
 equation that loses under 0.04 R² when a whole dataset or a whole learner is withheld is
@@ -172,7 +174,7 @@ are artefacts:
   effects, not a statement of relative importance.
 - **Model features carry more in combination than alone.** Adding them to E1 is worth
   +0.317 R² (0.349 → 0.665), beyond the 0.248 they achieve by themselves. The surplus is
-  dataset×model interaction, which is why **9 of E3's 16 terms are mixed** and drive 56%
+  dataset×model interaction, which is why **10 of E3's 16 terms are mixed** and drive 53%
   of its output variance.
 
 ![Contribution shares](../figures/contribution_shares.png)
@@ -224,7 +226,8 @@ buys under 0.005. Sixteen is a knee. Under the previous protocol the same curve 
 between adjacent lengths, because each length was a different equation refitted twenty times;
 fixing the form removed that variance and made the knee readable.
 
-The length and penalty were re-swept rather than carried over, which is the general lesson:
+The length and penalty were re-swept on 2026-09-05; a full sweep under the constraint
+added on 2026-09-07 remains pending. The general lesson is unchanged:
 **a term budget tuned against one feature set is not evidence about another.**
 
 ## The fitted equations
@@ -245,15 +248,13 @@ MCC = +1.24602
 E2, over the six model features:
 
 ```
-MCC = +0.46554
-      +0.559567   * 1/Loss Margin Behaviour
-      +0.00549788 * Model Capability^2
-      -0.196113   * sqrt(Processing Units Number)
-      +0.0410675  * [log(Loss Margin Behaviour)] * [log(Model Capability)]
-      +0.317787   * [log(Loss Margin Behaviour)] / [Model Capability]
-      -0.381236   * [log(Model Capability)] / [log(Processing Units Number)]
-      +0.385192   * [log(Model Capability)] / [Solution Stochasticity]
-      +0.129776   * [log(Processing Units Number)] * [log(Solution Stochasticity)]
+MCC = +0.374877
+      +0.13883 * [log(Model Capability)] * [log(Processing Units Number)]
+      -0.268522 * log(Fitting Regime)
+      -0.0315036 * Processing Units Number
+      +0.101647 * [log(Fitting Regime)] * [log(Processing Units Number)]
+      +0.322689 * 1/Loss Margin Behaviour
+      +0.231211 * [log(Loss Margin Behaviour)] / [Model Capability]
 ```
 
 ### How much of each control survives into E3
@@ -262,12 +263,12 @@ Counting terms the published equations share *exactly*:
 
 | | shared with E3 | which |
 |---|---|---|
-| E2 → E3 | **0 of 8** | — |
+| E2 → E3 | **0 of 6** | — |
 | E1 → E3 | **1 of 7** | `[log(eq_num_attr)] * [log(nr_class)]` |
 
 **Almost nothing survives, and that is the honest reading of the controls.** E2's terms are
 built to say as much as possible using *only* model features, so they lean on ratios between
-the model columns themselves — `log(Model Capability) / Solution Stochasticity`, and so on.
+the model columns themselves — `log(Loss Margin Behaviour) / Model Capability`, and so on.
 Once a dataset feature is available to pair with, none of those pairings is the best use of a
 term slot, and E3 rebuilds the model side from scratch against dataset partners.
 
@@ -276,7 +277,7 @@ of MCC each half of the meta-data explains**, and they do that whether or not th
 terms reappear. They were never evidence that E3 would phrase things the same way, and an
 earlier version of this chapter over-read a 4-of-6 overlap as though they were.
 
-What it does show is that the equation is not a concatenation of its two halves. Nine of E3's
+What it does show is that the equation is not a concatenation of its two halves. Ten of E3's
 sixteen terms are mixed, and a mixed term is not available to either control by construction.
 
 E3, on all 476 rows, is 16 terms and is **not reproduced here**. It is printed in full,
@@ -286,9 +287,9 @@ the way a copy in this chapter would. An earlier draft of this chapter carried a
 E3 that had stopped being the published equation several configurations earlier, which is
 why the listing now lives on the generated side.
 
-The shape of it, from that chapter: 9 of the 16 terms mix dataset and model features and
-drive **56%** of the output variance; 3 are model-only (3%) and 4 are dataset-only (41%).
-The weights are flat — they behave like **13.8 equally-weighted terms**, and the largest
+The shape of it, from that chapter: 10 of the 16 terms mix dataset and model features and
+drive **53%** of the output variance; 2 are model-only (5%) and 4 are dataset-only (42%).
+The weights are flat — they behave like **13.2 equally-weighted terms**, and the largest
 carries under 11% of the mass.
 
 ![What each term is worth](../figures/term_effects.png)

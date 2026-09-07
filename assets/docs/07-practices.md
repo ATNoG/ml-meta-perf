@@ -244,14 +244,14 @@ printed equation.
 ### 2. Which features the search reached for
 
 Asked of the vocabulary rather than of the weights, so a spread of weights does not blunt
-it. **12 of the 18 available meta-features appear in the equation.** Six do not:
+it. **13 of the 18 available meta-features appear in the equation.** Five do not:
 `class_ent`, `inst_to_attr`, `nr_norm` and `ns_ratio` on the dataset side, and
-`Solution Stochasticity` and `Loss Margin Behaviour` on the model side. All were offered
+`Solution Stochasticity` on the model side. All were offered
 under every transform and none earned a place, which is a result about the meta-data rather
-than about the search — and, for the two model ordinals, a live tension: they are the columns
-that let the feature set tell individual learners apart, and the fit does not want them.
+than about the search at this length and configuration. `Loss Margin Behaviour` does
+appear; both model ordinals retain their role in telling individual learners apart.
 
-`Processing Units Number` appears in 7 of 16 terms and `gravity` in 5; everything else is
+`Processing Units Number` appears in 5 of 16 terms and `gravity` in 5; everything else is
 spread thinner, 1–3 terms each. The full table, with the transforms
 and operations each feature was used under, is in [chapter 10](10-report.md).
 
@@ -259,41 +259,41 @@ and operations each feature was used under, is in [chapter 10](10-report.md).
 
 | operation | terms | share |
 |---|---|---|
-| `sum_ratio` — $(f_1+f_2)/f_3$ | 11 | 50% |
-| `product` — $f_1 \cdot f_2$ | 8 | 31% |
-| `atom` — $f$ | 4 | 16% |
-| `ratio` — $f_1/f_2$ | 1 | 3% |
+| `sum_ratio` — $(f_1+f_2)/f_3$ | 0 | 0% (not offered) |
+| `product` — $f_1 \cdot f_2$ | 6 | 43.2% |
+| `atom` — $f$ | 2 | 7.2% |
+| `ratio` — $f_1/f_2$ | 8 | 49.6% |
 
 | transform | terms | share |
 |---|---|---|
-| `log` | 19 | 79% |
-| `id` | 12 | 41% |
-| `sqrt` | 1 | 6% |
-| `inv`, `sq` | **0** | **0%** |
+| `log` | 13 | 90.1% |
+| `id` | 6 | 30.1% |
+| `sqrt` | 0 | 0% |
+| `inv` | 2 | 7.2% |
+| `sq` | **0** | **0%** |
 
-Two things worth stating. **The three-feature operation carries half the equation**, which
-is the direct evidence for the arity design point argued in
-[chapter 2](02-equation-form.md) — a two-feature grammar would have had to express that
-half some other way. And **`1/f` and `f²` were offered and never used**: the search
-preferred `log` for compression and had no use for inversion or squaring at all.
+Two things worth stating. **Ratios carry half the equation**, under the two-feature
+grammar described in [chapter 2](02-equation-form.md). And **`sqrt(f)` and `f²` were
+offered and never used**: the search preferred `log` for compression and used inversion
+in two terms. Transform shares overlap when a term uses more than one transform.
 
-`ratio_of_sums` is absent because `max_arity = 3` kept it out of the library, not because
+`sum_ratio` and `ratio_of_sums` are absent because `max_arity = 2` kept it out of the library, not because
 the data declined it. The generated table marks that distinction with an `offered` column,
 since reading a configuration choice as a finding is exactly the mistake this section is
 built to avoid.
 
 ### And one thing that does temper the guidance
 
-**Four of the sixteen major terms were selected by fewer than half of the folds**,
-including the very largest. A large standardised weight with a low selection frequency
+**Two of the ten major terms were selected by fewer than half of the folds**,
+though the very largest is stable. A large standardised weight with a low selection frequency
 means the term is doing its work for *this* training set and would be replaced on another;
 printed as a coefficient it looks exactly like a stable one. `report.unstable_majors`
 extracts them so they cannot be quietly read as findings.
 
-On the current equation the check passes rather than fires: the rank-1 term,
-`[log(gravity)] * [log(Model Capability)]` at 10.6% of the mass, appears in **95% of folds**.
+On the current equation the largest term passes the check: the rank-1 term,
+`[log(gravity)] / [log(Processing Units Number)]` at 10.8% of the mass, appears in **95% of folds**.
 An earlier configuration's rank-1 term appeared in 20%, which is what the check exists for.
-That the same test now comes back clean is a property of the fixed-form protocol — the
+That the largest term now passes is a result of the stability check — the
 equation's terms are chosen once, so fold-to-fold reselection measures whether the *form*
 survives resampling rather than which of twenty different equations happened to be fitted.
 
