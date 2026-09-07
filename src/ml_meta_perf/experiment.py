@@ -132,9 +132,39 @@ DEFAULT_E2 = Configuration(max_abs_zscore=3.0, penalty=5.0, pool_size=100, max_t
 # though that margin is drawn from the same twenty folds and should not be read as decisive
 # on its own either.
 #
-# Penalty, z-cap and arity are unchanged from the 2026-09-05 sweep. A full
-# penalty x length x z-cap x arity sweep under the constraint has not been run, and
-# `ml-meta-perf-search` is where it belongs -- see `TODO.md`.
+# CONFIRMED BY THE FULL SWEEP, 2026-09-07 (Slurm job 15335, 48,576 points, 71 minutes on 62
+# cores). This configuration is now what a search chose, not a length read off a curve.
+#
+# `max_arity=2` is confirmed outright: the best arity-2 point scores 0.7297 against 0.6866 for
+# the best arity-3 point, and every configuration in the top band is arity 2.
+#
+# **The sweep's top row is not the answer, and this is the case the warning was written for.**
+# It ranks a 9-term equation first (objective 0.7297 against this one's 0.6861). Paired over
+# the twenty held-out datasets on per-dataset MAE, that equation is *significantly worse*:
+# the incumbent wins on 16 of 20, sign test p = 0.012, bootstrap CI [+0.0082, +0.0303] entirely
+# above zero. The standing rule is the shortest configuration that is **not significantly
+# worse**, and nine terms does not qualify. Sixteen stands.
+#
+# What makes the objective prefer it is `stability`, not brevity. Decomposed against
+# `OBJECTIVE_WEIGHTS`: stability contributes +0.0525 of the +0.0379 net gap and brevity only
+# +0.0146, against -0.029 summed over the five accuracy components. The 9-term form reselects
+# in 88% of folds where this one reselects in 53%. That is a real property and a real tension
+# -- a shorter form is more stable and transfers worse -- but `stability` is weighted 0.15
+# against 0.40 for the three R2 combined, so it should not be able to overturn an accuracy gap
+# this size. Treat the objective as a shortlisting device and the paired test as the decision.
+#
+# The sweep also prefers a four-feature subset -- `Model Capability`, `Processing Units
+# Number`, `Fitting Regime`, `Input Distribution Modelling` -- dropping `Solution
+# Stochasticity` and `Loss Margin Behaviour`. **That subset is inadmissible and the objective
+# cannot see why.** Without those two columns, 134 of 476 rows share a full model-feature
+# vector with a different model on the same dataset, so no equation over them could ever tell
+# those rows apart. Identification is a property of the corpus design, not of the fit; see
+# `data`'s module docstring.
+#
+# Penalty and z-cap: no candidate significantly beats this one. The nearest, penalty 20 with
+# z-cap 4.50 on the four-feature subset, reaches 0.6317 leave-one-dataset-out against 0.6270
+# and is a tie when paired (p = 0.115) -- and on all six features the same knobs score 0.5798,
+# so the apparent gain is the feature drop rather than the shrinkage. Left unchanged.
 DEFAULT_E3 = Configuration(
     max_abs_zscore=4.25, penalty=15.0, pool_size=600, max_terms=32, headline_terms=16, max_arity=2
 )

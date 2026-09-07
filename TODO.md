@@ -64,20 +64,53 @@ varies with the dataset, breaks the ties. And it was bought with redundancy — 
 Every item needs a *measurement*, not a judgement. The paired test is the tool for the ones
 that compare two configurations.
 
-## 1. The full sweep, on Slurm — running
+## 1. The full sweep — done, and it confirms the published configuration
 
-Submitted 2026-09-07 as job **15335** on `playstation` (`cpuPartition`, 62 cores, node
-`atari`). Two things had to be fixed before it would run at all, and both will bite again:
+Ran 2026-09-07 as Slurm job **15335** on `playstation` (node `atari`, 62 cores): 48,576
+points, 71 minutes, clean exit. `results/cluster/equation_search.csv` is the output, fetched
+into the repo. **The published `DEFAULT_E3` is now what a search chose rather than a length
+read off a curve**, and the standing "re-sweep whenever the grammar changes" debt is paid.
 
-- **The cluster copy at `~/aiml-model` is an rsync of the tree, not a clone, and it was
-  stale by three weeks** — its `src/` predated the one-term-per-feature-combination
-  constraint, so a sweep run there would have searched the wrong grammar. Re-sync before
-  every submission.
-- **The sbatch script had no `--mem-per-cpu`.** The cluster default of 4G x 62 cores asks for
-  248G, and `atari` — the only idle 64-core node on the partition — has 246G. The job was
-  therefore unschedulable on the one node that could run it, and Slurm parked it five months
-  out behind two 128-core nodes with 16 free cores each. Measured peak RSS on the largest
-  grid point is 216 MB, so the script now asks for 1G per worker.
+What it settled:
+
+- **`max_arity = 2` confirmed outright.** Best arity-2 point 0.7297 against 0.6866 for the
+  best arity-3 point, and every configuration in the top band is arity 2.
+- **Penalty 15 and z-cap 4.25 stand.** No candidate beats them significantly. The nearest,
+  penalty 20 / z-cap 4.50 on a four-feature subset, reaches 0.6317 LOO-dataset against 0.6270
+  and is a **tie** when paired (p = 0.115) — and on all six features the same knobs score
+  0.5798, so the apparent gain is the feature drop, not the shrinkage.
+- **Sixteen terms stands.** See item 2.
+
+Two traps it walked into, both worth keeping:
+
+**The top row is not the answer, and this is the case the warning was written for.** The
+sweep ranks a 9-term equation first (objective 0.7297 against the incumbent's 0.6861). Paired
+over the twenty datasets on per-dataset MAE it is **significantly worse** — incumbent wins on
+16 of 20, p = 0.012, CI [+0.0082, +0.0303] entirely above zero. The rule is *the shortest
+configuration that is not significantly worse*, and nine terms does not qualify.
+
+What drives the objective there is **`stability`, not brevity**: decomposed against
+`OBJECTIVE_WEIGHTS`, stability contributes +0.0525 and brevity +0.0146 against -0.029 summed
+over the five accuracy components. The 9-term form reselects in 88% of folds against the
+incumbent's 53%. That is a real tension — a shorter form is more stable and transfers worse —
+but stability is weighted 0.15 against 0.40 for the three R² combined and should not overturn
+an accuracy gap this size. **Consider re-weighting `OBJECTIVE_WEIGHTS`, or treat the objective
+as a shortlisting device and the paired test as the decision.** Currently the latter.
+
+**The sweep prefers a four-feature subset that is inadmissible, and the objective cannot see
+why.** It drops `Solution Stochasticity` and `Loss Margin Behaviour`, keeping `Model
+Capability`, `Processing Units Number`, `Fitting Regime`, `Input Distribution Modelling`.
+Without those two columns **134 of 476 rows share a full model-feature vector with a different
+model on the same dataset** — exactly the number predicted before the sweep ran. Identification
+is a property of the corpus design and is not in the objective. Do not adopt the subset, and
+do not re-open the argument from those two columns' absence in the fit.
+
+**Re-running it.** The cluster copy at `~/aiml-model` is an rsync of the tree, not a clone, and
+it was stale by three weeks when this ran — its `src/` predated the one-term-per-feature-
+combination constraint, so it would have searched the wrong grammar. Re-sync first. The sbatch
+script also had no `--mem-per-cpu`, so the 4G default x 62 cores asked for 248G against
+`atari`'s 246G; Slurm accepted the job and scheduled it for **2027-02-13**. Measured peak RSS
+is 216 MB and the script now asks 1G.
 
 ```bash
 rsync -av --delete --exclude='__pycache__' --exclude='*.egg-info' \
@@ -85,39 +118,28 @@ rsync -av --delete --exclude='__pycache__' --exclude='*.egg-info' \
 ssh playstation 'cd ~/aiml-model && sbatch --job-name=eqsrch --cpus-per-task=62 scripts/equation_search.sbatch'
 ```
 
-48,576 points at a measured 5.66 s/point — about 76 core-hours, or 70 minutes on 62 cores.
-Writes `results/cluster/equation_search.csv`, 25 columns, sorted by `objective`.
+## 2. Term count — settled at 16, on a paired test rather than a knee
 
-**Do not read the top row as the answer.** `objective` is a weighted sum over seven
-components computed from the same twenty folds, so neighbouring rows are ties. Take the top
-band, pair the candidates against the incumbent with `validate.paired_comparison`, and
-prefer the shortest configuration that is not significantly worse.
+The machinery was fixed first, and both fixes were needed before any answer meant anything:
 
-**Nothing about the equation length can be settled until this lands** — see item 2.
+- **The detector no longer runs on in-sample R² alone.** In-sample is monotone in the number
+  of terms, so it can only ever say "more". `selection.consensus_curve` combines every
+  protocol per length and `knee_terms` runs on that; the **median** is the default because it
+  is robust to the craters item 3 explains — at 15 terms the three protocols read
+  0.659 / 0.393 / 0.616 and the median ignores the crater. `recommend` still reports each
+  protocol separately so disagreement stays visible.
+- **The curve is reported at every length.** The old `(2, 4, 8, 12, 16, 20, 24, 26, 28, 32)`
+  skipped 13, 15, 17 and 31 — exactly the four craters — and the detector was partly reporting
+  the grid: 4 on the ragged grid, 6 on the dense one. `SWEEP_SIZES` is now `None`; the beam
+  search already builds the whole path.
 
-## 2. Term count: the machinery is fixed, the answer is not
+**All four detectors now agree at 6 terms**, where they previously split 4 / 8. That agreement
+is the evidence the grid was the problem.
 
-The reporting defects are fixed. `results/term_choice.csv` no longer contradicts the
-published equation, and `error_curve_mae.png` no longer draws a line labelled "knee" at a
-length the study does not use.
-
-- **The detector no longer runs on in-sample R² alone.** `selection.consensus_curve`
-  combines every protocol per length and `knee_terms` runs on that; the median is the
-  default because it is robust to the craters item 3 explains. `recommend` still reports
-  each protocol separately so disagreement stays visible.
-- **The curve is reported at every length, not a hand-picked grid.** The old
-  `(2, 4, 8, 12, 16, 20, 24, 26, 28, 32)` skipped 13, 15, 17 and 31 — exactly the four
-  craters — and the detector was partly reporting the grid: 4 on the ragged grid, 6 on the
-  dense one.
-- **All four detectors now agree at 6 terms**, where they previously split 4 / 8. That
-  agreement is the evidence the grid was the problem.
-
-**What is left is the disagreement between the knee (6) and the published length (16)**, and
-it cannot be resolved on this curve, because the curve is a property of a configuration
-nobody searched: the 2026-09-07 constraint changed the grammar and only the length was
-re-derived, with penalty, z-cap and arity inherited. **Re-derive the knee on the swept
-configuration when job 15335 lands**, and decide then whether the published length follows
-the detector or the objective's brevity tie-break. Whichever it is, say which.
+**Six is not the published length, and neither is the sweep's nine.** Both are significantly
+worse than sixteen when paired over the twenty held-out datasets. The published equation is
+justified by that test, not by a knee detector and not by the objective's top row — and the
+chapters now say so. **Do not re-open this by quoting the knee.**
 
 ## 3. The LOO-dataset craters — diagnosed and disclosed
 
@@ -210,8 +232,9 @@ inherited from the deleted `todo.md` is pre-2026-09-05 and therefore re-selectin
 them may be quoted beside a current figure without being re-measured first.
 
 **Re-sweep the configuration whenever the feature set *or the grammar* changes.** This has
-now bitten four times. `DEFAULT_E3` tuned on the re-selecting metric scored 0.246 under
-fixed form. The fourth is the sweep now running.
+bitten four times. `DEFAULT_E3` tuned on the re-selecting metric scored 0.246 under fixed
+form. The fourth was the 2026-09-07 constraint, and job 15335 closed it — but the rule stands
+for the next change.
 
 **Library construction is order-independent as of 2026-09-05** — `build_library` sorts both
 feature groups. Before that, `A * B` and `B * A` entered as two names for one column and the

@@ -257,23 +257,52 @@ With both decisions fixed, every rule is reported rather than one:
 | knee (leave-one-dataset-out) | 6 | 0.593 | 0.568 |
 | knee (leave-one-model-out) | 6 | 0.593 | 0.568 |
 | best leave-one-dataset-out | 23 | 0.679 | 0.644 |
+| sweep's top row (9 terms) | 9 | 0.606 | 0.575 |
 | **published** | **16** | **0.665** | **0.627** |
 
 **The four detectors now agree**, which they did not on the ragged grid, where in-sample gave
 4 and the cross-validated curves gave 8. That agreement is the evidence the grid was the
 problem.
 
-**The knee and the published length disagree, and that is the open question.** Six terms is
-where the steep gains stop: the curve climbs 0.165 → 0.593 over the first six terms and
-0.593 → 0.687 over the remaining twenty-six. Sixteen is where the study currently sits, on a
-brevity tie-break between candidates the accuracy could not separate.
+### The knee is not the published length, and the sweep says why
 
-Neither number is settled, because **the curve is a property of the configuration and the
-configuration has not been searched under the current grammar.** The one-term-per-feature-
-combination rule changed the grammar on 2026-09-07 and only the length was re-derived, off
-this curve, with penalty, z-cap and arity inherited from a sweep run under the previous
-rules. `ml-meta-perf-search` exists to settle that, and until it has, a knee detected here is
-a knee of a configuration nobody chose. `TODO.md` tracks it as the first item.
+**Six is where the steep gains stop**: the curve climbs 0.165 → 0.593 over the first six
+terms and 0.593 → 0.687 over the remaining twenty-six. The published equation has sixteen.
+That gap is real and it is resolved by measurement rather than by preferring one rule.
+
+A full configuration sweep — 48,576 points over feature subsets × penalties × lengths ×
+z-caps × arities, run on Slurm — scores each candidate on seven weighted components and
+ranks a **9-term** equation first. Neither 6 nor 9 survives the comparison that matters:
+
+| configuration | terms | LOO-dataset R² | LOO-dataset MAE | paired against the published equation |
+|---|---|---|---|---|
+| sweep's top row | 9 | 0.575 | 0.164 | **significantly worse** — published wins on 16 of 20 datasets, p = 0.012, CI [+0.008, +0.030] |
+| published | 16 | 0.627 | 0.144 | — |
+| nearest rival | 16 | 0.632 | 0.145 | tie, p = 0.115 |
+
+The rule the study commits to is **the shortest configuration that is not significantly
+worse**, paired dataset by dataset with `validate.paired_comparison`. Nine terms does not
+qualify: the bootstrap interval on the per-dataset MAE difference lies entirely above zero.
+Sixteen stands, and it stands on a paired test rather than on a knee.
+
+**Why the objective prefers nine, and why that is not decisive.** Decomposed against
+`equation_search.OBJECTIVE_WEIGHTS`, the 9-term equation gains +0.053 on `stability` and
++0.015 on `brevity` while losing 0.029 summed across the five accuracy components. The
+shorter form reselects in 88% of folds where the published one reselects in 53% — a genuine
+tension, since form stability is what licenses fixing the form at all ([chapter 5](05-evaluation.md)).
+But `stability` carries weight 0.15 against 0.40 for the three R² combined, so it should not
+overturn an accuracy gap of this size. **The objective is a shortlisting device; the paired
+test is the decision.**
+
+**What the sweep confirmed, and one thing it got wrong.** `max_arity = 2` is confirmed
+outright — the best arity-2 point scores 0.730 against 0.687 for the best arity-3 point, and
+every configuration in the top band is arity 2. Penalty and z-cap are left unchanged, no
+candidate beating them significantly. But the sweep also prefers dropping `Solution
+Stochasticity` and `Loss Margin Behaviour`, and **that subset is inadmissible for a reason
+the objective cannot see**: without those two columns, 134 of 476 rows share a full
+model-feature vector with a different model on the same dataset, so no equation over them
+could tell those rows apart. Identification is a property of the corpus design and is not in
+the objective ([chapter 1](01-dataset.md)).
 
 Both **Pareto fronts** are also reported. Over (length, LOO-dataset R²) the front is 1–8, 10,
 11, 14, 16, 19, 21 and 23 — nothing longer than 23 terms earns its length on transfer. Over
