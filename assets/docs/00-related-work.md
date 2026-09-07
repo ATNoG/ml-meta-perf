@@ -211,7 +211,7 @@ additive equation gives up against a factorised recommender on this corpus, and 
   — the within (fixed-effects) transform, which is what makes a pairwise-ranking least
   squares objective closed-form.
 
-**Relevance.** The obvious response to "the per-model mean out-ranks E3" is to optimise the
+**Relevance.** The obvious response to "the equation does not out-rank the per-model centre" is to optimise the
 ranking directly, and the within transform makes that a one-line change rather than a new
 optimiser. It was implemented and it **ranks worse** (Spearman 0.532 against 0.625). The
 result is worth reporting precisely because the literature makes it look like free money:

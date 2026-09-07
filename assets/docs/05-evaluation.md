@@ -170,42 +170,84 @@ own units: picking the model E3 ranks first costs 0.006 MCC against the best ava
 
 ## Baselines
 
-An equation earns its place only by beating the obvious alternatives:
+An equation earns its place only by beating the obvious alternatives, and there are more of
+them than one. Every trivial predictor is reported at **two centres**, because the metrics
+disagree about which is the honest opponent: the mean minimises squared error, the median
+minimises absolute error. An MAE quoted against a mean baseline is quoted against a predictor
+that is not minimising the metric it is being judged on.
 
-| baseline | R² | MAE |
+| baseline | R² | MAE | SMAPE |
+|---|---|---|---|
+| global mean (loo-dataset) | -0.040 | 0.293 | 50.9 |
+| per-model mean (loo-dataset) | 0.201 | 0.238 | 47.3 |
+| global mean (loo-model) | -0.024 | 0.290 | 50.7 |
+| per-dataset mean (loo-model) | **0.296** | 0.213 | 43.8 |
+| global median (loo-dataset) | -0.303 | 0.258 | 43.6 |
+| per-model median (loo-dataset) | 0.090 | 0.226 | 45.2 |
+| global median (loo-model) | -0.294 | 0.256 | 43.4 |
+| per-dataset median (loo-model) | 0.129 | **0.192** | **40.3** |
+
+The two halves of that table disagree, and predictably: the strongest R² baseline is a mean
+(0.296 against 0.129) and the strongest MAE and SMAPE baselines are medians (0.192 against
+0.213, 40.3 against 43.8). Each metric has to be read against whichever is harder on it.
+E3 clears both — 0.627 R², 0.144 MAE, 35.2 SMAPE under leave-one-dataset-out.
+
+All of these are computed leave-one-group-out. With 17–25 rows per group, letting the row
+being predicted into its own group's centre inflates the per-model mean's R² by 0.082;
+`validate.baseline_group_centre` does it correctly and a naive group centre does not.
+
+Every group-conditioned baseline also has a limit no metric shows: it is **empty under
+leave-one-model-out**. A held-out model has no training row, so "how well does this model
+usually do" does not exist. It is a competitor on one protocol and undefined on the other.
+
+### On ranking, the equation does not beat "use whatever usually works"
+
+This is the honest result, and an earlier draft of this chapter got it wrong in a way worth
+recording, because the mistake is the one this chapter exists to warn about.
+
+| | AP | MRR | hit@1 | top-1 regret |
+|---|---|---|---|---|
+| per-model mean (leave-one-dataset-out) | 0.798 | 0.835 | 0.750 | 0.011 |
+| **E3** | 0.822 | 0.867 | 0.800 | 0.008 |
+| per-model **median** (leave-one-dataset-out) | **0.837** | **0.885** | **0.850** | 0.009 |
+
+Read as means, E3 beats the mean baseline and loses to the median one. **Neither reading
+survives a paired test.** Compared dataset by dataset with `validate.paired_comparison` —
+exact sign test plus a bootstrap over the twenty groups:
+
+| comparison | mean difference in AP | equation better on | p | 95% CI |
+|---|---|---|---|---|
+| E3 vs per-model mean | +0.024 | 7 of the 17 that differ | 0.63 | [-0.068, +0.133] |
+| E3 vs per-model median | -0.016 | 6 of the 17 that differ | 0.33 | [-0.064, +0.040] |
+
+Every interval spans zero. **On ranking, the equation is indistinguishable from ordering the
+models by how well they usually do.** An earlier draft announced that this caveat "has
+closed", on the strength of the +0.024 in the first row alone — a difference of two means
+over twenty folds, which is precisely what this study has three times mistaken for a result.
+Note also that `hit@1` can only move in steps of 0.05 on twenty datasets, so the 0.800
+against 0.750 is two datasets flipping their top pick.
+
+That is not a failure of the equation so much as a statement about the problem: knowing which
+models are generally good is most of what *ranking* needs, which is why the trivial baseline
+is so hard to beat there. The generated report states this verdict from the paired test
+rather than from the table, so it cannot drift back into the optimistic reading.
+
+### On predicting the value, and on the go/no-go decision, it wins clearly
+
+| | R² (loo-dataset) | threshold MCC @ 0.7 |
 |---|---|---|
-| global mean (loo-dataset) | -0.040 | 0.293 |
-| per-model mean (loo-dataset) | 0.201 | 0.238 |
-| global mean (loo-model) | -0.024 | 0.290 |
-| per-dataset mean (loo-model) | 0.296 | 0.213 |
+| per-model mean | 0.201 | 0.439 |
+| per-model median | 0.090 | 0.304 |
+| **E3** | **0.627** | **0.683** |
 
-E3 beats all four on its respective protocol.
+Knowing *how well* a particular model will do on a particular dataset is what needs the
+meta-features, and no group centre has anything to say about it. The same holds once the
+prediction is thresholded into the go/no-go rule a practitioner actually asks for: against a
+majority-class floor of 0.668 accuracy, E3 reaches MCC 0.683 where the trivial predictors
+reach 0.439 and 0.304.
 
-**The ranking caveat that stood through earlier drafts has closed.** For *ranking* models
-on a new dataset, the trivial "average MCC of this model elsewhere" baseline used to beat E3.
-It no longer does, on any head-weighted measure:
-
-| | AP | MRR | hit@1 | top-1 regret | Spearman |
-|---|---|---|---|---|---|
-| per-model mean (leave-one-dataset-out) | 0.798 | 0.835 | 0.750 | 0.011 | 0.703 |
-| **E3** | **0.822** | **0.867** | **0.800** | **0.008** | 0.706 |
-
-**Spearman is exactly tied at 0.703, and every metric that weights the head of the list is
-not.** That is the clearest single demonstration of why this chapter demotes rank correlation:
-the two predictors order the whole list about equally well, and only one of them reliably puts
-a best model first. E3 halves the regret.
-
-The baseline also has a limit no metric shows: it is **empty under leave-one-model-out**. A
-held-out model has no training row, so "average MCC of this model elsewhere" does not exist.
-It is a competitor on one protocol and undefined on the other.
-
-E3 also wins clearly on predicting the MCC *value* — 0.627 against the baseline's 0.201,
-and that was always the larger gap. Knowing which models are generally good is most of what
-*ranking* needs, which is why the baseline was so hard to beat there; knowing *how well* a
-particular model will do on a particular dataset is what needs the meta-features, and the
-baseline has nothing to say about it. The practical reading is unchanged for anyone asking
-"will this reach MCC 0.8 on my data" and improved for anyone asking "which of these 25
-models should I run".
+So the summary across the three questions is: **clearly better at predicting the value,
+clearly better at the threshold decision, and no better at ranking.**
 
 ## Term stability
 

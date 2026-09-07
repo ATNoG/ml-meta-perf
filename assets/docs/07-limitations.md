@@ -385,8 +385,9 @@ each model's slope is a closed-form ridge fit of its own residuals.
 
 ### Negative result: a ranking objective ranks worse
 
-[Chapter 5](05-evaluation.md) reports that the per-model-mean baseline out-ranks E3, and
-the natural response is to fit for ranking rather than for squared error. Squared error over
+[Chapter 5](05-evaluation.md) reports that the equation is indistinguishable from the
+trivial "how well does this model usually do" baselines at ranking, and the natural response is
+to fit for ranking rather than for squared error. Squared error over
 all within-dataset *pairs* expands to ordinary least squares on a design and target both
 centred inside each dataset — the within, or fixed-effects, transform (Mundlak, 1978) — so
 a pairwise ranking objective costs one extra centring step and stays a closed-form ridge
