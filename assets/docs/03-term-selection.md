@@ -233,13 +233,12 @@ dragged to 0.556 by it. `min` is available as the conservative reading and is no
 
 ### Which lengths the curve is reported at
 
-**Every length from 1 to `max_terms`.** The curve used to be reported at
-`(2, 4, 8, 12, 16, 20, 24, 26, 28, 32)` — non-uniform, and skipping 13, 15, 17 and 31, which
-are exactly the four lengths where the transfer curve craters. The published curve was
-therefore much smoother than the real one, and the detector was partly reporting the grid:
-the same detector returns 4 terms on the ragged grid and 6 on the dense one. It costs
-nothing to fix, because the beam search already builds the whole path and `run_equation` was
-subsampling it.
+**Every length from 1 to `max_terms`**, on a uniform grid, and this matters more than it
+sounds. A non-uniform grid — `(2, 4, 8, 12, 16, 20, 24, 26, 28, 32)`, say — skips 13, 15, 17
+and 31, which are exactly the four lengths where the transfer curve craters. Any rule reading
+such a curve is partly reading the grid: the same detector returns 4 terms on that grid and 6
+on the dense one. Reporting every length costs nothing, because the beam search already builds
+the whole path.
 
 ![Accuracy versus equation length](../figures/term_count_curve.png)
 
@@ -291,3 +290,15 @@ Both **Pareto fronts** are also reported. Over (length, LOO-dataset R²) the fro
 (length, in-sample R²) *every* length is on the front, because fit is monotone in terms and
 so nothing is ever dominated. That is precisely why the in-sample curve cannot choose a
 length by itself.
+
+## Limitations of the selection procedure
+
+### Hyperparameter selection is not nested
+
+The stability cap, penalty and equation length were tuned by inspecting
+leave-one-dataset-out scores. Those scores are therefore **mildly optimistic** as estimates
+of performance on genuinely new data. A fully nested protocol would cost another factor of
+20 in compute and, at this sample size, would mostly measure noise; the honest reading is
+that the reported transfer numbers are an upper estimate rather than an unbiased one.
+
+The **in-sample** numbers are unaffected by this.

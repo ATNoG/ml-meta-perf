@@ -35,8 +35,7 @@ from ml_meta_perf.experiment import (
     run,
 )
 from ml_meta_perf.practices import render as render_practices
-from ml_meta_perf.report import term_importance
-from ml_meta_perf.report import write as write_report
+from ml_meta_perf.report import term_importance, write_into_chapters
 
 #: What ``--phase`` accepts. ``all`` is the default and is what the study runs.
 PHASES = ("screen", "equations", "validation", "practices", "figures", "report")
@@ -242,16 +241,19 @@ def build_parser() -> argparse.ArgumentParser:
         default="assets/figures",
         help="directory for the generated figures",
     )
-    # The report is documentation rather than a working artefact, so it defaults into the
-    # chapter tree alongside the hand-written ones and is tracked; --output holds the
-    # equations and the CSV tables, which are regenerated on every run and are not.
+    # The generated results go *into* the chapters that discuss them, between markers, rather
+    # than into a report of their own: the study has six chapters and a reader should not have
+    # to hold a chapter and a separate report at once. Everything outside the markers is
+    # hand-written and never touched; everything inside is rewritten on every run, so a
+    # chapter cannot carry a stale table. `--output` holds the equations and the CSV tables,
+    # which are regenerated every run and are not tracked.
     data.add_argument(
-        "--report",
-        default="assets/docs/10-report.md",
-        help="path for the generated markdown report",
+        "--docs",
+        default="assets/docs",
+        help="chapter directory whose generated sections are rewritten",
     )
     data.add_argument("--no-figures", action="store_true", help="skip figure generation")
-    data.add_argument("--no-report", action="store_true", help="skip the markdown report")
+    data.add_argument("--no-report", action="store_true", help="skip rewriting the generated chapter sections")
     data.add_argument("--no-tables", action="store_true", help="skip the CSV tables")
     data.add_argument("--quiet", action="store_true", help="write files without printing the study")
 
@@ -317,19 +319,19 @@ def main(argv: list[str] | None = None) -> int:
             written = _save_tables(report, destination)
             print(f"{len(written)} tables written to {destination}")
 
-    if arguments.report and not arguments.no_report and "report" in phases:
-        path = write_report(
+    if arguments.docs and not arguments.no_report and "report" in phases:
+        pages = write_into_chapters(
             report,
             columns,
             target(frame),
             DATASET_FEATURES,
             MODEL_FEATURES,
-            arguments.report,
+            arguments.docs,
             frame=frame,
             config=config_e3,
             source=source,
         )
-        print(f"report written to {path}")
+        print(f"{len(pages)} chapters regenerated in {arguments.docs}")
 
     if arguments.figures and not arguments.no_figures and "figures" in phases:
         from ml_meta_perf.figures import generate

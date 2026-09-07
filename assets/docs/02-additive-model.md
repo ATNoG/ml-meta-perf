@@ -48,7 +48,7 @@ consistently, keeps composite terms on a comparable scale.
 
 ## How many raw features may one term combine?
 
-A design choice with a measured justification, and one that was wrong for most of this
+A design choice with a measured justification, and one that is easy to get wrong for most of this
 project's life.
 
 | operation | raw features | terms (arity 3 library) |
@@ -409,3 +409,11 @@ largest. On this data the two designs select **completely disjoint** sets of 12 
 
 Both weight vectors are retained on the fitted object: the raw weights *are* the
 equation, the standardised weights ($\beta$) are how terms rank against each other.
+
+## Limitations of the form
+
+### The additive form
+
+The equation is additive in its terms. [Chapter 4](04-equation.md) quantifies what that
+costs: a rank-1 interaction component is worth +0.122 R² and the equation captures
+essentially none of it. This is a limitation of the model family, not of the fitting.

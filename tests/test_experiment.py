@@ -270,8 +270,16 @@ class TestCli(unittest.TestCase):
                          "Extracted practices", "Baselines", "Model selection"):
             self.assertIn(expected, printed)
 
-    def test_main_writes_equations_tables_and_report(self) -> None:
+    def test_main_writes_equations_tables_and_chapter_sections(self) -> None:
+        """The generated results go into the chapters, between markers, not into a report file."""
+        from ml_meta_perf.report import BEGIN, END
+
         with tempfile.TemporaryDirectory() as directory:
+            docs = Path(directory) / "docs"
+            docs.mkdir()
+            chapter = docs / "05-evaluation.md"
+            chapter.write_text("# 5. Evaluation\n\nHand-written prose that must survive.\n")
+
             buffer = io.StringIO()
             with redirect_stdout(buffer):
                 code = main(
@@ -280,7 +288,7 @@ class TestCli(unittest.TestCase):
                         "--quiet",
                         "--no-figures",
                         "--output", directory,
-                        "--report", str(Path(directory) / "report.md"),
+                        "--docs", str(docs),
                     ]
                 )
             self.assertEqual(code, 0)
@@ -288,8 +296,29 @@ class TestCli(unittest.TestCase):
                 path = Path(directory) / name
                 self.assertTrue(path.is_file())
                 self.assertGreater(Equation.load(path).n_terms, 0)
-            self.assertTrue((Path(directory) / "report.md").is_file())
             self.assertTrue((Path(directory) / "curve_e3.csv").is_file())
+
+            written = chapter.read_text()
+            self.assertIn("Hand-written prose that must survive.", written)
+            self.assertIn(BEGIN, written)
+            self.assertIn(END, written)
+
+    def test_regenerating_a_chapter_is_idempotent(self) -> None:
+        """A second run replaces the generated block rather than appending another."""
+        from ml_meta_perf.report import BEGIN
+
+        with tempfile.TemporaryDirectory() as directory:
+            docs = Path(directory) / "docs"
+            docs.mkdir()
+            chapter = docs / "05-evaluation.md"
+            chapter.write_text("# 5. Evaluation\n\nProse.\n")
+            for _ in range(2):
+                with redirect_stdout(io.StringIO()):
+                    main(["--quick", "--quiet", "--no-figures", "--no-tables",
+                          "--output", directory, "--docs", str(docs)])
+            written = chapter.read_text()
+            self.assertEqual(written.count(BEGIN), 1)
+            self.assertEqual(written.count("Prose."), 1)
 
     def test_phase_selection_limits_what_is_printed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -105,7 +105,7 @@ Three of them carry warnings that matter downstream.
 **`nr_inst` is the source size, not the training size.** Every model was trained on a
 stratified sample capped at 100,000 rows and ten of the twenty datasets exceed that cap, so
 above it `nr_inst` describes a dataset nobody trained on. **No question about the effect of
-more training data is testable here** — see [chapter 7](07-limitations.md).
+more training data is testable here** — see [chapter 1](01-dataset.md).
 
 **The set is deliberately redundant, and two of the redundancies are exact.** `nr_attr` and
 `nr_outliers` correlate at 0.9995. And `inst_to_attr` is defined as `nr_inst / nr_attr`, so
@@ -140,7 +140,7 @@ over them may be read.
 
 **Only one of the six is a measurement, and none of them describes what a model is *good
 at*.** `Processing Units Number` is a cost proxy and the other five are taxonomy. That is the
-study's central limitation rather than an incidental one: [chapter 7](07-limitations.md)
+study's central limitation rather than an incidental one: [chapter 1](01-dataset.md)
 measures the headroom a perfect model descriptor would buy, and records the five separate
 attempts to recover it by re-encoding what the corpus already has, all of which failed.
 
@@ -192,7 +192,7 @@ is not a statement about sample size.
 they are not missing at random: eight models are absent from the same three datasets, which
 are the three smallest in the corpus (165, 389 and 400 instances). The meta-dataset is
 therefore a sample of *completed* runs, and every prediction is conditional on training
-succeeding ([chapter 7](07-limitations.md)).
+succeeding ([chapter 1](01-dataset.md)).
 
 ## Two facts that drive the whole design
 
@@ -218,3 +218,77 @@ standardised before selection (chapter 2).
 
 The single negative row is a legitimate measurement — a model that converged
 anti-correlated with the labels — and is retained.
+
+## Limitations of the corpus
+
+### Sample size
+
+**Twenty datasets is the binding constraint on every cross-validated number here.**
+
+- Leave-one-dataset-out R² varies by ±0.07 between adjacent term counts from fold noise
+  alone. The curve should be read, never a single cell.
+- E1's cross-validated numbers rest on 20 folds and are correspondingly unstable — its
+  leave-one-dataset-out R² is negative at 1–4 terms and 0.217 at 7.
+- The knee detector, the Pareto front and the "best cross-validated" rule all operate on a
+  curve whose points carry that much noise. That they agree on 12–14 terms is reassuring,
+  not conclusive.
+
+Twenty-five models is more comfortable but still small for the leave-one-model-out
+protocol.
+
+### Domain
+
+All twenty datasets are networking, IoT and security tabular benchmarks. Nothing here
+should be assumed to transfer to images, text, or tabular data from other domains. The
+extracted practices in particular are statements about this corpus.
+
+### Training-set size is not a variable here
+
+**Every model was trained on a stratified sample capped at 100,000 rows.** Ten of the
+twenty datasets exceed that cap, so above it every training set is the same size and
+`nr_inst` records the *source* dataset rather than what the model saw.
+
+This is a hard boundary on what the study can be asked. Anything of the form "does X change
+as the training set grows" is untestable here, and a split of the corpus by `nr_inst` is a
+split by source size, which is not the same variable. A practice of the form *neural
+architectures catch up on larger datasets* is therefore outside what this corpus can weigh,
+and [chapter 6](06-practices.md) does not carry one — because the corpus cannot speak to it,
+not because the answer came out one way or the other.
+
+`nr_inst` and `inst_to_attr` remain legitimate meta-features — they are knowable before
+training and they describe the problem a practitioner is facing — but no term over them
+should be read as a statement about sample size.
+
+### Every prediction is conditional on training succeeding
+
+**Runs that failed to train were discarded when the meta-dataset was built.** That was a
+deliberate choice — a crashed run has no MCC to record — but it means the corpus is a
+sample of *completed* runs, and the equation is fitted on and can only speak about that
+population.
+
+Twenty-four of the 500 (dataset, model) cells are absent, and not at random: eight models
+are missing from the same three datasets. So the exclusions are concentrated exactly where
+one would expect a model to have struggled, which is the classic shape of selection bias.
+
+Two consequences, and they point in different directions:
+
+- **For the model comparison, the bias is measurable and small.** Restricting to the 17
+  datasets where every model ran moves the model ranking by Spearman 0.975 and no mean by
+  more than 0.07. Every family-level figure in [chapter 6](06-practices.md) is computed on
+  that complete subset for this reason rather than on all rows.
+- **For the go/no-go rule, the bias is not correctable.** A rule trained only on runs that
+  completed answers "will this trained model be any good", not "should I try this at all".
+  It has never seen a failure and cannot warn about one.
+
+The 15 rows at exactly MCC = 0 are *not* the failures. They are classifiers that converged
+and learned nothing useful — the majority-class predictor and its relatives. Predictions
+never fall below 0.17, so those rows sit above the diagonal, but that is shrinkage toward
+the middle of the observed range rather than an inability to recognise a failure mode the
+data does not contain.
+
+### The single negative row
+
+One row (NSL-KDD / SGD, MCC = -0.29) is a legitimate anti-correlated result and is
+retained. It is an outlier in a target that is otherwise non-negative, and it falls outside
+the scatter's axes. Removing it was considered and rejected: dropping the worst observed
+result biases the target upward.

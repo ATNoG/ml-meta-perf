@@ -1017,6 +1017,108 @@ def render(
     return "\n".join(parts)
 
 
+#: Which generated section belongs in which chapter, by the ``## N. Title`` heading `render`
+#: gives it. The study has six chapters and its results belong *in* them: an earlier layout
+#: put every generated table in a separate chapter 10 and had the written chapters point at
+#: it, which kept the numbers from going stale and left the results dispersed across two
+#: places a reader had to hold at once.
+CHAPTER_SECTIONS: dict[str, tuple[str, ...]] = {
+    "04-equation.md": ("2. The equation", "4. Equation analysis", "8. Equation length",
+                       "9. The dataset-only and model-only controls"),
+    "05-evaluation.md": ("3. How well it does", "6. Acting on it", "7. What bounds the result"),
+    "06-practices.md": ("5. Best practices", "5b. The measurements underneath"),
+}
+
+#: The markers a generated block sits between. Everything between them is replaced on every
+#: run; everything outside them is written by hand and never touched.
+BEGIN, END = "<!-- generated: do not edit below -->", "<!-- end generated -->"
+
+
+def sections(text: str) -> dict[str, str]:
+    """Split a rendered report into its ``## N. Title`` sections, keyed by that title."""
+    found: dict[str, str] = {}
+    title, body = None, []
+    for line in text.split("\n"):
+        if line.startswith("## "):
+            if title is not None:
+                found[title] = "\n".join(body).strip()
+            title, body = line[3:].strip(), []
+        elif title is not None:
+            body.append(line)
+    if title is not None:
+        found[title] = "\n".join(body).strip()
+    return found
+
+
+def _demote(body: str) -> str:
+    """Push a section's own subheadings down one level, so it nests under a chapter heading."""
+    return "\n".join(("#" + line) if line.startswith("###") else line for line in body.split("\n"))
+
+
+def splice(page: str, block: str) -> str:
+    """Replace the generated block in ``page``, or insert one if it has none.
+
+    A new block goes *before* the chapter's closing limitations section, so a chapter reads
+    method, then results, then caveats -- the order a paper is read in. Replacing an existing
+    block leaves it wherever it already is, so the position survives a hand edit.
+    """
+    stamped = f"{BEGIN}\n\n{block.strip()}\n\n{END}"
+    if BEGIN in page and END in page:
+        head, rest = page.split(BEGIN, 1)
+        _, tail = rest.split(END, 1)
+        return head + stamped + tail
+    for line in page.split("\n"):
+        if line.startswith("## Limitations"):
+            head, tail = page.split(line, 1)
+            return head.rstrip() + "\n\n" + stamped + "\n\n" + line + tail
+    return page.rstrip() + "\n\n" + stamped + "\n"
+
+
+def write_into_chapters(
+    report: Report,
+    columns: dict[str, np.ndarray],
+    truth: np.ndarray,
+    dataset_features: tuple[str, ...],
+    model_features: tuple[str, ...],
+    docs: str | Path,
+    *,
+    frame: pl.DataFrame | None = None,
+    config: Configuration | None = None,
+    source: str | None = None,
+) -> list[Path]:
+    """Write each generated section into the chapter it belongs to.
+
+    The results live in the chapters that discuss them rather than in a separate generated
+    chapter, and they are still generated rather than narrated: everything between `BEGIN` and
+    `END` is replaced on every run, and everything outside is hand-written prose that the
+    pipeline never touches. A chapter therefore cannot carry a stale table, which is the
+    property the separate report chapter existed to guarantee.
+    """
+    text = render(
+        report, columns, truth, dataset_features, model_features,
+        frame=frame, config=config, source=source,
+    )
+    available = sections(text)
+    folder = Path(docs)
+    written: list[Path] = []
+    for filename, titles in CHAPTER_SECTIONS.items():
+        page = folder / filename
+        if not page.is_file():
+            continue
+        blocks: list[str] = []
+        for title in titles:
+            body = available.get(title)
+            if body:
+                # Drop the "N. " ordinal: the chapter supplies the position, and a generated
+                # heading numbered against the report would contradict the chapter it sits in.
+                heading = title.split(". ", 1)[-1]
+                blocks.append(f"## {heading}\n\n{_demote(body)}")
+        if blocks:
+            page.write_text(splice(page.read_text(), "\n\n".join(blocks)))
+            written.append(page)
+    return written
+
+
 def write(
     report: Report,
     columns: dict[str, np.ndarray],

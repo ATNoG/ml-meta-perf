@@ -80,7 +80,7 @@ buys for that is eight fewer terms and a far more stable form.
   with a capability ordinal over the ten learner families and four mechanism gradings —
   all *asserted*, read off published descriptions rather than observed in a training run —
   takes the model side to 88%. What they cannot do is describe a method nobody has
-  classified. [Chapter 7](assets/docs/07-limitations.md).
+  classified. [chapter 1](assets/docs/01-dataset.md).
 - **Mixed dataset×model terms carry the equation.** 7 of 15 terms use features from both
   groups and drive **60%** of the output variance; dataset-only terms drive 37% and
   model-only terms 3%. "Which model suits which data" is where the signal is, not "how hard
@@ -97,7 +97,7 @@ buys for that is eight fewer terms and a far more stable form.
 - **Ten best practices from the literature, weighed against the corpus** — 8 supported,
   1 qualified, 1 untestable here. The strongest: tree-based families average MCC **0.927**
   against **0.660** for neural ones on the datasets where every model ran, with plain MLPs
-  and DNNs last of ten families at 0.454. [Chapter 10](assets/docs/10-report.md).
+  and DNNs last of ten families at 0.454. [chapter 6](assets/docs/06-practices.md).
 
 > **Status:** research prototype for an academic study. 476 rows is small, and every number
 > is reported both in-sample and under leave-one-out cross-validation because at this size
