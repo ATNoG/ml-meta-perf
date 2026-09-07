@@ -43,6 +43,7 @@ from ml_meta_perf.validate import (
     Scores,
     additive_oracle,
     baseline_group_centre,
+    cross_validate_doubly_held_out,
     cross_validate_fixed_form,
     decision_report,
     fold_selections,
@@ -355,6 +356,7 @@ def run_equation(
         label: cross_validate_fixed_form(library, columns, truth, labels, result.equations, penalty=config.penalty)
         for label, labels in (("loo_dataset", datasets), ("loo_model", models))
     }
+
     # The same folds with selection re-run inside them, kept only for `stability`: the share
     # of the equation's terms that survive when a fifth of the data is removed. That is what
     # licenses fixing the form, and it is not part of any reported score.
@@ -604,24 +606,30 @@ def comparison(
 
     return pl.DataFrame(
         [
-            {"equation": "E1 (dataset only)", **score(truth, e1.equation.predict(columns)).as_dict()},
+            {"equation": f"E1, dataset only ({e1.equation.n_terms} terms)", "n_terms": e1.equation.n_terms,
+             **score(truth, e1.equation.predict(columns)).as_dict()},
             {
-                "equation": "E1 ceiling (true dataset means)",
+                "equation": "E1 reference: true dataset means",
+                "n_terms": None,
                 **score(truth, dataset_ceiling).as_dict(),
             },
             {
-                "equation": "E2 (model only)",
+                "equation": f"E2, model only ({e2.equation.n_terms} terms)",
+                "n_terms": e2.equation.n_terms,
                 **score(truth, e2.equation.predict(columns)).as_dict(),
             },
             {
-                "equation": "E2 ceiling (true model means)",
+                "equation": "E2 reference: true model means",
+                "n_terms": None,
                 **score(truth, model_ceiling).as_dict(),
             },
-            {"equation": "E3 (dataset + model)", **score(truth, e3.equation.predict(columns)).as_dict()},
+            {"equation": f"E3, dataset + model ({e3.equation.n_terms} terms)", "n_terms": e3.equation.n_terms,
+             **score(truth, e3.equation.predict(columns)).as_dict()},
             *(
                 [
                     {
-                        "equation": f"E3 capability (arity 3; {len(e3_capability.equation.terms)} terms)",
+                        "equation": f"E3 capability, arity 3 ({len(e3_capability.equation.terms)} terms)",
+                        "n_terms": len(e3_capability.equation.terms),
                         **score(truth, e3_capability.equation.predict(columns)).as_dict(),
                     }
                 ]
@@ -629,7 +637,8 @@ def comparison(
                 else []
             ),
             {
-                "equation": "additive oracle (ceiling)",
+                "equation": "reference: additive oracle",
+                "n_terms": None,
                 **score(truth, additive_oracle(truth, datasets, models)).as_dict(),
             },
         ]
@@ -641,17 +650,23 @@ def decision_quality(
     config: Configuration = DEFAULT_E3,
     known: dict[int, CrossValidation] | None = None,
 ) -> pl.DataFrame:
-    """Go/no-go decision quality, scored on held-out datasets rather than in-sample.
+    """Go/no-go decision quality, with both the dataset and the model held out.
 
-    ``known`` is `run_e3`'s leave-one-dataset-out path, reused for the same reason as in
-    `leakage_demonstration`.
+    Same requirement as `model_selection` and for the same reason: the question is asked about
+    a pair nobody has run, so neither half of it may be in the training set. ``known`` is
+    `run_e3`'s leave-one-dataset-out path and is the fallback when the doubly-held-out fit
+    cannot be built.
     """
-    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
     truth = target(frame)
+    datasets = groups(frame, DATASET_COLUMN)
+    doubly = doubly_held_out_predictions(frame, config)
+    if doubly is not None:
+        return decision_report(truth, doubly, datasets)
+    columns = columns_as_arrays(frame, DATASET_FEATURES + EQUATION_MODEL_FEATURES)
     path = known
     if path is None or config.headline_terms not in path:
-        path, _ = _fixed_form_path(columns, truth, groups(frame, DATASET_COLUMN), config)
-    return decision_report(truth, path[config.headline_terms].predictions, groups(frame, DATASET_COLUMN))
+        path, _ = _fixed_form_path(columns, truth, datasets, config)
+    return decision_report(truth, path[config.headline_terms].predictions, datasets)
 
 
 def length_comparison(frame: pl.DataFrame, e3: EquationReport, config: Configuration = DEFAULT_E3) -> pl.DataFrame:
@@ -715,10 +730,54 @@ def length_comparison(frame: pl.DataFrame, e3: EquationReport, config: Configura
     return pl.DataFrame(rows)
 
 
+def doubly_held_out_predictions(
+    frame: pl.DataFrame, config: Configuration = DEFAULT_E3
+) -> np.ndarray | None:
+    """E3's predictions with **both** the dataset and the model of each cell held out.
+
+    Used for the ranking and the threshold decision and for nothing else. Those two are the
+    questions a practitioner actually asks -- *which model should I run on this data*, and
+    *will it clear my bar* -- and both are asked about a pair that has not been run. Neither
+    single-group protocol answers that: leave-one-dataset-out has seen the learner on nineteen
+    other problems, leave-one-model-out has seen the dataset.
+
+    The R2 curve and the length rule stay on the single-group protocols, which is the right
+    scope for them: they are about how the equation degrades as one axis becomes unfamiliar,
+    and a per-cell refit would answer a different question at 32 times the cost.
+    """
+    columns = columns_as_arrays(frame, DATASET_FEATURES + EQUATION_MODEL_FEATURES)
+    truth = target(frame)
+    datasets = groups(frame, DATASET_COLUMN)
+    models = groups(frame, MODEL_COLUMN)
+    library = build_library(
+        DATASET_FEATURES, EQUATION_MODEL_FEATURES, columns,
+        max_arity=config.max_arity, max_abs_zscore=config.max_abs_zscore,
+    )
+    result = fit(
+        library, truth, max_terms=config.max_terms, penalty=config.penalty,
+        pool_size=config.pool_size, beam_width=config.beam_width,
+    )
+    size = min(config.headline_terms, max(result.equations))
+    if size not in result.equations:
+        return None
+    path = cross_validate_doubly_held_out(
+        library, columns, truth, datasets, models,
+        {size: result.equations[size]}, penalty=config.penalty,
+    )
+    return path[size].predictions if size in path else None
+
+
 def _e3_predictions(
     frame: pl.DataFrame, e3: EquationReport, protocol: str, config: Configuration
 ) -> np.ndarray | None:
-    """E3's predictions under one protocol: ``in_sample``, ``loo_dataset`` or ``loo_model``."""
+    """E3's predictions under one protocol.
+
+    ``in_sample``, ``loo_dataset``, ``loo_model``, or ``loo_cell`` -- the last holding out both
+    the dataset and the model of every cell, which is the protocol the ranking and the
+    threshold decision are reported under.
+    """
+    if protocol == "loo_cell":
+        return doubly_held_out_predictions(frame, config)
     if protocol == "in_sample":
         columns = columns_as_arrays(frame, DATASET_FEATURES + EQUATION_MODEL_FEATURES)
         return e3.equation.predict(columns)
@@ -732,21 +791,20 @@ def _e3_predictions(
 def model_selection(
     frame: pl.DataFrame,
     e3: EquationReport,
-    protocol: str = "loo_dataset",
+    protocol: str = "loo_cell",
     config: Configuration = DEFAULT_E3,
 ) -> pl.DataFrame:
-    """Can the equation pick a good model for a dataset it has never seen?
+    """Can the equation pick a good model for a dataset it has never run it on?
 
-    **Scored out of fold, which the question requires.** This used to score the all-data
-    equation on the rows it was fitted on while the baselines it is compared against were
-    computed leave-one-out -- so the equation was being given an advantage they were denied,
-    and the question in this docstring was not the one being answered.
+    **Reported under ``loo_cell``: both the dataset and the model of every cell are out of the
+    training set.** Anything weaker answers a different question. Leave-one-dataset-out has
+    seen the learner on nineteen other problems; leave-one-model-out has seen the dataset. A
+    recommendation is asked about a pair that has not been run, so both have to go.
 
-    The cost of generalisation is small here and the reason is structural rather than lucky:
-    a ranking depends only on the *within-dataset* ordering of models, and the dataset-side
-    terms shift every model on a dataset by the same amount. Holding a dataset out moves the
-    level, not the order. `ranking_baselines` reports both protocols side by side so that
-    stays visible rather than assumed.
+    The cost of that is small, and structurally so rather than by luck: a ranking depends only
+    on the *within-dataset* ordering of models, and the dataset-side terms shift every model
+    on a dataset by the same amount, so holding the dataset out moves the level and not the
+    order. `ranking_baselines` reports every protocol side by side so that stays visible.
     """
     truth = target(frame)
     datasets = groups(frame, DATASET_COLUMN)
@@ -784,6 +842,13 @@ def ranking_baselines(
         prediction = _e3_predictions(frame, e3, protocol, config)
         if prediction is not None:
             candidates[label] = prediction
+    doubly = doubly_held_out_predictions(frame, config)
+    if doubly is not None:
+        candidates["equation (loo-cell: both held out)"] = doubly
+    # The trivial predictors cannot be computed under the loo-cell protocol at all: a model
+    # held out of every fold has no rows to average, so "how well does this model usually do"
+    # has no value. They appear leave-one-dataset-out, which is the only way they exist -- and
+    # that hands them the model identity the loo-cell row of the equation is denied.
     candidates["per-model mean (loo-dataset)"] = baseline_group_centre(truth, datasets, models, centre="mean")
     candidates["per-model median (loo-dataset)"] = baseline_group_centre(truth, datasets, models, centre="median")
 
@@ -844,6 +909,9 @@ def decision_baselines(
             prediction = _e3_predictions(frame, e3, protocol, config)
             if prediction is not None:
                 candidates[label] = prediction
+        doubly = doubly_held_out_predictions(frame, config)
+        if doubly is not None:
+            candidates["equation (loo-cell: both held out)"] = doubly
     else:
         path = known
         if path is None or config.headline_terms not in path:
@@ -944,7 +1012,7 @@ def run(
         baselines=baselines(frame),
         comparison=comparison(frame, e1, e3, e2, e3_capability),
         leakage=leakage_demonstration(frame, config_e3, e3.paths),
-        selection=model_selection(frame, e3, "loo_dataset", config_e3),
+        selection=model_selection(frame, e3, "loo_cell", config_e3),
         decision=decision_quality(frame, config_e3, e3.paths.get("loo_dataset")),
         ranking_baselines=ranking_baselines(frame, e3, config_e3),
         decision_baselines=decision_baselines(frame, config_e3, e3.paths.get("loo_dataset"), e3),

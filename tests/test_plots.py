@@ -12,12 +12,9 @@ from ml_meta_perf.model import LOWERS, RAISES
 from ml_meta_perf.plots import (
     CONFIDENCE_ALPHA,
     _confidence_levels,
-    _wrap_term,
-    contribution_shares,
+    term_to_math,
     count_below_floor,
     equation_comparison,
-    error_curve,
-    per_group_quality,
     practice_effects,
     predicted_versus_actual,
     scatter_limits,
@@ -130,16 +127,6 @@ class TestPlots(PlotTestCase):
         self.assertIsPng(predicted_versus_actual(truth, predicted, self.folder / "clipped.png"))
 
 
-    def test_error_curve_mae(self) -> None:
-        self.assertIsPng(error_curve(curve(), self.folder / "mae.png", metric="mae"))
-
-    def test_error_curve_smape_with_a_knee_marker(self) -> None:
-        table = curve().with_columns(
-            pl.Series("smape_loo_dataset", [60.0, 50.0, 45.0, 42.0]),
-            pl.Series("smape_loo_model", [55.0, 48.0, 44.0, 41.0]),
-        )
-        self.assertIsPng(error_curve(table, self.folder / "smape.png", metric="smape", marker=6))
-
     def test_term_effects(self) -> None:
         self.assertIsPng(term_effects(effects(), self.folder / "terms.png"))
 
@@ -161,37 +148,14 @@ class TestPlots(PlotTestCase):
     def test_practice_effects(self) -> None:
         self.assertIsPng(practice_effects(practices(), self.folder / "practices.png"))
 
-    def test_contribution_shares(self) -> None:
-        shares = pl.DataFrame(
-            {"group": ["dataset", "model", "mixed"], "n_terms": [5, 4, 3], "share": [0.52, 0.28, 0.20]}
-        )
-        self.assertIsPng(contribution_shares(shares, self.folder / "shares.png"))
-
     def test_equation_comparison(self) -> None:
         table = pl.DataFrame(
             {
-                "equation": ["E1 (dataset only)", "E1 ceiling (true dataset means)", "E2 (dataset + model)"],
+                "equation": ["E1, dataset only (7 terms)", "E1 reference: true dataset means", "E3, dataset + model (15 terms)"],
                 "r2": [0.337, 0.354, 0.556],
             }
         )
         self.assertIsPng(equation_comparison(table, self.folder / "comparison.png"))
-
-    def test_per_group_quality(self) -> None:
-        table = pl.DataFrame(
-            {"group": ["alpha", "beta", "gamma"], "spearman": [0.8, 0.2, 0.6], "regret": [0.0, 0.1, 0.02]}
-        )
-        self.assertIsPng(per_group_quality(table, self.folder / "quality.png"))
-
-    def test_per_group_quality_needs_no_spearman_column(self) -> None:
-        """The figure draws regret alone.
-
-        Spearman was removed from it deliberately: it separates nothing on this data (0.63 to
-        0.73 for every predictor and every baseline, a constant included) and it shared an
-        axis with regret, which is an MCC difference. Depending on the column again would be
-        the defect coming back.
-        """
-        table = pl.DataFrame({"group": ["alpha", "beta"], "regret": [0.0, 0.1]})
-        self.assertIsPng(per_group_quality(table, self.folder / "regret_only.png"))
 
     def test_practice_effects_without_confidence(self) -> None:
         plain = practices().drop("confidence")
@@ -288,24 +252,45 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class TestTermLabelWrapping(unittest.TestCase):
-    """Long term names wrap at their operators; they are never cut mid-feature."""
+class TestTermMath(unittest.TestCase):
+    """Term names render as mathematics: ratios become fractions, products centre dots."""
 
-    def test_short_names_are_untouched(self) -> None:
-        self.assertEqual(_wrap_term("1/gravity"), "1/gravity")
+    def test_a_ratio_becomes_a_fraction(self) -> None:
+        rendered = term_to_math("[log(eq_num_attr)] / [log(Processing Units Number)]")
+        self.assertTrue(rendered.startswith("$") and rendered.endswith("$"))
+        self.assertIn(r"\frac", rendered)
 
-    def test_wraps_at_the_operator(self) -> None:
-        name = "[log(Input Distribution Modelling)] * [log(Processing Units Number)]"
-        wrapped = _wrap_term(name)
-        self.assertIn("\n", wrapped)
-        for line in wrapped.split("\n"):
-            self.assertEqual(line.count("["), line.count("]"), f"bracket split across lines: {line!r}")
+    def test_a_product_becomes_a_centre_dot(self) -> None:
+        self.assertIn(r"\cdot", term_to_math("[log(gravity)] * [log(Model Capability)]"))
 
-    def test_never_truncates(self) -> None:
-        """Every character of the name survives, unlike the ellipsis this replaced."""
-        name = "([log(inst_to_attr)] + [nr_norm]) / [log(nr_attr)]"
-        self.assertNotIn("\u2026", _wrap_term(name))
-        self.assertEqual(_wrap_term(name).replace("\n", " "), name)
+    def test_model_features_are_abbreviated(self) -> None:
+        """Five-syllable names do not fit fifteen to a figure; chapter 1 expands them."""
+        self.assertIn("PUN", term_to_math("[nr_cor_attr] / [log(Processing Units Number)]"))
+
+    def test_underscores_are_escaped(self) -> None:
+        """An unescaped underscore is a subscript in mathtext, and renders as gibberish."""
+        self.assertIn(r"\_", term_to_math("class_ent^2"))
+
+    def test_a_leading_numeral_stays_a_numeral(self) -> None:
+        self.assertIn(r"\frac{1}{", term_to_math("1/Fitting Regime"))
+
+    def test_a_sum_over_a_ratio_keeps_both_operands(self) -> None:
+        rendered = term_to_math("([log(inst_to_attr)] + [nr_norm]) / [log(nr_attr)]")
+        self.assertIn("inst", rendered)
+        self.assertIn("nr", rendered)
+        self.assertIn(r"\frac", rendered)
+
+    def test_every_published_shape_renders(self) -> None:
+        """mathtext raises on malformed input, so a bad term would break the whole figure."""
+        import matplotlib.pyplot as plt
+
+        shapes = ["[a] * [b]", "[a] / [b]", "1/a", "a^2", "sqrt(a)", "log(a)",
+                  "([a] + [b]) / [c]", "[log(a)] / [log(b)]"]
+        figure, axes = plt.subplots()
+        for index, shape in enumerate(shapes):
+            axes.text(0.1, 0.05 * index, term_to_math(shape))
+        figure.canvas.draw()  # raises if any expression is malformed
+        plt.close(figure)
 
 
 class TestConfidenceShading(unittest.TestCase):

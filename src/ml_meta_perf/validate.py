@@ -300,6 +300,70 @@ def cross_validate_fixed_form(
     return results
 
 
+def cross_validate_doubly_held_out(
+    library: Library,
+    columns: dict[str, np.ndarray],
+    target: np.ndarray,
+    first: np.ndarray,
+    second: np.ndarray,
+    equations: dict[int, Equation],
+    *,
+    penalty: float,
+) -> dict[int, CrossValidation]:
+    """Refit each equation with **both** groups of a cell removed, and predict that cell.
+
+    This is the protocol for the question the study is actually for: *what MCC will this
+    model reach on this dataset*, when neither has been run. Neither single-group protocol
+    answers it. Leave-one-dataset-out holds the dataset out and keeps the model -- it has
+    seen that learner on nineteen other problems. Leave-one-model-out does the reverse. For a
+    cell to be genuinely unseen, the whole dataset row-block *and* the whole model
+    column-block have to leave the training set, which is what this does.
+
+    **It is also the only protocol under which the comparison with the trivial baselines is
+    fair, and under it they do not exist.** A per-model mean or median answers "how well does
+    this model usually do", and a model held out of every fold has no rows to average. So a
+    baseline that beats the equation on ranking under leave-one-dataset-out is a baseline
+    being handed the model identity the equation is denied; here it cannot be computed at
+    all, while the equation still predicts from features.
+
+    Costlier than the single-group protocols -- one solve per observed cell rather than per
+    group -- but each solve is a small ridge on a fixed design, so it is seconds, not minutes.
+    """
+    index = {name: position for position, name in enumerate(library.names)}
+    results: dict[int, CrossValidation] = {}
+    for size, equation in equations.items():
+        positions = [index[term.name] for term in equation.terms]
+        if not positions:
+            continue
+        matrix = library.matrix[:, positions]
+        outcome = CrossValidation(predictions=np.zeros_like(target))
+        for row_label in np.unique(first):
+            for column_label in np.unique(second):
+                test = (first == row_label) & (second == column_label)
+                if not test.any():
+                    continue
+                train = (first != row_label) & (second != column_label)
+                if not train.any():
+                    continue
+                standardizer = Standardizer.fit(matrix[train])
+                design = standardizer.apply(matrix[train])
+                gram = design.T @ design + penalty * np.eye(len(positions))
+                offset = float(target[train].mean())
+                weights = np.linalg.solve(gram, design.T @ (target[train] - offset))
+                held = standardizer.apply(matrix[test]) @ weights + offset
+                bounded = _clip_to_training(held, target[train])
+                outcome.clipped += int(np.count_nonzero(bounded != held))
+                outcome.predictions[test] = bounded
+        # Scored per held-out *dataset* rather than per cell: a cell is one to a few rows and
+        # a per-cell R2 has no variance to divide by. The dataset grouping is what the
+        # dispersion columns and the paired tests use everywhere else.
+        for label, _, test in leave_one_group_out(first):
+            outcome.per_fold[label] = score(target[test], outcome.predictions[test])
+            outcome.selected.append([term.name for term in equation.terms])
+        results[size] = outcome
+    return results
+
+
 def _clip_to_training(prediction: np.ndarray, training_target: np.ndarray) -> np.ndarray:
     """Bound a fold's predictions by the target range that fold was trained on.
 

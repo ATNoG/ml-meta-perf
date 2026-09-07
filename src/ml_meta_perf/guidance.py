@@ -130,7 +130,13 @@ class Evidence:
         return float(np.average(matched["mcc"].to_numpy(), weights=weights))
 
     def scored(self, equation: str) -> float:
-        matched = self.comparison.filter(pl.col("equation") == equation)
+        """The R2 of a row of `comparison`, matched by prefix.
+
+        By prefix because the labels carry their term count -- "E3, dataset + model (15
+        terms)" -- and that count moves whenever the configuration does. Matching the whole
+        string would make every caller here break on a change that is not about them.
+        """
+        matched = self.comparison.filter(pl.col("equation").str.starts_with(equation))
         return float(matched["r2"][0]) if matched.height else float("nan")
 
     def protocol(self, name: str) -> float:
@@ -378,8 +384,8 @@ def _profile_the_data_first(evidence: Evidence) -> Verdict:
         row["knowing only"]: float(row["variance_explained"]) for row in evidence.decomposition.iter_rows(named=True)
     }
     dataset, model = rows.get("dataset identity", float("nan")), rows.get("model identity", float("nan"))
-    captured_dataset = evidence.scored("E1 (dataset only)") / dataset if dataset else float("nan")
-    captured_model = evidence.scored("E2 (model only)") / model if model else float("nan")
+    captured_dataset = evidence.scored("E1, dataset only") / dataset if dataset else float("nan")
+    captured_model = evidence.scored("E2, model only") / model if model else float("nan")
     gap = dataset - model
     return Verdict(
         practice=_BY_ID["profile-the-data-first"],

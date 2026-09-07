@@ -14,12 +14,9 @@ import polars as pl
 from ml_meta_perf.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays, load, target
 from ml_meta_perf.experiment import Report
 from ml_meta_perf.plots import (
-    contribution_shares,
     count_below_floor,
     decision_quality,
     equation_comparison,
-    error_curve,
-    per_group_quality,
     practice_effects,
     predicted_versus_actual,
     ranking_quality,
@@ -27,7 +24,7 @@ from ml_meta_perf.plots import (
     term_effects,
 )
 
-ORACLE_ROW = "additive oracle (ceiling)"
+ORACLE_ROW = "reference: additive oracle"
 
 
 def _oracle(report: Report) -> float | None:
@@ -77,22 +74,13 @@ def generate(report: Report, destination: str | Path, data: str | Path | None = 
             folder / "term_count_curve.png",
             oracle=_oracle(report),
             marker=_published_length(report),
-            marker_label="selected by the rule",
+            marker_label="selected term count",
         ),
-        predicted_versus_actual(truth, predicted, folder / "predicted_vs_actual.png", groups=truth),
-        error_curve(
-            report.e3.curve,
-            folder / "error_curve_mae.png",
-            metric="mae",
-            marker=_published_length(report),
-            marker_label="published equation",
-        ),
+        predicted_versus_actual(truth, predicted, folder / "predicted_vs_actual.png"),
         term_effects(report.effects, folder / "term_effects.png"),
         practice_effects(report.practices, folder / "practice_effects.png"),
-        contribution_shares(report.shares, folder / "contribution_shares.png"),
-        per_group_quality(report.selection, folder / "per_group_quality.png"),
-        decision_quality(report.decision, folder / "decision_quality.png"),
         ranking_quality(report.selection, folder / "ranking_quality.png"),
+        decision_quality(report.decision_baselines, folder / "decision_quality.png"),
     ]
     return written
 

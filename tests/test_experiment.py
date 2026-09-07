@@ -12,6 +12,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 import numpy as np
+import polars as pl
 
 from ml_meta_perf.attribution import group_shares, term_effects, variance_decomposition
 from ml_meta_perf.cli import build_parser, configurations, main, render
@@ -48,6 +49,17 @@ from ml_meta_perf.model import Equation
 from ml_meta_perf.practices import best_practices
 from ml_meta_perf.selection import pareto_table, recommend
 from ml_meta_perf.validate import oracle_ladder
+
+
+def scored(table, prefix: str) -> float:
+    """R2 of the comparison row whose label starts with ``prefix``.
+
+    By prefix because the labels carry their term count, which moves with the configuration
+    -- and these tests deliberately run a fast three-term one.
+    """
+    matched = table.filter(pl.col("equation").str.starts_with(prefix))
+    return float(matched["r2"][0])
+
 
 FAST_E1 = Configuration(max_abs_zscore=3.0, penalty=1.0, pool_size=40, max_terms=3, headline_terms=3)
 FAST_E3 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=40, max_terms=3, headline_terms=3)
@@ -132,13 +144,11 @@ class TestStudyTables(unittest.TestCase):
         # The central claim of the study: model features carry information that dataset
         # features cannot express, because E1 can only predict a per-dataset constant.
         table = comparison(self.frame, self.e1, self.e3)
-        scores = dict(zip(table["equation"].to_list(), table["r2"].to_list(), strict=True))
-        self.assertGreater(scores["E3 (dataset + model)"], scores["E1 (dataset only)"])
+        self.assertGreater(scored(table, "E3, dataset + model"), scored(table, "E1, dataset only"))
 
     def test_e1_cannot_exceed_the_dataset_mean_ceiling(self) -> None:
         table = comparison(self.frame, self.e1, self.e3)
-        scores = dict(zip(table["equation"].to_list(), table["r2"].to_list(), strict=True))
-        self.assertLessEqual(scores["E1 (dataset only)"], scores["E1 ceiling (true dataset means)"] + 1e-9)
+        self.assertLessEqual(scored(table, "E1, dataset only"), scored(table, "E1 reference") + 1e-9)
 
     def test_group_equations_stay_under_their_own_ceilings(self) -> None:
         """E1 and E2 cannot pass the ceiling their group identity sets.
@@ -151,8 +161,7 @@ class TestStudyTables(unittest.TestCase):
         passed because the fast configuration used here fits a weaker E3.
         """
         table = comparison(self.frame, self.e1, self.e3)
-        scores = dict(zip(table["equation"].to_list(), table["r2"].to_list(), strict=True))
-        self.assertLessEqual(scores["E1 (dataset only)"], scores["E1 ceiling (true dataset means)"] + 1e-9)
+        self.assertLessEqual(scored(table, "E1, dataset only"), scored(table, "E1 reference") + 1e-9)
 
     def test_baselines_table_is_complete(self) -> None:
         """Four trivial predictors at two centres each, plus the oracle."""
@@ -203,10 +212,9 @@ class TestStudyTables(unittest.TestCase):
         # does not. Dataset identity explains more variance, and the dataset-only
         # equation gets far closer to its own ceiling than the model-only one does.
         table = comparison(self.frame, self.e1, self.e3)
-        scores = dict(zip(table["equation"].to_list(), table["r2"].to_list(), strict=True))
-        self.assertGreater(scores["E1 (dataset only)"], scores["E2 (model only)"])
+        self.assertGreater(scored(table, "E1, dataset only"), scored(table, "E2, model only"))
         self.assertGreater(
-            scores["E1 ceiling (true dataset means)"], scores["E2 ceiling (true model means)"]
+            scored(table, "E1 reference"), scored(table, "E2 reference")
         )
 
     def test_model_selection_reports_every_dataset(self) -> None:

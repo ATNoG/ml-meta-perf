@@ -79,7 +79,7 @@ class _Report:
             "comparison",
             pl.DataFrame(
                 {
-                    "equation": ["E1 (dataset only)", "E2 (model only)", "E3 (dataset + model)"],
+                    "equation": ["E1, dataset only (7 terms)", "E2, model only (6 terms)", "E3, dataset + model (15 terms)"],
                     "r2": [0.337, 0.166, 0.600],
                 }
             ),

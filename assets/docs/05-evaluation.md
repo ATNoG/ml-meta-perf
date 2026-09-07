@@ -321,15 +321,15 @@ Cross-validated rows hold out a whole dataset or a whole model, so the equation 
 
 Against the baselines and the ceiling that bounds any additive equation:
 
-| equation | r2 | mae | rmse | smape | spearman | n |
-|---|---|---|---|---|---|---|
-| E1 (dataset only) | 0.3485 | 0.2103 | 0.2770 | 43.2650 | 0.6566 | 476 |
-| E1 ceiling (true dataset means) | 0.3539 | 0.2042 | 0.2758 | 42.7254 | 0.6533 | 476 |
-| E2 (model only) | 0.2485 | 0.2339 | 0.2975 | 46.2526 | 0.4594 | 476 |
-| E2 ceiling (true model means) | 0.2821 | 0.2257 | 0.2908 | 45.8786 | 0.4870 | 476 |
-| E3 (dataset + model) | 0.6578 | 0.1371 | 0.2008 | 34.4737 | 0.8194 | 476 |
-| E3 capability (arity 3; 23 terms) | 0.7068 | 0.1224 | 0.1858 | 32.4556 | 0.8364 | 476 |
-| additive oracle (ceiling) | 0.6605 | 0.1447 | 0.2000 | 35.2889 | 0.8100 | 476 |
+| equation | n_terms | r2 | mae | rmse | smape | spearman | n |
+|---|---|---|---|---|---|---|---|
+| E1, dataset only (7 terms) | 7 | 0.3485 | 0.2103 | 0.2770 | 43.2650 | 0.6566 | 476 |
+| E1 reference: true dataset means |  | 0.3539 | 0.2042 | 0.2758 | 42.7254 | 0.6533 | 476 |
+| E2, model only (6 terms) | 6 | 0.2485 | 0.2339 | 0.2975 | 46.2526 | 0.4594 | 476 |
+| E2 reference: true model means |  | 0.2821 | 0.2257 | 0.2908 | 45.8786 | 0.4870 | 476 |
+| E3, dataset + model (15 terms) | 15 | 0.6578 | 0.1371 | 0.2008 | 34.4737 | 0.8194 | 476 |
+| E3 capability, arity 3 (23 terms) | 23 | 0.7068 | 0.1224 | 0.1858 | 32.4556 | 0.8364 | 476 |
+| reference: additive oracle |  | 0.6605 | 0.1447 | 0.2000 | 35.2889 | 0.8100 | 476 |
 
 #### The trivial predictors, at both centres
 
@@ -404,11 +404,11 @@ R² is the wrong question for a practitioner, who asks whether a model will work
 
 | threshold | accuracy | majority | precision | recall | mcc | f1 | map | n_positive |
 |---|---|---|---|---|---|---|---|---|
-| 0.5000 | 0.8950 | 0.7668 | 0.9178 | 0.9479 | 0.6967 | 0.9326 | 0.9738 | 365 |
-| 0.6000 | 0.8887 | 0.7332 | 0.9205 | 0.9284 | 0.7133 | 0.9244 | 0.9763 | 349 |
-| 0.7000 | 0.8676 | 0.6681 | 0.9381 | 0.8585 | 0.7193 | 0.8966 | 0.9480 | 318 |
-| 0.8000 | 0.8109 | 0.6261 | 0.9444 | 0.7416 | 0.6471 | 0.8308 | 0.9492 | 298 |
-| 0.9000 | 0.7584 | 0.5084 | 0.9205 | 0.5744 | 0.5619 | 0.7074 | 0.9123 | 242 |
+| 0.5000 | 0.8866 | 0.7668 | 0.9060 | 0.9507 | 0.6680 | 0.9278 | 0.9722 | 365 |
+| 0.6000 | 0.8887 | 0.7332 | 0.9205 | 0.9284 | 0.7133 | 0.9244 | 0.9755 | 349 |
+| 0.7000 | 0.8550 | 0.6681 | 0.9338 | 0.8428 | 0.6954 | 0.8860 | 0.9476 | 318 |
+| 0.8000 | 0.8004 | 0.6261 | 0.9356 | 0.7315 | 0.6265 | 0.8211 | 0.9395 | 298 |
+| 0.9000 | 0.7500 | 0.5084 | 0.9301 | 0.5496 | 0.5527 | 0.6909 | 0.9050 | 242 |
 
 `majority` is the floor any such rule has to clear. The harder comparison is a predictor that answers "how well does this model usually do", thresholded the same way — at both centres, for the reason the error metrics report both:
 
@@ -429,6 +429,11 @@ R² is the wrong question for a practitioner, who asks whether a model will work
 | equation (loo-model) | 0.7000 | 0.8550 | 0.6681 | 0.9338 | 0.8428 | 0.6954 | 0.8860 | 0.9417 | 318 |
 | equation (loo-model) | 0.8000 | 0.8067 | 0.6261 | 0.9364 | 0.7416 | 0.6361 | 0.8277 | 0.9332 | 298 |
 | equation (loo-model) | 0.9000 | 0.7542 | 0.5084 | 0.9310 | 0.5579 | 0.5595 | 0.6977 | 0.9065 | 242 |
+| equation (loo-cell: both held out) | 0.5000 | 0.8866 | 0.7668 | 0.9060 | 0.9507 | 0.6680 | 0.9278 | 0.9722 | 365 |
+| equation (loo-cell: both held out) | 0.6000 | 0.8887 | 0.7332 | 0.9205 | 0.9284 | 0.7133 | 0.9244 | 0.9755 | 349 |
+| equation (loo-cell: both held out) | 0.7000 | 0.8550 | 0.6681 | 0.9338 | 0.8428 | 0.6954 | 0.8860 | 0.9476 | 318 |
+| equation (loo-cell: both held out) | 0.8000 | 0.8004 | 0.6261 | 0.9356 | 0.7315 | 0.6265 | 0.8211 | 0.9395 | 298 |
+| equation (loo-cell: both held out) | 0.9000 | 0.7500 | 0.5084 | 0.9301 | 0.5496 | 0.5527 | 0.6909 | 0.9050 | 242 |
 | per-model mean (loo-dataset) | 0.5000 | 0.7395 | 0.7668 | 0.8005 | 0.8795 | 0.1842 | 0.8381 | 0.9788 | 365 |
 | per-model mean (loo-dataset) | 0.6000 | 0.6828 | 0.7332 | 0.8113 | 0.7393 | 0.2506 | 0.7736 | 0.9567 | 349 |
 | per-model mean (loo-dataset) | 0.7000 | 0.7227 | 0.6681 | 0.8550 | 0.7044 | 0.4391 | 0.7724 | 0.9645 | 318 |
@@ -449,10 +454,11 @@ Ranking models within a held-out dataset:
 | equation (in-sample) | 0.8502 | 0.8821 | 0.8000 | 0.0145 | 20 | 0.6250 | no |
 | equation (loo-dataset) | 0.8467 | 0.8821 | 0.8000 | 0.0145 | 20 |  |  |
 | equation (loo-model) | 0.8382 | 0.9071 | 0.8500 | 0.0078 | 20 | 0.2266 | no |
+| equation (loo-cell: both held out) | 0.8313 | 0.8821 | 0.8000 | 0.0145 | 20 | 0.3877 | yes |
 | per-model mean (loo-dataset) | 0.7980 | 0.8350 | 0.7500 | 0.0111 | 20 | 0.2101 | no |
 | per-model median (loo-dataset) | 0.8375 | 0.8850 | 0.8500 | 0.0088 | 20 | 0.1435 | no |
 
-**None of these differences survives a paired test.** Against equation (in-sample), equation (loo-model), per-model mean (loo-dataset), per-model median (loo-dataset) the sign test and the bootstrap interval over datasets both include zero, so on ranking the equation is indistinguishable from ordering the models by how well they usually do. Read the means in the table above as ties, not as a ranking of the predictors — including where a baseline's mean is the larger one.
+Paired over the datasets, the equation differs significantly from: equation (loo-cell: both held out). The remaining comparisons are ties.
 
 ## What bounds the result
 
