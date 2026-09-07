@@ -119,9 +119,11 @@ figures.
 | 4 | [The equation](assets/docs/04-equation.md) | `ml_meta_perf.experiment`, `ml_meta_perf.validate` |
 | 5 | [Evaluation](assets/docs/05-evaluation.md) | `ml_meta_perf.validate`, `ml_meta_perf.stats` |
 | 6 | [Best practices against the equation](assets/docs/06-practices.md) | `ml_meta_perf.practices`, `ml_meta_perf.attribution`, `ml_meta_perf.guidance` |
-| 7 | [Limitations and threats to validity](assets/docs/07-limitations.md) | `ml_meta_perf.identity` |
-| 8 | [Appendix: what was measured and rejected](assets/docs/08-appendix.md) | — |
-| 10 | [Generated report](assets/docs/10-report.md) | `ml_meta_perf.report` — **written by the code, not by hand** |
+
+Each chapter is self-contained: it ends with its own limitations, and chapters 4, 5 and 6
+close with a **generated section** that `ml_meta_perf.report` rewrites on every run. Prose
+above the marker is hand-written and describes the method; everything below it is computed
+from the fitted equation, so no chapter can carry a stale table.
 
 The API reference is generated from the module docstrings with `pdoc` and published to
 GitHub Pages by `.github/workflows/docs.yml`; each module links back to the chapter
@@ -152,7 +154,7 @@ That takes about 20 seconds, reproduces every number in this README, and writes:
 
 | | |
 |---|---|
-| [`assets/docs/10-report.md`](assets/docs/10-report.md) | the generated report — equation, term analysis, practices |
+| [`assets/docs/`](assets/docs/index.md) | chapters 4, 5 and 6 — their generated sections rewritten in place |
 | `results/e1.json`, `e2.json`, `e3.json` | the fitted equations, reloadable |
 | `results/*.csv` | 17 tables — curves, baselines, oracles, stability, practices |
 | `assets/figures/*.png`, `*.pdf` | the 10 figures, raster and vector |
@@ -194,7 +196,7 @@ PYTHONPATH=src venv/bin/python -m ml_meta_perf --data mine.csv --output runs/min
 | `--data` | the shipped corpus | the meta-dataset to fit |
 | `--output` | `results` | where the equations and CSV tables go |
 | `--figures` | `assets/figures` | where the figures go |
-| `--report` | `assets/docs/10-report.md` | where the generated report goes |
+| `--docs` | `assets/docs` | chapter directory whose generated sections are rewritten |
 | `--terms` | 24 | terms in the published E3 equation |
 | `--max-terms` | 32 | longest equation the search explores (drives the curve) |
 | `--penalty` | 5.0 | ridge penalty on standardised terms |

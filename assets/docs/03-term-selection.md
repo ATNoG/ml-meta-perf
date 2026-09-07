@@ -247,11 +247,21 @@ twenty groups and they belong on the plot.
 
 ### The rule, and everything it beats
 
-**The length is the argmax of the consensus curve** — `selection.best_length`. It has no
-threshold, no smoothing window and no sensitivity parameter, so it is a property of the curve
-rather than of a value chosen to produce a preferred answer, and it re-derives itself when the
-corpus changes. Applied under the two grammars the study reports it selects **15 terms** under
-arity 2 and **23** under arity 3. Neither number appears anywhere in the code.
+**The rule is the argmax of the consensus curve**, implemented as `selection.best_length`.
+Stated in full, so that nothing about it has to be taken on trust:
+
+1. Fit the equation at every length from 1 to `max_terms`, and score each length under all
+   three protocols — in-sample, leave-one-dataset-out, leave-one-model-out.
+2. For each length, take the **median** of those three R² values. That is the consensus
+   curve, and the median is what makes it robust to the craters below.
+3. Publish the length where the consensus curve is highest.
+
+It has no threshold, no smoothing window and no sensitivity parameter, so the chosen length
+is a property of the curve rather than of a value picked to produce a preferred answer, and
+it re-derives itself when the corpus changes rather than needing to be re-tuned by hand.
+
+Applied under the two grammars the study reports, it selects **15 terms** under arity 2 and
+**23** under arity 3. Neither number appears anywhere in the code.
 
 Every alternative that was computed is reported beside it, because a selection rule is only
 defensible if what it beats is on the page:

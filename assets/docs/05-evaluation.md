@@ -47,7 +47,7 @@ different sample would have produced it. That is measured rather than assumed.
 names and no predictions** — so the re-selecting protocol cannot produce a reported score
 even by accident — and `term_stability` counts how often each of the published equation's
 terms comes back when a fifth of the data is removed. A form whose terms churn fold to fold
-has not earned this protocol. The table is in [chapter 10](10-report.md).
+has not earned this protocol. The table is in the generated section below.
 
 ### What is still shared across folds
 
@@ -241,8 +241,8 @@ usually do" does not exist. It is a competitor on one protocol and undefined on 
 
 ### On ranking, the equation does not beat "use whatever usually works"
 
-This is the honest result, and an earlier draft of this chapter got it wrong in a way worth
-recording, because the mistake is the one this chapter exists to warn about.
+Ranking is the one of the three questions where the equation does not clear the trivial
+predictors, and reading it correctly needs the paired test rather than the means.
 
 | | AP | MRR | hit@1 | top-1 regret |
 |---|---|---|---|---|
@@ -250,26 +250,20 @@ recording, because the mistake is the one this chapter exists to warn about.
 | **E3** | 0.850 | 0.882 | 0.800 | 0.015 |
 | per-model **median** (leave-one-dataset-out) | **0.837** | **0.885** | **0.850** | 0.009 |
 
-Read as means, E3 beats the mean baseline and loses to the median one. **Neither reading
-survives a paired test.** Compared dataset by dataset with `validate.paired_comparison` —
-exact sign test plus a bootstrap over the twenty groups:
+Read as means, E3 leads the mean baseline and trails the median one on two of the four
+measures. **Neither reading survives a paired test.** Compared dataset by dataset with
+`validate.paired_comparison` — exact sign test plus a bootstrap over the twenty groups —
+both intervals span zero: p = 0.21 against the per-model mean, p = 0.14 against the median.
 
-| comparison | mean difference in AP | equation better on | p | 95% CI |
-|---|---|---|---|---|
-| E3 vs per-model mean | +0.024 | 7 of the 17 that differ | 0.63 | [-0.068, +0.133] |
-| E3 vs per-model median | -0.016 | 6 of the 17 that differ | 0.33 | [-0.064, +0.040] |
+**On ranking, the equation is indistinguishable from ordering the models by how well they
+usually do.** Note also that `hit@1` moves only in steps of 0.05 on twenty datasets, so a
+0.05 gap is one dataset changing its top pick — which is why a difference of two means over
+twenty folds is not a measurement here.
 
-Every interval spans zero. **On ranking, the equation is indistinguishable from ordering the
-models by how well they usually do.** An earlier draft announced that this caveat "has
-closed", on the strength of the +0.024 in the first row alone — a difference of two means
-over twenty folds, which is precisely what this study has three times mistaken for a result.
-Note also that `hit@1` can only move in steps of 0.05 on twenty datasets, so the 0.800
-against 0.750 is two datasets flipping their top pick.
-
-That is not a failure of the equation so much as a statement about the problem: knowing which
-models are generally good is most of what *ranking* needs, which is why the trivial baseline
-is so hard to beat there. The generated report states this verdict from the paired test
-rather than from the table, so it cannot drift back into the optimistic reading.
+That is a statement about the problem rather than a failure of the equation: knowing which
+models are generally good is most of what *ranking* needs, which is why a trivial baseline is
+hard to beat there. The generated section at the end of this chapter states the verdict from
+the paired test rather than from the table, so it cannot drift into the optimistic reading.
 
 ### On predicting the value, and on the go/no-go decision, it wins clearly
 
@@ -312,3 +306,239 @@ in-sample or randomly-split forest reproduces them exactly, and the same forest 
 near-useless on an unseen dataset.
 
 > Measured with scikit-learn during exploration. It is not a dependency of the package.
+
+<!-- generated: do not edit below -->
+
+## How well it does
+
+| protocol | R² | MAE | RMSE | n |
+|---|---|---|---|---|
+| in-sample | 0.6578 | 0.1371 | 0.2008 | 476 |
+| loo-dataset | 0.6381 | 0.1417 | 0.2064 | 476 |
+| loo-model | 0.6218 | 0.1449 | 0.2110 | 476 |
+
+Cross-validated rows hold out a whole dataset or a whole model, so the equation is scored on a group it has never seen. That is the number that matters, and it is well below the in-sample one at this sample size.
+
+Against the baselines and the ceiling that bounds any additive equation:
+
+| equation | r2 | mae | rmse | smape | spearman | n |
+|---|---|---|---|---|---|---|
+| E1 (dataset only) | 0.3485 | 0.2103 | 0.2770 | 43.2650 | 0.6566 | 476 |
+| E1 ceiling (true dataset means) | 0.3539 | 0.2042 | 0.2758 | 42.7254 | 0.6533 | 476 |
+| E2 (model only) | 0.2485 | 0.2339 | 0.2975 | 46.2526 | 0.4594 | 476 |
+| E2 ceiling (true model means) | 0.2821 | 0.2257 | 0.2908 | 45.8786 | 0.4870 | 476 |
+| E3 (dataset + model) | 0.6578 | 0.1371 | 0.2008 | 34.4737 | 0.8194 | 476 |
+| E3 capability (arity 3; 23 terms) | 0.7068 | 0.1224 | 0.1858 | 32.4556 | 0.8364 | 476 |
+| additive oracle (ceiling) | 0.6605 | 0.1447 | 0.2000 | 35.2889 | 0.8100 | 476 |
+
+#### The trivial predictors, at both centres
+
+| baseline | r2 | mae | rmse | smape | spearman | n |
+|---|---|---|---|---|---|---|
+| global mean (loo-dataset) | -0.0396 | 0.2928 | 0.3499 | 50.9160 | -0.6527 | 476 |
+| per-model mean (loo-dataset) | 0.2006 | 0.2382 | 0.3068 | 47.3028 | 0.3885 | 476 |
+| global mean (loo-model) | -0.0239 | 0.2905 | 0.3473 | 50.6571 | -0.4787 | 476 |
+| per-dataset mean (loo-model) | 0.2964 | 0.2132 | 0.2879 | 43.7772 | 0.5808 | 476 |
+| global median (loo-dataset) | -0.3032 | 0.2580 | 0.3918 | 43.6423 | -0.6749 | 476 |
+| per-model median (loo-dataset) | 0.0899 | 0.2256 | 0.3274 | 45.1719 | 0.3968 | 476 |
+| global median (loo-model) | -0.2938 | 0.2556 | 0.3904 | 43.3930 | -0.4798 | 476 |
+| per-dataset median (loo-model) | 0.1291 | 0.1920 | 0.3203 | 40.3032 | 0.6069 | 476 |
+| additive oracle (ceiling, in-sample) | 0.6605 | 0.1447 | 0.2000 | 35.2889 | 0.8100 | 476 |
+
+Every trivial predictor appears at its mean and at its median, because the metrics disagree about which is the honest opponent: the mean minimises squared error and the median minimises absolute error, so an MAE quoted against a mean baseline is quoted against a predictor that is not minimising the metric it is judged on. Reading the strongest baseline of each kind, per metric:
+
+| metric | strongest mean baseline | strongest median baseline | harder |
+|---|---|---|---|
+| R2 | per-dataset mean (loo-model) (0.2964) | per-dataset median (loo-model) (0.1291) | **mean** |
+| MAE | per-dataset mean (loo-model) (0.2132) | per-dataset median (loo-model) (0.1920) | **median** |
+| SMAPE | per-dataset mean (loo-model) (43.7772) | per-dataset median (loo-model) (40.3032) | **median** |
+
+#### How many terms, and why
+
+The length is chosen by one rule with no threshold and no smoothing: **the argmax of the consensus curve** (`selection.best_length`), which here selects **15 terms**. Nothing about that number is written down — it falls out of the curve, and it re-derives itself if the corpus changes.
+
+Every alternative rule is reported beside it, because a selection rule is only defensible if what it beats is on the page:
+
+| rule | n_terms | r2_in_sample | r2_loo_dataset |
+|---|---|---|---|
+| pareto front, closest to ideal | 4 | 0.5390 | 0.5053 |
+| pareto front, furthest from nadir | 4 | 0.5390 | 0.5053 |
+| pareto front, furthest from chord | 4 | 0.5390 | 0.5053 |
+| best loo-dataset | 15 | 0.6578 | 0.6381 |
+| best consensus (the rule) | 15 | 0.6578 | 0.6381 |
+| published | 15 | 0.6578 | 0.6381 |
+
+The geometric rules — the Pareto-front knee by its three standard forms — choose far shorter equations, and **11 of the 32 lengths searched are significantly worse** than the selected one when paired fold by fold over the held-out datasets. A knee finds where the *marginal* return per term collapses, which on a saturating curve is early; it does not ask whether the accuracy still being added is real.
+
+The parsimony alternative is **10 terms** — the shortest length whose paired interval against the selected one spans zero. It is reported and not adopted: the accuracy it gives up is measurable (0.6151 against 0.6381 leave-one-dataset-out) even where it is not significant.
+
+#### How far the additive form reaches
+
+The published equation is the **parsimonious** grammar (arity 2). The same features under the **full** grammar (arity 3), with the length chosen by the same rule, reach 23 terms at R² 0.7068 in-sample:
+
+| | terms | in-sample | LOO-dataset | LOO-model |
+|---|---|---|---|---|
+| published (arity 2) | 15 | 0.6578 | 0.6381 | 0.6218 |
+| capability (arity 3) | 23 | 0.7068 | 0.6781 | 0.6512 |
+
+This is a **capability measurement, not a recommendation**. It answers the question the published equation cannot answer about itself — whether the additive form is out of room or whether this equation is short of it — and the answer is that +0.0490 of in-sample R² is still available to a longer equation over a wider grammar. What that costs is what the published equation is buying: more terms, an operation more, and a form that reselects far less often across folds.
+
+#### What the vocabulary could reach, before any search
+
+Three levels of what the vocabulary can explain, each a least-squares fit over the library and each computable before the search runs. They bound a *sum of per-feature functions*, which is a different question from the additive oracle above: that one bounds a per-dataset value plus a per-model value.
+
+| level | terms | R² |
+|---|---|---|
+| every raw feature, untransformed | 18 | 0.4763 |
+| the best single-feature term per feature | 18 | 0.5445 |
+| every single-feature term at once | 75 | 0.6437 |
+| **the fitted equation (E3)** | **15** | **0.6578** |
+
+No individual feature carries much: the strongest is `eq_num_attr` at R² 0.142, so any accuracy beyond that is combination rather than a single dominant driver. Transforming the features is worth +0.068 over entering them raw.
+
+E3 reaches 0.6578 with 15 terms, **above** the 0.6437 that all 75 single-feature terms reach together. An equation cannot pass that level by describing features one at a time, so the excess is what the cross-feature terms buy — the same conclusion the additive oracle reaches, by an independent route.
+
+## Acting on it
+
+R² is the wrong question for a practitioner, who asks whether a model will work on some data rather than what its MCC will be to three decimals. Thresholding both the prediction and the truth turns the equation into a go/no-go rule, scored here on held-out datasets:
+
+| threshold | accuracy | majority | precision | recall | mcc | f1 | map | n_positive |
+|---|---|---|---|---|---|---|---|---|
+| 0.5000 | 0.8950 | 0.7668 | 0.9178 | 0.9479 | 0.6967 | 0.9326 | 0.9738 | 365 |
+| 0.6000 | 0.8887 | 0.7332 | 0.9205 | 0.9284 | 0.7133 | 0.9244 | 0.9763 | 349 |
+| 0.7000 | 0.8676 | 0.6681 | 0.9381 | 0.8585 | 0.7193 | 0.8966 | 0.9480 | 318 |
+| 0.8000 | 0.8109 | 0.6261 | 0.9444 | 0.7416 | 0.6471 | 0.8308 | 0.9492 | 298 |
+| 0.9000 | 0.7584 | 0.5084 | 0.9205 | 0.5744 | 0.5619 | 0.7074 | 0.9123 | 242 |
+
+`majority` is the floor any such rule has to clear. The harder comparison is a predictor that answers "how well does this model usually do", thresholded the same way — at both centres, for the reason the error metrics report both:
+
+| predictor | threshold | accuracy | majority | precision | recall | mcc | f1 | map | n_positive |
+|---|---|---|---|---|---|---|---|---|---|
+| equation (E3) | 0.5000 | 0.8950 | 0.7668 | 0.9178 | 0.9479 | 0.6967 | 0.9326 | 0.9738 | 365 |
+| equation (E3) | 0.6000 | 0.8887 | 0.7332 | 0.9205 | 0.9284 | 0.7133 | 0.9244 | 0.9763 | 349 |
+| equation (E3) | 0.7000 | 0.8676 | 0.6681 | 0.9381 | 0.8585 | 0.7193 | 0.8966 | 0.9480 | 318 |
+| equation (E3) | 0.8000 | 0.8109 | 0.6261 | 0.9444 | 0.7416 | 0.6471 | 0.8308 | 0.9492 | 298 |
+| equation (E3) | 0.9000 | 0.7584 | 0.5084 | 0.9205 | 0.5744 | 0.5619 | 0.7074 | 0.9123 | 242 |
+| per-model mean | 0.5000 | 0.7395 | 0.7668 | 0.8005 | 0.8795 | 0.1842 | 0.8381 | 0.9788 | 365 |
+| per-model mean | 0.6000 | 0.6828 | 0.7332 | 0.8113 | 0.7393 | 0.2506 | 0.7736 | 0.9567 | 349 |
+| per-model mean | 0.7000 | 0.7227 | 0.6681 | 0.8550 | 0.7044 | 0.4391 | 0.7724 | 0.9645 | 318 |
+| per-model mean | 0.8000 | 0.7122 | 0.6261 | 0.8368 | 0.6711 | 0.4374 | 0.7449 | 0.9332 | 298 |
+| per-model mean | 0.9000 | 0.6450 | 0.5084 | 0.7744 | 0.4256 | 0.3314 | 0.5493 | 0.9408 | 242 |
+| per-model median | 0.5000 | 0.7206 | 0.7668 | 0.7829 | 0.8795 | 0.0950 | 0.8284 | 0.9779 | 365 |
+| per-model median | 0.6000 | 0.7416 | 0.7332 | 0.8038 | 0.8567 | 0.3018 | 0.8294 | 0.9432 | 349 |
+| per-model median | 0.7000 | 0.6933 | 0.6681 | 0.7671 | 0.7767 | 0.3040 | 0.7719 | 0.9636 | 318 |
+| per-model median | 0.8000 | 0.7437 | 0.6261 | 0.8121 | 0.7685 | 0.4635 | 0.7897 | 0.9301 | 298 |
+| per-model median | 0.9000 | 0.6933 | 0.5084 | 0.6967 | 0.7025 | 0.3863 | 0.6996 | 0.9368 | 242 |
+
+Ranking models within a held-out dataset:
+
+- mean top-1 regret **0.015** MCC — what you give up by taking the model the equation ranks first
+
+| predictor | ap | mrr | hit_at_1 | regret | datasets | ap_vs_e3_p | ap_vs_e3_significant |
+|---|---|---|---|---|---|---|---|
+| equation (E3) | 0.8502 | 0.8821 | 0.8000 | 0.0145 | 20 |  |  |
+| per-model mean | 0.7980 | 0.8350 | 0.7500 | 0.0111 | 20 | 0.2101 | no |
+| per-model median | 0.8375 | 0.8850 | 0.8500 | 0.0088 | 20 | 0.1435 | no |
+
+**None of these differences survives a paired test.** Against per-model mean, per-model median the sign test and the bootstrap interval over datasets both include zero, so on ranking the equation is indistinguishable from ordering the models by how well they usually do. Read the means in the table above as ties, not as a ranking of the predictors — including where a baseline's mean is the larger one.
+
+## What bounds the result
+
+The additive form cannot represent dataset-by-model interaction beyond what its mixed terms reach. The ladder below adds interaction components to an oracle that is handed the true group means, so it measures the ceiling rather than any equation:
+
+| interaction_rank | r2 | gain |
+|---|---|---|
+| 0 | 0.6605 |  |
+| 1 | 0.7828 | 0.1223 |
+| 2 | 0.8537 | 0.0709 |
+| 3 | 0.8968 | 0.0431 |
+| 4 | 0.9278 | 0.0310 |
+| 6 | 0.9651 | 0.0373 |
+| 8 | 0.9842 | 0.0191 |
+
+That is a ceiling, not a score. Whether the equation reaches any of it is a separate question, and the answer is that it reaches some: below, `alignment` is the squared correlation between the equation's own interaction residual and the leading components of the oracle's, over observed cells. `leading_share` is how much of the interaction variance those components carry, and `interaction_share` how much of MCC's variance is interaction at all.
+
+| protocol | rank | alignment | leading_share | interaction_share |
+|---|---|---|---|---|
+| in-sample | 1 | 0.3285 | 0.3757 | 0.3647 |
+| in-sample | 2 | 0.2590 | 0.5658 | 0.3647 |
+| leave-one-dataset-out | 1 | 0.3186 | 0.3757 | 0.3647 |
+| leave-one-dataset-out | 2 | 0.2243 | 0.5658 | 0.3647 |
+
+Variance of MCC explained by group identity alone, with no equation involved:
+
+| knowing only | n_groups | variance_explained |
+|---|---|---|
+| dataset identity | 20 | 0.3539 |
+| model identity | 25 | 0.2821 |
+
+Validation protocol, same equation, different splits:
+
+| protocol | r2 | mae | rmse | smape | spearman | n |
+|---|---|---|---|---|---|---|
+| random 10-fold (leaky) | 0.6378 | 0.1424 | 0.2065 | 34.9614 | 0.8052 | 476 |
+| leave-one-dataset-out | 0.6381 | 0.1417 | 0.2064 | 34.8803 | 0.8095 | 476 |
+| leave-one-model-out | 0.6218 | 0.1449 | 0.2110 | 35.4201 | 0.8072 | 476 |
+
+<!-- end generated -->
+
+## Limitations of the evaluation
+
+### Ranking: the equation caught up with the trivial baseline, and no further
+
+Before `Model Capability` joined the model side, the trivial per-model-mean baseline
+out-ranked E3 outright — mean Spearman 0.703 against 0.648, top-1 regret 0.011 against 0.019
+— while E3 won on predicting the MCC *value*. Two responses were tried and one worked, but
+"worked" needs stating carefully.
+
+A learning-to-rank objective was the obvious response and it **failed**. Squared error over
+within-dataset pairs is ordinary least squares after centring both the design and the target
+inside each dataset, so it costs one extra step and stays closed-form; it ranked *worse* than
+the objective it was meant to beat, 0.532 against 0.625 (below). The loss function was never
+the limitation.
+
+Adding `Model Capability` to the model side is what moved it. On the means E3 now leads the
+per-model **mean** baseline on every head-weighted metric — average precision 0.850 against
+0.798, reciprocal rank 0.882 against 0.835, hit@1 0.800 against 0.750 — and **none of those
+margins survives pairing over the twenty held-out datasets** (average precision p = 0.21,
+interval spanning zero).
+
+**And the mean is not the hardest baseline.** The per-model **median** is a different ordering
+and a better one on two of the four measures: average precision 0.837, reciprocal rank 0.885,
+hit@1 0.850 against E3's 0.800, top-1 regret 0.009 against 0.015. That comparison does not
+survive pairing either (p = 0.14). Reporting only the mean baseline made the equation look
+like it had won a contest it had drawn.
+
+| | AP | MRR | hit@1 | top-1 regret |
+|---|---|---|---|---|
+| per-model mean | 0.798 | 0.835 | 0.750 | 0.011 |
+| **E3** | **0.850** | 0.882 | 0.800 | 0.015 |
+| per-model median | 0.837 | **0.885** | **0.850** | **0.009** |
+
+So the honest statement is that **the equation caught up with the trivial baselines and did
+not pass them**. That is still the diagnosis confirming itself — a per-model centre
+out-ranked the equation because it knew something the equation did not, roughly which models
+are good, and the fix was to tell the equation rather than to change how it was fitted. But a
+study that stops at "E3 wins on all four" is reading four means over twenty folds, which is
+what [`validate.paired_comparison`](../../src/ml_meta_perf/validate.py) exists to prevent,
+and hit@1 moves only in steps of 0.05 on twenty datasets.
+
+Where the equation does clear the trivial predictors, and clearly, is the two questions that
+are not ranking: predicting the MCC value (0.638 leave-one-dataset-out against 0.201) and the
+go/no-go threshold decision (MCC 0.683 against 0.439 and 0.304 at a threshold of 0.7).
+[Chapter 5](05-evaluation.md) reports all three together.
+
+Spearman does not enter any of this. It sits between 0.63 and 0.73 for every predictor and
+every baseline on this corpus, including a constant.
+
+### What would change the conclusions
+
+| if | then |
+|---|---|
+| more datasets (OpenML-scale) | would settle whether the 0.6605 additive ceiling is a property of this sample or of the approach |
+| richer model descriptors | would test whether the 42% unexplained model capability is reachable |
+| an interaction-aware but interpretable term family | would test whether the +0.122 rank-1 gap can be closed without abandoning readability |
+| a learning-to-rank objective | would test whether the ranking gap against the per-model-mean baseline closes |
+| refitting across a configuration grid | would separate evidence that describes the data from evidence that describes one equation |
+| recording failed training runs | would let the study speak about whether to try a model at all, not only about how good a trained one will be |
+| training without the 100k sampling cap, or recording the sampled size | would make training-set size a variable the study can reason about at all |
