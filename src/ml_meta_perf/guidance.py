@@ -43,13 +43,16 @@ import polars as pl
 
 from ml_meta_perf.data import (
     DATASET_COLUMN,
+    DATASET_FEATURES,
     MODEL_COLUMN,
     MODEL_FAMILY,
+    MODEL_FEATURES,
     NEURAL_FAMILIES,
     TARGET_COLUMN,
     TREE_FAMILIES,
 )
 from ml_meta_perf.experiment import Report
+from ml_meta_perf.validate import paired_comparison
 
 SUPPORTED = "supported"
 QUALIFIED = "qualified"
@@ -97,10 +100,19 @@ class Evidence:
     comparison: pl.DataFrame
     leakage: pl.DataFrame
     practices: pl.DataFrame
-    selection_spearman: float
-    baseline_spearman: float
-    selection_regret: float
-    baseline_regret: float
+    #: Mean ranking quality of the equation and of the per-model-mean baseline, over the
+    #: held-out datasets. **Read `ap`, `mrr`, `hit_at_1` and `regret`.** Spearman is carried
+    #: for continuity and must not decide anything: on this corpus it sits between 0.63 and
+    #: 0.73 for every predictor *and* every baseline, including a constant, so a verdict
+    #: resting on it is resting on a quantity that cannot separate what it is comparing.
+    #: See `validate.ranking_report`.
+    selection_ranking: dict[str, float]
+    baseline_ranking: dict[str, float]
+    #: The same two, per held-out dataset and in one group order, so a check can run a
+    #: paired test rather than compare two means over twenty folds. `PairedResult` explains
+    #: why the means alone are not enough here.
+    selection_per_group: pl.DataFrame
+    baseline_per_group: pl.DataFrame
 
     def family(self, name: str, complete: bool = True) -> float:
         """Mean MCC of one learner family, on the complete-grid subset by default."""
@@ -128,6 +140,26 @@ class Evidence:
     def practice_effect(self, feature: str) -> float:
         matched = self.practices.filter(pl.col("feature") == feature)
         return float(matched["effect"][0]) if matched.height else float("nan")
+
+    def practice_terms(self, feature: str) -> int:
+        """How many of the equation's terms this feature appears in, 0 if none do."""
+        matched = self.practices.filter(pl.col("feature") == feature)
+        if not matched.height or "n_terms" not in matched.columns:
+            return 0
+        return int(matched["n_terms"][0])
+
+
+#: The ranking columns a verdict may read, in the order `ranking_report` documents them.
+RANKING_METRICS: tuple[str, ...] = ("ap", "mrr", "hit_at_1", "regret")
+
+
+def _mean_ranking(table: pl.DataFrame) -> dict[str, float]:
+    """Mean of each ranking metric over the held-out groups."""
+    return {
+        name: float(np.mean(table[name].to_numpy()))
+        for name in (*RANKING_METRICS, "spearman")
+        if name in table.columns
+    }
 
 
 def _family_means(frame: pl.DataFrame) -> pl.DataFrame:
@@ -202,10 +234,10 @@ def gather(frame: pl.DataFrame, report: Report) -> Evidence:
         comparison=report.comparison,
         leakage=report.leakage,
         practices=report.practices,
-        selection_spearman=float(np.mean(selection["spearman"].to_numpy())),
-        baseline_spearman=float(np.mean(baseline["spearman"].to_numpy())),
-        selection_regret=float(np.mean(selection["regret"].to_numpy())),
-        baseline_regret=float(np.mean(baseline["regret"].to_numpy())),
+        selection_ranking=_mean_ranking(selection),
+        baseline_ranking=_mean_ranking(baseline),
+        selection_per_group=selection.sort("group") if "group" in selection.columns else selection,
+        baseline_per_group=baseline.sort("group") if "group" in baseline.columns else baseline,
     )
 
 
@@ -355,9 +387,10 @@ def _profile_the_data_first(evidence: Evidence) -> Verdict:
         evidence=(
             f"Knowing only which dataset a row came from explains {dataset:.1%} of MCC variance; "
             f"knowing only which model, {model:.1%}. The dataset side is also the better described: "
-            f"twelve dataset meta-features reach {captured_dataset:.0%} of what dataset identity "
-            f"explains, while five model meta-features reach {captured_model:.0%} of theirs. Both "
-            "the effect and our ability to measure it favour the data."
+            f"{len(DATASET_FEATURES)} dataset meta-features reach {captured_dataset:.0%} of what "
+            f"dataset identity explains, while {len(MODEL_FEATURES)} model meta-features reach "
+            f"{captured_model:.0%} of theirs. Both the effect and our ability to measure it favour "
+            "the data."
         ),
         magnitude=gap,
     )
@@ -443,61 +476,143 @@ def _clean_noise_before_adding_capacity(evidence: Evidence) -> Verdict:
 
 
 def _prefer_outlier_robust_learners(evidence: Evidence) -> Verdict:
-    effect = evidence.practice_effect("Robust to Outliers")
-    if np.isnan(effect):
-        return Verdict(
-            practice=_BY_ID["prefer-outlier-robust-learners"],
-            verdict=NOT_TESTED,
-            evidence="No robustness practice survived the extraction filters in this run.",
-            magnitude=float("nan"),
-        )
+    """Untestable on this corpus, and it will stay that way.
+
+    The practice needs a column saying whether a *learner* resists outliers.
+    ``Robust to Outliers`` was that column and was dropped from the corpus on 2026-09-05:
+    it varied within a model, so it was partly a dataset feature wearing a model feature's
+    name, and being zero-based it could enter the grammar only as ``f`` and ``f^2``.
+
+    The nearby column is not a substitute. ``nr_outliers`` counts outliers in the *data*,
+    which is a property of the problem rather than of the learner, so a term over it
+    answers "do outliers hurt?" and not "does robustness help?". Re-pointing the check at
+    it would produce a verdict that reads as though the practice had been tested.
+
+    Nor can it be recovered: no model may be re-run and no descriptor measured (`TODO.md`),
+    so the only route left is asserting a robustness ordinal from the literature, which
+    would test the assertion rather than the practice. This returns `NOT_TESTED`
+    unconditionally and says why, which is the honest report of a practice this study
+    cannot weigh.
+    """
     return Verdict(
         practice=_BY_ID["prefer-outlier-robust-learners"],
-        verdict=SUPPORTED if effect > 0.05 else QUALIFIED,
+        verdict=NOT_TESTED,
         evidence=(
-            f"Built-in robustness to outliers carries the largest feature effect in the "
-            f"equation, {effect:+.2f} MCC between its lowest and highest decile, and its "
-            "direction agrees with its plain correlation against MCC. It is the single most "
-            "actionable thing the equation says about model choice."
+            "This corpus cannot weigh it. The practice is about a property of the learner, "
+            "and the column that recorded one -- `Robust to Outliers` -- was retired because "
+            "it varied within a model and was undefined under every transform in the grammar "
+            "but two. `nr_outliers` counts outliers in the data, not resistance to them in "
+            "the model, so it answers a different question. Reported as untested rather than "
+            "answered with the nearest available number."
         ),
-        magnitude=effect,
+        magnitude=float("nan"),
     )
 
 
 def _capacity_is_not_free(evidence: Evidence) -> Verdict:
     generic = evidence.family("generic NN")
     trees = evidence.families(TREE_FAMILIES)
+    capacity_terms = evidence.practice_terms("Processing Units Number")
+    # An earlier version described two blocks of terms, one of which paired capacity with
+    # inference cost. `Prediction Operations` left the corpus on 2026-09-05 and no such
+    # block exists; the count is read from the equation now rather than written down.
+    equation_says = (
+        f" The equation says it conditionally rather than flatly: `Processing Units Number` "
+        f"carries {capacity_terms} of its terms, mostly against a dataset property, so what "
+        "raises MCC is capacity *matched to* the problem rather than capacity itself."
+        if capacity_terms
+        else " Capacity does not survive into the equation's terms in this run, so the family "
+        "means are the whole of the evidence here."
+    )
     return Verdict(
         practice=_BY_ID["capacity-is-not-free"],
         verdict=SUPPORTED if generic < trees - 0.05 else QUALIFIED,
         evidence=(
             f"The highest-capacity family here is also the worst: generic neural networks "
-            f"average MCC {generic:.3f} against {trees:.3f} for tree ensembles. Inside the "
-            "equation the same tension is explicit -- one block of terms rises with capacity and "
-            "raises MCC, a second block pairs capacity with inference cost and lowers it, and the "
-            "two blocks carry equal weight."
+            f"average MCC {generic:.3f} against {trees:.3f} for tree ensembles.{equation_says}"
         ),
         magnitude=generic - trees,
     )
 
 
 def _beat_the_trivial_baseline(evidence: Evidence) -> Verdict:
-    beaten = evidence.baseline_spearman >= evidence.selection_spearman
+    """Did the meta-learner actually beat "use whatever usually works"?
+
+    Two things this check must not do, both of which it did.
+
+    It must not decide on Spearman. That column sits between 0.63 and 0.73 for every
+    predictor and every baseline on this corpus, including a constant, so the two sides
+    were once separated by 0.0006 -- a margin that chose a published verdict while
+    measuring nothing. `validate.ranking_report` says so where it is computed.
+
+    It must not decide on a difference of means over twenty folds. On the head-weighted
+    metrics the equation's mean average precision leads the baseline's by 0.021, and it is
+    the better of the two on only 7 of the 17 datasets where they differ: the lead is a few
+    large wins, not an advantage. So the verdict runs `validate.paired_comparison` on the
+    per-dataset scores and reads the interval, not the mean.
+
+    The practice claims the trivial baseline is *competitive*, so an inconclusive paired
+    test is the practice being right rather than a failure to measure. Only a baseline that
+    loses on a majority of metrics with an interval excluding zero can challenge it.
+    """
+    selection, baseline = evidence.selection_per_group, evidence.baseline_per_group
+    usable = [
+        name
+        for name in RANKING_METRICS
+        if name in selection.columns
+        and name in baseline.columns
+        and selection.height == baseline.height
+        and selection.height > 1
+    ]
+    if not usable:
+        return Verdict(
+            practice=_BY_ID["beat-the-trivial-baseline"],
+            verdict=NOT_TESTED,
+            evidence="No per-dataset ranking table was available to pair in this run.",
+            magnitude=float("nan"),
+        )
+
+    results = {
+        name: paired_comparison(
+            selection[name].to_numpy().astype(np.float64),
+            baseline[name].to_numpy().astype(np.float64),
+            lower_is_better=name == "regret",
+        )
+        for name in usable
+    }
+    decisive = [name for name, result in results.items() if result.significant]
+    equation_ahead = [name for name in decisive if results[name].mean > 0.0]
+
+    if decisive and not equation_ahead:
+        verdict = SUPPORTED
+        summary = "and the equation loses on a margin this corpus can actually resolve"
+    elif len(equation_ahead) > len(usable) / 2:
+        verdict = CHALLENGED
+        summary = "and the equation clears it by a margin that survives a paired test"
+    else:
+        verdict = QUALIFIED
+        summary = (
+            "and the two cannot be separated -- which is the practice being right, since it "
+            "claims the trivial baseline is competitive rather than that it wins"
+        )
+
+    detail = "; ".join(
+        f"{name} {evidence.selection_ranking[name]:.3f} against "
+        f"{evidence.baseline_ranking[name]:.3f}, equation better on {results[name].wins} of "
+        f"{results[name].n} datasets that differ, 95% CI "
+        f"[{results[name].low:+.3f}, {results[name].high:+.3f}]"
+        for name in usable
+    )
     return Verdict(
         practice=_BY_ID["beat-the-trivial-baseline"],
-        verdict=SUPPORTED if beaten else QUALIFIED,
+        verdict=verdict,
         evidence=(
-            f"Tested against this study's own equation and the equation loses. Ranking models "
-            f"within a held-out dataset, the per-model-mean baseline reaches Spearman "
-            f"{evidence.baseline_spearman:.3f} and top-1 regret {evidence.baseline_regret:.3f} "
-            f"against the equation's {evidence.selection_spearman:.3f} and "
-            f"{evidence.selection_regret:.3f}. The equation wins on predicting the MCC *value*; "
-            "for ordering candidates, the trivial baseline is the better tool."
-            if beaten
-            else " The equation clears the baseline here, which is the outcome the practice "
-            "asks you to verify rather than assume."
+            f"Tested against this study's own equation {summary}. Ranking models within a "
+            f"held-out dataset, against the per-model-mean baseline -- {detail}. Every "
+            "interval is a paired bootstrap over the twenty held-out datasets, because a "
+            "difference of two means over twenty folds is not yet a measurement."
         ),
-        magnitude=evidence.baseline_spearman - evidence.selection_spearman,
+        magnitude=results[usable[0]].mean,
     )
 
 

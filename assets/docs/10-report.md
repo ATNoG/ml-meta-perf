@@ -196,7 +196,7 @@ The vocabulary offers five operations and five transforms and the search is free
 
 A best practice is general, transferable advice that already circulates in the field — not a property of this equation. So the practices below are taken from the literature and this study is used to *weigh* them: each verdict, and the numbers inside it, are computed from this run by `ml_meta_perf.guidance`, against a stated threshold, so other data can overturn any of them.
 
-10 practices assessed: 1 challenged, 3 not tested, 1 qualified, 5 supported.
+10 practices assessed: 3 not tested, 2 qualified, 5 supported.
 
 ### 1. Characterise the dataset before choosing a model. What the data is like bounds what any model can reach, and that bound is usually the larger effect.
 
@@ -242,7 +242,7 @@ A best practice is general, transferable advice that already circulates in the f
 
 ### 8. Before adopting a meta-learner to choose models, check it against 'use whatever usually works'. Ranking is an easier problem than prediction and often needs less.
 
-**Verdict: challenged.** Tested against this study's own equation and the equation wins on every one. Ranking models within a held-out dataset, against the per-model-mean baseline: ap 0.822 against 0.798, mrr 0.867 against 0.835, hit_at_1 0.800 against 0.750, regret 0.008 against 0.011 (average precision, reciprocal rank, hit@1, and top-1 regret, where lower is better). Spearman is 0.706 against 0.703 and is quoted only because a reader will look for it -- it is the same to within a thousandth for every predictor on this corpus, including a constant, so nothing here rests on it.
+**Verdict: qualified.** Tested against this study's own equation and the two cannot be separated -- which is the practice being right, since it claims the trivial baseline is competitive rather than that it wins. Ranking models within a held-out dataset, against the per-model-mean baseline -- ap 0.822 against 0.798, equation better on 7 of 17 datasets that differ, 95% CI [-0.068, +0.133]; mrr 0.867 against 0.835, equation better on 3 of 6 datasets that differ, 95% CI [-0.066, +0.140]; hit_at_1 0.800 against 0.750, equation better on 2 of 3 datasets that differ, 95% CI [-0.100, +0.200]; regret 0.008 against 0.011, equation better on 11 of 15 datasets that differ, 95% CI [-0.001, +0.009]. Every interval is a paired bootstrap over the twenty held-out datasets, because a difference of two means over twenty folds is not yet a measurement.
 
 *Practice from:* Rice, 'The Algorithm Selection Problem' (1976); standard meta-learning practice. A per-model mean over previous datasets carries most of the ranking signal at zero modelling cost, and is the baseline any selection method has to clear.
 
@@ -270,7 +270,7 @@ At a glance:
 | Spend the first effort on reducing noise in the data, not on a larger model. Noise sets a ceiling that capacity cannot lift. | not tested |  |
 | On real-world data that has not been carefully curated, prefer a learner with built-in robustness to outliers. | not tested |  |
 | Match capacity to the problem. A larger, more expensive model is not a safer default; on small tabular problems it is usually a worse one. | supported | -0.4727 |
-| Before adopting a meta-learner to choose models, check it against 'use whatever usually works'. Ranking is an easier problem than prediction and often needs less. | challenged | 0.0238 |
+| Before adopting a meta-learner to choose models, check it against 'use whatever usually works'. Ranking is an easier problem than prediction and often needs less. | qualified | 0.0238 |
 | Report which (dataset, model) runs were excluded and why. Aggregate comparisons over an incomplete grid compare different models on different problems. | supported | 0.0480 |
 | Score imbalanced classification with a metric that accounts for all four confusion-matrix cells -- MCC rather than accuracy or F1. | not tested | 0.0315 |
 

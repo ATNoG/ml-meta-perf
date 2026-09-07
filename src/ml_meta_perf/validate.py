@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from math import comb
 
 import numpy as np
 import polars as pl
@@ -550,3 +551,119 @@ def ranking_report(
             }
         )
     return pl.DataFrame(rows).sort("group")
+
+
+#: Resamples for the paired bootstrap. Twenty groups is a small enough sample that the
+#: interval is the point of the exercise, and 20k resamples costs microseconds.
+BOOTSTRAP_ROUNDS = 20_000
+BOOTSTRAP_SEED = 42
+
+
+@dataclass(frozen=True)
+class PairedResult:
+    """Whether a per-group difference is real, or inside the spread between folds.
+
+    Every headline in this study is a mean over twenty held-out datasets, and a mean over
+    twenty groups is not a measurement until something says how much of it one group could
+    have produced. Two cases from this corpus make the point, and both looked conclusive
+    as single numbers:
+
+    * a 16-term equation ranks at average precision 0.819 against a trivial baseline's
+      0.798 -- and is the better of the two on **7 of the 17** datasets where they differ
+      at all. The favourable mean comes from a few large wins, not from being better;
+    * lengthening that equation to 20 terms drops hit@1 from 0.800 to 0.700, which reads
+      as a trend until one notices that hit@1 over twenty folds moves only in steps of
+      0.05, and that the drop is two datasets changing their top pick.
+
+    So: a **sign test** on how many groups improved, which no single group can swing, and
+    a **paired bootstrap** interval on the mean, which shows what the mean is worth. The
+    two answer different questions and disagreeing is informative -- a significant sign
+    test with an interval spanning zero means a consistent but tiny effect.
+
+    ``mean`` and the interval are in the metric's own units, positive meaning the first
+    argument is better. Errors must therefore be negated by the caller; `paired_comparison`
+    does it for you when told the metric is an error.
+    """
+
+    mean: float
+    wins: int
+    losses: int
+    n: int
+    p_value: float
+    low: float
+    high: float
+
+    @property
+    def significant(self) -> bool:
+        """Whether the bootstrap interval excludes zero."""
+        return self.low > 0.0 or self.high < 0.0
+
+    def as_dict(self) -> dict[str, float | int]:
+        return {
+            "mean": self.mean,
+            "wins": self.wins,
+            "losses": self.losses,
+            "n_differing": self.n,
+            "p_value": self.p_value,
+            "ci_low": self.low,
+            "ci_high": self.high,
+        }
+
+
+def sign_test(differences: np.ndarray) -> tuple[int, int, float]:
+    """Wins, comparisons that differ, and the exact two-sided binomial p-value.
+
+    Exact rather than normal-approximate because the sample is twenty groups, where the
+    approximation is poor exactly when the answer matters. Summing binomial coefficients
+    directly is also why this needs no scipy: ``math.comb`` is in the standard library and
+    twenty choose ten is not a large number.
+
+    Ties are dropped rather than split, which is the conservative convention: a fold where
+    two predictors score identically is evidence for neither.
+    """
+    wins = int((differences > 0.0).sum())
+    n = int((differences != 0.0).sum())
+    if n == 0:
+        return 0, 0, 1.0
+    tail = sum(comb(n, k) for k in range(min(wins, n - wins) + 1))
+    return wins, n, min(1.0, 2.0 * tail / 2**n)
+
+
+def paired_comparison(
+    first: np.ndarray,
+    second: np.ndarray,
+    *,
+    lower_is_better: bool = False,
+    rounds: int = BOOTSTRAP_ROUNDS,
+    seed: int = BOOTSTRAP_SEED,
+) -> PairedResult:
+    """Compare two predictors group by group, on the same folds.
+
+    ``first`` and ``second`` are per-group scores in the same group order -- a column of
+    `ranking_report`, or per-fold errors. Pass ``lower_is_better`` for an error metric and
+    the sign is handled here, so a positive ``mean`` always means ``first`` won.
+
+    The bootstrap resamples *groups*, not rows. Rows within a dataset are not exchangeable
+    with rows in another one, and the question is whether the result survives a different
+    draw of datasets, which is the sampling this study's twenty-dataset corpus is a draw
+    from.
+    """
+    if first.shape != second.shape:
+        raise ValueError("paired comparison needs one score per group on both sides")
+    differences = (second - first) if lower_is_better else (first - second)
+    wins, n, p_value = sign_test(differences)
+    losses = int((differences < 0.0).sum())
+    if differences.size == 0:
+        return PairedResult(float("nan"), 0, 0, 0, 1.0, float("nan"), float("nan"))
+    generator = np.random.default_rng(seed)
+    draws = generator.integers(0, differences.size, size=(rounds, differences.size))
+    means = differences[draws].mean(axis=1)
+    return PairedResult(
+        mean=float(differences.mean()),
+        wins=wins,
+        losses=losses,
+        n=n,
+        p_value=p_value,
+        low=float(np.percentile(means, 2.5)),
+        high=float(np.percentile(means, 97.5)),
+    )

@@ -19,9 +19,11 @@ from ml_meta_perf.validate import (
     interaction_oracle,
     leave_one_group_out,
     oracle_ladder,
+    paired_comparison,
     random_kfold_groups,
     ranking_report,
     score,
+    sign_test,
     term_stability,
 )
 
@@ -313,6 +315,72 @@ class TestAnalysis(unittest.TestCase):
         clusters = redundancy_groups(self.library, threshold=0.999)
         for cluster in clusters:
             self.assertGreater(len(cluster), 1)
+
+
+class TestPairedComparison(unittest.TestCase):
+    """A difference of two means over twenty folds is not yet a measurement."""
+
+    def test_a_consistent_win_is_significant(self) -> None:
+        first = np.array([0.9, 0.8, 0.7, 0.6, 0.5, 0.85, 0.75, 0.65])
+        result = paired_comparison(first, first - 0.2)
+        self.assertEqual(result.wins, 8)
+        self.assertEqual(result.losses, 0)
+        self.assertTrue(result.significant)
+        self.assertAlmostEqual(result.mean, 0.2)
+
+    def test_a_favourable_mean_from_a_few_large_wins_is_not(self) -> None:
+        # The case this exists for: the mean says one side leads, the folds say otherwise.
+        first = np.array([0.9, 0.9, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4])
+        second = np.array([0.1, 0.1, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5])
+        result = paired_comparison(first, second)
+        self.assertGreater(result.mean, 0.0)
+        self.assertLess(result.wins, result.losses)
+        self.assertFalse(result.significant)
+
+    def test_lower_is_better_flips_the_sign(self) -> None:
+        errors_a = np.array([0.1, 0.2, 0.3, 0.15])
+        errors_b = errors_a + 0.05
+        result = paired_comparison(errors_a, errors_b, lower_is_better=True)
+        self.assertGreater(result.mean, 0.0)
+        self.assertEqual(result.wins, 4)
+
+    def test_ties_are_dropped_rather_than_counted(self) -> None:
+        first = np.array([0.5, 0.5, 0.7, 0.3])
+        second = np.array([0.5, 0.5, 0.6, 0.4])
+        result = paired_comparison(first, second)
+        self.assertEqual(result.n, 2)
+        self.assertEqual((result.wins, result.losses), (1, 1))
+
+    def test_identical_inputs_are_inconclusive(self) -> None:
+        values = np.array([0.4, 0.5, 0.6])
+        result = paired_comparison(values, values)
+        self.assertEqual(result.n, 0)
+        self.assertEqual(result.p_value, 1.0)
+        self.assertFalse(result.significant)
+
+    def test_mismatched_lengths_are_an_error(self) -> None:
+        with self.assertRaises(ValueError):
+            paired_comparison(np.array([0.1, 0.2]), np.array([0.1]))
+
+    def test_the_result_is_reproducible(self) -> None:
+        first = np.array([0.9, 0.4, 0.7, 0.2, 0.6])
+        second = np.array([0.5, 0.5, 0.5, 0.5, 0.5])
+        self.assertEqual(paired_comparison(first, second), paired_comparison(first, second))
+
+
+class TestSignTest(unittest.TestCase):
+    def test_all_wins_gives_the_smallest_available_p(self) -> None:
+        wins, n, p = sign_test(np.array([1.0, 1.0, 1.0, 1.0, 1.0]))
+        self.assertEqual((wins, n), (5, 5))
+        self.assertAlmostEqual(p, 2.0 / 32.0)
+
+    def test_an_even_split_cannot_be_distinguished(self) -> None:
+        _, _, p = sign_test(np.array([1.0, 1.0, -1.0, -1.0]))
+        self.assertEqual(p, 1.0)
+
+    def test_it_is_symmetric_in_direction(self) -> None:
+        values = np.array([1.0, 1.0, 1.0, -1.0])
+        self.assertAlmostEqual(sign_test(values)[2], sign_test(-values)[2])
 
 
 if __name__ == "__main__":

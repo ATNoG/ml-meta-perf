@@ -9,7 +9,7 @@ import unittest
 import numpy as np
 import polars as pl
 
-from ml_meta_perf.data import MODEL_FAMILY, NEURAL_FAMILIES, TREE_FAMILIES, load
+from ml_meta_perf.data import DATASET_COLUMN, MODEL_FAMILY, NEURAL_FAMILIES, TREE_FAMILIES, load
 from ml_meta_perf.guidance import (
     CATALOGUE,
     CHALLENGED,
@@ -33,6 +33,30 @@ def frame() -> pl.DataFrame:
             "Dataset": [dataset for dataset in datasets for _ in models],
             "Model": [model for _ in datasets for model in models],
             "MCC": generator.uniform(0.0, 1.0, len(datasets) * len(models)),
+        }
+    )
+
+
+def ranking_table(
+    ap: float, mrr: float, hit_at_1: float, regret: float, spearman: float = 0.5
+) -> pl.DataFrame:
+    """One ranking row per dataset of the real corpus, all identical.
+
+    Per-group rather than a single mean, because `_beat_the_trivial_baseline` pairs the
+    equation against the baseline fold by fold -- a difference of two means over twenty
+    folds is what that check was rewritten to stop reading. The row count is taken from the
+    corpus rather than written down, since the pairing refuses tables of unequal height and
+    a hard-coded 20 would turn a corpus change into a confusing `not tested`.
+    """
+    names = sorted(str(name) for name in load()[DATASET_COLUMN].unique())
+    return pl.DataFrame(
+        {
+            "group": names,
+            "ap": [ap] * len(names),
+            "mrr": [mrr] * len(names),
+            "hit_at_1": [hit_at_1] * len(names),
+            "regret": [regret] * len(names),
+            "spearman": [spearman] * len(names),
         }
     )
 
@@ -78,9 +102,7 @@ class _Report:
                 }
             ),
         )
-        self.selection = overrides.get(
-            "selection", pl.DataFrame({"spearman": [0.648], "regret": [0.019]})
-        )
+        self.selection = overrides.get("selection", ranking_table(0.62, 0.70, 0.55, 0.019, 0.648))
 
 
 class TestCatalogue(unittest.TestCase):
@@ -150,9 +172,47 @@ class TestVerdicts(unittest.TestCase):
         losing = gather(self.frame, self.report)  # pyright: ignore[reportArgumentType]
         self.assertEqual(check(losing).verdict, SUPPORTED)
 
-        strong = _Report(selection=pl.DataFrame({"spearman": [0.99], "regret": [0.001]}))
+        strong = _Report(selection=ranking_table(0.99, 0.99, 0.99, 0.0))
         winning = gather(self.frame, strong)  # pyright: ignore[reportArgumentType]
-        self.assertEqual(check(winning).verdict, QUALIFIED)
+        self.assertEqual(check(winning).verdict, CHALLENGED)
+
+    def test_the_baseline_verdict_ignores_spearman(self) -> None:
+        # Spearman is the same to within a thousandth for every predictor on this corpus,
+        # so a verdict that moved with it would be reading noise. Only the head-weighted
+        # metrics may decide, and this pins that by moving Spearman alone.
+        check = CHECKS["beat-the-trivial-baseline"]
+        low = _Report(selection=ranking_table(0.62, 0.70, 0.55, 0.019, spearman=0.10))
+        high = _Report(selection=ranking_table(0.62, 0.70, 0.55, 0.019, spearman=0.99))
+        self.assertEqual(
+            check(gather(self.frame, low)).verdict,  # pyright: ignore[reportArgumentType]
+            check(gather(self.frame, high)).verdict,  # pyright: ignore[reportArgumentType]
+        )
+
+    def test_an_unresolvable_difference_is_qualified_not_a_challenge(self) -> None:
+        # The practice claims the trivial baseline is competitive. A margin this corpus
+        # cannot resolve is that claim holding, not a failure to measure -- and it must not
+        # be reported as the equation overturning the practice.
+        check = CHECKS["beat-the-trivial-baseline"]
+        evidence = gather(self.frame, self.report)  # pyright: ignore[reportArgumentType]
+        baseline = evidence.baseline_ranking
+        # Equal on two metrics and a hair ahead on two: no interval can exclude zero.
+        narrow = _Report(
+            selection=ranking_table(
+                baseline["ap"], baseline["mrr"], baseline["hit_at_1"], baseline["regret"] - 1e-6
+            )
+        )
+        self.assertEqual(
+            check(gather(self.frame, narrow)).verdict,  # pyright: ignore[reportArgumentType]
+            QUALIFIED,
+        )
+
+    def test_a_missing_ranking_table_is_not_tested(self) -> None:
+        check = CHECKS["beat-the-trivial-baseline"]
+        empty = _Report(selection=pl.DataFrame({"group": ["a"], "ap": [0.5]}))
+        self.assertEqual(
+            check(gather(self.frame, empty)).verdict,  # pyright: ignore[reportArgumentType]
+            NOT_TESTED,
+        )
 
     def test_tree_verdict_is_measured_from_the_families(self) -> None:
         check = CHECKS["tree-ensembles-first"]
