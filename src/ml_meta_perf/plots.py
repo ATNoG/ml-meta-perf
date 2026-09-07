@@ -95,6 +95,8 @@ def term_count_curve(
     destination: str | Path,
     *,
     oracle: float | None = None,
+    marker: int | None = None,
+    marker_label: str | None = None,
 ) -> Path:
     """Accuracy against equation length: the explainability trade.
 
@@ -130,6 +132,13 @@ def term_count_curve(
         # in-sample curve the moment it crossed -- which is exactly when it matters most.
         highest = max(float(curve["r2_in_sample"].to_numpy().max()), oracle)
         axes.set_ylim(top=highest + 0.05)
+
+    if marker is not None:
+        # This figure is *about* choosing a length, so the chosen one belongs on it. Named by
+        # the caller for the same reason `error_curve`'s is: a line whose label is fixed in
+        # the plotting code cannot be kept in step with what is actually being passed.
+        name = marker_label or "marked length"
+        axes.axvline(marker, color=CEILING, linestyle=":", linewidth=1.4, label=f"{name} ({marker} terms)")
 
     axes.set_xlabel("number of terms")
     axes.set_ylabel("$R^2$")

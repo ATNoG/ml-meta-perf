@@ -76,6 +76,8 @@ def generate(report: Report, destination: str | Path, data: str | Path | None = 
             report.e3.curve,
             folder / "term_count_curve.png",
             oracle=_oracle(report),
+            marker=_published_length(report),
+            marker_label="selected by the rule",
         ),
         predicted_versus_actual(truth, predicted, folder / "predicted_vs_actual.png", groups=truth),
         error_curve(
@@ -112,9 +114,11 @@ def captions(report: Report, data: str | Path | None = None) -> dict[str, str]:
         ),
         "term_count_curve.png": (
             "Accuracy against equation length for E3, in-sample and under both "
-            "cross-validation protocols. The additive oracle is the best score reachable "
-            "by an equation additive in dataset and model effects; E3 rises above it "
-            "because its mixed terms represent interactions the oracle cannot."
+            "cross-validation protocols. The vertical line is the length chosen by "
+            "`selection.best_length`, the argmax of the consensus over the three protocols. "
+            "The additive oracle is the best score reachable by an equation additive in "
+            "dataset and model effects; an equation passes it only by representing the "
+            "dataset-by-model interaction the oracle cannot."
         ),
         "predicted_vs_actual.png": (
             "Predicted against actual MCC for E3, with the rug showing the marginal "

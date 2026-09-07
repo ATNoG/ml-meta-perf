@@ -92,8 +92,8 @@ What it settled:
 - **`max_arity = 2` confirmed outright.** Best arity-2 point 0.7297 against 0.6866 for the
   best arity-3 point, and every configuration in the top band is arity 2.
 - **Penalty 15 and z-cap 4.25 stand.** No candidate beats them significantly. The nearest,
-  penalty 20 / z-cap 4.50 on a four-feature subset, reaches 0.6317 LOO-dataset against 0.6270
-  and is a **tie** when paired (p = 0.115) — and on all six features the same knobs score
+  penalty 20 / z-cap 4.50 on a four-feature subset, reached 0.6317 LOO-dataset against the
+  then-incumbent's 0.6270 and was a **tie** when paired (p = 0.115) — and on all six features the same knobs score
   0.5798, so the apparent gain is the feature drop, not the shrinkage.
 - **Sixteen terms stands.** See item 2.
 

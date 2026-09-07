@@ -247,7 +247,7 @@ recording, because the mistake is the one this chapter exists to warn about.
 | | AP | MRR | hit@1 | top-1 regret |
 |---|---|---|---|---|
 | per-model mean (leave-one-dataset-out) | 0.798 | 0.835 | 0.750 | 0.011 |
-| **E3** | 0.822 | 0.867 | 0.800 | 0.008 |
+| **E3** | 0.850 | 0.882 | 0.800 | 0.015 |
 | per-model **median** (leave-one-dataset-out) | **0.837** | **0.885** | **0.850** | 0.009 |
 
 Read as means, E3 beats the mean baseline and loses to the median one. **Neither reading

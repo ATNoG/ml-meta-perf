@@ -204,10 +204,10 @@ justify the extra configuration surface, and one global penalty is retained.
 ## Stage 3 — choosing the number of terms
 
 More terms fit better and read worse. Picking the bend of that curve by eye is the kind of
-judgement this project exists to remove from its results, so it is delegated to a detector.
-[kneeliverse](https://github.com/mariolpantunes/knee)'s `autoelbow` takes no threshold,
-sensitivity or smoothing window, so the chosen length is a property of the curve rather than
-of a parameter chosen to produce a preferred answer.
+judgement this project exists to remove from its results, so the length comes from a stated
+rule with no threshold, no smoothing window and no sensitivity parameter — making the chosen
+length a property of the curve rather than of a parameter picked to produce a preferred
+answer, and one that re-derives itself when the corpus changes.
 
 Two decisions have to be made before the detector is run, and both were previously made
 badly enough to invalidate the answer.

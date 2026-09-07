@@ -129,8 +129,9 @@ covering it.
 
 ## Installation
 
-Python 3.12+. Runtime dependencies are **polars**, **numpy**, **matplotlib** and
-**kneeliverse**.
+Python 3.12+. Runtime dependencies are **polars**, **numpy** and **matplotlib** — three, and
+no scipy. `kneeliverse` was dropped on 2026-09-07 with the knee detectors that used it
+([chapter 3](assets/docs/03-term-selection.md#stage-3--choosing-the-number-of-terms)).
 
 ```bash
 python3 -m venv venv
@@ -299,7 +300,7 @@ venv/bin/pre-commit run --all-files   # ruff, basedpyright, vulture, unittest
 `requirements.txt` installs the project editable with the `search` extra and pins the four
 dev tools to exactly the versions CI installs, so a commit that passes the local hook passes
 CI for the same reason. `pyproject.toml` remains the only source of the *project's*
-dependencies — polars, numpy, matplotlib and kneeliverse, plus joblib under `search`.
+dependencies — polars, numpy and matplotlib, plus joblib under the `search` extra.
 
 ## Citation
 
