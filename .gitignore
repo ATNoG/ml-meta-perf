@@ -40,3 +40,6 @@ paired2.py
 .vscode/
 *.swp
 .DS_Store
+
+# Superseded by `validate.paired_comparison`; kept out of the tree like the other notes.
+ISSUES.md
