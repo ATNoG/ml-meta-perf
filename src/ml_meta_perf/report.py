@@ -629,6 +629,70 @@ def _reach_note(report: Report) -> str:
     return "\n".join(lines)
 
 
+def _protocol_note(report: Report) -> str:
+    """What the equation is worth as more of the problem becomes unfamiliar.
+
+    Built from the two decision tables, which now carry the protocol of every row. The point
+    of the section is that the strictest protocol -- both the dataset and the model out of the
+    training set -- is the one the practitioner's question actually needs, and that the trivial
+    baselines cannot be computed under it at all.
+    """
+    ranking = report.ranking_baselines
+    decision = report.decision_baselines
+    if ranking.height == 0 or decision.height == 0:
+        return ""
+
+    order = [
+        ("in-sample", "in-sample", "nothing held out"),
+        ("loo-dataset", "leave-one-dataset-out", "the dataset unseen, the model known"),
+        ("loo-model", "leave-one-model-out", "the model unseen, the dataset known"),
+        ("loo-cell", "leave-one-cell-out", "**both unseen**"),
+    ]
+    rank_rows = {str(row["predictor"]): row for row in ranking.to_dicts()}
+    mid = sorted({float(value) for value in decision["threshold"]})
+    threshold = mid[len(mid) // 2]
+    dec_rows = {
+        str(row["predictor"]): row
+        for row in decision.filter(pl.col("threshold") == threshold).to_dicts()
+    }
+
+    lines = [
+        "The ranking and the go/no-go decision are reported with **both the dataset and the "
+        "model of every cell held out of the fit**. Neither single-group protocol answers the "
+        "question those tasks pose: leave-one-dataset-out has seen the learner on the other "
+        "nineteen problems, and leave-one-model-out has seen the dataset. A recommendation is "
+        "asked about a pair that has not been run.\n",
+        f"| what the equation was shown | AP | MRR | hit@1 | regret | F1 @ {threshold:g} | MCC @ {threshold:g} |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for key, label, shown in order:
+        name = next((n for n in rank_rows if key in n), None)
+        dname = next((n for n in dec_rows if key in n), None)
+        if name is None or dname is None:
+            continue
+        r, d = rank_rows[name], dec_rows[dname]
+        emphasis = "**" if key == "loo-cell" else ""
+        lines.append(
+            f"| {emphasis}{label}{emphasis} — {shown} | {float(r['ap']):.3f} | {float(r['mrr']):.3f} | "
+            f"{float(r['hit_at_1']):.2f} | {float(r['regret']):.3f} | "
+            f"{float(d['f1']):.3f} | {float(d['mcc']):.3f} |"
+        )
+    lines.append("")
+
+    baselines = [str(name) for name in rank_rows if "per-model" in name]
+    if baselines:
+        best = max(baselines, key=lambda n: float(rank_rows[n]["ap"]))
+        lines.append(
+            "The trivial predictors are in the tables below at leave-one-dataset-out, which is "
+            "the only protocol under which they exist. **Under the strictest one they cannot be "
+            "computed at all**: a model held out of every fold has no rows to average, so "
+            f'"how well does this model usually do" has no value. The best of them reaches AP '
+            f"{float(rank_rows[best]['ap']):.3f} and F1 {float(dec_rows[best]['f1']):.3f} while "
+            "being shown the model identity the strictest row of the equation is denied.\n"
+        )
+    return "\n".join(lines)
+
+
 def _ranking_verdict(baselines: pl.DataFrame) -> str:
     """State the ranking comparison from the paired test, never from the means.
 
@@ -964,6 +1028,8 @@ def render(
         "way — at both centres, for the reason the error metrics report both:\n"
     )
     parts.append(_table(report.decision_baselines) + "\n")
+
+    parts.append(_protocol_note(report))
 
     parts.append("Ranking models within a held-out dataset:\n")
     regret = float(np.mean(report.selection["regret"].to_numpy()))

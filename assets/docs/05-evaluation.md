@@ -438,6 +438,17 @@ R² is the wrong question for a practitioner, who asks whether a model will work
 | per-model median (loo-dataset) | 0.8000 | 0.7437 | 0.6261 | 0.8121 | 0.7685 | 0.4635 | 0.7897 | 0.9301 | 298 |
 | per-model median (loo-dataset) | 0.9000 | 0.6933 | 0.5084 | 0.6967 | 0.7025 | 0.3863 | 0.6996 | 0.9368 | 242 |
 
+The ranking and the go/no-go decision are reported with **both the dataset and the model of every cell held out of the fit**. Neither single-group protocol answers the question those tasks pose: leave-one-dataset-out has seen the learner on the other nineteen problems, and leave-one-model-out has seen the dataset. A recommendation is asked about a pair that has not been run.
+
+| what the equation was shown | AP | MRR | hit@1 | regret | F1 @ 0.7 | MCC @ 0.7 |
+|---|---|---|---|---|---|---|
+| in-sample — nothing held out | 0.850 | 0.882 | 0.80 | 0.015 | 0.900 | 0.730 |
+| leave-one-dataset-out — the dataset unseen, the model known | 0.847 | 0.882 | 0.80 | 0.015 | 0.897 | 0.719 |
+| leave-one-model-out — the model unseen, the dataset known | 0.838 | 0.907 | 0.85 | 0.008 | 0.886 | 0.695 |
+| **leave-one-cell-out** — **both unseen** | 0.831 | 0.882 | 0.80 | 0.015 | 0.886 | 0.695 |
+
+The trivial predictors are in the tables below at leave-one-dataset-out, which is the only protocol under which they exist. **Under the strictest one they cannot be computed at all**: a model held out of every fold has no rows to average, so "how well does this model usually do" has no value. The best of them reaches AP 0.837 and F1 0.772 while being shown the model identity the strictest row of the equation is denied.
+
 Ranking models within a held-out dataset:
 
 - mean top-1 regret **0.015** MCC — what you give up by taking the model the equation ranks first
