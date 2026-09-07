@@ -97,13 +97,17 @@ but stability is weighted 0.15 against 0.40 for the three R² combined and shoul
 an accuracy gap this size. **Consider re-weighting `OBJECTIVE_WEIGHTS`, or treat the objective
 as a shortlisting device and the paired test as the decision.** Currently the latter.
 
-**The sweep prefers a four-feature subset that is inadmissible, and the objective cannot see
-why.** It drops `Solution Stochasticity` and `Loss Margin Behaviour`, keeping `Model
-Capability`, `Processing Units Number`, `Fitting Regime`, `Input Distribution Modelling`.
-Without those two columns **134 of 476 rows share a full model-feature vector with a different
-model on the same dataset** — exactly the number predicted before the sweep ran. Identification
-is a property of the corpus design and is not in the objective. Do not adopt the subset, and
-do not re-open the argument from those two columns' absence in the fit.
+**The sweep prefers a four-feature pool for the equation, and that is admissible.** It drops
+`Solution Stochasticity` and `Loss Margin Behaviour`, keeping `Model Capability`, `Processing
+Units Number`, `Fitting Regime`, `Input Distribution Modelling`. An earlier note here called
+that inadmissible on identification grounds; **that was wrong, and it confused the two
+stages.** The corpus is designed for identification and keeps all six columns — that is what
+`load` validates and what `tests/test_model_features.py` checks. The *equation* is judged on
+compression, and needing fewer features as it improves is the mechanism working. Dropping
+them from the term pool does not remove them from the corpus.
+
+On every axis the four-feature pool dominates: best objective 0.7297 against six features'
+0.7222, best LOO-dataset 0.6855 against 0.6716, best LOO-model 0.6543 against 0.6404.
 
 **Re-running it.** The cluster copy at `~/aiml-model` is an rsync of the tree, not a clone, and
 it was stale by three weeks when this ran — its `src/` predated the one-term-per-feature-

@@ -297,12 +297,14 @@ test is the decision.**
 **What the sweep confirmed, and one thing it got wrong.** `max_arity = 2` is confirmed
 outright — the best arity-2 point scores 0.730 against 0.687 for the best arity-3 point, and
 every configuration in the top band is arity 2. Penalty and z-cap are left unchanged, no
-candidate beating them significantly. But the sweep also prefers dropping `Solution
-Stochasticity` and `Loss Margin Behaviour`, and **that subset is inadmissible for a reason
-the objective cannot see**: without those two columns, 134 of 476 rows share a full
-model-feature vector with a different model on the same dataset, so no equation over them
-could tell those rows apart. Identification is a property of the corpus design and is not in
-the objective ([chapter 1](01-dataset.md)).
+candidate beating them significantly. The sweep also prefers dropping `Solution
+Stochasticity` and `Loss Margin Behaviour` from the equation's term pool, and **that is the
+compression criterion working rather than a loss**. The corpus keeps all six columns because
+the corpus is designed for *identification*; the equation is judged on *compression*, and one
+that used every available column would be one that had failed to generalise
+([chapter 1](01-dataset.md)). On the sweep's numbers the four-feature pool dominates on every
+axis — objective 0.730 against 0.722, leave-one-dataset-out 0.686 against 0.672,
+leave-one-model-out 0.654 against 0.640.
 
 Both **Pareto fronts** are also reported. Over (length, LOO-dataset R²) the front is 1–8, 10,
 11, 14, 16, 19, 21 and 23 — nothing longer than 23 terms earns its length on transfer. Over

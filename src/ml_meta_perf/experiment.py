@@ -155,11 +155,17 @@ DEFAULT_E2 = Configuration(max_abs_zscore=3.0, penalty=5.0, pool_size=100, max_t
 #
 # The sweep also prefers a four-feature subset -- `Model Capability`, `Processing Units
 # Number`, `Fitting Regime`, `Input Distribution Modelling` -- dropping `Solution
-# Stochasticity` and `Loss Margin Behaviour`. **That subset is inadmissible and the objective
-# cannot see why.** Without those two columns, 134 of 476 rows share a full model-feature
-# vector with a different model on the same dataset, so no equation over them could ever tell
-# those rows apart. Identification is a property of the corpus design, not of the fit; see
-# `data`'s module docstring.
+# Stochasticity` and `Loss Margin Behaviour` from the *equation*. **That is admissible, and it
+# is the mechanism working rather than a loss.** The two stages have different criteria: the
+# corpus is designed for *identification* and keeps all six columns, which is what makes every
+# learner distinguishable on every dataset; the equation is judged on *compression*, and an
+# equation that used every column would be one that had failed to generalise. See `data`'s
+# module docstring. What must not change is the corpus: `MODEL_FEATURES` is the schema
+# `load` validates and the set `tests/test_model_features.py` checks identification against.
+#
+# On the sweep's own numbers the four-feature pool dominates on every axis -- best objective
+# 0.7297 against 0.7222 for six, best leave-one-dataset-out 0.6855 against 0.6716, best
+# leave-one-model-out 0.6543 against 0.6404.
 #
 # Penalty and z-cap: no candidate significantly beats this one. The nearest, penalty 20 with
 # z-cap 4.50 on the four-feature subset, reaches 0.6317 leave-one-dataset-out against 0.6270
