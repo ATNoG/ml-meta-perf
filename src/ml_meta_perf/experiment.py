@@ -47,6 +47,7 @@ from ml_meta_perf.validate import (
     fold_selections,
     interaction_capture,
     oracle_ladder,
+    paired_comparison,
     random_kfold_groups,
     ranking_report,
     score,
@@ -562,6 +563,90 @@ def model_selection(frame: pl.DataFrame, e3: EquationReport) -> pl.DataFrame:
     return ranking_report(truth, e3.equation.predict(columns), datasets)
 
 
+def ranking_baselines(frame: pl.DataFrame, e3: EquationReport) -> pl.DataFrame:
+    """The equation's ranking against the trivial rankings, averaged over datasets.
+
+    A ranking is only interesting relative to the obvious alternative, which here is "order
+    the models by how well they usually do". Both centres are reported for the same reason
+    the error metrics report both: the per-model mean and the per-model median are different
+    orderings, and which is harder to beat is a question rather than an assumption.
+
+    Both baselines are computed leave-one-dataset-out, so the model ordering a fold is scored
+    against never saw that fold's rows.
+    """
+    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+    truth = target(frame)
+    datasets = groups(frame, DATASET_COLUMN)
+    models = groups(frame, MODEL_COLUMN)
+
+    candidates = {
+        "equation (E3)": e3.equation.predict(columns),
+        "per-model mean": baseline_group_centre(truth, datasets, models, centre="mean"),
+        "per-model median": baseline_group_centre(truth, datasets, models, centre="median"),
+    }
+    tables = {
+        label: ranking_report(truth, prediction, datasets).sort("group")
+        for label, prediction in candidates.items()
+    }
+    reference = tables["equation (E3)"]
+
+    rows: list[dict[str, object]] = []
+    for label, table in tables.items():
+        row: dict[str, object] = {
+            "predictor": label,
+            **{
+                column: float(table[column].to_numpy().mean())
+                for column in ("ap", "mrr", "hit_at_1", "regret")
+                if column in table.columns
+            },
+            "datasets": table.height,
+        }
+        # The mean over twenty datasets is not the comparison. hit@1 moves only in steps of
+        # 0.05 on twenty folds, so a single dataset flipping its top pick shifts it by more
+        # than the gaps being read; and a difference of two means over twenty groups has
+        # already produced three wrong conclusions in this study. The paired test against the
+        # equation is what licenses any claim from this table.
+        if label != "equation (E3)" and "ap" in table.columns:
+            paired = paired_comparison(reference["ap"].to_numpy(), table["ap"].to_numpy())
+            row["ap_vs_e3_p"] = paired.p_value
+            row["ap_vs_e3_significant"] = paired.significant
+        rows.append(row)
+    return pl.DataFrame(rows)
+
+
+def decision_baselines(
+    frame: pl.DataFrame,
+    config: Configuration = DEFAULT_E3,
+    known: dict[int, CrossValidation] | None = None,
+) -> pl.DataFrame:
+    """The above-or-below-threshold decision, for the equation and for both trivial centres.
+
+    `decision_report` already carries a majority-class column, which is the floor any rule
+    has to clear. These are the harder comparison: a predictor that answers "how well does
+    this model usually do", thresholded the same way. As with the error metrics, mean and
+    median are different predictors and both are reported.
+    """
+    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+    truth = target(frame)
+    datasets = groups(frame, DATASET_COLUMN)
+    models = groups(frame, MODEL_COLUMN)
+
+    path = known
+    if path is None or config.headline_terms not in path:
+        path, _ = _fixed_form_path(columns, truth, datasets, config)
+
+    candidates = {
+        "equation (E3)": path[config.headline_terms].predictions,
+        "per-model mean": baseline_group_centre(truth, datasets, models, centre="mean"),
+        "per-model median": baseline_group_centre(truth, datasets, models, centre="median"),
+    }
+    rows: list[dict[str, object]] = []
+    for label, prediction in candidates.items():
+        for row in decision_report(truth, prediction, datasets).to_dicts():
+            rows.append({"predictor": label, **row})
+    return pl.DataFrame(rows)
+
+
 @dataclass
 class Report:
     """Everything the experiment produces."""
@@ -590,6 +675,11 @@ class Report:
     #: about whether the equation reaches any of it.
     interaction: pl.DataFrame
     decision: pl.DataFrame
+    #: The ranking and threshold decisions against the trivial predictors, at both
+    #: centres. An evaluation without them says how well the equation does and not
+    #: whether it beats ordering the models by how well they usually do.
+    ranking_baselines: pl.DataFrame
+    decision_baselines: pl.DataFrame
 
 
 # Small enough to run in a couple of seconds. Intended for smoke-testing the wiring,
@@ -636,6 +726,8 @@ def run(
         leakage=leakage_demonstration(frame, config_e3, e3.paths),
         selection=model_selection(frame, e3),
         decision=decision_quality(frame, config_e3, e3.paths.get("loo_dataset")),
+        ranking_baselines=ranking_baselines(frame, e3),
+        decision_baselines=decision_baselines(frame, config_e3, e3.paths.get("loo_dataset")),
         term_choice=recommend(e3.curve),
         pareto=pareto_table(e3.curve),
         oracles=oracle_ladder(target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)),

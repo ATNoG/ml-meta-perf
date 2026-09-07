@@ -368,10 +368,37 @@ R² is the wrong question for a practitioner, who asks whether a model will work
 | 0.8000 | 0.7836 | 0.6261 | 0.9493 | 0.6913 | 0.6115 | 0.8000 | 0.9567 | 298 |
 | 0.9000 | 0.7500 | 0.5084 | 0.9301 | 0.5496 | 0.5527 | 0.6909 | 0.9197 | 242 |
 
+`majority` is the floor any such rule has to clear. The harder comparison is a predictor that answers "how well does this model usually do", thresholded the same way — at both centres, for the reason the error metrics report both:
+
+| predictor | threshold | accuracy | majority | precision | recall | mcc | f1 | map | n_positive |
+|---|---|---|---|---|---|---|---|---|---|
+| equation (E3) | 0.5000 | 0.8971 | 0.7668 | 0.9180 | 0.9507 | 0.7022 | 0.9341 | 0.9698 | 365 |
+| equation (E3) | 0.6000 | 0.8676 | 0.7332 | 0.9133 | 0.9054 | 0.6643 | 0.9094 | 0.9436 | 349 |
+| equation (E3) | 0.7000 | 0.8445 | 0.6681 | 0.9420 | 0.8176 | 0.6834 | 0.8754 | 0.9555 | 318 |
+| equation (E3) | 0.8000 | 0.7836 | 0.6261 | 0.9493 | 0.6913 | 0.6115 | 0.8000 | 0.9567 | 298 |
+| equation (E3) | 0.9000 | 0.7500 | 0.5084 | 0.9301 | 0.5496 | 0.5527 | 0.6909 | 0.9197 | 242 |
+| per-model mean | 0.5000 | 0.7395 | 0.7668 | 0.8005 | 0.8795 | 0.1842 | 0.8381 | 0.9788 | 365 |
+| per-model mean | 0.6000 | 0.6828 | 0.7332 | 0.8113 | 0.7393 | 0.2506 | 0.7736 | 0.9567 | 349 |
+| per-model mean | 0.7000 | 0.7227 | 0.6681 | 0.8550 | 0.7044 | 0.4391 | 0.7724 | 0.9645 | 318 |
+| per-model mean | 0.8000 | 0.7122 | 0.6261 | 0.8368 | 0.6711 | 0.4374 | 0.7449 | 0.9332 | 298 |
+| per-model mean | 0.9000 | 0.6450 | 0.5084 | 0.7744 | 0.4256 | 0.3314 | 0.5493 | 0.9408 | 242 |
+| per-model median | 0.5000 | 0.7206 | 0.7668 | 0.7829 | 0.8795 | 0.0950 | 0.8284 | 0.9779 | 365 |
+| per-model median | 0.6000 | 0.7416 | 0.7332 | 0.8038 | 0.8567 | 0.3018 | 0.8294 | 0.9432 | 349 |
+| per-model median | 0.7000 | 0.6933 | 0.6681 | 0.7671 | 0.7767 | 0.3040 | 0.7719 | 0.9636 | 318 |
+| per-model median | 0.8000 | 0.7437 | 0.6261 | 0.8121 | 0.7685 | 0.4635 | 0.7897 | 0.9301 | 298 |
+| per-model median | 0.9000 | 0.6933 | 0.5084 | 0.6967 | 0.7025 | 0.3863 | 0.6996 | 0.9368 | 242 |
+
 Ranking models within a held-out dataset:
 
-- mean rank correlation **0.706**
 - mean top-1 regret **0.008** MCC — what you give up by taking the model the equation ranks first
+
+| predictor | ap | mrr | hit_at_1 | regret | datasets | ap_vs_e3_p | ap_vs_e3_significant |
+|---|---|---|---|---|---|---|---|
+| equation (E3) | 0.8218 | 0.8671 | 0.8000 | 0.0078 | 20 |  |  |
+| per-model mean | 0.7980 | 0.8350 | 0.7500 | 0.0111 | 20 | 0.6291 | no |
+| per-model median | 0.8375 | 0.8850 | 0.8500 | 0.0088 | 20 | 0.3323 | no |
+
+**None of these differences survives a paired test.** Against per-model mean, per-model median the sign test and the bootstrap interval over datasets both include zero, so on ranking the equation is indistinguishable from ordering the models by how well they usually do. Read the means in the table above as ties, not as a ranking of the predictors — including where a baseline's mean is the larger one.
 
 ## 7. What bounds the result
 

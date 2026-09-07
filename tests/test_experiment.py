@@ -33,6 +33,8 @@ from ml_meta_perf.experiment import (
     baselines,
     comparison,
     correlation_analysis,
+    decision_baselines,
+    ranking_baselines,
     reach_analysis,
     decision_quality,
     leakage_demonstration,
@@ -246,6 +248,8 @@ class TestCli(unittest.TestCase):
             leakage=leakage_demonstration(frame, FAST_E3),
             selection=model_selection(frame, e3),
             decision=decision_quality(frame, FAST_E3),
+            ranking_baselines=ranking_baselines(frame, e3),
+            decision_baselines=decision_baselines(frame, FAST_E3),
             term_choice=recommend(e3.curve),
             pareto=pareto_table(e3.curve),
             oracles=oracle_ladder(

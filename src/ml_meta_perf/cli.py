@@ -196,6 +196,8 @@ def _save_tables(report: Report, folder: Path) -> list[Path]:
         "curve_e3": report.e3.curve,
         "comparison": report.comparison,
         "baselines": report.baselines,
+        "ranking_baselines": report.ranking_baselines,
+        "decision_baselines": report.decision_baselines,
         "leakage": report.leakage,
         "oracles": report.oracles,
         "interaction": report.interaction,

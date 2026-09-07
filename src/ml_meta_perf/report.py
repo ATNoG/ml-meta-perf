@@ -558,6 +558,37 @@ def _reach_note(report: Report) -> str:
     return "\n".join(lines)
 
 
+def _ranking_verdict(baselines: pl.DataFrame) -> str:
+    """State the ranking comparison from the paired test, never from the means.
+
+    The means over twenty datasets are the trap this study has fallen into three times.
+    hit@1 moves only in steps of 0.05 on twenty folds, so one dataset flipping its top pick
+    shifts it further than the gaps in the table; and average precision differences of this
+    size sit well inside the bootstrap interval. The sentence is therefore built from
+    `ap_vs_e3_significant`, not from which row has the larger mean.
+    """
+    if "ap_vs_e3_significant" not in baselines.columns:
+        return ""
+    rivals = [row for row in baselines.to_dicts() if row.get("ap_vs_e3_significant") is not None]
+    if not rivals:
+        return ""
+    beaten = [row for row in rivals if row["ap_vs_e3_significant"]]
+    names = ", ".join(str(row["predictor"]) for row in rivals)
+    if beaten:
+        return (
+            "Paired over the datasets, the equation differs significantly from: "
+            + ", ".join(str(row["predictor"]) for row in beaten)
+            + ". The remaining comparisons are ties.\n"
+        )
+    return (
+        f"**None of these differences survives a paired test.** Against {names} the sign test "
+        "and the bootstrap interval over datasets both include zero, so on ranking the equation "
+        "is indistinguishable from ordering the models by how well they usually do. Read the "
+        "means in the table above as ties, not as a ranking of the predictors — including where "
+        "a baseline's mean is the larger one.\n"
+    )
+
+
 def _baseline_centre_note(baselines: pl.DataFrame) -> str:
     """Which centre is the harder baseline, per metric, derived rather than asserted.
 
@@ -850,14 +881,21 @@ def render(
         "on held-out datasets:\n"
     )
     parts.append(_table(report.decision) + "\n")
+    parts.append(
+        "`majority` is the floor any such rule has to clear. The harder comparison is a "
+        "predictor that answers \"how well does this model usually do\", thresholded the same "
+        "way — at both centres, for the reason the error metrics report both:\n"
+    )
+    parts.append(_table(report.decision_baselines) + "\n")
+
     parts.append("Ranking models within a held-out dataset:\n")
-    correlation = float(np.mean(report.selection["spearman"].to_numpy()))
     regret = float(np.mean(report.selection["regret"].to_numpy()))
     parts.append(
-        f"- mean rank correlation **{correlation:.3f}**\n"
         f"- mean top-1 regret **{regret:.3f}** MCC — what you "
         "give up by taking the model the equation ranks first\n"
     )
+    parts.append(_table(report.ranking_baselines) + "\n")
+    parts.append(_ranking_verdict(report.ranking_baselines))
 
     parts.append("## 7. What bounds the result\n")
     parts.append(
