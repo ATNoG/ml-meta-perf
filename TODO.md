@@ -1,13 +1,11 @@
 # Working notes
 
-Session opened 2026-09-07 on `main`. This file is the single handoff: the untracked
-`todo.md` that used to sit beside it has been folded in here and deleted. Everything below
-is either *left to do* or *expensive to rediscover*.
+Session closed 2026-09-07 on branch `fix/ci-docs-plots`, 24 commits ahead of `main`. Working
+tree clean, gate green — `venv/bin/pre-commit run --all-files`, 432 tests.
 
-Two things gained a home in the library on 2026-09-07 and are worth knowing about before
-writing any new analysis: `validate.paired_comparison` (sign test plus bootstrap over
-groups) and `validate.interaction_capture` (how much of the leading interaction pattern the
-equation actually reaches — chapter 5 rests on it).
+**Nothing is pushed.** The CI fix in this branch is the thing that most needs pushing, and
+the workflow only runs on a push to `main` or a pull request, so it has not been verified on
+a runner — only in a clean local venv built exactly the way CI builds one.
 
 ## Where the study stands
 
@@ -21,57 +19,57 @@ equation actually reaches — chapter 5 rests on it).
 `DEFAULT_E3`: arity 2, z-cap 4.25, penalty 20, 15 terms, four-feature model pool.
 `DEFAULT_E3_CAPABILITY`: arity 3, z-cap 4.25, penalty 3, 23 terms, same pool.
 
-**The equation's model-feature pool is four, and the corpus keeps six.** `MODEL_FEATURES` is
-the corpus schema and identification is a corpus property; `EQUATION_MODEL_FEATURES` is what
-the equation may build terms from, because fitting is judged on *compression*. Dropping
+**The equation's model-feature pool is four; the corpus keeps six.** `MODEL_FEATURES` is the
+corpus schema and identification is a corpus property; `EQUATION_MODEL_FEATURES` is what the
+equation may build terms from, because fitting is judged on *compression*. Dropping
 `Solution Stochasticity` and `Loss Margin Behaviour` from the term pool removes nothing from
-the corpus. The sweep chose the subset and it dominates the full six on every axis.
+the corpus. Do not re-run the identification argument against the equation's pool — that
+mistake was made and corrected this session.
 
-**The length comes from a rule, not a constant.** `selection.best_length` is the argmax of the
-consensus curve — no threshold, no smoothing, no sensitivity parameter — and it selects 15
-under arity 2 and 23 under arity 3. Neither number is written down anywhere.
+**The length comes from a rule, not a constant.** `selection.best_length`: fit at every
+length, take the median of the three protocol R² per length, publish the argmax. No
+threshold, no smoothing, no sensitivity parameter. It selects 15 under arity 2 and 23 under
+arity 3; neither number appears anywhere in the code.
 
-**Knee detection was removed on 2026-09-07**, and `kneeliverse` left the dependency list with
-it. It was tried properly first: three detectors on four curves, raw and gRDP-smoothed at
-seven tolerances, plus the Pareto-front knee by three standard rules. The smoothing works —
-detectors that split 6/8/4 raw agree at 8 after it — and 8 is *significantly worse* than 15
-when paired over the twenty datasets. The alternatives are all still computed and reported
-(`results/term_choice.csv`, `results/length_choice.csv`); a selection rule is only defensible
-if what it beats is on the page.
+**Four protocols, and the ranking and threshold decisions are reported under the strictest.**
 
-**The protocol gained a rule on 2026-09-07: one term per combination of raw features.**
-`terms.Library.feature_groups` groups terms by their feature set and `fit.Selector` refuses
-a second term from a group. It is a constraint on form, not on fit, and it is measured to cost
-nothing (paired over the 20 folds: p = 0.503, CI spanning zero).
+| what the equation was shown | R² | AP | hit@1 | F1 @ 0.7 | MCC @ 0.7 |
+|---|---:|---:|---:|---:|---:|
+| in-sample | 0.658 | 0.850 | 0.80 | 0.900 | 0.730 |
+| leave-one-dataset-out | 0.638 | 0.847 | 0.80 | 0.897 | 0.719 |
+| leave-one-model-out | 0.622 | 0.838 | 0.85 | 0.886 | 0.695 |
+| **leave-one-cell-out (both unseen)** | **0.616** | **0.831** | **0.80** | **0.886** | **0.695** |
+
+`validate.cross_validate_doubly_held_out` refits with the dataset row-block *and* the model
+column-block removed and predicts the cell. **It is used for the ranking and the threshold
+decision only** — the R² curve and the length rule stay on the single-group protocols, which
+is the right scope for them. 476 solves in 0.6s.
+
+**The headline this licenses:** with neither the dataset nor the model seen, the equation
+still reaches R² 0.616 and AP 0.831 — and the per-model mean and median **cannot be computed
+at all** under that protocol, because a model held out of every fold has no rows to average.
+Every earlier comparison handed them the model identity the equation was denied.
 
 The corpus is one file, `src/ml_meta_perf/meta_dataset.csv`: 2 identifiers, 12 dataset
 features, 6 model features, `MCC`.
 
-## Resolution: family or individual model? — settled
+## Documentation, as of this session
 
-Both, at different stages, and the two stages have different criteria. Written up in
-`data`'s module docstring and pinned by `tests/test_model_features.py`.
+Six chapters plus related work, and nothing else. `07-limitations.md`, `08-appendix.md` and
+`10-report.md` are **gone**: limitations close the chapter they concern, the appendix is
+research record and lives in this file, and the generated results are spliced into chapters
+4, 5 and 6 between `report.BEGIN`/`report.END` markers. Prose outside the markers is
+hand-written and never touched; everything inside is rewritten on every run, so a chapter
+cannot carry a stale table. `--report PATH` became `--docs DIR`.
 
-*Designing the corpus* requires **identification**: two rows sharing a feature vector are
-two rows no equation over those features can ever distinguish. The corpus meets it — 20
-distinct dataset vectors for 20 datasets, and 0 ambiguous rows of 476 on the model side.
+**Keep agent notes out of the chapters.** They had accumulated changelog narration in
+fourteen places — "an earlier draft said X, that was wrong" — and it was all removed. A paper
+states what is true; the record of how it got there belongs in this file.
 
-*Fitting the equation* requires **compression**. An equation is a statement about families,
-so it is expected to use fewer features as it improves. E3 uses 12 of the 16 it may draw on.
-
-So `Solution Stochasticity` and `Loss Margin Behaviour` stay, earning their place at the
-first stage: without them 134 of 476 rows stop being identifiable. Do not resurrect the
-argument from their absence in the fit — and note that absence is not even robust. At 16
-terms neither appears; at 12, 20 and 24 the fit uses one or both. It is a property of one
-length.
-
-Two caveats to carry with the identification claim. It is **joint** on the model side: five
-of the six columns are constant per model and separate only 19 of 25 learners alone
-(`FT-Transformer`/`TabNet`/`TabTransformer`, `LightGBM_RF`/`XGBoost`, `DNN`/`MLP`,
-`TabICL`/`TabPFN`, `BernoulliNB`/`GaussianNB` collide); `Processing Units Number`, which
-varies with the dataset, breaks the ties. And it was bought with redundancy — `nr_attr` and
-`nr_outliers` correlate at 0.9995, and `log(inst_to_attr) + log(nr_attr)` **is**
-`log(nr_inst)` to 2e-15.
+Seven figures, down from ten. `contribution_shares`, `error_curve_mae` and `per_group_quality`
+were removed; `ranking_quality` gained the MCC cost in a second panel, `decision_quality`
+became F1 across the four protocols, `term_effects` renders terms as mathematics
+(`plots.term_to_math`), `equation_comparison` dropped the capability bar.
 
 ---
 
@@ -138,28 +136,22 @@ rsync -av --delete --exclude='__pycache__' --exclude='*.egg-info' \
 ssh playstation 'cd ~/aiml-model && sbatch --job-name=eqsrch --cpus-per-task=62 scripts/equation_search.sbatch'
 ```
 
-## 2. Term count — settled at 16, on a paired test rather than a knee
+## 2. Term count — settled at 15 by a stated rule
 
-The machinery was fixed first, and both fixes were needed before any answer meant anything:
+Knee detection was **removed** and `kneeliverse` left the dependency list with it. It was
+tried properly first: three detectors on four curves, raw and gRDP-smoothed at seven
+tolerances, plus the Pareto-front knee by all three standard multi-criteria rules. The
+smoothing works exactly as intended — detectors that split 6/8/4 on the raw curve agree at 8
+after it — and 8 is *significantly worse* than the published length when paired over the
+twenty datasets. Every geometric reading of this curve lands between 4 and 8, and all of them
+are rejected by the paired test. A knee measures where the marginal return per term
+collapses; it does not ask whether the accuracy still being added is real.
 
-- **The detector no longer runs on in-sample R² alone.** In-sample is monotone in the number
-  of terms, so it can only ever say "more". `selection.consensus_curve` combines every
-  protocol per length and `knee_terms` runs on that; the **median** is the default because it
-  is robust to the craters item 3 explains — at 15 terms the three protocols read
-  0.659 / 0.393 / 0.616 and the median ignores the crater. `recommend` still reports each
-  protocol separately so disagreement stays visible.
-- **The curve is reported at every length.** The old `(2, 4, 8, 12, 16, 20, 24, 26, 28, 32)`
-  skipped 13, 15, 17 and 31 — exactly the four craters — and the detector was partly reporting
-  the grid: 4 on the ragged grid, 6 on the dense one. `SWEEP_SIZES` is now `None`; the beam
-  search already builds the whole path.
-
-**All four detectors now agree at 6 terms**, where they previously split 4 / 8. That agreement
-is the evidence the grid was the problem.
-
-**Six is not the published length, and neither is the sweep's nine.** Both are significantly
-worse than sixteen when paired over the twenty held-out datasets. The published equation is
-justified by that test, not by a knee detector and not by the objective's top row — and the
-chapters now say so. **Do not re-open this by quoting the knee.**
+`selection.best_length` replaced it. Every alternative is still computed and reported —
+`results/term_choice.csv` carries the Pareto readings, `results/length_choice.csv` the paired
+verdict for every length — because a selection rule is only defensible if what it beats is on
+the page. **Do not re-open this by quoting the knee**, and do not add `paretoset`: it pulls
+pandas, numba and llvmlite for six lines that already exist in `selection.py`.
 
 ## 3. The LOO-dataset craters — diagnosed and disclosed
 
@@ -184,61 +176,70 @@ predictions under leave-one-dataset-out and **70** under leave-one-model-out, at
 `CrossValidation.clipped` counts it. Still open: whether to bound extrapolation some other
 way, or to accept the clip and justify it prominently in chapter 5.
 
-## 4. Closed since 2026-09-07
+## 4. Closed this session
 
-- **CI was red on `main`.** `pip install .` omitted the `search` extra while basedpyright
-  type-checked all of `src/`, so `equation_search_cli`'s joblib import failed on a runner but
-  not locally. Fixed, plus `fail-fast: false` so a 3.14 failure stops cancelling 3.12.
+- **CI was red on `main`** — `pip install .` omitted the `search` extra while basedpyright
+  type-checked `equation_search_cli`'s joblib import. Fixed, plus `fail-fast: false`.
+  **Verified only locally**, in a clean venv built as CI builds one; needs a push or a PR.
 - **The two TODO files** are merged into this one.
-- **Seven figures that misread.** See the commit; the knee label, the "additive ceiling" that
-  E3 legitimately passes, Spearman sharing an axis with regret, a confidence legend where
-  every bar had the same opacity, truncated term names, a rug that read as data, and
-  overlapping bar series.
-- **The documentation** is restructured as a paper, chapters 0–8 plus the generated 10.
-- **The README** carried two wrong claims, not merely stale ones: that the equation captures
-  *none* of the leading interaction component (it reaches about a third, 0.31 in-sample) and
-  that the model features reach 96% of their ceiling (0.248/0.282 is 88%).
-- **Large opposing weights** — closed by measurement. E3's largest standardised weight is
-  **0.137**, against the 3.34 recorded under the pre-2026-09-05 protocol. The fixed-form
-  protocol and the one-term-per-feature-combination rule removed whatever was producing
-  cancelling near-collinear pairs. No weight-magnitude gate is needed.
-- **Collinearity below the equation** — measured, and the answer is to leave it. Tightening
-  `COLLINEARITY_TOLERANCE` from `1 - 1e-9` to 0.999 drops 6 of 270 terms and changes
-  in-sample, LOO-dataset and LOO-model by **nothing to four decimal places**. Tightening to
-  0.99 drops 27 terms and *costs* 0.029 of LOO-dataset (0.627 to 0.598). The pool was never
-  the binding constraint, which agrees with the beam-width result. **Do not change it while a
-  sweep is running** — it alters the library, and therefore the grammar being searched.
+- **The full sweep** ran and confirmed the configuration (item 1).
+- **The documentation** is the six sections that were asked for, with the generated results
+  inside chapters 4, 5 and 6, and the agent notes stripped out.
+- **Seven figures reworked or removed** against a detailed review; see the Documentation
+  section above.
+- **The ranking evaluation was scored in-sample** while the baselines it was compared with
+  were leave-one-out. Fixed, and then superseded: both decision tasks are now reported with
+  the dataset and the model held out together.
 - **Error metrics were scored against the wrong baseline.** MAE is minimised by the median,
   so a mean baseline is not minimising the metric it is judged on. All four trivial
-  predictors are now reported at both centres, and it matters: the per-dataset median is the
-  tighter opponent on MAE (0.192 against 0.213) and SMAPE (40.3 against 43.8).
-- **The ranking and threshold decisions now have real rivals**, not just a majority-class
-  floor. The result is worth knowing: on ranking the equation is **indistinguishable** from
-  ordering models by how well they usually do, against either centre (AP paired p = 0.63 vs
-  the mean, p = 0.33 vs the median, both intervals spanning zero) — and note the median
-  baseline's *mean* AP is the higher one, which is exactly the trap. On the threshold
-  decision it wins clearly: MCC 0.683 against 0.439 and 0.304 at a threshold of 0.7.
+  predictors are reported at both centres; the per-dataset median is the tighter opponent on
+  MAE (0.192 against 0.213) and SMAPE (40.3 against 43.8).
+- **Large opposing weights** — closed by measurement. E3's largest standardised weight is
+  0.137 against the 3.34 recorded under the pre-2026-09-05 protocol. No gate needed.
+- **Collinearity below the equation** — measured, and the answer is to leave it. Tightening
+  `COLLINEARITY_TOLERANCE` to 0.999 drops 6 of 270 terms and changes nothing to four decimal
+  places; 0.99 drops 27 and costs 0.029 of LOO-dataset. **Never change it while a sweep is
+  running** — it alters the library, and therefore the grammar being searched.
+- **The additive oracle was checked** rather than assumed: the marginal-mean construction
+  agrees with a least-squares two-way fit to 0.0003, so the 24 missing cells do not bias it.
+  The +0.025 between the unclipped and clipped versions is the clip to MCC's range, which any
+  MCC predictor should apply. It is a ceiling for a predictor additive in group effects, and
+  E3-capability passing it is the expected consequence of having interaction terms.
 
-## 5. Still open
+## 5. Open, in the order it is worth picking up
 
-- **Chapter 9's fate is decided** — folded into chapter 7 as the bound on what better model
-  descriptors could buy, which is what it measures. `identity` is still wired into nothing.
-  Remaining question: the headroom a per-model table recovers is +0.016 (LOO-dataset 0.627 to
-  0.643 with `identity.correct_out_of_fold`). Publish or keep as a ceiling?
-- **The per-family effect table.** The one measured model-side description that transfers to
-  an *unseen* model: **+0.075 LOO-model**, where per-model identity gives exactly 0.000 by
-  construction. It is a table rather than an equation, so it fails the single-equation gate.
-  **Open question for the author:** publish as a second component alongside E3, or keep as a
-  ceiling? Numbers are pre-2026-09-05 and need re-measuring either way.
-- **Correcting `Training Operations` for the 100k cap — blocked, not rejected.** Every model
-  trained on a stratified sample capped at 100,000 rows and ten of twenty datasets exceed it,
-  but the column was computed from the *source* `nr_inst`. Recomputing needs each trained
-  instance's tuned hyperparameters; the upstream `results_stage_ml_eval.csv` covers **348 of
-  476 rows**, and the 128 gaps are exactly the 8 GPU-trained models x 16 datasets.
+1. **Push, and confirm CI is green.** Nothing else in this branch has been seen by a runner.
+2. **Re-read the chapters end to end as a reader.** The structure and the numbers are right
+   and the prose has been cut and spliced repeatedly this session; it has not had a single
+   continuous read since.
+3. **`OBJECTIVE_WEIGHTS` may want re-weighting.** In the sweep, `stability` at 0.15 outvoted
+   an accuracy gap that a paired test called significant, and put a 9-term equation on top.
+   The objective is currently a shortlisting device with the paired test as the decision;
+   either re-weight it or write that division of labour down as deliberate.
+4. **The equation's own `stability` is low** — terms reselect in roughly a third of folds.
+   That is the safeguard licensing the fixed-form protocol, so it deserves a number in the
+   chapters rather than only in the generated tables.
+5. **Chapter 6's practice catalogue has not been re-checked** against the 15-term equation.
+   The verdicts are regenerated, but the ten practices were chosen when the equation had
+   different terms; whether they are still the right ten is a judgement nobody has made.
+6. **The per-family effect table.** The one measured model-side description that transfers to
+   an *unseen* model: +0.075 LOO-model, where per-model identity gives exactly 0.000. It is a
+   table rather than an equation, so it fails the single-equation gate. Publish as a second
+   component or keep as a ceiling? Numbers are pre-2026-09-05 and need re-measuring.
+7. **Correcting `Training Operations` for the 100k cap — blocked, not rejected.** Needs each
+   trained instance's tuned hyperparameters; the upstream `results_stage_ml_eval.csv` covers
+   348 of 476 rows and the 128 gaps are exactly the 8 GPU-trained models x 16 datasets.
 
 ---
 
 # Facts worth not rediscovering
+
+**A comparison is only a comparison if every side is scored under the same protocol.** This
+went wrong twice in one session and both times it flattered the equation: the ranking was
+scored in-sample against leave-one-out baselines, and then the leave-one-out baselines turned
+out to be seeing the model identity the equation is denied. Every row of
+`ranking_baselines` and `decision_baselines` now names its protocol. When adding a predictor
+to either table, name the protocol in the label or it will drift again.
 
 **The protocol is fixed-form and there is no second one.** `cross_validate_fixed_form` fits
 the equation once and refits only its weights per fold. `fold_selections` re-runs selection
@@ -459,16 +460,25 @@ MCC to (0, 1] with a floor.
 # Reproducing
 
 ```bash
-venv/bin/python -m ml_meta_perf        # the whole study, ~15s
+venv/bin/python -m ml_meta_perf        # the whole study, ~16s
 venv/bin/pre-commit run --all-files    # the gate
 ```
 
-`ml-meta-perf-search` (`src/ml_meta_perf/equation_search_cli.py`,
-`scripts/equation_search.sbatch`) is how the equation's features, length and configuration
-were chosen. It scores seven weighted components — three R², the threshold decision, the
-ranking, term stability and brevity. Needs the `search` extra.
+The run writes `results/*.{json,csv}`, `assets/figures/*.{png,pdf}`, and the **generated
+sections of chapters 4, 5 and 6** in place, between the markers in `report.BEGIN`/`report.END`.
+`--docs DIR` moves the last of those; `--no-report` skips it.
 
-**It does not currently reproduce the shipped E3, and that is what job 15334 is for.** It did
-under the pre-2026-09-07 grammar. The shipped configuration is a length read off a curve with
-the other knobs inherited, so the sweep has to land before anyone can say the published
-equation is what a search chose.
+`ml-meta-perf-search` (`src/ml_meta_perf/equation_search_cli.py`,
+`scripts/equation_search.sbatch`) is the configuration sweep. It ran on 2026-09-07 as Slurm
+job 15335 and the shipped configuration survives it — see item 1, and read it before
+re-running: the cluster copy goes stale and the memory request is load-bearing.
+
+## For the next session
+
+The branch is `fix/ci-docs-plots`, unpushed, 24 commits ahead of `main`. Item 5 above is the
+ordered list. Two working habits that cost time this session and are worth not repeating:
+
+- **`git checkout -- assets/docs/` twice destroyed uncommitted work.** Commit before any
+  bulk restructure, and prefer moving files to a scratch directory over reverting.
+- **Splicing text with `s.index(a)` / `s.index(b)` silently duplicated a hundred lines** when
+  the end marker occurred *before* the start marker. Assert `end > start`.
