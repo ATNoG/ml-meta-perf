@@ -414,21 +414,31 @@ R² is the wrong question for a practitioner, who asks whether a model will work
 
 | predictor | threshold | accuracy | majority | precision | recall | mcc | f1 | map | n_positive |
 |---|---|---|---|---|---|---|---|---|---|
-| equation (E3) | 0.5000 | 0.8950 | 0.7668 | 0.9178 | 0.9479 | 0.6967 | 0.9326 | 0.9738 | 365 |
-| equation (E3) | 0.6000 | 0.8887 | 0.7332 | 0.9205 | 0.9284 | 0.7133 | 0.9244 | 0.9763 | 349 |
-| equation (E3) | 0.7000 | 0.8676 | 0.6681 | 0.9381 | 0.8585 | 0.7193 | 0.8966 | 0.9480 | 318 |
-| equation (E3) | 0.8000 | 0.8109 | 0.6261 | 0.9444 | 0.7416 | 0.6471 | 0.8308 | 0.9492 | 298 |
-| equation (E3) | 0.9000 | 0.7584 | 0.5084 | 0.9205 | 0.5744 | 0.5619 | 0.7074 | 0.9123 | 242 |
-| per-model mean | 0.5000 | 0.7395 | 0.7668 | 0.8005 | 0.8795 | 0.1842 | 0.8381 | 0.9788 | 365 |
-| per-model mean | 0.6000 | 0.6828 | 0.7332 | 0.8113 | 0.7393 | 0.2506 | 0.7736 | 0.9567 | 349 |
-| per-model mean | 0.7000 | 0.7227 | 0.6681 | 0.8550 | 0.7044 | 0.4391 | 0.7724 | 0.9645 | 318 |
-| per-model mean | 0.8000 | 0.7122 | 0.6261 | 0.8368 | 0.6711 | 0.4374 | 0.7449 | 0.9332 | 298 |
-| per-model mean | 0.9000 | 0.6450 | 0.5084 | 0.7744 | 0.4256 | 0.3314 | 0.5493 | 0.9408 | 242 |
-| per-model median | 0.5000 | 0.7206 | 0.7668 | 0.7829 | 0.8795 | 0.0950 | 0.8284 | 0.9779 | 365 |
-| per-model median | 0.6000 | 0.7416 | 0.7332 | 0.8038 | 0.8567 | 0.3018 | 0.8294 | 0.9432 | 349 |
-| per-model median | 0.7000 | 0.6933 | 0.6681 | 0.7671 | 0.7767 | 0.3040 | 0.7719 | 0.9636 | 318 |
-| per-model median | 0.8000 | 0.7437 | 0.6261 | 0.8121 | 0.7685 | 0.4635 | 0.7897 | 0.9301 | 298 |
-| per-model median | 0.9000 | 0.6933 | 0.5084 | 0.6967 | 0.7025 | 0.3863 | 0.6996 | 0.9368 | 242 |
+| equation (in-sample) | 0.5000 | 0.8929 | 0.7668 | 0.9153 | 0.9479 | 0.6899 | 0.9314 | 0.9753 | 365 |
+| equation (in-sample) | 0.6000 | 0.8908 | 0.7332 | 0.9231 | 0.9284 | 0.7194 | 0.9257 | 0.9779 | 349 |
+| equation (in-sample) | 0.7000 | 0.8718 | 0.6681 | 0.9446 | 0.8585 | 0.7301 | 0.8995 | 0.9501 | 318 |
+| equation (in-sample) | 0.8000 | 0.8088 | 0.6261 | 0.9442 | 0.7383 | 0.6439 | 0.8286 | 0.9510 | 298 |
+| equation (in-sample) | 0.9000 | 0.7773 | 0.5084 | 0.9533 | 0.5909 | 0.6037 | 0.7296 | 0.9149 | 242 |
+| equation (loo-dataset) | 0.5000 | 0.8950 | 0.7668 | 0.9178 | 0.9479 | 0.6967 | 0.9326 | 0.9738 | 365 |
+| equation (loo-dataset) | 0.6000 | 0.8887 | 0.7332 | 0.9205 | 0.9284 | 0.7133 | 0.9244 | 0.9763 | 349 |
+| equation (loo-dataset) | 0.7000 | 0.8676 | 0.6681 | 0.9381 | 0.8585 | 0.7193 | 0.8966 | 0.9480 | 318 |
+| equation (loo-dataset) | 0.8000 | 0.8109 | 0.6261 | 0.9444 | 0.7416 | 0.6471 | 0.8308 | 0.9492 | 298 |
+| equation (loo-dataset) | 0.9000 | 0.7584 | 0.5084 | 0.9205 | 0.5744 | 0.5619 | 0.7074 | 0.9123 | 242 |
+| equation (loo-model) | 0.5000 | 0.8782 | 0.7668 | 0.9050 | 0.9397 | 0.6460 | 0.9220 | 0.9687 | 365 |
+| equation (loo-model) | 0.6000 | 0.8824 | 0.7332 | 0.9222 | 0.9169 | 0.7008 | 0.9195 | 0.9713 | 349 |
+| equation (loo-model) | 0.7000 | 0.8550 | 0.6681 | 0.9338 | 0.8428 | 0.6954 | 0.8860 | 0.9417 | 318 |
+| equation (loo-model) | 0.8000 | 0.8067 | 0.6261 | 0.9364 | 0.7416 | 0.6361 | 0.8277 | 0.9332 | 298 |
+| equation (loo-model) | 0.9000 | 0.7542 | 0.5084 | 0.9310 | 0.5579 | 0.5595 | 0.6977 | 0.9065 | 242 |
+| per-model mean (loo-dataset) | 0.5000 | 0.7395 | 0.7668 | 0.8005 | 0.8795 | 0.1842 | 0.8381 | 0.9788 | 365 |
+| per-model mean (loo-dataset) | 0.6000 | 0.6828 | 0.7332 | 0.8113 | 0.7393 | 0.2506 | 0.7736 | 0.9567 | 349 |
+| per-model mean (loo-dataset) | 0.7000 | 0.7227 | 0.6681 | 0.8550 | 0.7044 | 0.4391 | 0.7724 | 0.9645 | 318 |
+| per-model mean (loo-dataset) | 0.8000 | 0.7122 | 0.6261 | 0.8368 | 0.6711 | 0.4374 | 0.7449 | 0.9332 | 298 |
+| per-model mean (loo-dataset) | 0.9000 | 0.6450 | 0.5084 | 0.7744 | 0.4256 | 0.3314 | 0.5493 | 0.9408 | 242 |
+| per-model median (loo-dataset) | 0.5000 | 0.7206 | 0.7668 | 0.7829 | 0.8795 | 0.0950 | 0.8284 | 0.9779 | 365 |
+| per-model median (loo-dataset) | 0.6000 | 0.7416 | 0.7332 | 0.8038 | 0.8567 | 0.3018 | 0.8294 | 0.9432 | 349 |
+| per-model median (loo-dataset) | 0.7000 | 0.6933 | 0.6681 | 0.7671 | 0.7767 | 0.3040 | 0.7719 | 0.9636 | 318 |
+| per-model median (loo-dataset) | 0.8000 | 0.7437 | 0.6261 | 0.8121 | 0.7685 | 0.4635 | 0.7897 | 0.9301 | 298 |
+| per-model median (loo-dataset) | 0.9000 | 0.6933 | 0.5084 | 0.6967 | 0.7025 | 0.3863 | 0.6996 | 0.9368 | 242 |
 
 Ranking models within a held-out dataset:
 
@@ -436,11 +446,13 @@ Ranking models within a held-out dataset:
 
 | predictor | ap | mrr | hit_at_1 | regret | datasets | ap_vs_e3_p | ap_vs_e3_significant |
 |---|---|---|---|---|---|---|---|
-| equation (E3) | 0.8502 | 0.8821 | 0.8000 | 0.0145 | 20 |  |  |
-| per-model mean | 0.7980 | 0.8350 | 0.7500 | 0.0111 | 20 | 0.2101 | no |
-| per-model median | 0.8375 | 0.8850 | 0.8500 | 0.0088 | 20 | 0.1435 | no |
+| equation (in-sample) | 0.8502 | 0.8821 | 0.8000 | 0.0145 | 20 | 0.6250 | no |
+| equation (loo-dataset) | 0.8467 | 0.8821 | 0.8000 | 0.0145 | 20 |  |  |
+| equation (loo-model) | 0.8382 | 0.9071 | 0.8500 | 0.0078 | 20 | 0.2266 | no |
+| per-model mean (loo-dataset) | 0.7980 | 0.8350 | 0.7500 | 0.0111 | 20 | 0.2101 | no |
+| per-model median (loo-dataset) | 0.8375 | 0.8850 | 0.8500 | 0.0088 | 20 | 0.1435 | no |
 
-**None of these differences survives a paired test.** Against per-model mean, per-model median the sign test and the bootstrap interval over datasets both include zero, so on ranking the equation is indistinguishable from ordering the models by how well they usually do. Read the means in the table above as ties, not as a ranking of the predictors — including where a baseline's mean is the larger one.
+**None of these differences survives a paired test.** Against equation (in-sample), equation (loo-model), per-model mean (loo-dataset), per-model median (loo-dataset) the sign test and the bootstrap interval over datasets both include zero, so on ranking the equation is indistinguishable from ordering the models by how well they usually do. Read the means in the table above as ties, not as a ranking of the predictors — including where a baseline's mean is the larger one.
 
 ## What bounds the result
 
@@ -476,7 +488,7 @@ Validation protocol, same equation, different splits:
 
 | protocol | r2 | mae | rmse | smape | spearman | n |
 |---|---|---|---|---|---|---|
-| random 10-fold (leaky) | 0.6378 | 0.1424 | 0.2065 | 34.9614 | 0.8052 | 476 |
+| random 10-fold (leaky) | 0.6388 | 0.1412 | 0.2063 | 35.1309 | 0.8115 | 476 |
 | leave-one-dataset-out | 0.6381 | 0.1417 | 0.2064 | 34.8803 | 0.8095 | 476 |
 | leave-one-model-out | 0.6218 | 0.1449 | 0.2110 | 35.4201 | 0.8072 | 476 |
 

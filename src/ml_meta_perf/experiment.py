@@ -280,6 +280,7 @@ def _fixed_form_path(
     labels: np.ndarray,
     config: Configuration,
     library: Library | None = None,
+    model_features: tuple[str, ...] = EQUATION_MODEL_FEATURES,
 ) -> tuple[dict[int, CrossValidation], Library]:
     """Fit once, then cross-validate the resulting forms with only their weights refit.
 
@@ -291,7 +292,7 @@ def _fixed_form_path(
     if library is None:
         library = build_library(
             DATASET_FEATURES,
-            MODEL_FEATURES,
+            model_features,
             columns,
             max_arity=config.max_arity,
             max_abs_zscore=config.max_abs_zscore,
@@ -714,40 +715,83 @@ def length_comparison(frame: pl.DataFrame, e3: EquationReport, config: Configura
     return pl.DataFrame(rows)
 
 
-def model_selection(frame: pl.DataFrame, e3: EquationReport) -> pl.DataFrame:
-    """Can the equation pick a good model for a dataset it has never seen?"""
-    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+def _e3_predictions(
+    frame: pl.DataFrame, e3: EquationReport, protocol: str, config: Configuration
+) -> np.ndarray | None:
+    """E3's predictions under one protocol: ``in_sample``, ``loo_dataset`` or ``loo_model``."""
+    if protocol == "in_sample":
+        columns = columns_as_arrays(frame, DATASET_FEATURES + EQUATION_MODEL_FEATURES)
+        return e3.equation.predict(columns)
+    path = e3.paths.get(protocol)
+    if not path:
+        return None
+    size = min(config.headline_terms, max(path))
+    return path[size].predictions if size in path else None
+
+
+def model_selection(
+    frame: pl.DataFrame,
+    e3: EquationReport,
+    protocol: str = "loo_dataset",
+    config: Configuration = DEFAULT_E3,
+) -> pl.DataFrame:
+    """Can the equation pick a good model for a dataset it has never seen?
+
+    **Scored out of fold, which the question requires.** This used to score the all-data
+    equation on the rows it was fitted on while the baselines it is compared against were
+    computed leave-one-out -- so the equation was being given an advantage they were denied,
+    and the question in this docstring was not the one being answered.
+
+    The cost of generalisation is small here and the reason is structural rather than lucky:
+    a ranking depends only on the *within-dataset* ordering of models, and the dataset-side
+    terms shift every model on a dataset by the same amount. Holding a dataset out moves the
+    level, not the order. `ranking_baselines` reports both protocols side by side so that
+    stays visible rather than assumed.
+    """
     truth = target(frame)
     datasets = groups(frame, DATASET_COLUMN)
-    return ranking_report(truth, e3.equation.predict(columns), datasets)
+    prediction = _e3_predictions(frame, e3, protocol, config)
+    if prediction is None:
+        return pl.DataFrame()
+    return ranking_report(truth, prediction, datasets)
 
 
-def ranking_baselines(frame: pl.DataFrame, e3: EquationReport) -> pl.DataFrame:
+def ranking_baselines(
+    frame: pl.DataFrame, e3: EquationReport, config: Configuration = DEFAULT_E3
+) -> pl.DataFrame:
     """The equation's ranking against the trivial rankings, averaged over datasets.
 
-    A ranking is only interesting relative to the obvious alternative, which here is "order
-    the models by how well they usually do". Both centres are reported for the same reason
-    the error metrics report both: the per-model mean and the per-model median are different
-    orderings, and which is harder to beat is a question rather than an assumption.
+    **Every predictor is scored under the same protocol**, which is what makes the comparison
+    a comparison. The equation appears three times -- in-sample and under both leave-one-group-out
+    protocols -- so the cost of generalisation on this task is visible rather than assumed, and
+    the trivial predictors appear leave-one-dataset-out, which is the only way a per-model
+    centre can be computed honestly.
 
-    Both baselines are computed leave-one-dataset-out, so the model ordering a fold is scored
-    against never saw that fold's rows.
+    Both centres are reported for the same reason the error metrics report both: the per-model
+    mean and the per-model median are different orderings, and which is harder to beat is a
+    question rather than an assumption.
     """
-    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
     truth = target(frame)
     datasets = groups(frame, DATASET_COLUMN)
     models = groups(frame, MODEL_COLUMN)
 
-    candidates = {
-        "equation (E3)": e3.equation.predict(columns),
-        "per-model mean": baseline_group_centre(truth, datasets, models, centre="mean"),
-        "per-model median": baseline_group_centre(truth, datasets, models, centre="median"),
-    }
+    candidates: dict[str, np.ndarray] = {}
+    for label, protocol in (
+        ("equation (in-sample)", "in_sample"),
+        ("equation (loo-dataset)", "loo_dataset"),
+        ("equation (loo-model)", "loo_model"),
+    ):
+        prediction = _e3_predictions(frame, e3, protocol, config)
+        if prediction is not None:
+            candidates[label] = prediction
+    candidates["per-model mean (loo-dataset)"] = baseline_group_centre(truth, datasets, models, centre="mean")
+    candidates["per-model median (loo-dataset)"] = baseline_group_centre(truth, datasets, models, centre="median")
+
     tables = {
         label: ranking_report(truth, prediction, datasets).sort("group")
         for label, prediction in candidates.items()
     }
-    reference = tables["equation (E3)"]
+    reference = tables["equation (loo-dataset)"] if "equation (loo-dataset)" in tables else next(iter(tables.values()))
 
     rows: list[dict[str, object]] = []
     for label, table in tables.items():
@@ -762,10 +806,9 @@ def ranking_baselines(frame: pl.DataFrame, e3: EquationReport) -> pl.DataFrame:
         }
         # The mean over twenty datasets is not the comparison. hit@1 moves only in steps of
         # 0.05 on twenty folds, so a single dataset flipping its top pick shifts it by more
-        # than the gaps being read; and a difference of two means over twenty groups has
-        # already produced three wrong conclusions in this study. The paired test against the
-        # equation is what licenses any claim from this table.
-        if label != "equation (E3)" and "ap" in table.columns:
+        # than the gaps being read. The paired test against the reported equation is what
+        # licenses any claim from this table.
+        if label != "equation (loo-dataset)" and "ap" in table.columns:
             paired = paired_comparison(reference["ap"].to_numpy(), table["ap"].to_numpy())
             row["ap_vs_e3_p"] = paired.p_value
             row["ap_vs_e3_significant"] = paired.significant
@@ -777,28 +820,38 @@ def decision_baselines(
     frame: pl.DataFrame,
     config: Configuration = DEFAULT_E3,
     known: dict[int, CrossValidation] | None = None,
+    e3: EquationReport | None = None,
 ) -> pl.DataFrame:
-    """The above-or-below-threshold decision, for the equation and for both trivial centres.
+    """The above-or-below-threshold decision, for the equation and both trivial centres.
 
-    `decision_report` already carries a majority-class column, which is the floor any rule
-    has to clear. These are the harder comparison: a predictor that answers "how well does
-    this model usually do", thresholded the same way. As with the error metrics, mean and
-    median are different predictors and both are reported.
+    Every predictor under the same protocol, as in `ranking_baselines`, and the equation under
+    all three so the cost of generalisation on the decision is measured rather than assumed.
+    `decision_report` already carries a majority-class column, which is the floor any rule has
+    to clear; these are the harder comparison.
     """
-    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+    columns = columns_as_arrays(frame, DATASET_FEATURES + EQUATION_MODEL_FEATURES)
     truth = target(frame)
     datasets = groups(frame, DATASET_COLUMN)
     models = groups(frame, MODEL_COLUMN)
 
-    path = known
-    if path is None or config.headline_terms not in path:
-        path, _ = _fixed_form_path(columns, truth, datasets, config)
+    candidates: dict[str, np.ndarray] = {}
+    if e3 is not None:
+        for label, protocol in (
+            ("equation (in-sample)", "in_sample"),
+            ("equation (loo-dataset)", "loo_dataset"),
+            ("equation (loo-model)", "loo_model"),
+        ):
+            prediction = _e3_predictions(frame, e3, protocol, config)
+            if prediction is not None:
+                candidates[label] = prediction
+    else:
+        path = known
+        if path is None or config.headline_terms not in path:
+            path, _ = _fixed_form_path(columns, truth, datasets, config)
+        candidates["equation (loo-dataset)"] = path[config.headline_terms].predictions
+    candidates["per-model mean (loo-dataset)"] = baseline_group_centre(truth, datasets, models, centre="mean")
+    candidates["per-model median (loo-dataset)"] = baseline_group_centre(truth, datasets, models, centre="median")
 
-    candidates = {
-        "equation (E3)": path[config.headline_terms].predictions,
-        "per-model mean": baseline_group_centre(truth, datasets, models, centre="mean"),
-        "per-model median": baseline_group_centre(truth, datasets, models, centre="median"),
-    }
     rows: list[dict[str, object]] = []
     for label, prediction in candidates.items():
         for row in decision_report(truth, prediction, datasets).to_dicts():
@@ -891,10 +944,10 @@ def run(
         baselines=baselines(frame),
         comparison=comparison(frame, e1, e3, e2, e3_capability),
         leakage=leakage_demonstration(frame, config_e3, e3.paths),
-        selection=model_selection(frame, e3),
+        selection=model_selection(frame, e3, "loo_dataset", config_e3),
         decision=decision_quality(frame, config_e3, e3.paths.get("loo_dataset")),
-        ranking_baselines=ranking_baselines(frame, e3),
-        decision_baselines=decision_baselines(frame, config_e3, e3.paths.get("loo_dataset")),
+        ranking_baselines=ranking_baselines(frame, e3, config_e3),
+        decision_baselines=decision_baselines(frame, config_e3, e3.paths.get("loo_dataset"), e3),
         term_choice=recommend(e3.curve, published=len(e3.equation.terms)),
         length_choice=length_comparison(frame, e3, config_e3),
         pareto=pareto_table(e3.curve),
