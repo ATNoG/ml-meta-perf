@@ -1,4 +1,4 @@
-# 4. Evaluation methodology
+# 5. Evaluation
 
 *Implemented in `ml_meta_perf.validate` and `ml_meta_perf.stats`.*
 
@@ -106,7 +106,7 @@ This used to bite here. E1 was fitted and scored on the 20 aggregated per-datase
 which put its 0.506 on a twenty-point denominator beside E3's on a 476-row one —
 inviting exactly the comparison the caveat forbids, and in the direction that flatters the
 control. All three equations are now fitted and scored on the same 476 rows
-([chapter 6](06-results.md)), so the caveat is a general warning rather than a live hazard
+([chapter 4](04-equation.md)), so the caveat is a general warning rather than a live hazard
 in this study's own tables. E1's transfer figure on the common scale is 0.341.
 
 ### A caveat on SMAPE
@@ -211,4 +211,23 @@ models should I run".
 
 A fitted equation presents a term chosen in 19 of 20 folds and one chosen in 3
 identically. `CrossValidation.stability()` counts selection frequency across folds, and no
-extracted practice ([chapter 7](07-practices.md)) is published from a term below 50%.
+extracted practice ([chapter 6](06-practices.md)) is published from a term below 50%.
+
+## Flexible models do worse, not better
+
+Standard regressors on the same raw features, under the same protocols:
+
+| model | in-sample R² | LOO-dataset R² | LOO-model R² |
+|---|---|---|---|
+| RidgeCV (linear, 18 features) | 0.418 | **-2.002** | 0.328 |
+| RandomForest (300 trees) | **0.910** | **0.067** | 0.465 |
+| GradientBoosting | 0.820 | 0.049 | 0.354 |
+| **ml-meta-perf E3 (16 terms)** | 0.665 | **0.627** | 0.622 |
+
+Read the RandomForest row across. With 20 dataset groups a forest memorises dataset
+identity almost perfectly and then transfers worse than a 16-term additive equation. This is also
+the likely provenance of the R² ≈ 0.9 figures reported for opaque meta-models: an
+in-sample or randomly-split forest reproduces them exactly, and the same forest is
+near-useless on an unseen dataset.
+
+> Measured with scikit-learn during exploration. It is not a dependency of the package.

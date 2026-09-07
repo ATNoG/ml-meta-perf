@@ -62,7 +62,7 @@ because it is the same cap for every dataset above it. So ``nr_inst`` and
 ``inst_to_attr`` are properties of the corpus a dataset was drawn from, and no statement
 about "more training data" can be tested against them.
 
-Study chapter: [1. The problem and the data](../../assets/docs/01-problem.md) -- the rationale, in
+Study chapter: [1. The dataset](../../assets/docs/01-dataset.md) -- the rationale, in
 prose, with the figures.
 """
 

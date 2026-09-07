@@ -1,4 +1,4 @@
-# 2. Equation form and term vocabulary
+# 2. The additive model
 
 *Implemented in `ml_meta_perf.terms` and `ml_meta_perf.model`.*
 
@@ -68,7 +68,7 @@ the exact structure the oracle ladder says is missing.
 
 Generating it over all features instead takes mixed terms in the library from **19 to 126**
 and is worth, on its own, most of the improvement reported in
-[chapter 6](06-results.md).
+[chapter 4](04-equation.md).
 
 ### Is three enough? — the design point, measured properly
 
@@ -122,7 +122,7 @@ did not merely tolerate the extra arity, it built better than a third of the equ
 of it. A
 two-feature grammar would have had to express that half some other way, and the 0.6222
 ceiling above is what happens when it tries. Counted from the equation by
-`report.operation_usage`; see [chapter 7](07-practices.md#3-which-operations-the-equation-needed).
+`report.operation_usage`; see [chapter 6](06-practices.md#3-which-operations-the-equation-needed).
 
 The reason not to go past four is different and does not need a measurement. A
 `(f1+f2)/(f3+f4)` term already names four features and two operations, and the grammar
@@ -283,38 +283,6 @@ a straight line misses it because a few large values dominate. That is a request
 **compression**, which `log`, `sqrt` and `1/f` provide. `exp` expands. It is the wrong
 direction for every feature in this meta-dataset, which is why it is absent rather than
 merely untested.
-
-## Negative result: a richer vocabulary does not help
-
-Adding `f^3` and `1/sqrt(f)` to the unary transforms was tested and **made things worse**:
-
-| | in-sample (k=20) | LOO-dataset (k=14) |
-|---|---|---|
-| base vocabulary | 0.6469 | +0.4429 |
-| with `f^3`, `1/sqrt(f)` | 0.6303 | +0.4196 |
-
-The additional transforms are high-variance, score well under screening, and displace
-better terms. The vocabulary is not under-powered; [chapter 5](05-oracles.md) locates the
-real limit.
-
-**Two of the five transforms already on offer are never used either.** Counting from the
-published equation rather than from a sweep:
-
-| transform | terms using it | share of weight mass |
-|---|---|---|
-| `log` | 19 of 24 | 79% |
-| `id` | 12 of 24 | 41% |
-| `sqrt` | 1 of 24 | 6% |
-| `1/f` | **0** | **0%** |
-| `f^2` | **0** | **0%** |
-
-`log` is the workhorse by a wide margin, `sqrt` survives on a single term, and inversion
-and squaring earn nothing at all despite being admissible on 14 and 18 of the 18 features
-respectively. This is the strongest available evidence that the transform vocabulary is
-already past the point of usefulness rather than short of it: the search had these shapes
-available, screened them, and declined them. Trimming `1/f` and `f^2` would shrink the
-library at no measured cost — they are retained only because a vocabulary chosen to fit one
-meta-dataset's outcome is a worse default than one chosen on principle.
 
 ## Why the raw features are not scaled first
 

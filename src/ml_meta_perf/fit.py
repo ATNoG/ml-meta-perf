@@ -30,7 +30,7 @@ cost nothing -- see `terms.Library.feature_groups`. Note that this is a differen
 from ``COLLINEARITY_LIMIT``, which asks a numerical question; the pairs this removes were
 well inside that limit.
 
-Study chapter: [3. Search and fitting](../../assets/docs/03-search-and-fitting.md) -- the rationale, in
+Study chapter: [3. Term generation and selection](../../assets/docs/03-term-selection.md) -- the rationale, in
 prose, with the figures.
 """
 

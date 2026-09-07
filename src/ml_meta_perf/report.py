@@ -24,7 +24,7 @@ Feature-level guidance is not re-derived here. It comes from `ml_meta_perf.pract
 measures direction empirically rather than reading signs off weights, because a feature
 appearing in two terms or inside a denominator has no single sign to read.
 
-Study chapter: [7. From equation to practice](../../assets/docs/07-practices.md) -- the rationale, in
+Study chapter: [6. Best practices against the equation](../../assets/docs/06-practices.md) -- the rationale, in
 prose, with the figures.
 """
 

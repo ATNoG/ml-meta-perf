@@ -9,7 +9,7 @@ over the term stability cap, the ridge penalty and the equation length, scored o
 leave-one-dataset-out rather than on fit. The sweep is reproducible through
 ``sweep_configurations``; ``DEFAULT_E1`` and ``DEFAULT_E3`` are simply where it landed.
 
-Study chapter: [6. Results](../../assets/docs/06-results.md) -- the rationale, in
+Study chapter: [4. The equation](../../assets/docs/04-equation.md) -- the rationale, in
 prose, with the figures.
 """
 
@@ -74,7 +74,7 @@ class Configuration:
 # its headline could not be compared with E3's without a paragraph of explanation, and
 # the 0.506 it produced read as *better* transfer than E3's 0.466 when on the common
 # scale it is 0.217. Fitting all three the same way costs 0.03 of in-sample R2 and
-# removes the caveat entirely. See [chapter 6](../../assets/docs/06-results.md).
+# removes the caveat entirely. See [chapter 6](../../assets/docs/04-equation.md).
 DEFAULT_E1 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=200, max_terms=8, headline_terms=7)
 
 # Model features only. Re-swept over penalty x length x z-cap x arity on the fixed-form
@@ -138,7 +138,19 @@ DEFAULT_E3 = Configuration(
     max_abs_zscore=4.25, penalty=15.0, pool_size=600, max_terms=32, headline_terms=16, max_arity=2
 )
 
-SWEEP_SIZES: tuple[int, ...] = (2, 4, 8, 12, 16, 20, 24, 26, 28, 32)
+#: Lengths the E3 curve is reported at.
+#:
+#: **Every length, not a hand-picked subset.** This was
+#: ``(2, 4, 8, 12, 16, 20, 24, 26, 28, 32)`` -- non-uniform, and it skipped 13, 15, 17 and 31,
+#: which are exactly the four lengths where the leave-one-dataset-out curve craters (0.532,
+#: 0.393, 0.562, 0.539 against neighbours around 0.62). Whatever the intent, the published
+#: curve was far smoother than the real one, and a knee detected on a non-uniform grid is
+#: partly reporting the grid: the same detector returns 4 on the ragged grid and 6 on the
+#: dense one.
+#:
+#: It costs nothing. ``fit`` already builds the whole path up to ``max_terms`` and
+#: ``run_equation`` was subsampling it for E3 alone.
+SWEEP_SIZES: tuple[int, ...] | None = None
 
 
 @dataclass

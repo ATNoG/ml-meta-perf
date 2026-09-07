@@ -3,7 +3,7 @@
 scipy would supply all of this, but it is a large dependency for four short functions,
 and the rank machinery here has to be exercised by the test suite regardless.
 
-Study chapter: [4. Evaluation methodology](../../assets/docs/04-evaluation.md) -- the rationale, in
+Study chapter: [5. Evaluation](../../assets/docs/05-evaluation.md) -- the rationale, in
 prose, with the figures.
 """
 

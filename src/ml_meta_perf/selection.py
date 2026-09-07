@@ -16,7 +16,7 @@ Two answers are offered because they ask different questions:
 or smoothing window, so the chosen length is a property of the curve rather than of a
 parameter someone picked to get the answer they wanted.
 
-Study chapter: [3. Search and fitting](../../assets/docs/03-search-and-fitting.md) -- the rationale, in
+Study chapter: [3. Term generation and selection](../../assets/docs/03-term-selection.md) -- the rationale, in
 prose, with the figures.
 """
 
@@ -93,15 +93,56 @@ def knee_index(
     return int(order[int(found)])
 
 
-def knee_terms(curve: pl.DataFrame, column: str = "r2_in_sample") -> int:
+#: The three protocols a length can be judged on, in the order `consensus_curve` combines them.
+PROTOCOLS = ("r2_in_sample", "r2_loo_dataset", "r2_loo_model")
+
+
+def consensus_curve(curve: pl.DataFrame, how: str = "median") -> np.ndarray:
+    """One score per length, combining every protocol present.
+
+    **The published length must not be chosen on in-sample R2 alone.** In-sample is monotone
+    in the number of terms, so it can only ever say "more", and a length picked on it is
+    picked on the one curve that cannot express the trade the choice is about. But the
+    cross-validated curves cannot be used alone either: on twenty groups they wander, and on
+    this corpus leave-one-dataset-out has genuine craters -- a held-out dataset outside the
+    convex hull of the other nineteen is extrapolated to far outside MCC's range and clipped,
+    which at one length drops the pooled figure from 0.63 to 0.39.
+
+    So the detector runs on a consensus of all three. ``median`` is the default and is what
+    makes it robust: a crater in one protocol moves the median to the middle value rather
+    than dragging an average down with it. At the length above, the three protocols read
+    0.659 / 0.393 / 0.616 and the median is 0.616 -- the crater is ignored, which is correct,
+    because a single fold's extrapolation is a property of that fold and not of the length.
+
+    ``mean`` is offered for comparison and is *not* robust to that. ``min`` is the
+    conservative reading -- a length is only as good as its worst protocol.
+    """
+    columns = [name for name in PROTOCOLS if name in curve.columns]
+    if not columns:
+        raise ValueError("curve carries none of the protocol columns")
+    stacked = np.column_stack([curve[name].to_numpy() for name in columns])
+    if how == "mean":
+        return stacked.mean(axis=1)
+    if how == "min":
+        return stacked.min(axis=1)
+    return np.median(stacked, axis=1)
+
+
+def knee_terms(curve: pl.DataFrame, column: str = "consensus") -> int:
     """The number of terms at the knee of ``column``.
 
-    Defaults to the in-sample curve: it is monotone by construction, which is what a knee
-    detector expects. The cross-validated curves are not monotone -- they wander with fold
-    noise on 20 groups -- so a knee found on them would be describing the noise.
+    ``consensus`` -- the default -- runs the detector on `consensus_curve`, the per-length
+    median over every protocol available. Passing an explicit column name runs it on that
+    curve alone, which is what the per-protocol rows of `recommend` do.
+
+    The default used to be ``r2_in_sample``, on the argument that it is monotone by
+    construction and so is the shape a knee detector expects. Monotone is exactly the
+    problem: a curve that only rises says nothing about where the extra terms stop being
+    worth their readability, which is the question being asked.
     """
     sizes = curve["n_terms"].to_numpy()
-    return int(sizes[knee_index(sizes, curve[column].to_numpy())])
+    scores = consensus_curve(curve) if column == "consensus" else curve[column].to_numpy()
+    return int(sizes[knee_index(sizes, scores)])
 
 
 def pareto_front(curve: pl.DataFrame, column: str = "r2_loo_dataset") -> pl.DataFrame:
@@ -141,14 +182,24 @@ def pareto_table(curve: pl.DataFrame) -> pl.DataFrame:
 
 
 def recommend(curve: pl.DataFrame) -> pl.DataFrame:
-    """Both recommendations plus the evidence, as one small table."""
+    """Every rule that could choose a length, plus the evidence, as one small table.
+
+    The consensus knee is the one to read. The per-protocol rows are reported beside it so
+    that a reader can see whether the protocols agree -- when they do not, the choice is
+    being made by whichever curve was picked, and that has to be visible rather than buried
+    in a default argument.
+    """
     rows: list[dict[str, object]] = []
     sizes = curve["n_terms"].to_numpy()
 
-    for column, label in (("r2_in_sample", "knee (in-sample)"), ("r2_loo_dataset", "knee (loo-dataset)")):
-        if column not in curve.columns:
+    labelled = [("consensus", "knee (consensus)")] + [
+        (column, f"knee ({column.removeprefix('r2_').replace('_', '-')})") for column in PROTOCOLS
+    ]
+    for column, label in labelled:
+        if column != "consensus" and column not in curve.columns:
             continue
-        index = knee_index(sizes, curve[column].to_numpy())
+        scores = consensus_curve(curve) if column == "consensus" else curve[column].to_numpy()
+        index = knee_index(sizes, scores)
         rows.append(
             {
                 "rule": label,

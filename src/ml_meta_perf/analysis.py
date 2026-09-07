@@ -7,7 +7,7 @@ correlating, so a term is credited only for variance that group identity does no
 already explain. A dataset feature scored within-model, or a model feature scored
 within-dataset, has to earn its correlation the hard way.
 
-Study chapter: [3. Search and fitting](../../assets/docs/03-search-and-fitting.md) -- the rationale, in
+Study chapter: [3. Term generation and selection](../../assets/docs/03-term-selection.md) -- the rationale, in
 prose, with the figures.
 """
 

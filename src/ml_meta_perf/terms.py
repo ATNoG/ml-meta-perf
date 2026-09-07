@@ -24,7 +24,7 @@ it contributes a level to every row, while inside a product it zeroes the term e
 the rows where it is off, which is a per-group slope rather than a relationship. Prefer a
 continuous descriptor that grades the same distinction.
 
-Study chapter: [2. Equation form and term vocabulary](../../assets/docs/02-equation-form.md) -- the rationale, in
+Study chapter: [2. The additive model](../../assets/docs/02-additive-model.md) -- the rationale, in
 prose, with the figures.
 """
 

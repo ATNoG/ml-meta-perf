@@ -40,8 +40,8 @@ two protocols, so the gaps between them measure the features and nothing else.
 > asserted mechanism ordinals — and cross-validation now fits the equation **once** and refits
 > only its weights per fold, rather than re-running term selection inside every fold. E3 went
 > from 20 terms at 0.613 / 0.474 / 0.428 to **16 terms at 0.665 / 0.627 / 0.622**. See
-> [chapter 4](assets/docs/04-evaluation.md) for the protocol and
-> [chapter 1](assets/docs/01-problem.md) for the features.
+> [chapter 4](assets/docs/05-evaluation.md) for the protocol and
+> [chapter 1](assets/docs/01-dataset.md) for the features.
 
 | | in-sample | LOO-dataset | LOO-model |
 |---|---|---|---|
@@ -64,7 +64,7 @@ three of them varied with the dataset as well as the learner. They are replaced 
 of mechanism: how a learner randomises, what loss it minimises, how much of the input
 distribution it models, and how it is fitted. None is observable in a training run; all are
 read off published descriptions of the algorithms. What they cannot do is describe a method
-nobody has classified — see [chapter 8](assets/docs/08-limitations.md).
+nobody has classified — see [chapter 8](assets/docs/07-limitations.md).
 
 ![Equations against their ceilings](assets/figures/equation_comparison.png)
 
@@ -74,24 +74,24 @@ Four findings the documentation develops:
   folds recalibrate its constants and test whether the claim survives unseen data. Re-running
   term selection inside every fold answers a different question, and answering it as the first
   made transfer swing by 0.3 when the length changed by two. See
-  [chapter 4](assets/docs/04-evaluation.md).
+  [chapter 4](assets/docs/05-evaluation.md).
 - **The corpus describes datasets far better than models, and the fix comes from outside
   it.** As collected, its model descriptors reach 63% of their ceiling against the dataset
   side's 98%. Five asserted ordinals take the model side to 96%. See
-  [chapter 6](assets/docs/06-results.md).
+  [chapter 6](assets/docs/04-equation.md).
 - **One interaction component is worth +0.122 R²** and the equation captures none of it.
   Only about **+0.018** of that is reachable from meta-features on both sides, and the
-  bottleneck is the model side. See [chapter 5](assets/docs/05-oracles.md).
+  bottleneck is the model side. See [chapter 5](assets/docs/04-equation.md).
 - **Better model descriptors are now worth at most +0.017 leave-one-dataset-out R²** —
   measured by replacing them with model identity itself, the best any descriptor set could do.
   That number was **+0.106** before the model side was replaced, so the direction that used to
   hold all the remaining room is largely closed. See
-  [chapter 9](assets/docs/09-model-effects.md).
+  [chapter 9](assets/docs/07-limitations.md).
 - **Mixed dataset×model terms carry the equation.** 9 of 16 terms use features from both
   groups and drive **56%** of the output variance; dataset-only terms drive 41% and
   model-only terms 3%. "Which model suits which data" is where the signal is, not "how
   hard is this data" or "how good is this model". See
-  [chapter 7](assets/docs/07-practices.md).
+  [chapter 7](assets/docs/06-practices.md).
 - **Ten best practices from the literature, weighed against the corpus** — 8 supported,
   1 qualified, 1 untestable here. The strongest: tree-based families average MCC **0.927** against
   **0.660** for neural ones on the datasets where every model ran, with plain MLPs and DNNs
@@ -121,15 +121,15 @@ and carrying the generated figures.
 
 | | | modules |
 |---|---|---|
-| 1 | [The problem and the data](assets/docs/01-problem.md) | `ml_meta_perf.data` |
-| 2 | [Equation form and term vocabulary](assets/docs/02-equation-form.md) | `ml_meta_perf.terms`, `ml_meta_perf.model` |
-| 3 | [Search and fitting](assets/docs/03-search-and-fitting.md) | `ml_meta_perf.fit`, `ml_meta_perf.analysis`, `ml_meta_perf.selection` |
-| 4 | [Evaluation methodology](assets/docs/04-evaluation.md) | `ml_meta_perf.validate`, `ml_meta_perf.stats` |
-| 5 | [Oracles and ceilings](assets/docs/05-oracles.md) | `ml_meta_perf.validate` |
-| 6 | [Results](assets/docs/06-results.md) | `ml_meta_perf.experiment` |
-| 7 | [From equation to evidence to practice](assets/docs/07-practices.md) | `ml_meta_perf.practices`, `ml_meta_perf.attribution`, `ml_meta_perf.guidance` |
-| 8 | [Limitations](assets/docs/08-limitations.md) | — |
-| 9 | [Model identity: the bound on better descriptors](assets/docs/09-model-effects.md) | `ml_meta_perf.identity` — measured, **not part of the study** |
+| 1 | [The problem and the data](assets/docs/01-dataset.md) | `ml_meta_perf.data` |
+| 2 | [Equation form and term vocabulary](assets/docs/02-additive-model.md) | `ml_meta_perf.terms`, `ml_meta_perf.model` |
+| 3 | [Search and fitting](assets/docs/03-term-selection.md) | `ml_meta_perf.fit`, `ml_meta_perf.analysis`, `ml_meta_perf.selection` |
+| 4 | [Evaluation methodology](assets/docs/05-evaluation.md) | `ml_meta_perf.validate`, `ml_meta_perf.stats` |
+| 5 | [Oracles and ceilings](assets/docs/04-equation.md) | `ml_meta_perf.validate` |
+| 6 | [Results](assets/docs/04-equation.md) | `ml_meta_perf.experiment` |
+| 7 | [From equation to evidence to practice](assets/docs/06-practices.md) | `ml_meta_perf.practices`, `ml_meta_perf.attribution`, `ml_meta_perf.guidance` |
+| 8 | [Limitations](assets/docs/07-limitations.md) | — |
+| 9 | [Model identity: the bound on better descriptors](assets/docs/07-limitations.md) | `ml_meta_perf.identity` — measured, **not part of the study** |
 | 10 | [Generated report](assets/docs/10-report.md) | `ml_meta_perf.report`, `ml_meta_perf.guidance` — **written by the code, not by hand** |
 
 Related work and positioning: **[chapter 0](assets/docs/00-related-work.md)**.
@@ -208,7 +208,7 @@ PYTHONPATH=src venv/bin/python -m ml_meta_perf --data mine.csv --output runs/min
 | `--terms` | 24 | terms in the published E3 equation |
 | `--max-terms` | 32 | longest equation the search explores (drives the curve) |
 | `--penalty` | 5.0 | ridge penalty on standardised terms |
-| `--arity` | 3 | raw features allowed per term — see [chapter 2](assets/docs/02-equation-form.md) |
+| `--arity` | 3 | raw features allowed per term — see [chapter 2](assets/docs/02-additive-model.md) |
 | `--pool` | 600 | terms surviving screening into the beam |
 | `--beam` | 6 | beam width |
 | `--zscore` | 3.0 | largest standard score a term may reach before it is rejected as a spike |

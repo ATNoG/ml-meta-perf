@@ -6,6 +6,7 @@ import numpy as np
 import polars as pl
 
 from ml_meta_perf.selection import (
+    consensus_curve,
     DETECTORS,
     knee_index,
     knee_terms,
@@ -154,9 +155,46 @@ class TestRecommend(unittest.TestCase):
             self.assertIn(value, available)
 
     def test_works_without_a_cross_validated_column(self) -> None:
+        """With only in-sample present the consensus is that one curve, so both rules agree."""
         plain = curve([2, 4, 6, 8], [0.2, 0.45, 0.52, 0.55])
         table = recommend(plain)
-        self.assertEqual(table["rule"].to_list(), ["knee (in-sample)"])
+        self.assertEqual(table["rule"].to_list(), ["knee (consensus)", "knee (in-sample)"])
+        self.assertEqual(len(set(table["n_terms"].to_list())), 1)
+
+    def test_the_consensus_is_reported_first(self) -> None:
+        """It is the rule to read; the per-protocol rows are there to show agreement."""
+        self.assertEqual(recommend(self.table)["rule"].to_list()[0], "knee (consensus)")
+
+
+class TestConsensusCurve(unittest.TestCase):
+    """One score per length across the protocols, so no single curve chooses the length."""
+
+    def setUp(self) -> None:
+        self.table = curve(
+            [2, 4, 6, 8],
+            [0.40, 0.50, 0.60, 0.66],
+            [0.30, 0.45, 0.10, 0.62],  # 0.10 is a crater, as loo-dataset genuinely has
+        ).with_columns(pl.Series("r2_loo_model", [0.35, 0.47, 0.58, 0.60]))
+
+    def test_the_median_ignores_a_single_protocol_crater(self) -> None:
+        """Why median and not mean.
+
+        At the cratered length the three protocols read 0.60 / 0.10 / 0.58. The median takes
+        0.58 -- one fold extrapolating outside the training hull is a property of that fold,
+        not of the length -- while the mean is dragged to 0.43.
+        """
+        median = consensus_curve(self.table, "median")
+        mean = consensus_curve(self.table, "mean")
+        self.assertAlmostEqual(float(median[2]), 0.58)
+        self.assertAlmostEqual(float(mean[2]), (0.60 + 0.10 + 0.58) / 3)
+        self.assertGreater(float(median[2]), float(mean[2]))
+
+    def test_min_is_the_conservative_reading(self) -> None:
+        self.assertAlmostEqual(float(consensus_curve(self.table, "min")[2]), 0.10)
+
+    def test_it_refuses_a_curve_with_no_protocol_columns(self) -> None:
+        with self.assertRaises(ValueError):
+            consensus_curve(pl.DataFrame({"n_terms": [2, 4]}))
 
 
 if __name__ == "__main__":

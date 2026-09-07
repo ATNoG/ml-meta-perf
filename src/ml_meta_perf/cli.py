@@ -9,7 +9,7 @@ than by rerunning a notebook in the right order.
 Every knob that was tuned during the study is exposed as a flag. Defaults are the tuned
 values, so a bare ``python -m ml_meta_perf`` reproduces the reported numbers.
 
-Study chapter: [6. Results](../../assets/docs/06-results.md) -- the rationale, in
+Study chapter: [4. The equation](../../assets/docs/04-equation.md) -- the rationale, in
 prose, with the figures.
 """
 

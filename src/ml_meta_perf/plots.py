@@ -69,6 +69,22 @@ def _finish(figure: Figure, destination: str | Path) -> Path:
     return path
 
 
+def _length_ticks(sizes: np.ndarray, limit: int = 16) -> np.ndarray:
+    """Tick positions for a length axis, thinned so the labels stay readable.
+
+    The curve is reported at every length now, which is right for the detector and wrong for
+    the axis: 32 labels collide into a grey band. Every nth length is labelled instead, with
+    the last one always kept so the axis states its own range.
+    """
+    if sizes.shape[0] <= limit:
+        return sizes
+    step = int(np.ceil(sizes.shape[0] / limit))
+    kept = list(sizes[::step])
+    if sizes[-1] not in kept:
+        kept.append(sizes[-1])
+    return np.asarray(kept)
+
+
 def term_count_curve(
     curve: pl.DataFrame,
     destination: str | Path,
@@ -112,7 +128,7 @@ def term_count_curve(
 
     axes.set_xlabel("number of terms")
     axes.set_ylabel("$R^2$")
-    axes.set_xticks(sizes)
+    axes.set_xticks(_length_ticks(sizes))
     axes.grid(alpha=0.25, linestyle=":")
     axes.legend(frameon=False, loc="lower right", fontsize=9)
     return _finish(figure, destination)
@@ -158,7 +174,7 @@ def error_curve(
 
     axes.set_xlabel("number of terms")
     axes.set_ylabel(label)
-    axes.set_xticks(sizes)
+    axes.set_xticks(_length_ticks(sizes))
     axes.grid(alpha=0.25, linestyle=":")
     axes.legend(frameon=False, fontsize=9)
     return _finish(figure, destination)

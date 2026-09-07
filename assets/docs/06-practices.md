@@ -1,4 +1,4 @@
-# 7. From equation to evidence to practice
+# 6. Best practices against the equation
 
 *Implemented in `ml_meta_perf.attribution`, `ml_meta_perf.practices`, `ml_meta_perf.report` and
 `ml_meta_perf.guidance`.*
@@ -13,7 +13,7 @@ chapter used to make.
 short enough to remember, cheap enough to apply — that already circulates in the field and
 that evidence can support, qualify or challenge. "Higher `nr_norm` went with lower MCC on
 these twenty datasets" is not that. It is a *measurement*: it names a column rather than an
-action, it is true only of this corpus, and [chapter 8](08-limitations.md) shows that its
+action, it is true only of this corpus, and [chapter 7](07-limitations.md) shows that its
 sign can change when the equation changes.
 
 So the chapter runs in two layers:
@@ -57,7 +57,7 @@ One practice was **withdrawn** rather than reported. *"Neural architectures catc
 the dataset is large enough"* looked testable and is not: every model here was trained on a
 stratified sample capped at 100,000 rows, so splitting the corpus by `nr_inst` splits it by
 *source* size while every training set above the cap is identical in size. The withdrawal is
-recorded in [chapter 8](08-limitations.md#training-set-size-is-not-a-variable-here) because
+recorded in [chapter 7](07-limitations.md#training-set-size-is-not-a-variable-here) because
 the near-miss is instructive — the split produced a clean-looking number, and the number
 meant nothing.
 
@@ -129,7 +129,7 @@ measured, so "higher capability rank went with higher MCC" is partly the ladder 
 back out.
 
 What is not built in is the conditional part — how family capability interacts with dataset properties — and
-[chapter 8](08-limitations.md) sets out the three costs in full.
+[chapter 7](07-limitations.md) sets out the three costs in full.
 
 ![Feature effects](../figures/practice_effects.png)
 
@@ -158,7 +158,7 @@ is carrying data difficulty as well as model capacity.
 `Training Operations` flipped sign between two equations fitted on the same data, and was
 one of four columns retired from the corpus on 2026-09-05 — so the example is now
 historical, and none of the associations in chapter 10 rests on it. It is written up as a limitation in
-[chapter 8](08-limitations.md#a-per-feature-association-can-flip-sign-between-equations), because the
+[chapter 7](07-limitations.md#a-per-feature-association-can-flip-sign-between-equations), because the
 caveat it raises applies to the whole extraction rather than to that one row.
 
 ### These are conditional statements, not marginal ones
@@ -273,7 +273,7 @@ and operations each feature was used under, is in [chapter 10](10-report.md).
 
 Two things worth stating. **The three-feature operation carries half the equation**, which
 is the direct evidence for the arity design point argued in
-[chapter 2](02-equation-form.md) — a two-feature grammar would have had to express that
+[chapter 2](02-additive-model.md) — a two-feature grammar would have had to express that
 half some other way. And **`1/f` and `f²` were offered and never used**: the search
 preferred `log` for compression and had no use for inversion or squaring at all.
 

@@ -1,4 +1,4 @@
-# Related work and positioning
+# 0. Related work and positioning
 
 Notes gathered while building `ml-meta-perf`, organised around the question the project
 actually faces: *why choose a short additive equation over an accurate opaque regressor,
@@ -146,7 +146,7 @@ and explains part of the gap between their reported accuracies and ours.
 
 ## 5b. Two-way tables with covariates on one side — the model behind the ceiling
 
-Chapter 9 measures a ceiling by adding, to the fitted equation, a table of one level and
+Chapter 7 measures a ceiling by adding, to the fitted equation, a table of one level and
 one slope per classifier. That construction is not new; it is the standard model for a
 two-way table where one margin can be described by covariates and the other cannot. It is
 **not published as a model here** — it is how the study puts a number on what better model
@@ -167,7 +167,7 @@ descriptors would be worth.
 - Hastie & Tibshirani, *Generalized Additive Models* (1990) — backfitting, the alternative
   fitting scheme, which was measured here and is worse.
 
-**Relevance.** The agronomy literature already cited for AMMI ([chapter 5](05-oracles.md))
+**Relevance.** The agronomy literature already cited for AMMI ([chapter 4](04-equation.md))
 answers the question AMMI raises. AMMI's latents are free on both margins, so it explains a
 grid and predicts nothing outside it; factorial regression with covariates on one margin is
 the predictive version, and it is exactly what leave-one-dataset-out permits — the datasets
@@ -192,7 +192,7 @@ in AutoML.
 
 **Relevance.** These establish that latent-factor models over a pipeline-by-dataset matrix
 are standard practice for algorithm recommendation, and they are why the +0.106 measured in
-[chapter 9](09-model-effects.md) is unsurprising in size. They are also what
+[chapter 7](07-limitations.md) is unsurprising in size. They are also what
 this study deliberately does *not* deliver: a latent factor per model is an uninterpreted
 coordinate, and a table of them supports no term analysis and no transferable practice.
 Reporting the number as a ceiling states the trade honestly — this is what an interpretable

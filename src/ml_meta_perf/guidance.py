@@ -29,7 +29,7 @@ That last verdict matters. A study that reports only the practices it happens to
 is not evidence about practice, so a practice the study merely assumes is marked as such
 rather than counted as a win.
 
-Study chapter: [7. From equation to practice](../../assets/docs/07-practices.md) -- the rationale, in
+Study chapter: [6. Best practices against the equation](../../assets/docs/06-practices.md) -- the rationale, in
 prose, with the figures.
 """
 

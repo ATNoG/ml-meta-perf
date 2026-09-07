@@ -6,7 +6,7 @@ What gets published, though, must be evaluable as written, so the weights are fo
 back into raw units before they are stored. Both sets are kept: the raw weights are the
 equation, the standardised weights are how the terms rank against each other.
 
-Study chapter: [2. Equation form and term vocabulary](../../assets/docs/02-equation-form.md) -- the rationale, in
+Study chapter: [2. The additive model](../../assets/docs/02-additive-model.md) -- the rationale, in
 prose, with the figures.
 """
 

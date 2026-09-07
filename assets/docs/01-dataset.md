@@ -1,4 +1,4 @@
-# 1. The problem and the data
+# 1. The dataset
 
 *Implemented in `ml_meta_perf.data`.*
 
@@ -31,7 +31,7 @@ Three properties of this target shape every downstream decision:
   cross-validated R² went negative, because the saturation point maps to infinity.
 - **It passes through zero.** 15 rows are exactly 0.0 and one is negative. This is why
   MAE rather than SMAPE is the honest error headline: see
-  [chapter 4](04-evaluation.md).
+  [chapter 5](05-evaluation.md).
 
 ## The meta-dataset
 
@@ -101,7 +101,7 @@ as the learner, since capacity scales with the data's shape — the model featur
 purely model-level.
 
 `Model Capability` places a learner's family on a ten-rung ladder taken from the tabular-ML
-literature. Chapter 8 records what it is worth and what it is not; the short version is that
+literature. Chapter 7 records what it is worth and what it is not; the short version is that
 it is a bijection with the ten families, so anything read off it is a claim about *family*.
 
 The remaining four grade a mechanism, low to high, and are asserted from published
@@ -140,14 +140,14 @@ is not a statement about sample size.
 they are not missing at random: eight models are absent from the same three datasets, which
 are the three smallest in the corpus (165, 389 and 400 instances). The meta-dataset is
 therefore a sample of *completed* runs, and every prediction is conditional on training
-succeeding ([chapter 8](08-limitations.md)).
+succeeding ([chapter 7](07-limitations.md)).
 
 ## Two facts that drive the whole design
 
 **Dataset features are constant across a dataset's 25 rows.** Everything follows from
 this. It means a dataset-only equation can predict nothing but a per-dataset constant
-(chapter 6), and it means a random train/test split puts the same dataset on both sides
-of the fold and inflates every score (chapter 4).
+(chapter 4), and it means a random train/test split puts the same dataset on both sides
+of the fold and inflates every score (chapter 5).
 
 **The features span wildly different magnitudes.** `gravity` runs from 1.6 to 1.0e16;
 `nr_inst` from 165 to 7.1 million. Composite terms are therefore built over
