@@ -2,12 +2,23 @@
 # The smallest equation that holds up on every test at once. Submit with:
 #   sbatch --job-name=eqsrch --cpus-per-task=62 scripts/equation_search.sbatch
 #
+# 48,576 points -- 16 feature subsets x 11 penalties x 23 lengths x 6 z-caps x 2 arities --
+# at about 4.85 s each, so roughly 65 core-hours and an hour of wall-clock on 62 cores.
+#
+# Searches under the same rules the study publishes under, including the one-term-per-feature-
+# combination constraint added on 2026-09-07: `fit.Selector` receives `library.feature_groups`
+# on every path, folds included. A sweep run before that date searched a different grammar and
+# its results are not comparable with one run after it.
+#
 # `cpuPartition` only: the ARM node is armPartition-only and a different BLAS build is not
 # worth the risk of a divergent result. This is caution rather than a live hazard --
 # `terms.build_library` became order-independent on 2026-09-05, so an equation is now a
 # function of its feature set rather than of the order it was handed them in.
 #
-# Reads the packaged corpus, so nothing has to be generated first.
+# Reads the packaged corpus, so nothing has to be generated first. Do not read the top row of
+# the output as the answer: `objective` is a weighted sum over seven components measured on
+# the same twenty folds, so the leading rows are ties. Pair the top band against the incumbent
+# with `validate.paired_comparison` and take the shortest that is not significantly worse.
 
 #SBATCH --partition=cpuPartition
 #SBATCH --nodes=1

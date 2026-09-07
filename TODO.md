@@ -58,25 +58,63 @@ varies with the dataset, breaks the ties. And it was bought with redundancy — 
 
 ## Remaining work
 
-1. **Re-sweep the configuration under the new constraint.** Only *length* was re-derived,
-   locally off the curve. Penalty, z-cap and arity are still the 2026-09-05 values, and the
-   standing rule — re-sweep whenever the feature set or grammar changes, which has bitten
-   three times — applies. `ml-meta-perf-search`, ~48k points, about an hour on 60 cores.
-2. **Decide whether chapter 9 survives.** `identity` is wired into nothing and now backs a
-   much smaller claim: the model side reaches 88% of its ceiling, not 58%, so the headroom
-   a per-model table can recover is roughly +0.017. Fold into chapter 6 or keep.
-3. **Collinearity below the equation is still unaddressed.** The constraint fixed the
-   *equation*; the pool and the raw features are untouched. Of 270 library terms, 399 pairs
-   correlate above 0.95, 13 above 0.999, one at 0.99998, because `COLLINEARITY_TOLERANCE`
-   drops only exact duplicates at `1 - 1e-9`. Tightening it toward 0.999 would reclaim ~13
-   pool slots; measure against a matched baseline before adopting. The raw-feature
-   redundancy above is a corpus property and is documented rather than fixed.
-4. **E3's worst leave-one-dataset-out fold is -10.62**, against -2.54 before the constraint,
-   while the pooled figure moved 0.025. Worth understanding which fold and why; the
-   dispersion columns matter more than they did.
-5. **E3's model-only terms carry 0.047 of output variance while moving predicted MCC by
-   0.066.** They largely cancel against the mixed terms. Not wrong — the shares are a
-   covariance decomposition and sum to 1 — but chapter 6 should say something about it.
+Every item below needs a *measurement*, not a judgement. The paired test is the tool for
+the ones that compare two configurations.
+
+### 1. The full sweep, on Slurm — do this first
+
+The constraint added on 2026-09-07 changed the grammar, and the standing rule is to
+re-sweep whenever the grammar or the feature set changes. **Only `headline_terms` was
+re-derived, and only locally off the curve.** Penalty, z-cap, arity and the feature subset
+are still the values a sweep chose under the *previous* grammar, so the published
+configuration is currently a local reading rather than a searched optimum.
+
+```bash
+sbatch --job-name=eqsrch --cpus-per-task=62 scripts/equation_search.sbatch
+```
+
+- **48,576 points**: 16 feature subsets x 11 penalties x 23 lengths (6-28) x 6 z-caps x 2
+  arities. `equation_search_cli.feature_subsets` keeps `Model Capability` and
+  `Processing Units Number` in every subset, since the ablation settled both.
+- **~65 core-hours.** Measured at 4.85 s/point single-threaded under the new constraint, so
+  about an hour wall-clock on 62 cores. The `--time=06:00:00` in the script is ample.
+- Writes `results/cluster/equation_search.csv`, 25 columns, sorted by `objective`.
+- The whole path was smoke-tested end to end after the constraint landed — `evaluate`,
+  `as_row`, the joblib fan-out and the CSV write all run clean, and `Selector` gets
+  `library.feature_groups` inside the folds, so the sweep searches under the same rule the
+  study publishes under. It is a long job, not an untested one.
+
+What it settles, and what to check in the output:
+
+- whether `penalty=15`, `max_abs_zscore=4.25`, `max_arity=2` are still right. The z-cap and
+  the penalty were both tuned when three now-retired columns were in the pool.
+- whether 16 terms survives a real search. Locally 16 and 20 are indistinguishable on
+  accuracy and 16 wins on brevity; `OBJECTIVE_WEIGHTS` puts them at 0.689 and 0.679, which
+  is inside the same twenty-fold noise and should not be treated as decisive on its own.
+- whether the six-feature set is still the one to publish. The sweep searches subsets, and
+  a subset that scores as well with fewer columns would be worth knowing about — though
+  note that dropping `Solution Stochasticity` or `Loss Margin Behaviour` costs
+  *identification* regardless of what the objective says, and the objective cannot see that.
+
+**Do not read the top row as the answer.** `objective` is a weighted sum over seven
+components computed from the same twenty folds, so neighbouring rows are ties. Take the top
+band, pair the candidates against the incumbent with `validate.paired_comparison`, and
+prefer the shortest configuration that is not significantly worse.
+
+### 2. Everything else
+
+- **Decide whether chapter 9 survives.** `identity` is wired into nothing and now backs a
+  much smaller claim: the model side reaches 88% of its ceiling, not 58%, so the headroom a
+  per-model table can recover is roughly +0.017. Fold into chapter 6 or keep.
+- **Collinearity below the equation is still unaddressed.** The constraint fixed the
+  *equation*; the pool and the raw features are untouched. Of 270 library terms, 399 pairs
+  correlate above 0.95, 13 above 0.999, one at 0.99998, because `COLLINEARITY_TOLERANCE`
+  drops only exact duplicates at `1 - 1e-9`. Tightening it toward 0.999 would reclaim ~13
+  pool slots; measure against a matched baseline before adopting. The raw-feature redundancy
+  is a corpus property and is documented rather than fixed.
+- **E3's worst leave-one-dataset-out fold is -10.62**, against -2.54 before the constraint,
+  while the pooled figure moved 0.025. Find which fold and why. The dispersion columns matter
+  more than they did, and a single fold at -10 is the kind of thing a reviewer finds first.
 
 ## Facts worth not rediscovering
 
@@ -112,6 +150,16 @@ by up to 0.286. If a future change reintroduces order sensitivity, that is the c
   *and* every baseline, including a constant. Use AP, MRR, hit@1 and regret.
 - **NDCG@3 and regret@3.** Saturated: 0.97–0.99 and 0.002–0.009 for everything, because 9.3
   of 25 models are tied at the top on average.
+
+**E3's model-only terms carry almost none of its output variance, and that is expected.**
+Currently 0.047 of the share across 2 terms, against 0.42 for the 4 dataset-only terms and
+0.53 for the 10 mixed ones. It is not a defect and does not need fixing: a model feature on
+its own can only shift every row of a dataset by the same amount, so the work it does is
+*conditional* on the data and lands in the mixed terms by construction. That is precisely
+why E3 beats E1 and E2 combined, and why the mixed block is the largest of the three. The
+shares are a covariance decomposition and sum to 1, so a small model-only share means those
+terms are correlated with the mixed block, not that they are idle. Do not re-open this as an
+anomaly.
 
 **Never read a difference of two means over twenty folds as a result.** This has now
 produced three wrong conclusions in one session: that the equation out-ranked the trivial
