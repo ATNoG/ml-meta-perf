@@ -325,6 +325,39 @@ conclusions stand; the numbers would need re-measuring before publication.
 | Spearman as a ranking metric here | 0.63 to 0.73 for every predictor *and* every baseline, including a constant. Use AP, MRR, hit@1, regret |
 | NDCG@3 and regret@3 | saturated: 0.97–0.99 and 0.002–0.009 for everything, because 9.3 of 25 models are tied at the top on average |
 
+### The detail behind three of those rows
+
+Folded in from `assets/docs/08-appendix.md`, deleted 2026-09-07 when the chapters were cut to
+the six the study reports. **All of it predates the 2026-09-05 protocol change**, so the
+conclusions carry and the magnitudes would need re-measuring.
+
+**Agglomerative construction, instead of enumeration.** Build terms by repeatedly merging the
+most-correlated pair rather than enumerating the grammar. It *does* find terms enumeration
+misses, and it is cheaper. It is also worse on transfer at every length tried, and the
+variants make the reason plain: target-free pairing adds nothing over enumeration; cutting
+the dendrogram and using the clusters as the equation is worse again; a guided merge is
+cheaper and worse still; and nesting merges deeper does not pay on this data. The pattern
+across all four is that **every increase in expressiveness cost transfer**, which is the same
+signature the feature-side negatives show. `git log -- src/metafit/construct.py` recovers the
+implementation.
+
+**A richer transform vocabulary.** Adding `f^3`, `1/sqrt(f)` and `f^0.25` grows the library
+from 172 terms to 182 — most of the 51 new candidates fail admissibility — and the beam
+selects **none of the ten that survive**. In-sample R2 is identical to four decimal places at
+8, 14 and 20 terms. Under a looser arity-4 grammar the same extension is actively harmful.
+Higher powers are near-duplicates of `f^2` and `sqrt(f)`, and the collinearity guard treats
+them as such.
+
+**Six attempts on the additive form's accuracy**, against a then-baseline of 0.5582
+in-sample: downweighting the rows at MCC in {0, 1} by 0.5 (0.5380) and by 0.25 (0.4147),
+Huber IRLS over 8 iterations (0.5526), equal weight per dataset (0.5509), a two-stage fit of
+7 dataset terms then 7 on the residual (0.5532), and the transform extension above
+(unchanged). Reweighting was the most promising and is the clearest failure: R2 is reported
+on all 476 rows with uniform weight, so any reweighting optimises a *different* objective and
+necessarily scores worse on the one being reported. Downweighting the saturated rows removes
+118 of 476 observations' worth of influence — the pile-ups at 0 and 1 are a third of the
+data, not outliers to be discounted.
+
 **Standing decision (2026-08-17): no binary indicator features.** Inside a product an
 indicator is identically zero on the rows where it is off, which is a per-group slope rather
 than a relationship, and only `f` and `f^2` are defined for a 0/1 column — and for a binary
