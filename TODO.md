@@ -1,5 +1,86 @@
 # Working notes
 
+> **You are on `wip/beam-search-op`.** It branches from `fix/ci-docs-plots` at `f4ff8be` and
+> adds the beam-search exploration below; nothing in it changes the published equation, and
+> `tests/test_beam.py::TestVanillaIsUnchanged` fits the real corpus both ways to prove it.
+> Everything above the "audit session" headings describes the parent branch.
+
+## The beam-search exploration — built, tested, and waiting on the cluster
+
+**Nothing has been run at scale yet.** The code, the tests and the two Slurm scripts are
+ready; what is missing is the cluster job, and the result is not knowable without it.
+
+`ml_meta_perf.beam` makes the beam's pruning, diversity and initialisation selectable, so the
+variants can be *measured* against the incumbent instead of argued about. Fifteen policies,
+from the beam-search literature and mapped onto subset selection rather than sequence
+decoding:
+
+- **Adaptive pruning** (Freitag & Al-Onaizan, WMT 2017) — drop a child too far from the step's
+  best, so the beam narrows itself where the landscape is peaked. Their *relative* form prunes
+  at a ratio of the best score, which does not transfer: `Subset.rss` is a penalised objective
+  that ridge shrinkage can drive negative, and a ratio test on a sign-changing quantity is
+  meaningless. Both forms here are differences, the relative one as a fraction of the target's
+  total sum of squares — the same denominator R² uses.
+- **Max candidates per history** (same paper) — cap how many children one parent may place in
+  the beam. **The variant most likely to pay here**: the library is deliberately redundant, so
+  a width-6 beam can spend all six slots on near-spellings of one idea.
+- **Determinantal selection** (Meister et al., EMNLP 2021) — a weighted continuum from pure
+  score to pure diversity. The kernel is *feature overlap*, because two subsets over the same
+  features say the same thing twice, which is what matters for an equation meant to be read.
+- **Space-filling initialisation** — `ml_meta_perf.seeding`, using **ESS** (`ess.esa`) and
+  **TORANN**. A beam starting from the empty set has one first move: take the strongest single
+  terms, which in a redundant library look alike. Seeding instead with terms *spread out* in
+  term space gives it genuinely different starting points. The embedding is the part to be
+  sceptical about: terms are the standardised design's columns, projected onto their leading
+  principal components and **rank**-mapped to the unit cube (rank, not min-max, or the one
+  spiky column the z-cap bounds rather than forbids pushes everything else into a corner).
+  Both are an optional `diversity` extra, and `empty_space` degrades to classical maximin
+  without them — so a study run without them produces exactly the published equation.
+
+**Two stages, and the first is not the answer.** `ml-meta-perf-beam sweep` ranks by
+`OBJECTIVE_WEIGHTS`, which has already put a nine-term equation on top that a paired test
+called significantly worse. `ml-meta-perf-beam compare` is the decision: each policy's best
+configuration refit and paired against the incumbent on per-dataset MAE, exact sign test plus
+a bootstrap over the twenty datasets. **A tie is not a win** — matching the published beam is
+more machinery for no measured gain.
+
+**Every policy gets its own configuration sweep, and that is why the job is large.**
+`DEFAULT_E3` was itself chosen by a sweep under the vanilla beam, so scoring another beam at
+that point compares a tuned setup against an untuned one. Measured locally at 2.2 s/point:
+
+| script | scope | points | core-hours | wall (62 cores) |
+|---|---|---:|---:|---:|
+| `scripts/beam_search_focused.sbatch` | arity 2, the two load-bearing columns | 11,385 | ~7 | ~15 min |
+| `scripts/beam_search.sbatch` | the full grid × 15 policies | 728,640 | ~445 | ~7 h |
+
+Run the focused one first — same-day answer at the operating point already chosen. The full
+one is still worth running afterwards: a different beam may prefer a different operating point
+entirely, which the focused grid cannot see.
+
+```bash
+rsync -av --delete --exclude='__pycache__' --exclude='*.egg-info' \
+  --relative ./src ./scripts ./pyproject.toml ./requirements.txt playstation:~/aiml-model/
+ssh playstation 'cd ~/aiml-model && venv/bin/pip install -e ".[search,diversity]"'
+ssh playstation 'cd ~/aiml-model && sbatch --job-name=beamf --cpus-per-task=32 scripts/beam_search_focused.sbatch'
+```
+
+**What a local smoke run already suggests, and why it is not evidence.** On a deliberately
+coarse grid, `cap-2` and `prune-relative-0.05` reached a better leave-one-dataset-out than
+vanilla and several policies produced equations sharing only 6 to 9 of vanilla's 15 terms — so
+the machinery moves the search rather than decorating it. But that grid is too small for the
+comparison to mean anything, and at `DEFAULT_E3` itself every variant *ties*, which is exactly
+what a configuration tuned for the incumbent should produce. **Neither observation is a
+result.** The cluster job is.
+
+**What is not attempted.** OBL (opposition-based learning) proper — reflecting a candidate
+through the domain centre — has no obvious meaning for a subset of terms, and inventing one
+would be adding a knob rather than testing an idea. ESS is used only for the beam's starting
+points. Its more natural home is the **configuration sweep itself**: that grid is 48,576
+points over five axes, two of them continuous, and a space-filling design over it would be a
+direct use of what ESS is for. That is the next thing to try if the beam variants come back
+ties.
+
+
 Session closed 2026-09-07 on branch `fix/ci-docs-plots`. Gate green —
 `venv/bin/pre-commit run --all-files`, 484 tests. The run is ~38s and byte-reproducible:
 two consecutive runs produce identical `results/*` and identical chapters. Most of the

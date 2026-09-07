@@ -283,6 +283,10 @@ src/ml_meta_perf/
     selection.py    knee detection and Pareto fronts over equation length
     equation_search.py     the configuration sweep scored on seven components
     equation_search_cli.py `ml-meta-perf-search`, needs the `search` extra
+    beam.py         selectable beam policies: pruning, diversity, seeding
+    seeding.py      space-filling starting terms for the beam (ESS/TORANN)
+    beam_compare.py the paired decision between two beam policies
+    beam_search_cli.py     `ml-meta-perf-beam`, the beam comparison job
     attribution.py  per-term effects, group shares, variance decomposition
     practices.py    per-feature associations measured from a fitted equation
     guidance.py     literature best practices, weighed against what the study measured
@@ -297,7 +301,7 @@ assets/docs/        the study chapters, hand-written with generated sections spl
 assets/figures/     generated figures
 results/            generated equations and tables
 tests/              unittest suite
-scripts/            the Slurm batch script for the configuration sweep
+scripts/            Slurm batch scripts: the configuration sweep and the beam comparison
 .github/workflows/  CI on 3.12 and 3.14, and the published API reference
 ```
 

@@ -42,6 +42,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import polars as pl
 
+from ml_meta_perf.beam import VANILLA, BeamPolicy
 from ml_meta_perf.data import (
     DATASET_COLUMN,
     DATASET_FEATURES,
@@ -73,6 +74,12 @@ class SearchPoint:
     headline_terms: int
     max_abs_zscore: float
     max_arity: int
+    #: The beam policy this point is fitted under. This one *does* default, and the reason is
+    #: the opposite of the reason the five above do not: `beam.VANILLA` is the published
+    #: search, so a point that does not mention a policy is a point fitted the way the study
+    #: reports. The numeric fields defaulted to a configuration that had *moved*, which is a
+    #: different failure entirely.
+    policy: BeamPolicy = VANILLA
 
     def configuration(self, *, pool_size: int = DEFAULT_POOL_SIZE) -> Configuration:
         """The `experiment.Configuration` this point stands for.
@@ -168,6 +175,7 @@ class EquationScore:
 
     def as_row(self) -> dict[str, object]:
         return {
+            "policy": self.point.policy.name,
             "features": ", ".join(self.point.features),
             "n_features": len(self.point.features),
             "penalty": self.point.penalty,
@@ -282,7 +290,12 @@ def _fold_selections(
             standardizer.apply(library.matrix[train]), truth[train], config.penalty, library.feature_groups
         )
         pool = guided_screen(_view(library, train), truth[train], keep=config.pool_size)
-        subsets = selector.search(pool, config.max_terms, beam_width=config.beam_width)
+        # The same policy inside the folds as outside them. Stability asks whether the *form*
+        # survives resampling, and a form discovered under one beam and re-derived under
+        # another would be measuring the difference between the two beams instead.
+        subsets = selector.search(
+            pool, config.max_terms, beam_width=config.beam_width, policy=point.policy
+        )
         if size in subsets:
             picks.append({library.terms[i].name for i in subsets[size].indices})
     return picks
@@ -309,6 +322,7 @@ def evaluate(point: SearchPoint, frame: pl.DataFrame) -> EquationScore | None:
             penalty=config.penalty,
             pool_size=config.pool_size,
             beam_width=config.beam_width,
+            policy=point.policy,
         )
     except ValueError:
         return None
@@ -367,8 +381,17 @@ def grid(
     term_counts: Sequence[int],
     zscores: Sequence[float],
     arities: Sequence[int],
+    policies: Sequence[BeamPolicy] = (VANILLA,),
 ) -> list[SearchPoint]:
-    """Every combination, features sorted so the point is canonical."""
+    """Every combination, features sorted so the point is canonical.
+
+    ``policies`` defaults to the published beam alone, so an existing caller gets the grid it
+    always got. Crossing it with a policy list multiplies the point count by that list's
+    length, which is the whole cost of the beam comparison: **each policy has to be given its
+    own configuration sweep**, because `DEFAULT_E3` was itself chosen by a sweep under the
+    vanilla beam and scoring another beam at that point compares a tuned configuration with
+    an untuned one.
+    """
     return [
         SearchPoint(
             features=tuple(sorted(subset)),
@@ -376,10 +399,12 @@ def grid(
             headline_terms=terms,
             max_abs_zscore=zscore,
             max_arity=arity,
+            policy=policy,
         )
         for subset in features
         for penalty in penalties
         for terms in term_counts
         for zscore in zscores
         for arity in arities
+        for policy in policies
     ]
