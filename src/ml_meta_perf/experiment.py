@@ -35,7 +35,7 @@ from ml_meta_perf.data import (
 from ml_meta_perf.fit import fit, prune
 from ml_meta_perf.identity import correct_out_of_fold
 from ml_meta_perf.model import Equation
-from ml_meta_perf.opaque import OpaqueRun
+from ml_meta_perf.opaque import OpaqueRun, estimators
 from ml_meta_perf.opaque import evaluate as opaque_evaluate
 from ml_meta_perf.practices import best_practices
 from ml_meta_perf.selection import best_length, pareto_table, recommend
@@ -420,9 +420,7 @@ def run_e2(frame: pl.DataFrame, config: Configuration = DEFAULT_E2) -> EquationR
     return run_equation(frame, (), MODEL_FEATURES, config, "E2")
 
 
-def run_e3_capability(
-    frame: pl.DataFrame, config: Configuration = DEFAULT_E3_CAPABILITY
-) -> EquationReport:
+def run_e3_capability(frame: pl.DataFrame, config: Configuration = DEFAULT_E3_CAPABILITY) -> EquationReport:
     """The same features under the full grammar: how far the additive form reaches.
 
     Not the study's recommendation and not what the chapters analyse term by term. It exists
@@ -621,8 +619,14 @@ def identity_ceiling(frame: pl.DataFrame, e3: EquationReport) -> pl.DataFrame:
             "mae": mae(truth, values),
         }
         if label.startswith("none"):
-            row |= {"gain": 0.0, "ci_low": float("nan"), "ci_high": float("nan"),
-                    "sign_p": float("nan"), "wins": 0, "verdict": "baseline"}
+            row |= {
+                "gain": 0.0,
+                "ci_low": float("nan"),
+                "ci_high": float("nan"),
+                "sign_p": float("nan"),
+                "wins": 0,
+                "verdict": "baseline",
+            }
         else:
             paired = paired_comparison(per_dataset_mae(values), baseline, lower_is_better=True)
             row |= {
@@ -696,8 +700,11 @@ def comparison(
 
     return pl.DataFrame(
         [
-            {"equation": f"E1, dataset only ({e1.equation.n_terms} terms)", "n_terms": e1.equation.n_terms,
-             **score(truth, e1.equation.predict(columns)).as_dict()},
+            {
+                "equation": f"E1, dataset only ({e1.equation.n_terms} terms)",
+                "n_terms": e1.equation.n_terms,
+                **score(truth, e1.equation.predict(columns)).as_dict(),
+            },
             {
                 "equation": "E1 reference: true dataset means",
                 "n_terms": None,
@@ -713,8 +720,11 @@ def comparison(
                 "n_terms": None,
                 **score(truth, model_ceiling).as_dict(),
             },
-            {"equation": f"E3, dataset + model ({e3.equation.n_terms} terms)", "n_terms": e3.equation.n_terms,
-             **score(truth, e3.equation.predict(columns)).as_dict()},
+            {
+                "equation": f"E3, dataset + model ({e3.equation.n_terms} terms)",
+                "n_terms": e3.equation.n_terms,
+                **score(truth, e3.equation.predict(columns)).as_dict(),
+            },
             *(
                 [
                     {
@@ -803,8 +813,11 @@ def length_comparison(frame: pl.DataFrame, e3: EquationReport, config: Configura
     for size in sorted(path):
         result = paired_comparison(reference, per_fold(size), lower_is_better=True)
         # `mean` is positive when the first argument -- the published equation -- is better.
-        verdict = "selected" if size == published else ("worse" if result.significant and result.mean > 0 else
-                                                       ("better" if result.significant else "tie"))
+        verdict = (
+            "selected"
+            if size == published
+            else ("worse" if result.significant and result.mean > 0 else ("better" if result.significant else "tie"))
+        )
         rows.append(
             {
                 "n_terms": size,
@@ -820,9 +833,7 @@ def length_comparison(frame: pl.DataFrame, e3: EquationReport, config: Configura
     return pl.DataFrame(rows)
 
 
-def doubly_held_out_predictions(
-    frame: pl.DataFrame, config: Configuration = DEFAULT_E3
-) -> np.ndarray | None:
+def doubly_held_out_predictions(frame: pl.DataFrame, config: Configuration = DEFAULT_E3) -> np.ndarray | None:
     """E3's predictions with **both** the dataset and the model of each cell held out.
 
     Used for the ranking and the threshold decision and for nothing else. Those two are the
@@ -840,26 +851,36 @@ def doubly_held_out_predictions(
     datasets = groups(frame, DATASET_COLUMN)
     models = groups(frame, MODEL_COLUMN)
     library = build_library(
-        DATASET_FEATURES, EQUATION_MODEL_FEATURES, columns,
-        max_arity=config.max_arity, max_abs_zscore=config.max_abs_zscore,
+        DATASET_FEATURES,
+        EQUATION_MODEL_FEATURES,
+        columns,
+        max_arity=config.max_arity,
+        max_abs_zscore=config.max_abs_zscore,
     )
     result = fit(
-        library, truth, max_terms=config.max_terms, penalty=config.penalty,
-        pool_size=config.pool_size, beam_width=config.beam_width,
+        library,
+        truth,
+        max_terms=config.max_terms,
+        penalty=config.penalty,
+        pool_size=config.pool_size,
+        beam_width=config.beam_width,
     )
     size = min(config.headline_terms, max(result.equations))
     if size not in result.equations:
         return None
     path = cross_validate_doubly_held_out(
-        library, columns, truth, datasets, models,
-        {size: result.equations[size]}, penalty=config.penalty,
+        library,
+        columns,
+        truth,
+        datasets,
+        models,
+        {size: result.equations[size]},
+        penalty=config.penalty,
     )
     return path[size].predictions if size in path else None
 
 
-def _e3_predictions(
-    frame: pl.DataFrame, e3: EquationReport, protocol: str, config: Configuration
-) -> np.ndarray | None:
+def _e3_predictions(frame: pl.DataFrame, e3: EquationReport, protocol: str, config: Configuration) -> np.ndarray | None:
     """E3's predictions under one protocol.
 
     ``in_sample``, ``loo_dataset``, ``loo_model``, or ``loo_cell`` -- the last holding out both
@@ -973,8 +994,7 @@ def ranking_baselines(
         candidates |= _opaque_candidates(opaque)
 
     tables = {
-        label: ranking_report(truth, prediction, datasets).sort("group")
-        for label, prediction in candidates.items()
+        label: ranking_report(truth, prediction, datasets).sort("group") for label, prediction in candidates.items()
     }
     reference = tables["equation (loo-dataset)"] if "equation (loo-dataset)" in tables else next(iter(tables.values()))
 
@@ -1107,6 +1127,31 @@ class Report:
 QUICK_E1 = Configuration(max_abs_zscore=3.0, penalty=1.0, pool_size=40, max_terms=3, headline_terms=3)
 QUICK_E3 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=40, max_terms=3, headline_terms=3)
 
+#: The opaque comparison's ensemble sizes under ``quick``.
+#:
+#: **`--quick` promised "checks the wiring in seconds" and did not deliver, because it reached
+#: the equation's knobs and not these.** `opaque.evaluate` refits each estimator once per
+#: observed cell -- 476 of them -- so at the published 300 trees and 100 stages one call is
+#: 226 s. Measured 2026-09-08: that single call was 1,365 s of a 1,397 s test suite, across
+#: the five end-to-end tests that each paid for it, and the equation's own work in those tests
+#: is about three seconds. Five trees checks exactly the same wiring.
+#:
+#: Not a reduced *study*: `run` without ``quick`` still uses `opaque.FOREST_TREES` and
+#: `opaque.BOOSTING_STAGES`, so every reported number is unchanged.
+QUICK_TREES = 5
+QUICK_STAGES = 5
+
+#: E2 and the capability bound under ``quick``. They were the other half of the same bug: `run`
+#: built them from the *tuned* configurations whatever ``quick`` said, so the capability bound
+#: paid a full arity-3 search over a 838-term library at every wiring check -- 7.3 s against
+#: the 0.6 s the quick E3 costs. Same z-cap and pool as `QUICK_E3`; arity 3 kept, because a
+#: capability bound that dropped to the parsimonious grammar would not be checking its own
+#: wiring.
+QUICK_E2 = Configuration(max_abs_zscore=3.0, penalty=5.0, pool_size=40, max_terms=3, headline_terms=3, max_arity=2)
+QUICK_E3_CAPABILITY = Configuration(
+    max_abs_zscore=3.0, penalty=3.0, pool_size=40, max_terms=3, headline_terms=3, max_arity=3
+)
+
 
 def run(
     path: str | None = None,
@@ -1128,13 +1173,13 @@ def run(
     e1 = run_e1(frame, config_e1)
     e3 = run_e3(frame, config_e3)
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
-    e2 = run_e2(frame)
-    e3_capability = run_e3_capability(frame)
+    e2 = run_e2(frame, QUICK_E2 if quick else DEFAULT_E2)
+    e3_capability = run_e3_capability(frame, QUICK_E3_CAPABILITY if quick else DEFAULT_E3_CAPABILITY)
     reach, ceiling = reach_analysis(frame, config_e3)
     # Fitted once and shared: the folds are the expensive part, and the regression table and
     # the two decision comparisons have to be scored from the same predictions or they can
     # disagree with each other.
-    opaque_run = opaque_evaluate(frame)
+    opaque_run = opaque_evaluate(frame, models=estimators(QUICK_TREES, QUICK_STAGES) if quick else None)
     return Report(
         opaque=opaque_run.table,
         saturated=pl.DataFrame([saturated_analysis(frame, config_e3)]),

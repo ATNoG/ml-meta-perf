@@ -37,9 +37,7 @@ def frame() -> pl.DataFrame:
     )
 
 
-def ranking_table(
-    ap: float, mrr: float, hit_at_1: float, regret: float, spearman: float = 0.5
-) -> pl.DataFrame:
+def ranking_table(ap: float, mrr: float, hit_at_1: float, regret: float, spearman: float = 0.5) -> pl.DataFrame:
     """One ranking row per dataset of the real corpus, all identical.
 
     Per-group rather than a single mean, because `_beat_the_trivial_baseline` pairs the
@@ -201,9 +199,7 @@ class TestVerdicts(unittest.TestCase):
         baseline = evidence.baseline_ranking
         # Equal on two metrics and a hair ahead on two: no interval can exclude zero.
         narrow = _Report(
-            selection=ranking_table(
-                baseline["ap"], baseline["mrr"], baseline["hit_at_1"], baseline["regret"] - 1e-6
-            )
+            selection=ranking_table(baseline["ap"], baseline["mrr"], baseline["hit_at_1"], baseline["regret"] - 1e-6)
         )
         self.assertEqual(
             check(gather(self.frame, narrow)).verdict,  # pyright: ignore[reportArgumentType]
@@ -293,12 +289,18 @@ class TestEquationEvidence(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         from ml_meta_perf.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays, load
-        from ml_meta_perf.experiment import run
+        from ml_meta_perf.experiment import DEFAULT_E3, run
         from ml_meta_perf.guidance import equation_coverage, equation_evidence
 
         frame = load()
         cls.columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
-        cls.report = run()
+        # The published E3 with everything else quick. `equation_evidence` and
+        # `equation_coverage` read `report.e3` and nothing else, and two of the assertions
+        # below are about the fifteen-term equation specifically -- the capacity feature in
+        # both a numerator and a denominator -- so E3 has to be the real one. The rest of the
+        # study is not consulted here, and a bare `run()` was paying 226 s for an opaque
+        # comparison no assertion in this class looks at.
+        cls.report = run(quick=True, config_e3=DEFAULT_E3)
         cls.evidence = equation_evidence(cls.report, cls.columns)
         cls.counts = equation_coverage(cls.report, cls.columns)
 
@@ -355,9 +357,7 @@ class TestEquationEvidence(unittest.TestCase):
         one sign where it is a numerator and the opposite where it is a denominator, which is
         the equation saying the *ratio* matters rather than the quantity. A per-feature check
         cannot represent this at all."""
-        capacity = self.evidence.filter(
-            (pl.col("feature") == "Processing Units Number") & (pl.col("direction") != "")
-        )
+        capacity = self.evidence.filter((pl.col("feature") == "Processing Units Number") & (pl.col("direction") != ""))
         self.assertGreater(capacity.height, 1)
         self.assertGreater(len(set(capacity["direction"].to_list())), 1)
 

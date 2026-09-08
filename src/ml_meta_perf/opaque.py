@@ -34,7 +34,9 @@ prose, with the figures.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Protocol
 
 import numpy as np
 import polars as pl
@@ -59,25 +61,70 @@ from ml_meta_perf.validate import leave_one_group_out
 #: larger than the spread a different seed produces.
 SEED = 0
 
-#: The regressors, as (label, factory). Factories rather than instances so each fold gets a
-#: fresh unfitted estimator -- refitting a fitted scikit-learn estimator is fine, but sharing
-#: one across folds is the kind of thing that silently leaks if an estimator ever caches.
-ESTIMATORS: tuple[tuple[str, str], ...] = (
-    ("RidgeCV (linear)", "ridge"),
-    ("RandomForest (300 trees)", "forest"),
-    ("GradientBoosting (100 stages)", "boosting"),
-)
+#: The published ensemble sizes. **A parameter rather than a literal because the cell
+#: protocol refits each estimator 476 times**, which puts one `evaluate` at 226 s -- almost
+#: the whole cost of a study run, and, until 2026-09-08, of the test suite six times over
+#: because `--quick` reached the equation's knobs and not these. The study still runs at
+#: these numbers and its output is unchanged; a caller that only needs the shape of the
+#: comparison can ask for less.
+#:
+#: Neither conclusion depends on the size. The forest's argument is that a flexible model
+#: fits this meta-data almost perfectly and reaches nothing on an unseen cell, and that gap
+#: is a property of the design matrix -- twenty dataset groups, features constant within a
+#: group -- rather than of how many trees vote on it.
+FOREST_TREES = 300
+BOOSTING_STAGES = 100
 
 
-def _build(kind: str, threads: int = -1) -> RidgeCV | RandomForestRegressor | GradientBoostingRegressor:
-    if kind == "ridge":
+class Regressor(Protocol):
+    """The whole of what this module needs from an estimator: fit it, then predict with it.
+
+    Stated as a protocol rather than a union of the three scikit-learn classes, because that
+    is the actual contract. Anything satisfying it can be handed to `evaluate`, which is what
+    lets the tests exercise the protocols without paying for real ensembles.
+    """
+
+    # Positional-only: scikit-learn names these ``X`` and ``y``, and a protocol that insisted
+    # on its own names would match nothing in the library it exists to describe.
+    def fit(self, design: np.ndarray, truth: np.ndarray, /) -> object: ...
+
+    def predict(self, design: np.ndarray, /) -> object: ...
+
+
+#: A factory taking the thread budget for one fit and returning a fresh unfitted regressor.
+#:
+#: **A callable, not a name to dispatch on.** The protocols below are the study's contribution
+#: on this side -- the leave-one-cell refit especially -- and the estimators are scikit-learn's
+#: contribution, which needs no testing here. Injecting the factory separates them: a caller
+#: that wants to check the *plumbing* passes something trivial and pays nothing, and the tests
+#: do exactly that. It also makes these factories what this module always said they were.
+Builder = Callable[[int], Regressor]
+
+
+def estimators(trees: int = FOREST_TREES, stages: int = BOOSTING_STAGES) -> tuple[tuple[str, Builder], ...]:
+    """The published regressors, as (label, factory).
+
+    Factories rather than instances so each fold gets a fresh unfitted estimator -- refitting
+    a fitted scikit-learn estimator is fine, but sharing one across folds is the kind of thing
+    that silently leaks if an estimator ever caches.
+
+    **The size is in the label**, so a table produced at a reduced size says so rather than
+    claiming three hundred trees it never grew.
+    """
+    return (
         # A wide log-spaced grid rather than a chosen penalty: the point of the control is
         # that a *well-regularised* linear model on raw columns still transfers badly, so
         # picking the penalty by hand would leave the result open to that objection.
-        return RidgeCV(alphas=np.logspace(-3, 3, 25))
-    if kind == "forest":
-        return RandomForestRegressor(n_estimators=300, random_state=SEED, n_jobs=threads)
-    return GradientBoostingRegressor(n_estimators=100, random_state=SEED)
+        ("RidgeCV (linear)", lambda _threads=-1: RidgeCV(alphas=np.logspace(-3, 3, 25))),
+        (
+            f"RandomForest ({trees} trees)",
+            lambda threads=-1: RandomForestRegressor(n_estimators=trees, random_state=SEED, n_jobs=threads),
+        ),
+        (
+            f"GradientBoosting ({stages} stages)",
+            lambda _threads=-1: GradientBoostingRegressor(n_estimators=stages, random_state=SEED),
+        ),
+    )
 
 
 def _design(frame: pl.DataFrame) -> np.ndarray:
@@ -92,7 +139,7 @@ def _design(frame: pl.DataFrame) -> np.ndarray:
     return np.column_stack([columns[name] for name in ALL_FEATURES])
 
 
-def _cross_validate(design: np.ndarray, truth: np.ndarray, labels: np.ndarray, kind: str) -> np.ndarray:
+def _cross_validate(design: np.ndarray, truth: np.ndarray, labels: np.ndarray, build: Builder) -> np.ndarray:
     """Out-of-fold predictions under one leave-one-group-out split.
 
     Clipped to the training fold's own observed range, exactly as
@@ -102,7 +149,7 @@ def _cross_validate(design: np.ndarray, truth: np.ndarray, labels: np.ndarray, k
     """
     predictions = np.zeros_like(truth)
     for _, train, test in leave_one_group_out(labels):
-        estimator = _build(kind)
+        estimator = build(-1)
         estimator.fit(design[train], truth[train])
         held = np.asarray(estimator.predict(design[test]), dtype=np.float64)
         predictions[test] = np.clip(held, float(truth[train].min()), float(truth[train].max()))
@@ -120,13 +167,13 @@ class OpaqueRun:
     """
 
     table: pl.DataFrame
-    #: ``predictions[label][protocol]``, for every estimator in `ESTIMATORS` and all four
+    #: ``predictions[label][protocol]``, for every estimator `estimators` names and all four
     #: protocols -- ``in_sample``, ``loo_dataset``, ``loo_model`` and ``loo_cell``. Clipped
     #: exactly as the reported numbers are.
     predictions: dict[str, dict[str, np.ndarray]]
 
 
-def evaluate(frame: pl.DataFrame) -> OpaqueRun:
+def evaluate(frame: pl.DataFrame, *, models: tuple[tuple[str, Builder], ...] | None = None) -> OpaqueRun:
     """Fit and score every opaque regressor once, keeping the predictions.
 
     **Read the in-sample and leave-one-cell columns of the forest row together.** That pair is
@@ -140,20 +187,20 @@ def evaluate(frame: pl.DataFrame) -> OpaqueRun:
     """
     design = _design(frame)
     truth = target(frame)
-    datasets, models = groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)
-    splits = {"loo_dataset": datasets, "loo_model": models}
+    datasets, model_labels = groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)
+    splits = {"loo_dataset": datasets, "loo_model": model_labels}
 
     rows: list[dict[str, object]] = []
     predictions: dict[str, dict[str, np.ndarray]] = {}
-    for label, kind in ESTIMATORS:
-        fitted = _build(kind)
+    for label, build in models or estimators():
+        fitted = build(-1)
         fitted.fit(design, truth)
         held: dict[str, np.ndarray] = {
             "in_sample": np.clip(np.asarray(fitted.predict(design), dtype=np.float64), MCC_LOWER, MCC_UPPER)
         }
         for name, labels in splits.items():
-            held[name] = _cross_validate(design, truth, labels, kind)
-        held["loo_cell"] = _doubly_held_out(design, truth, datasets, models, kind)
+            held[name] = _cross_validate(design, truth, labels, build)
+        held["loo_cell"] = _doubly_held_out(design, truth, datasets, model_labels, build)
         predictions[label] = held
         rows.append(
             {
@@ -174,7 +221,7 @@ def _doubly_held_out(
     truth: np.ndarray,
     first: np.ndarray,
     second: np.ndarray,
-    kind: str,
+    build: Builder,
     jobs: int = -1,
 ) -> np.ndarray:
     """Predictions with **both** the dataset and the model of each cell removed from training.
@@ -207,7 +254,7 @@ def _doubly_held_out(
         train = (first != row) & (second != column)
         if not train.any():
             return test, np.zeros(int(test.sum()))
-        estimator = _build(kind, threads=1)
+        estimator = build(1)
         estimator.fit(design[train], truth[train])
         held = np.asarray(estimator.predict(design[test]), dtype=np.float64)
         return test, np.clip(held, float(truth[train].min()), float(truth[train].max()))
