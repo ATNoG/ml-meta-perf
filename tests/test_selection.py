@@ -14,8 +14,12 @@ import numpy as np
 import polars as pl
 
 from ml_meta_perf.selection import (
+    adjusted_consensus,
+    best_configuration,
     best_length,
+    complexity,
     consensus_curve,
+    most_capable,
     pareto_front,
     pareto_knee,
     pareto_table,
@@ -215,6 +219,71 @@ class TestRecommend(unittest.TestCase):
         plain = curve([2, 4, 6, 8], [0.2, 0.45, 0.52, 0.55])
         self.assertGreater(recommend(plain).height, 0)
 
+
+class TestAdjustedConsensus(unittest.TestCase):
+    """The rule that picks the equation: one number, one argmax over arity x length.
+
+    It replaced a chain of conditions ("the simplest grammar whose own best is not
+    significantly worse than the best overall"), which produced the same answer and could not
+    be read off a table. **It is also the rule flagged for revision** -- it was arrived at
+    knowing the answer it had to reproduce, so these pin its mechanics rather than its verdict.
+    """
+
+    def test_complexity_charges_for_the_grammar_not_the_coefficients(self) -> None:
+        """Fifteen terms at arity 3 fit the same sixteen numbers as fifteen at arity 2, so a
+        coefficient count cannot tell them apart. This is what does."""
+        self.assertEqual(complexity(2, 15), 30)
+        self.assertEqual(complexity(3, 15), 45)
+
+    def test_the_penalty_grows_with_complexity(self) -> None:
+        table = curve([10, 10], [0.7, 0.7], [0.7, 0.7], [0.7, 0.7])
+        cheap = adjusted_consensus(table, arity=2, rows=476)[0]
+        dear = adjusted_consensus(table, arity=4, rows=476)[0]
+        self.assertGreater(cheap, dear)
+
+    def test_equal_complexity_scores_equally(self) -> None:
+        table = curve([6], [0.6], [0.6], [0.6])
+        self.assertAlmostEqual(
+            float(adjusted_consensus(table, arity=2, rows=476)[0]),
+            float(adjusted_consensus(curve([4], [0.6], [0.6], [0.6]), arity=3, rows=476)[0]),
+            places=3,
+        )
+
+    def test_a_longer_equation_must_earn_its_length(self) -> None:
+        """The whole point of the discount: more terms at the same consensus scores worse."""
+        table = curve([5, 25], [0.6, 0.6], [0.6, 0.6], [0.6, 0.6])
+        scores = adjusted_consensus(table, arity=2, rows=476)
+        self.assertGreater(float(scores[0]), float(scores[1]))
+
+    def test_it_refuses_a_configuration_with_no_degrees_of_freedom_left(self) -> None:
+        """`rows - p - 1 <= 0` has no correction to make, and must not return a number."""
+        table = curve([300], [0.6], [0.6], [0.6])
+        self.assertFalse(np.isfinite(adjusted_consensus(table, arity=4, rows=476)[0]))
+
+    def test_best_configuration_takes_the_argmax_over_arities(self) -> None:
+        curves = {
+            2: curve([5, 10], [0.50, 0.60], [0.50, 0.60], [0.50, 0.60]),
+            3: curve([5, 10], [0.50, 0.605], [0.50, 0.605], [0.50, 0.605]),
+        }
+        # At 476 rows a slot costs about 0.0008 of consensus, so arity 3's ten extra slots
+        # cost ~0.008 and it only buys 0.005. A gap wider than the price would win, correctly.
+        self.assertEqual(best_configuration(curves, rows=476), (2, 10))
+
+    def test_most_capable_ignores_complexity(self) -> None:
+        """The bound is not put forward as an equation to read, so length is not charged."""
+        curves = {
+            2: curve([5, 10], [0.50, 0.60], [0.50, 0.60], [0.50, 0.60]),
+            3: curve([5, 28], [0.50, 0.65], [0.50, 0.65], [0.50, 0.65]),
+        }
+        self.assertEqual(most_capable(curves), (3, 28))
+
+    def test_no_configuration_is_hardcoded(self) -> None:
+        """Moving where the consensus peaks moves the answer."""
+        for peak in (6, 12, 18):
+            sizes = [6, 12, 18]
+            scores = [0.5 + 0.1 * (size == peak) for size in sizes]
+            curves = {2: curve(sizes, scores, scores, scores)}
+            self.assertEqual(best_configuration(curves, rows=476)[1], peak)
 
 if __name__ == "__main__":
     unittest.main()

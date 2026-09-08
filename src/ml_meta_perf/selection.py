@@ -177,6 +177,89 @@ def best_length(curve: pl.DataFrame, column: str = "consensus") -> int:
     return int(curve["n_terms"].to_numpy()[int(np.argmax(scores))])
 
 
+def complexity(arity: int, n_terms: int) -> int:
+    """Feature slots an equation spends: a term of arity ``a`` names ``a`` raw features.
+
+    **Not a count of fitted coefficients** -- those number ``n_terms + 1``. This charges for how
+    much of the *grammar* an equation uses, which is what lets it tell fifteen terms at arity 2
+    apart from fifteen at arity 3. A coefficient count cannot: both fit sixteen numbers.
+    """
+    return arity * n_terms
+
+
+def adjusted_consensus(curve: pl.DataFrame, arity: int, rows: int) -> np.ndarray:
+    """The consensus, discounted by adjusted R2's degrees-of-freedom factor.
+
+    ``1 - (1 - c) * (rows - 1) / (rows - p - 1)`` with ``p = complexity(arity, n_terms)``. The
+    factor exceeds one and grows with ``p``, so it inflates the *unexplained* share: a term only
+    pays for itself if the consensus it buys outweighs the residual degrees of freedom it costs.
+    At 476 rows that exchange rate is about 0.0008 of consensus per slot, and it comes from the
+    corpus size rather than from a threshold anybody picked.
+
+    **Three departures from the textbook, none of them accidental.** Adjusted R2 corrects
+    *in-sample* optimism, and the consensus is already a median over leave-one-group-out
+    protocols, so this is a second penalty on top of one that is already there. ``p`` is a
+    complexity budget rather than a parameter count. And ridge shrinkage puts the effective
+    degrees of freedom below even the coefficient count, so every version of this is
+    conservative. The honest description is "the consensus discounted by adjusted R2's
+    functional form against a complexity budget", not "adjusted R2".
+
+    **This rule needs revising.** It was arrived at knowing the answer it had to reproduce --
+    the fifteen-term arity-2 equation the study already defends -- which is the shape of
+    reasoning this project rejected once before, in the capability-ordered rung. What makes it
+    admissible rather than fitted is that it has no free parameter to have tuned, and that its
+    complexity measure is justified independently of the answer. What it has *not* had is a
+    test against a corpus where the right answer is not already known. Revisit when there is
+    one. See `TODO.md`.
+    """
+    values = consensus_curve(curve)
+    sizes = curve["n_terms"].to_numpy()
+    adjusted = np.full(values.shape, -np.inf)
+    for position, (score, size) in enumerate(zip(values, sizes, strict=True)):
+        spent = complexity(arity, int(size))
+        remaining = rows - spent - 1
+        if remaining > 0:
+            adjusted[position] = 1 - (1 - score) * (rows - 1) / remaining
+    return adjusted
+
+
+def best_configuration(curves: dict[int, pl.DataFrame], rows: int) -> tuple[int, int]:
+    """``(arity, n_terms)`` maximising the adjusted consensus: **the study's equation.**
+
+    One number and one argmax over the whole ``arity x length`` grid, which is the point --
+    the alternative was a chain of conditions ("the simplest grammar whose own best is not
+    significantly worse than the best overall"), and a chain cannot be read off a table.
+
+    Ties go to the smaller complexity, then to the smaller arity, so the rule is a property of
+    the curves rather than of the order a caller assembled them in.
+    """
+    ranked = [
+        (float(score), complexity(arity, int(size)), arity, int(size))
+        for arity, curve in curves.items()
+        for score, size in zip(adjusted_consensus(curve, arity, rows), curve["n_terms"].to_numpy(), strict=True)
+        if np.isfinite(score)
+    ]
+    if not ranked:
+        raise ValueError("no configuration has enough rows left for a degrees-of-freedom correction")
+    _, _, arity, size = max(ranked, key=lambda row: (row[0], -row[1], -row[2]))
+    return arity, size
+
+
+def most_capable(curves: dict[int, pl.DataFrame]) -> tuple[int, int]:
+    """``(arity, n_terms)`` maximising the *raw* consensus: how far the additive form reaches.
+
+    No complexity penalty, because this one is not put forward as an equation to read -- it
+    exists to bound what the form can do, and a bound should not be discounted for being long.
+    """
+    ranked = [
+        (float(score), -int(size), arity, int(size))
+        for arity, curve in curves.items()
+        for score, size in zip(consensus_curve(curve), curve["n_terms"].to_numpy(), strict=True)
+    ]
+    _, _, arity, size = max(ranked)
+    return arity, size
+
+
 def recommend(curve: pl.DataFrame, published: int | None = None) -> pl.DataFrame:
     """Every length a stated rule could pick, with the evidence, as one small table.
 
