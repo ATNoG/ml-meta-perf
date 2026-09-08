@@ -204,6 +204,17 @@ def adjusted_consensus(curve: pl.DataFrame, arity: int, rows: int) -> np.ndarray
     conservative. The honest description is "the consensus discounted by adjusted R2's
     functional form against a complexity budget", not "adjusted R2".
 
+    **This implements the letter of the intended rule, not its intention, and must be
+    replaced.** The intention is a statement about the *curve*: the shortest equation whose
+    consensus stops improving distinguishably with more terms -- saturation. This is a *cost
+    trade-off*, an argmax against a price per slot, and the price is a function of the corpus
+    size. Holding the curve fixed and varying only ``rows``, the answer flips: at 476 rows it
+    picks (2, 15), at 5,000 it picks (3, 23), because slots get cheaper and the penalty
+    vanishes. The plateau never moved. **The corpus this serves is going to grow**, so the rule
+    will change its verdict without the equations changing. A replacement has to read the
+    curve's shape against the fold-to-fold spread, and must be checked by running it at several
+    hypothetical corpus sizes with the curve held fixed and requiring the answer not to move.
+
     **This rule needs revising.** It was arrived at knowing the answer it had to reproduce --
     the fifteen-term arity-2 equation the study already defends -- which is the shape of
     reasoning this project rejected once before, in the capability-ordered rung. What makes it
