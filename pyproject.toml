@@ -35,36 +35,20 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Tooling for `ml-meta-perf-search`, which is how the published equation's features,
+# Tooling for `ml-meta-perf --search`, which is how the published equation's features,
 # length and configuration were chosen. Not needed to fit or evaluate the shipped
-# equations -- `pip install ml-meta-perf` reproduces the whole study without it -- so it
-# is an extra rather than a base dependency.
+# equations -- `pip install ml-meta-perf && ml-meta-perf` reproduces the whole study
+# without it -- so it is an extra rather than a base dependency.
 search = [
-    # `equation_search_cli` parallelises the grid over it. Declared explicitly rather than
+    # `cli.search` parallelises the grid over it. Declared explicitly rather than
     # relied on transitively, so a change in someone else's dependency chain cannot break it.
     "joblib>=1.3.0",
-]
-
-# Space-filling initialisation for the beam (`ml_meta_perf.seeding`). An extra rather than a
-# base dependency because the published beam does not seed: `beam.VANILLA` reaches none of
-# this, and `seeding.empty_space` degrades to the classical maximin rule when ESS is absent,
-# so a study run without it produces exactly the published equation.
-diversity = [
-    "EmptySpaceSearch>=0.2.1",
-    "torann>=0.5.0",
 ]
 
 [project.scripts]
 # The pipeline entry point. `ml-meta-perf --help` documents every input; the study is
 # the default with no arguments.
 ml-meta-perf = "ml_meta_perf.cli:main"
-# Searches the AI-proposed descriptor pool down to a MODEL_FEATURES recommendation.
-# Separate from `ml-meta-perf` since it needs the `search` extra and reads the candidate
-# CSV (`assets/meta_dataset_all_descriptors.csv`), not the shipped corpus.
-ml-meta-perf-search = "ml_meta_perf.equation_search_cli:main"
-# Crosses the beam policies of `ml_meta_perf.beam` with the configuration grid, then decides
-# with a paired test. Needs the `search` extra for the same reason: it is a cluster job.
-ml-meta-perf-beam = "ml_meta_perf.beam_search_cli:main"
 
 [project.urls]
 Repository = "https://github.com/mariolpantunes/ml-meta-perf"

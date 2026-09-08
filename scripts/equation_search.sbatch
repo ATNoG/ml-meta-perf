@@ -53,7 +53,6 @@ echo "=== $(date -Is) node=$(hostname) job=$SLURM_JOB_ID cores=$SLURM_CPUS_PER_T
 uname -m
 venv/bin/python -c "import numpy, polars; print('numpy', numpy.__version__, 'polars', polars.__version__)"
 
-exec venv/bin/python -m ml_meta_perf.equation_search_cli \
+exec venv/bin/python -m ml_meta_perf --search \
   --jobs "$SLURM_CPUS_PER_TASK" \
-  --output results/cluster \
-  --name equation_search
+  --search-output results/cluster

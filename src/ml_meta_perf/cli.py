@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import logging
 import sys
 import time
 from pathlib import Path
@@ -220,6 +221,60 @@ def _save_tables(report: Report, folder: Path) -> list[Path]:
     return written
 
 
+#: The grid `--search` crosses: every feature subset that keeps the two load-bearing columns,
+#: eleven ridge penalties, twenty-three lengths, six z-caps and both arities. 48,576 points at
+#: roughly 2.2 s each, so this is a cluster job (`scripts/equation_search.sbatch`) rather than
+#: something the default run does. `--search-quick` cuts it to a few hundred for a smoke test.
+SEARCH_PENALTIES = (3.0, 5.0, 8.0, 10.0, 15.0, 20.0, 25.0, 30.0, 40.0, 60.0, 80.0)
+SEARCH_ZSCORES = (3.0, 3.5, 4.0, 4.25, 4.5, 5.0)
+SEARCH_ARITIES = (2, 3)
+
+
+def search(arguments: argparse.Namespace) -> int:
+    """Search the configuration grid for the equation the study then fits and evaluates.
+
+    **This is the step the published defaults come from.** `DEFAULT_E1` and `DEFAULT_E3` are
+    where this grid landed, so `--search` is how they are re-derived when the feature set or
+    the grammar changes -- which `TODO.md` records as having bitten four times. It writes a
+    scored row per point and prints the fifteen best; it does *not* change the defaults, since
+    picking a configuration is a decision with a paired test behind it, not an argmax.
+    """
+    from joblib import Parallel, delayed
+
+    from ml_meta_perf.equation_search import SearchPoint, evaluate, feature_subsets, grid
+
+    subsets = feature_subsets()
+    points = grid(
+        features=subsets,
+        penalties=SEARCH_PENALTIES,
+        term_counts=tuple(range(arguments.search_min_terms, arguments.search_max_terms + 1)),
+        zscores=SEARCH_ZSCORES,
+        arities=SEARCH_ARITIES,
+    )
+    logging.info("%d points over %d feature subsets", len(points), len(subsets))
+
+    frame = load(arguments.data)
+    started = time.perf_counter()
+
+    def run_point(point: SearchPoint) -> dict[str, object] | None:
+        score = evaluate(point, frame)
+        return score.as_row() if score else None
+
+    rows = Parallel(n_jobs=arguments.jobs or -1, verbose=5)(delayed(run_point)(point) for point in points)
+    table = pl.DataFrame([row for row in rows if row]).sort("objective", descending=True)
+    arguments.search_output.mkdir(parents=True, exist_ok=True)
+    destination = arguments.search_output / "equation_search.csv"
+    table.write_csv(destination)
+    logging.info("%d scored points in %.0fs -> %s", table.height, time.perf_counter() - started, destination)
+    _show(
+        table.select(
+            "n_features", "n_terms", "penalty", "max_abs_zscore", "max_arity", "objective",
+            "in_sample_r2", "loo_dataset_r2", "loo_model_r2", "binary", "ranking", "stability",
+        ).head(15)
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ml-meta-perf",
@@ -257,6 +312,17 @@ def build_parser() -> argparse.ArgumentParser:
     data.add_argument("--no-tables", action="store_true", help="skip the CSV tables")
     data.add_argument("--quiet", action="store_true", help="write files without printing the study")
 
+    grid_group = parser.add_argument_group("configuration search")
+    grid_group.add_argument(
+        "--search",
+        action="store_true",
+        help="search the configuration grid instead of running the study (a cluster job)",
+    )
+    grid_group.add_argument("--search-output", type=Path, default=Path("results/cluster"))
+    grid_group.add_argument("--search-min-terms", type=int, default=6)
+    grid_group.add_argument("--search-max-terms", type=int, default=28)
+    grid_group.add_argument("--jobs", type=int, default=0, help="search workers; 0 = every core")
+
     search = parser.add_argument_group("equation and search")
     search.add_argument("--terms", type=int, default=None, help="terms in the published E3 equation")
     search.add_argument("--max-terms", type=int, default=None, help="longest equation the search explores")
@@ -288,6 +354,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
+    if arguments.search:
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
+        return search(arguments)
     phases = frozenset(PHASES) if not arguments.phase or "all" in arguments.phase else frozenset(arguments.phase)
 
     config_e1, config_e3 = configurations(arguments)
