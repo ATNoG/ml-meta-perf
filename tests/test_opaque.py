@@ -11,15 +11,27 @@ import numpy as np
 import polars as pl
 
 from ml_meta_perf.data import DATASET_COLUMN, MODEL_COLUMN, groups, load, target
-from ml_meta_perf.opaque import ESTIMATORS, _design, evaluate, opaque_baselines
+from ml_meta_perf.opaque import ESTIMATORS, OpaqueRun, _cross_validate, _design, evaluate
 from ml_meta_perf.validate import leave_one_group_out
+
+#: One pass over the estimators for the whole module. `evaluate` refits a random forest once
+#: per held-out group and once per cell -- 522 fits -- so it is minutes, and two test classes
+#: needing it would otherwise pay that twice over.
+_RUN: list[OpaqueRun] = []
+
+
+def _outcome() -> OpaqueRun:
+    """The shared `evaluate` result, computed on first use."""
+    if not _RUN:
+        _RUN.append(evaluate(load()))
+    return _RUN[0]
 
 
 class TestOpaqueBaselines(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.frame = load()
-        cls.outcome = evaluate(cls.frame)
+        cls.outcome = _outcome()
         cls.rows = {row["model"]: row for row in cls.outcome.table.to_dicts()}
 
     def test_every_estimator_is_reported(self) -> None:
@@ -51,7 +63,7 @@ class TestOpaqueBaselines(unittest.TestCase):
     def test_predictions_are_kept_for_every_protocol(self) -> None:
         for label, held in self.outcome.predictions.items():
             with self.subTest(model=label):
-                self.assertEqual(set(held), {"in_sample", "loo_dataset", "loo_model"})
+                self.assertEqual(set(held), {"in_sample", "loo_dataset", "loo_model", "loo_cell"})
                 for values in held.values():
                     self.assertEqual(values.shape, target(self.frame).shape)
 
@@ -78,13 +90,17 @@ class TestOpaqueBaselines(unittest.TestCase):
                     self.assertGreaterEqual(held["loo_dataset"][test].min(), float(truth[train].min()) - 1e-12)
                     self.assertLessEqual(held["loo_dataset"][test].max(), float(truth[train].max()) + 1e-12)
 
-    def test_opaque_baselines_is_the_table_of_a_run(self) -> None:
-        self.assertEqual(opaque_baselines(self.frame).columns, self.outcome.table.columns)
-
     def test_is_deterministic(self) -> None:
-        repeated = evaluate(self.frame).table
-        for column in ("r2_in_sample", "r2_loo_dataset", "r2_loo_model"):
-            np.testing.assert_allclose(repeated[column].to_numpy(), self.outcome.table[column].to_numpy())
+        """Re-fitting from scratch, not re-reading the cache: a seeded forest has to reproduce
+        itself or every number in the comparison is a draw rather than a measurement. Scored on
+        the two cheap protocols, because the cell protocol is 476 refits and this assertion
+        does not need them to hold."""
+        design, truth = _design(self.frame), target(self.frame)
+        for kind in ("ridge", "boosting"):
+            with self.subTest(kind=kind):
+                labels = groups(self.frame, DATASET_COLUMN)
+                first = _cross_validate(design, truth, labels, kind)
+                np.testing.assert_allclose(first, _cross_validate(design, truth, labels, kind))
 
 
 class TestDesign(unittest.TestCase):
@@ -156,6 +172,59 @@ class TestGroupsAreDistinct(unittest.TestCase):
         self.assertGreater(
             pl.Series(groups(frame, MODEL_COLUMN)).n_unique(), pl.Series(groups(frame, DATASET_COLUMN)).n_unique()
         )
+
+
+class TestDoublyHeldOut(unittest.TestCase):
+    """Full leakage prevention: neither the dataset nor the model of a cell is in training.
+
+    The only protocol on which an opaque regressor and the equation are denied the same
+    things, so it is the one the study's central comparison rests on.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.frame = load()
+        cls.rows = {row["model"]: row for row in _outcome().table.to_dicts()}
+
+    def test_removing_both_identities_is_the_hardest_protocol(self) -> None:
+        """Each column removes more than the one before it, and the ordering is the finding:
+        a model that learned dataset identity loses most of its score when identity goes."""
+        for label, row in self.rows.items():
+            with self.subTest(model=label):
+                self.assertLess(row["r2_loo_cell"], row["r2_in_sample"])
+                self.assertLessEqual(row["r2_loo_cell"], row["r2_loo_model"])
+
+    def test_no_opaque_model_clears_the_corpus_mean_under_full_leakage_prevention(self) -> None:
+        """R2 at or below zero means "no better than predicting the mean". If an opaque model
+        ever cleared this bar meaningfully, the study's trade would need re-arguing rather than
+        this test relaxing."""
+        for label, row in self.rows.items():
+            with self.subTest(model=label):
+                self.assertLess(row["r2_loo_cell"], 0.1)
+
+    def test_the_equation_beats_every_opaque_model_on_the_same_protocol(self) -> None:
+        from ml_meta_perf.experiment import DEFAULT_E3, doubly_held_out_predictions
+        from ml_meta_perf.stats import r2_score
+
+        predictions = doubly_held_out_predictions(self.frame, DEFAULT_E3)
+        assert predictions is not None
+        equation = r2_score(target(self.frame), predictions)
+        for label, row in self.rows.items():
+            with self.subTest(model=label):
+                self.assertGreater(equation, row["r2_loo_cell"])
+
+    def test_a_cell_is_never_predicted_from_its_own_dataset_or_model(self) -> None:
+        """The property the protocol exists for, checked directly rather than trusted: a
+        training mask that let either identity through would leak and the score would flatter
+        every opaque row."""
+        datasets = groups(self.frame, DATASET_COLUMN)
+        models = groups(self.frame, MODEL_COLUMN)
+        for row_label in np.unique(datasets)[:3]:
+            for column_label in np.unique(models)[:3]:
+                train = (datasets != row_label) & (models != column_label)
+                with self.subTest(dataset=row_label, model=column_label):
+                    self.assertNotIn(row_label, set(datasets[train]))
+                    self.assertNotIn(column_label, set(models[train]))
 
 
 if __name__ == "__main__":

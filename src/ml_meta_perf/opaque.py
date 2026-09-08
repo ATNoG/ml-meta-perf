@@ -38,6 +38,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import polars as pl
+from joblib import Parallel, delayed
 from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.linear_model import RidgeCV
 
@@ -68,14 +69,14 @@ ESTIMATORS: tuple[tuple[str, str], ...] = (
 )
 
 
-def _build(kind: str) -> RidgeCV | RandomForestRegressor | GradientBoostingRegressor:
+def _build(kind: str, threads: int = -1) -> RidgeCV | RandomForestRegressor | GradientBoostingRegressor:
     if kind == "ridge":
         # A wide log-spaced grid rather than a chosen penalty: the point of the control is
         # that a *well-regularised* linear model on raw columns still transfers badly, so
         # picking the penalty by hand would leave the result open to that objection.
         return RidgeCV(alphas=np.logspace(-3, 3, 25))
     if kind == "forest":
-        return RandomForestRegressor(n_estimators=300, random_state=SEED, n_jobs=-1)
+        return RandomForestRegressor(n_estimators=300, random_state=SEED, n_jobs=threads)
     return GradientBoostingRegressor(n_estimators=100, random_state=SEED)
 
 
@@ -119,20 +120,28 @@ class OpaqueRun:
     """
 
     table: pl.DataFrame
-    #: ``predictions[label][protocol]``, for every estimator in `ESTIMATORS` and every
-    #: protocol in the table. Clipped exactly as the reported numbers are.
+    #: ``predictions[label][protocol]``, for every estimator in `ESTIMATORS` and all four
+    #: protocols -- ``in_sample``, ``loo_dataset``, ``loo_model`` and ``loo_cell``. Clipped
+    #: exactly as the reported numbers are.
     predictions: dict[str, dict[str, np.ndarray]]
 
 
 def evaluate(frame: pl.DataFrame) -> OpaqueRun:
     """Fit and score every opaque regressor once, keeping the predictions.
 
-    See `opaque_baselines` for what the table says; this is the same work with the
-    intermediate predictions retained so the decision tasks can reuse them.
+    **Read the in-sample and leave-one-cell columns of the forest row together.** That pair is
+    the study's argument in two numbers: a flexible model fits this meta-data almost perfectly
+    and, with neither the dataset nor the model in training, reaches nothing. With twenty
+    dataset groups and features constant within a group it identifies the dataset and looks the
+    answer up, and identification is worth nothing on a cell nobody has run.
+
+    It is also the likely provenance of the R2 ~ 0.9 figures reported for opaque meta-models
+    elsewhere: an in-sample or randomly-split forest reproduces them exactly.
     """
     design = _design(frame)
     truth = target(frame)
-    splits = {"loo_dataset": groups(frame, DATASET_COLUMN), "loo_model": groups(frame, MODEL_COLUMN)}
+    datasets, models = groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)
+    splits = {"loo_dataset": datasets, "loo_model": models}
 
     rows: list[dict[str, object]] = []
     predictions: dict[str, dict[str, np.ndarray]] = {}
@@ -144,6 +153,7 @@ def evaluate(frame: pl.DataFrame) -> OpaqueRun:
         }
         for name, labels in splits.items():
             held[name] = _cross_validate(design, truth, labels, kind)
+        held["loo_cell"] = _doubly_held_out(design, truth, datasets, models, kind)
         predictions[label] = held
         rows.append(
             {
@@ -159,17 +169,55 @@ def evaluate(frame: pl.DataFrame) -> OpaqueRun:
     return OpaqueRun(table=pl.DataFrame(rows), predictions=predictions)
 
 
-def opaque_baselines(frame: pl.DataFrame) -> pl.DataFrame:
-    """Each opaque regressor in-sample and under both leave-one-group-out protocols.
+def _doubly_held_out(
+    design: np.ndarray,
+    truth: np.ndarray,
+    first: np.ndarray,
+    second: np.ndarray,
+    kind: str,
+    jobs: int = -1,
+) -> np.ndarray:
+    """Predictions with **both** the dataset and the model of each cell removed from training.
 
-    **Read the in-sample and leave-one-dataset-out columns of the forest row together.** That
-    pair is the study's argument in two numbers: a flexible model fits this meta-data almost
-    perfectly and generalises to an unseen dataset worse than a fifteen-term additive
-    equation. With twenty dataset groups and features constant within a group, a forest can
-    identify the dataset and look its answer up, and identification is worth nothing on a
-    dataset nobody has run.
+    The protocol the study is actually for -- *what will this model reach on this dataset*,
+    when neither has been run -- and the only one under which the equation and an opaque
+    regressor are denied the same things. Under leave-one-dataset-out a forest still has the
+    held-out learner on nineteen other problems; under leave-one-model-out it still has the
+    held-out dataset. Here it has neither, and neither does the equation.
 
-    It is also the likely provenance of the R2 ~ 0.9 figures reported for opaque meta-models
-    elsewhere: an in-sample or randomly-split forest reproduces them exactly.
+    That makes this the like-for-like comparison in the study, and it is also the protocol on
+    which the trivial per-model baselines cannot be computed at all: a model held out of every
+    fold has no rows to average. A feature-based predictor still predicts.
+
+    One refit per observed cell rather than per group -- 476 of them against 20 or 25 -- which
+    for a forest is the difference between seconds and minutes, so the cells are run in
+    parallel. Each estimator is given a single thread for the same reason: at 434 training rows
+    the thread pool costs more than the trees, and 476 pools of 16 would oversubscribe the
+    machine by an order of magnitude.
     """
-    return evaluate(frame).table
+    cells = [
+        (row, column)
+        for row in np.unique(first)
+        for column in np.unique(second)
+        if ((first == row) & (second == column)).any()
+    ]
+
+    def one(row: object, column: object) -> tuple[np.ndarray, np.ndarray]:
+        test = (first == row) & (second == column)
+        train = (first != row) & (second != column)
+        if not train.any():
+            return test, np.zeros(int(test.sum()))
+        estimator = _build(kind, threads=1)
+        estimator.fit(design[train], truth[train])
+        held = np.asarray(estimator.predict(design[test]), dtype=np.float64)
+        return test, np.clip(held, float(truth[train].min()), float(truth[train].max()))
+
+    # A threading backend rather than processes: the estimators release the GIL inside their
+    # own fits, and 476 process spawns would each have to pickle the design across.
+    completed: list[tuple[np.ndarray, np.ndarray]] = Parallel(n_jobs=jobs, backend="threading")(
+        delayed(one)(row, column) for row, column in cells
+    )  # pyright: ignore[reportAssignmentType]
+    predictions = np.zeros_like(truth)
+    for test, values in completed:
+        predictions[test] = values
+    return predictions

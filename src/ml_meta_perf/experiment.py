@@ -904,6 +904,27 @@ def model_selection(
     return ranking_report(truth, prediction, datasets)
 
 
+#: How an opaque estimator's protocol keys are labelled in the comparison tables. Every row
+#: names its protocol, because a comparison is only a comparison if both sides were scored
+#: under the same one -- which this project has shipped wrong twice.
+OPAQUE_PROTOCOLS = {
+    "in_sample": "in-sample",
+    "loo_dataset": "loo-dataset",
+    "loo_model": "loo-model",
+    "loo_cell": "loo-cell: both held out",
+}
+
+
+def _opaque_candidates(opaque: OpaqueRun) -> dict[str, np.ndarray]:
+    """Every opaque estimator under every protocol, keyed the way the equation's rows are."""
+    return {
+        f"{label} ({OPAQUE_PROTOCOLS[protocol]})": values
+        for label, held in opaque.predictions.items()
+        for protocol, values in held.items()
+        if protocol in OPAQUE_PROTOCOLS
+    }
+
+
 def ranking_baselines(
     frame: pl.DataFrame,
     e3: EquationReport,
@@ -944,12 +965,12 @@ def ranking_baselines(
     # that hands them the model identity the loo-cell row of the equation is denied.
     candidates["per-model mean (loo-dataset)"] = baseline_group_centre(truth, datasets, models, centre="mean")
     candidates["per-model median (loo-dataset)"] = baseline_group_centre(truth, datasets, models, centre="median")
-    # The opaque opponent, under the same protocol as the equation's own leave-one-dataset-out
-    # row. It transfers badly at predicting the MCC *value*; whether it also loses at choosing
-    # a model is a different question, and one the study is only entitled to answer by asking.
+    # The opaque opponent under every protocol it has, so each of its rows can be read against
+    # the equation row that was allowed to see the same things. The loo-cell rows are the
+    # comparison that matters: there neither side has the dataset or the model, and the trivial
+    # baselines cannot be computed at all.
     if opaque is not None:
-        for label, held in opaque.predictions.items():
-            candidates[f"{label} (loo-dataset)"] = held["loo_dataset"]
+        candidates |= _opaque_candidates(opaque)
 
     tables = {
         label: ranking_report(truth, prediction, datasets).sort("group")
@@ -1020,8 +1041,7 @@ def decision_baselines(
     candidates["per-model mean (loo-dataset)"] = baseline_group_centre(truth, datasets, models, centre="mean")
     candidates["per-model median (loo-dataset)"] = baseline_group_centre(truth, datasets, models, centre="median")
     if opaque is not None:
-        for label, held in opaque.predictions.items():
-            candidates[f"{label} (loo-dataset)"] = held["loo_dataset"]
+        candidates |= _opaque_candidates(opaque)
 
     rows: list[dict[str, object]] = []
     for label, prediction in candidates.items():

@@ -801,35 +801,46 @@ def _identity_note(report: Report) -> str:
 
 
 def _opaque_note(report: Report) -> str:
-    """Read the opaque table's own two columns against each other, and against the equation.
+    """Read the opaque table across its protocols, and against the equation on each.
 
-    The comparison the study rests on, stated from this run rather than from a number
-    somebody measured once. The forest row is the one to read across: the gap between what it
-    fits and what it transfers is the whole argument, and it is a property of twenty dataset
-    groups rather than of that estimator.
+    The columns are ordered by how much the estimator was allowed to see, and reading them
+    left to right is the argument. The last one is the comparison that matters: under
+    leave-one-cell-out neither side has the dataset or the model, so it is the only protocol on
+    which an opaque regressor and a fifteen-term equation are denied the same things.
     """
-    if report.opaque.height == 0 or "r2_loo_dataset" not in report.opaque.columns:
+    if report.opaque.height == 0 or "r2_loo_cell" not in report.opaque.columns:
         return ""
     rows = report.opaque.to_dicts()
     best_fit = max(rows, key=lambda row: float(row["r2_in_sample"]))
-    best_transfer = max(rows, key=lambda row: float(row["r2_loo_dataset"]))
-    equation = float(report.e3.cross_validated["loo_dataset"]["r2"])
+    best_cell = max(rows, key=lambda row: float(row["r2_loo_cell"]))
     return (
         f"**Read the {best_fit['model']} row across.** It fits this meta-data at R2 "
-        f"{float(best_fit['r2_in_sample']):.4f} and generalises to an unseen dataset at "
-        f"{float(best_fit['r2_loo_dataset']):.4f}, against the published equation's "
-        f"{equation:.4f}. With twenty dataset groups and dataset features constant within a "
-        "group, a flexible model can identify the dataset and look its answer up -- and "
-        "identification is worth nothing on a dataset nobody has run. This is also the likely "
-        "provenance of the R2 near 0.9 figures reported for opaque meta-models: an in-sample "
-        "or randomly-split forest reproduces them exactly, and the same forest is close to "
-        "useless out of fold.\n"
-        f"\nThe best opaque transfer here is {best_transfer['model']} at "
-        f"{float(best_transfer['r2_loo_dataset']):.4f}, still far below the equation. **None "
-        "of these is tuned**, and tuning them would be answering a different objection: the "
-        "failure is that the sample has twenty groups, which no amount of tuning changes. "
-        "What the table licenses is that the accuracy this study traded away was not there to "
-        "be had under the protocol it reports.\n"
+        f"{float(best_fit['r2_in_sample']):.4f}; holding out a whole model leaves it at "
+        f"{float(best_fit['r2_loo_model']):.4f}; holding out a whole dataset drops it to "
+        f"{float(best_fit['r2_loo_dataset']):.4f}; and with **both** held out it reaches "
+        f"{float(best_fit['r2_loo_cell']):.4f}. The published equation is at "
+        f"{float(report.e3.in_sample['r2']):.4f} and "
+        f"{float(report.e3.cross_validated['loo_dataset']['r2']):.4f} on the first and third of "
+        "those.\n"
+        "\nThe ordering of those four columns is the whole finding. A flexible model on twenty "
+        "dataset groups, with dataset features constant inside a group, does not learn a "
+        "relationship -- it learns which dataset a row came from and looks the answer up. Every "
+        "column that removes an identity removes some of that, and the column that removes "
+        "both leaves almost nothing.\n"
+        f"\n**Under full leakage prevention the best opaque estimator reaches "
+        f"{float(best_cell['r2_loo_cell']):.4f}** ({best_cell['model']}), which is at or below "
+        "what predicting the corpus mean would score. This is the like-for-like comparison in "
+        "the study: leave-one-dataset-out still hands a forest the held-out learner on nineteen "
+        "other problems, and leave-one-model-out still hands it the held-out dataset. Only here "
+        "is it denied what the equation is denied -- and it is also the protocol on which the "
+        "trivial per-model baselines cannot be computed at all, since a model held out of every "
+        "fold has no rows to average. A feature-based predictor still predicts.\n"
+        "\nThis is the likely provenance of the R2 near 0.9 figures reported for opaque "
+        "meta-models: an in-sample or randomly-split forest reproduces them exactly. **None of "
+        "these is tuned**, and tuning them would answer a different objection -- the failure is "
+        "that the sample has twenty dataset groups, which no amount of tuning changes. What the "
+        "table licenses is that the accuracy this study traded away was not there to be had "
+        "under a protocol where the dataset is genuinely unseen.\n"
     )
 
 

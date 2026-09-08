@@ -4,58 +4,79 @@
 > nothing in it changes the published equation, and `tests/test_beam.py` fits the real corpus
 > both ways to prove it. Everything under the "audit session" headings describes the parent.
 
-## Start here
+## Start here — 2026-09-08, session ended with a job still running
 
-Three things happened after the audit, in the order they matter.
-
-**1. The model-descriptor question is reopened — this is the study's live problem.** See item 0
-under "Open". Settled by measurement, not judgement.
-
-**2. The beam-search comparison has a first answer, and it is mostly negative.** Slurm job
-**15336** (focused scope, `atari`, ~17 min) ran the fifteen policies over the published
-operating point. Full verdicts in `results/cluster/beam_search_focused_verdicts.csv`; the
-headline, paired over the twenty held-out datasets on per-dataset MAE:
-
-| policy | verdict | MAE gain | 95% CI | wins | ΔR² LOO-dataset | speed |
-|---|---|---:|---|---:|---:|---:|
-| `prune-relative-0.02` | **better** | +0.0015 | [+0.0005, +0.0024] | 16/20 | +0.0010 | 1.28× |
-| `prune-relative-0.05` | **better** | +0.0015 | [+0.0005, +0.0024] | 16/20 | +0.0010 | 1.12× |
-| `cap-2`, `cap-3` | tie | +0.0049 | [-0.0031, +0.0181] | 10/20 | +0.0192 | 1.22× |
-| `diverse-1.0`, `ess-seed-6`, `ess-seed-12` | **worse** | -0.0011 | [-0.0018, -0.0005] | 4/20 | -0.0012 | 0.36-1.15× |
-| `prune-relative-0.005` | **worse** | -0.0137 | [-0.0235, -0.0059] | 4/20 | -0.0354 | 1.36× |
-
-Read it carefully, because the two columns disagree in an instructive way.
-
-- **Adaptive pruning is the only thing that wins, and it wins by almost nothing.** Significant
-  on 16 of 20 folds, and worth **+0.001 of R²**. It also runs 1.1–1.3× faster. On accuracy that
-  is not a reason to change the published configuration; **on cost it might be**, and that is
-  the one open question the job leaves.
-- **The per-parent cap has the largest ΔR² (+0.019) and is a tie.** This is exactly the case
-  `validate.paired_comparison` exists for: a favourable mean on 10 of 20 folds, interval
-  spanning zero. Do not read the +0.019 as a gain — an earlier session read three numbers of
-  that shape as results and all three were wrong.
-- **Diversity and ESS seeding are significantly *worse*.** The idea that a redundant library
-  makes a width-6 beam effectively one-wide is plausible and, on this data, wrong: forcing
-  spread costs accuracy. ESS seeding is also 1.5-2.8× *slower*. That is a real negative result
-  and worth writing up as one.
-- **Too-tight pruning is the worst policy tested** (-0.035 R²), which is the expected shape:
-  prune hard enough and the beam stops being a beam.
-
-**3. Slurm job 15337 (full scope) is still running** — the whole configuration grid crossed
-with all fifteen policies, ~7 h on 62 cores. It is the one that can still overturn the above,
-because it gives every policy *its own* configuration sweep rather than scoring it at a point
-tuned for the incumbent. When it lands:
+**The one thing waiting on you: Slurm job 15337.** Started 2026-09-08 00:20 on `atari`, the
+full beam-policy sweep. At 47 minutes it had done 43,094 of 728,640 points (~917/min), so
+**expect ~13 hours total** — the earlier 7 h estimate came from timing the arity-2 focused
+grid, and the full grid includes arity 3 and six-feature subsets whose libraries are ~4x
+larger. The 24 h limit is comfortable. When it lands:
 
 ```bash
+ssh playstation 'squeue -h -j 15337; tail -40 ~/aiml-model/results/cluster/slurm-beam-15337.out'
 scp playstation:'~/aiml-model/results/cluster/beam_search*.csv' results/cluster/
-ssh playstation 'tail -40 ~/aiml-model/results/cluster/slurm-beam-15337.out'
 ```
 
-If it agrees with the focused run — pruning marginal, diversity harmful — the conclusion is
-that **the beam was never the binding constraint**, which matches the "more search converges
-to the 4th decimal" result already in the negatives table, and the whole line should be
-written up as a closed negative and merged. If it disagrees, re-run `compare` on its output
-before believing either.
+`beam_search_verdicts.csv` is the decision — the sweep's `objective` column is a shortlist and
+has already, once, put a nine-term equation on top that a paired test called significantly
+worse. **The question it answers** is whether giving each policy its own configuration sweep
+overturns the focused run's verdict, below. If it does not, the beam line closes as a negative
+and the branch is ready to merge or drop.
+
+## Where each branch stands
+
+| branch | head | pushed | state |
+|---|---|---|---|
+| `fix/ci-docs-plots` | `f4ff8be` | yes | the audit. **No CI run yet** — the workflow triggers only on push to `main` or a PR, so it still needs a PR to be verified on a runner, and this session added scikit-learn as a base dependency and widened `ruff` to `src tests`, neither of which a runner has seen. |
+| `wip/beam-search-op` | see `git log` | yes | the beam exploration plus the practice/identity/opaque work below |
+
+## The three results this session produced
+
+**1. The model-descriptor question is reopened.** Item 0 under "Open". The identity ceiling is
++0.050, not the +0.017 the chapter recorded, and the *slope* rung survives a paired test
+(CI [+0.0049, +0.0290], 14/20 folds; sign test p = 0.115, so magnitude rather than
+consistency). Behavioural probing is the next step, not future work.
+
+**2. The beam variants mostly do not pay** — focused job 15336, 17 min on 32 cores, verdicts in
+`results/cluster/beam_search_focused_verdicts.csv`:
+
+| policy | verdict | MAE gain | 95% CI | wins | ΔR² | speed |
+|---|---|---:|---|---:|---:|---:|
+| `prune-relative-0.02` / `-0.05` | **better** | +0.0015 | [+0.0005, +0.0024] | 16/20 | +0.0010 | 1.1-1.3x |
+| `cap-2`, `cap-3` | tie | +0.0049 | [-0.0031, +0.0181] | 10/20 | +0.0192 | 1.2x |
+| `diverse-1.0`, `ess-seed-6`, `ess-seed-12` | **worse** | -0.0011 | [-0.0018, -0.0005] | 4/20 | -0.0012 | 0.36-1.15x |
+| `prune-relative-0.005` | **worse** | -0.0137 | [-0.0235, -0.0059] | 4/20 | -0.0354 | 1.4x |
+
+Adaptive pruning is the only winner and wins **+0.001 of R²** — not a reason to change the
+published configuration on accuracy, possibly one on **cost**, which is where the whole
+surviving question now sits. `cap-2` has the largest ΔR² and is a **tie**: the exact shape
+`paired_comparison` exists to catch. Diversity and ESS seeding are significantly *worse*, and
+ESS is 1.5-2.8x slower. That matches the existing negative that 8x compute converges to the
+fourth decimal: **the beam was never the binding constraint.**
+
+**3. Under full leakage prevention, opaque models reach nothing.** The comparison now runs all
+four protocols, and the ordering of the columns is the finding:
+
+| model | in-sample | LOO-model | LOO-dataset | **LOO-cell** |
+|---|---:|---:|---:|---:|
+| RandomForest (300) | 0.959 | 0.598 | 0.080 | **-0.008** |
+| GradientBoosting | 0.862 | 0.571 | 0.144 | **+0.009** |
+| RidgeCV | 0.473 | 0.401 | -0.584 | **-0.618** |
+| **E3 (15 terms)** | 0.658 | 0.622 | 0.638 | **0.616** |
+
+**Leave-one-cell is the only like-for-like comparison in the study.** Leave-one-dataset-out
+still hands a forest the held-out learner on nineteen other problems; leave-one-model-out still
+hands it the held-out dataset. Only with both removed is it denied what the equation is denied
+— and it is the protocol on which the trivial per-model baselines cannot be computed at all.
+On the decision at threshold 0.7, all three opaque models sit at MCC ~0.27 against the
+equation's 0.695 on the *same* protocol and 0.439 for a per-model mean on an *easier* one.
+
+**This costs four minutes a run** (522 estimator refits: one per held-out group, then one per
+observed cell). The equation half is still 14 s. If that becomes intolerable, the cell loop in
+`opaque._doubly_held_out` is already threaded and the honest lever is fewer trees, not fewer
+protocols.
+
+
 
 ## The beam-search machinery, for when the full job lands
 
@@ -516,8 +537,11 @@ way, or to accept the clip and justify it prominently in chapter 5.
    *capability* descriptor would do and what nothing in this corpus records. **Behavioural
    probing therefore stops being future work and becomes the next step** — see "When the
    meta-dataset can be recomputed", Group A, which is costed and specific.
-1. **Push, and confirm CI is green.** Nothing else in this branch has been seen by a runner,
-   and CI now runs `ruff check src tests` rather than `src`.
+1. **Open a PR and confirm CI is green.** Both branches are pushed, but the workflow triggers
+   only on a push to `main` or a pull request, so **nothing has run on a runner yet**. That
+   matters more than before: this session made scikit-learn a base dependency and widened
+   `ruff` to `src tests`, neither of which CI has seen, and the original reason this branch
+   exists is a CI fix verified only in a local venv.
 2. **Re-read chapters 0 and 2 end to end as a reader.** Chapters 1 and 3-6 had a continuous
    read on 2026-09-07 and their numbers were audited against the generated output; 0 and 2
    were not, beyond labelling chapter 2's historical tables.
@@ -541,7 +565,12 @@ way, or to accept the clip and justify it prominently in chapter 5.
    an *unseen* model: +0.075 LOO-model, where per-model identity gives exactly 0.000. It is a
    table rather than an equation, so it fails the single-equation gate. Publish as a second
    component or keep as a ceiling? Numbers are pre-2026-09-05 and need re-measuring.
-7. **Correcting `Training Operations` for the 100k cap — blocked, not rejected.** Needs each
+7. **The opaque comparison costs four minutes of the ~4.2-minute run**, nearly all of it the
+   522 estimator refits the leave-one-cell protocol needs. `opaque._doubly_held_out` already
+   threads the cell loop. If the runtime becomes a problem the honest lever is fewer trees
+   (the conclusion does not depend on 300) rather than dropping a protocol — see the habit
+   about strictest columns below.
+8. **Correcting `Training Operations` for the 100k cap — blocked, not rejected.** Needs each
    trained instance's tuned hyperparameters; the upstream `results_stage_ml_eval.csv` covers
    348 of 476 rows and the 128 gaps are exactly the 8 GPU-trained models x 16 datasets.
 
@@ -790,9 +819,9 @@ re-running: the cluster copy goes stale and the memory request is load-bearing.
 
 ## For the next session
 
-The branch is `wip/beam-search-op`, unpushed, on top of `fix/ci-docs-plots`. Item 5 above is
-the ordered list, and item 0 is the one that changes what the study claims. Four working
-habits worth keeping:
+Both branches are pushed. Item 5 above is the ordered list; item 0 is the one that changes
+what the study claims, and job 15337 is the one that arrives on its own. Five working habits
+worth keeping:
 
 - **Audit prose numbers against `results/` mechanically, not by reading.** Harvest every
   decimal from `results/*.csv|json` and the generated blocks, then flag every decimal in
@@ -806,6 +835,11 @@ habits worth keeping:
 - **When a number belongs in a chapter, generate it.** Every stale figure found this session
   was in prose the pipeline does not write. The rule is not "check the numbers", it is "give
   the chapter nowhere to keep a number of its own".
+- **Score every predictor under every protocol, including the strictest.** The opaque
+  comparison ran leave-one-dataset-out only, and read that way a forest looks merely weak. Run
+  under leave-one-cell as well and it reaches zero — and that is the *only* protocol on which
+  it and the equation are denied the same things. A comparison missing its strictest column is
+  not conservative; it is flattering whichever side had more left over.
 - **Pick the unit before building the check.** The practice-to-equation comparison was built
   three times — against features, against family-level row predictions, and finally against
   terms — and only the third says anything a reader could not get from a scatter plot or from

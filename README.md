@@ -158,8 +158,10 @@ generating the report.
 venv/bin/ml-meta-perf          # or: PYTHONPATH=src venv/bin/python -m ml_meta_perf
 ```
 
-That takes about 40 seconds — most of it the opaque-regressor comparison, which refits a
-random forest 46 times — reproduces every number in this README, and writes:
+That takes about four minutes — nearly all of it the opaque-regressor comparison, which
+refits a random forest once per held-out group and then once per *cell* for the
+leave-one-cell protocol, 522 fits in all. The equation half of the pipeline is 14 seconds.
+It reproduces every number in this README, and writes:
 
 | | |
 |---|---|
