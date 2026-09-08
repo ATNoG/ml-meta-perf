@@ -32,16 +32,9 @@ dependencies = [
     # wheel, so it is a base dependency rather than an extra: an extra would leave the same
     # numbers unreproducible for anyone who did not know to ask for it.
     "scikit-learn>=1.5.0",
-]
-
-[project.optional-dependencies]
-# Tooling for `ml-meta-perf --search`, which is how the published equation's features,
-# length and configuration were chosen. Not needed to fit or evaluate the shipped
-# equations -- `pip install ml-meta-perf && ml-meta-perf` reproduces the whole study
-# without it -- so it is an extra rather than a base dependency.
-search = [
-    # `cli.search` parallelises the grid over it. Declared explicitly rather than
-    # relied on transitively, so a change in someone else's dependency chain cannot break it.
+    # `opaque` threads the leave-one-cell protocol's 476 estimator refits over it. It used to
+    # arrive with the `search` extra, which meant a base-only install type-checked with an
+    # unresolved import; it is a base dependency now because the study itself runs it.
     "joblib>=1.3.0",
 ]
 

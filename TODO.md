@@ -25,6 +25,113 @@ job 15337's verdicts must be read:
 - **One branch for this work.** Done — see below.
 - **The whole text needs revision**, not only chapter 6, and it waits on final results.
 
+### The CLI cleanup plan — 2026-09-08
+
+**One command, one pipeline: read the corpus, search for the equations, fit their weights,
+evaluate under the protocols, write the tables, figures and generated chapter sections.**
+Nothing about the equations is written down; every knob that remains is a knob, with the
+previously-used values as its default.
+
+**C1. Derive the length instead of asserting it.** `experiment.py:356` is the only line that
+decides -- `size = min(config.headline_terms, available)` -- and it throws away work already
+done: `fit()` returns an equation at *every* length in one pass and `run_equation`
+cross-validates all of them, so the consensus curve exists at that point. Replace the
+assertion with the rule, carry the chosen size on `EquationReport`, and have the six read
+sites (566/568 protocol scores, 757/759 decision report, 1038/1040 baselines) take it from
+there. `length_comparison` already derives and keeps `headline_terms` only as a fallback; that
+fallback becomes `max(path)`. `Configuration.headline_terms` then has no readers and goes.
+
+**C2. Search the arity as well.** `--arity` becomes a list, default `(2, 3, 4)`: one
+`build_library` and one `fit` per arity, then choose across the combined curves. Measured cost
+about 25 s, nearly all of it the arity-4 library build, against a 282 s run.
+
+**C3. Two E3 equations, both derived.**
+
+- **E3-short** -- the study's equation. The shortest (arity, length) whose paired interval
+  against E3-best spans zero.
+- **E3-best** -- the largest consensus over all (arity, length), whatever its size. It bounds
+  what the additive form can reach and is reported in the docs rather than put forward.
+
+`selection.pareto_knee` decides nothing and stays a diagnostic: `length_comparison`'s docstring
+already records that every knee detector tried puts the bend at four to eight terms, and every
+one of those lengths is significantly *worse* than the published equation fold by fold.
+
+**C4. Drop `--terms`, keep `--max-terms`.** They are different things and only one is a knob:
+`--max-terms` is the search horizon and a cost control; `--terms` was the assertion C1 removes.
+
+**C5. Drop `--quick`.** It is a preset of flags that already exist individually
+(`--max-terms 3 --pool 40 --penalty 20`), and it carries two Configuration objects,
+`QUICK_E1` and `QUICK_E3`, whose only job is to hold a third copy of a length. The three tests
+that use it (`test_plots` x2, `test_experiment` x3) pass the flags explicitly instead --
+which also makes what "quick" meant visible at the call site rather than hidden in a constant.
+
+**C6. The remaining knobs become named constants feeding argparse**, with a comment recording
+that they are where the 2026-09 sweep landed: `PENALTY`, `MAX_ABS_ZSCORE`, `POOL_SIZE`,
+`BEAM_WIDTH`, `MAX_TERMS`, `ARITIES`. No `DEFAULT_E1`, `DEFAULT_E2`, `DEFAULT_E3`,
+`DEFAULT_E3_CAPABILITY`, `QUICK_E1`, `QUICK_E3`.
+
+**C7. Rename so the code says what the study claims** -- and only after C1-C6 have landed, as
+its own commit with no behaviour change. `fit.fit()` performs a *search* (a beam over term
+subsets) and uses a ridge fit as its scoring function; calling the whole thing `fit` blurs the
+form-versus-weights line the study is built on, which `validate.cross_validate_fixed_form`
+names correctly and chapter 3 calls "term selection". Split into `search.py` (`guided_screen`,
+`Subset`, `Selector`, `search()`, `SearchResult`) and `fit.py` (`Standardizer`, `ridge_solve`,
+`to_equation`, `prune`). `search` imports from `fit` -- that direction is correct and the
+docstring should say so rather than implying a clean layering.
+
+**How each step is checked.** C1-C3 are *meant* to move the numbers, so the snapshot check does
+not apply; the guard is the owner's constraint that E3-short may not land below the 15-term
+result, **measured, not assumed** -- and the trap is that the paired rule's incumbent changes
+from the 15-term equation to E3-best (~0.6855), where a wider interval can admit a shorter
+equation scoring below 0.6381 while still reading "not significantly worse". C4-C7 change no
+numbers and are verified by snapshot-and-compare over `results/`, `assets/docs/` and all
+fourteen figures, which the PDF determinism fix now makes possible.
+
+### The next piece: derive the equations, stop writing them down — 2026-09-08
+
+The grid search is removed: **it is not useful**, because the only two things worth searching
+fall out of the fit itself. `fit()` already returns an equation at *every* length in one pass,
+so a search over length costs nothing, and a search over arity costs one fit each. Measured:
+
+| arity | library | build | fit |
+|---:|---:|---:|---:|
+| 2 | 220 terms | 0.03 s | 0.36 s |
+| 3 | 838 terms | 0.16 s | 0.59 s |
+| 4 | 4,223 terms | 22.76 s | 1.60 s |
+
+About 25 seconds for all three, nearly all of it the arity-4 library build, against a 282 s
+run. A 30-core-hour cluster grid was buying a length and an arity that three local fits give.
+
+**`DEFAULT_E1`, `DEFAULT_E2`, `DEFAULT_E3` and `DEFAULT_E3_CAPABILITY` go.** They wrote down
+`headline_terms=15` and `=23`, which `selection.best_length` already derives from the consensus
+curve -- the number was both computed and asserted, and if the two ever disagreed the study
+would not notice. The fit hyperparameters stay as **named module constants** (`PENALTY`,
+`MAX_ABS_ZSCORE`, `POOL_SIZE`, `BEAM_WIDTH`, `MAX_TERMS`) with a comment recording that they
+are where the 2026-09 sweep landed; only the length and the arity are derived.
+
+**Two E3 equations, both derived, over arity x length:**
+
+- **E3-short** -- the interpretable one, and the one the study puts forward. The shortest
+  (arity, length) whose paired interval against E3-best spans zero: the saddle where more
+  terms and higher arity stop paying. This is what the 15-term arity-2 equation already is.
+- **E3-best** -- the largest consensus over all (arity, length), regardless of size. It exists
+  only to bound what the additive form can reach, and is reported in the docs rather than put
+  forward.
+
+**Two constraints on the rule, both from the owner and both already the codebase's position.**
+
+1. **Not the Pareto knee.** `length_comparison`'s docstring records why: knee detectors,
+   gRDP-smoothed knee detectors and the Pareto-front knee all put the bend at four to eight
+   terms, and every one of those lengths is *significantly worse* than the published equation
+   fold by fold. `selection.pareto_knee` stays a reported diagnostic and decides nothing.
+2. **The short equation may not land below the 15-term result.** The paired rule has that
+   floor built in -- "not significantly worse" -- but **the incumbent changes**, and that is
+   the trap. Today the comparison is against the 15-term equation; in the new design it is
+   against E3-best (~23 terms, arity 3, 0.6855), and a paired interval against a *stronger*
+   incumbent is wider, so "not significantly worse than 0.6855" can admit a length whose
+   absolute score is below 0.6381. **Measure what the rule returns before trusting it.** If it
+   lands below the current 15-term equation the rule needs tightening, not accepting.
+
 ### Closing decisions — 2026-09-08, set by the owner
 
 **The beam line closes as a negative and the branch closes with it.** Nothing measured beat

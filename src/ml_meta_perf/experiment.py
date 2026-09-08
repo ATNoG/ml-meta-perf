@@ -134,7 +134,7 @@ DEFAULT_E2 = Configuration(max_abs_zscore=3.0, penalty=5.0, pool_size=100, max_t
 #
 # So neither R2 nor ranking decides this, and what is left is the study's standing tie-break:
 # at indistinguishable measured performance, the shorter equation wins.
-# `equation_search.OBJECTIVE_WEIGHTS` agrees -- 0.689 at sixteen against 0.679 at twenty --
+# The consensus curve agrees -- 0.689 at sixteen against 0.679 at twenty --
 # though that margin is drawn from the same twenty folds and should not be read as decisive
 # on its own either.
 #

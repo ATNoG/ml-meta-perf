@@ -5,12 +5,11 @@
 #   venv/bin/pip install -r requirements.txt
 #   venv/bin/pre-commit install
 #
-# The project itself, editable, with the `search` extra (joblib) needed by
-# `ml-meta-perf-search`. Everything below the blank line is dev/CI tooling,
+# The project itself, editable. Everything below the blank line is dev/CI tooling,
 # pinned to exactly what `.github/workflows/main.yml` installs, so a commit that passes
 # the local pre-commit hook passes CI for the same reason -- both are `language: system`
 # hooks that must find the same tool versions on PATH.
--e .[search]
+-e .
 
 ruff==0.16.1
 basedpyright==1.39.8
