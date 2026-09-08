@@ -20,30 +20,40 @@ d92d8d3  Stop stamping the PDF figures with the wall clock
 f7b4a7c  Score beam policies on four protocols, and use ESS as a sampler not a design
 ```
 
-**The working tree is clean and the whole suite is green (499 tests).** Nothing is half-done in
+**The suite is green (522 tests, 35 minutes).** The selection rule was replaced on
+2026-09-08 -- see below -- and `tests/test_selection.py` went from 30 test methods to 45. Nothing is half-done in
 the tree; what is unfinished is unstarted, and it is listed under "The plan" below.
 
 ### Read this first
 
-**`selection.best_configuration` gives the right answer on this corpus for the wrong reason.**
-It is committed, tested and unused. Before wiring it into the pipeline (C1), decide whether to
-replace it -- see "The selection rule" below, which measures how it fails. Wiring a rule that
-will flip its verdict as the corpus grows is worse than leaving the length written down, because
-a constant at least does not change silently.
+**The selection rule was replaced on 2026-09-08 and is now free of the corpus size.** The
+adjusted-consensus rule that priced a feature slot by `n` is gone; `best_configuration` is a
+floor-curve argmax per grammar followed by a paired test across grammars. It still derives
+(2, 15) and (3, 23), it still has no free parameter, and it can no longer flip its verdict as
+the corpus grows. See "The selection rule" below for the design, what was rejected on the way,
+and the one disclosure still owed. **It is still committed, tested and unused** -- wiring it in
+is C1.
 
 ### The one thing to pick up: C1
 
-`selection.best_configuration` now derives the equation, and **nothing uses it yet.**
+`selection.best_configuration` derives the equation, and **nothing uses it yet.**
 `experiment.py:356` still reads `size = min(config.headline_terms, available)`. Wiring that up
 is C1 and it is the next commit. Everything needed is in place and measured:
 
 ```python
 from ml_meta_perf.selection import best_configuration, most_capable
-best_configuration(curves, rows=frame.height)   # -> (2, 15)   E3-Valid, the study's equation
-most_capable(curves)                            # -> (3, 23)   E3-MAX, the capability bound
+best_configuration(curves, errors)   # -> (2, 15)   E3-Valid, the study's equation
+most_capable(curves)                 # -> (3, 23)   E3-MAX, the capability bound
 ```
 
-where `curves` is `{arity: EquationReport.curve}` for arities 2, 3 and 4.
+where `curves` is `{arity: EquationReport.curve}` for arities 2, 3 and 4, each carrying an
+`r2_loo_cell` column, and `errors` is `{arity: {n_terms: per-held-out-dataset MAE}}` under the
+doubly-held-out protocol.
+
+**C1 therefore has a prerequisite C2 did not have before:** the curve must carry
+`r2_loo_cell`. `run_equation` builds `paths` for `loo_dataset` and `loo_model` only, so
+`cross_validate_doubly_held_out` has to join them and `_curve` will pick the column up with no
+change. Measured cost: **4.1 s per arity** for the whole 32-length path, against a 282 s run.
 
 ## The plan — C0 to C7
 
@@ -61,14 +71,19 @@ sites take it from there -- 566/568 (protocol scores), 757/759 (decision report)
 that fallback becomes `max(path)`. `Configuration.headline_terms` then has no readers and goes.
 
 **C2. Search the arity too.** `--arity` becomes a list, default `(2, 3, 4)`: one `build_library`
-and one `fit` per arity, then `best_configuration` across the combined curves. Measured cost
-about 25 s, nearly all of it the arity-4 library build, against a 282 s run:
+and one `fit` per arity, then `best_configuration` across the combined curves. Re-timed on
+2026-09-08 -- the arity-4 build is **1.3 s, not 22.8 s** (the old number was measured against
+the six-feature model pool; the equation's pool is four). The whole three-arity grid including
+all four protocols at all 32 lengths is **18 s**, against a 282 s run:
 
-| arity | library | build | fit |
-|---:|---:|---:|---:|
-| 2 | 220 terms | 0.03 s | 0.36 s |
-| 3 | 838 terms | 0.16 s | 0.59 s |
-| 4 | 4,223 terms | 22.76 s | 1.60 s |
+| arity | library | build | fit | 3 protocols + cell |
+|---:|---:|---:|---:|---:|
+| 2 | 220 terms | 0.02 s | 0.33 s | 4.1 s |
+| 3 | 838 terms | 0.16 s | 0.59 s | 4.1 s |
+| 4 | 4,223 terms | 1.28 s | 1.13 s | 4.2 s |
+
+The arity-4 candidate is **(4, 15)**, floor 0.6071 -- admissible under the paired test and
+never selected, because its complexity is 60 against arity 2's 30.
 
 **C3. Four equations, and only one of them is evaluated.**
 
@@ -107,77 +122,148 @@ docstring should say so rather than implying a clean layering.
 apply. C4-C7 change nothing and are verified by snapshot-and-compare over `results/`,
 `assets/docs/` and all fourteen figures -- which the PDF determinism fix now makes possible.
 
-## The selection rule -- WORKS HERE, WRONG IN PRINCIPLE, MUST BE REPLACED
+## The selection rule -- REVISED 2026-09-08, and now n-free
 
 ```
-consensus(a, k) = median of the three protocol R2 at arity a, k terms   (already computed)
-p               = a * k        feature slots the equation spends
-n               = 476          corpus rows
+floor(a, k) = min of the FOUR protocol R2 at arity a, k terms
+              in-sample, loo-dataset, loo-model, loo-cell
+candidate(a) = argmax over k of floor(a, k)          one length per grammar
+E3-MAX       = the candidate with the best floor
+E3-Valid     = the candidate of least complexity (a*k) that E3-MAX does not beat
+               by more than the spread of that beating:
 
-E3-Valid = argmax over (a, k) of  1 - (1 - consensus) * (n - 1) / (n - p - 1)
-E3-MAX   = argmax over (a, k) of  consensus
+               gain  = mean per-dataset MAE E3-MAX saves over the candidate
+               scale = paired bootstrap SE of that same mean
+               take the larger grammar only when  gain / scale > 1
 ```
 
-One number, one max, no branches, no tuned constant. On this corpus: **(2, 15)** and **(3, 23)**
--- the equations the study already publishes, now derived.
+`selection.grammar_margin` returns `(gain, scale, ratio)`. On this corpus the ratio for
+(2, 15) against E3-MAX is **0.17** -- E3-MAX's advantage is a sixth of the spread of that
+advantage -- so the smaller grammar stands, and would stand at any bar from 0.5 to 2.
 
-The degrees-of-freedom factor exceeds one and grows with `p`, inflating the *unexplained* share,
-so a term pays for itself only if the consensus it buys outweighs the residual degrees of
-freedom it costs. At 476 rows that exchange rate is **about 0.0008 of consensus per slot**, set
-by the corpus size rather than by a threshold. Arity 3 buys +0.0058 of consensus for 39 more
-slots and is charged 0.0303 -- five times the price of the goods.
+On this corpus: candidates `{2: 15, 3: 23, 4: 15}`, **E3-MAX = (3, 23)**, **E3-Valid = (2, 15)**
+-- the two equations the study publishes, still derived, and now derived without a row count.
 
-**`p = arity * terms` carries the decision.** With `p = terms` the margin between (2, 15) and
-(3, 23) is **0.0006**, a coin flip; with the arity penalty it is 0.0086 and the top eight
-configurations are all arity 2. So the justification -- a term of arity `a` names `a` raw
-features, which is what tells fifteen terms at arity 2 apart from fifteen at arity 3 when a
-coefficient count cannot -- is load-bearing and has to be argued, not asserted in passing.
+**What the revision fixed.** The old rule was `argmax of consensus discounted by adjusted R2's
+degrees-of-freedom factor against p = a*k`. It priced a feature slot by the corpus size, so
+holding the curve, the folds and the plateau fixed and growing `n` from 476 to 5,000 flipped
+its answer from (2, 15) to (3, 23). The table that measured that flip is gone with the rule.
+`best_configuration` and `most_capable` now take no `n`, and
+`test_no_corpus_size_enters_the_rule` pins it as a signature check -- the required invariance
+(hold the curve, vary the hypothetical corpus size, the answer must not move) is satisfied by
+construction rather than by measurement.
 
-**Three departures from the textbook, all in the docstring:** adjusted R2 corrects *in-sample*
-optimism and the consensus is already cross-validated, so this is a second penalty on top of
-one that is there; `p` is a complexity budget, not a parameter count; and ridge shrinkage puts
-the effective degrees of freedom below even the coefficient count. The honest description is
-"the consensus discounted by adjusted R2's functional form against a complexity budget".
+**Two design choices carry it, and both are arguable rather than obvious.**
 
-**IT IMPLEMENTS THE LETTER OF THE RULE, NOT THE INTENTION.** Recorded 2026-09-08 by the
-owner, and then measured. The intention was a statement about the *curve*: the shortest
-equation whose combined R2 does not improve significantly with more terms -- saturation, a
-plateau. What this implements is a *cost trade-off*: an argmax of consensus discounted by a
-price per slot. Those coincide on this corpus and diverge elsewhere, because the price is a
-function of the corpus size:
+*The floor, not the median.* `floor_curve` scores a length by its **worst** protocol, over four
+rather than three. The weakest protocol here is always `r2_loo_cell` -- the one the study's
+headline is about -- and a rule that selects on a median of three looser protocols is selecting
+on a different quantity from the one it publishes. It also matters arithmetically: on the
+median of four, the arity-2 curve peaks at **20 terms**, not 15. The min is what puts the peak
+at 15, and the reason to prefer it is the one above, which has to be argued in the chapter.
 
-| n | E3-Valid | E3-MAX | picks | slot price |
-|---:|---:|---:|---|---:|
-| 476 | 0.6137 | 0.5834 | (2, 15) | 0.00081 |
-| 1500 | 0.6307 | 0.6267 | (2, 15) | 0.00024 |
-| 5000 | 0.6359 | 0.6389 | **(3, 23)** | 0.00007 |
+*One candidate per grammar.* The paired test is asked about three points, never about ninety-six.
+That is the whole difference from the rejected `shortest whose paired CI vs E3-MAX spans zero`,
+which admitted nine terms at arity 4. Measured again this session against (3, 23) on per-dataset
+MAE, leave-one-cell-out: (2, 6) and (2, 8) are **rejected**, (2, 9) onward are all admissible.
+**A paired test over twenty groups cannot choose a length and is never asked to** -- length is
+an argmax, the test only ever chooses a grammar.
 
-**Same curve, same plateau, same 0.0058 gap -- only `n` changes, and the answer flips.** As the
-corpus grows, slots get cheaper, the penalty vanishes, and the rule converges on the raw argmax,
-which is E3-MAX. It will stop shortening at all. **This corpus is explicitly going to grow**, so
-this is not hypothetical: the rule will change its verdict without anything about the equations
-changing.
+**The first version of this rule used `paired_comparison(...).significant` and that was wrong,
+caught 2026-09-08 by the owner: "the rule is not a logic statement or math value to overcome".**
+Significance is a failure-to-reject. It is decided by the test's power rather than by anything
+about the equations, and measured on this corpus it let **every** candidate through, so
+`best_configuration` returned the first one it visited and complexity decided alone --
+precisely the "the statistics were decoration" failure recorded against the rule before it.
 
-**What a correct rule would look like.** It has to read the *shape* of the consensus curve --
-where the increments stop being distinguishable from noise -- rather than charge a
-size-dependent price. The fold-to-fold spread is the natural scale for "distinguishable", and it
-does not depend on `n` the way a degrees-of-freedom correction does. Whatever replaces this must
-be checked against the flip above: **run it at several hypothetical corpus sizes with the curve
-held fixed, and require the answer not to move.** That test is cheap and would have caught this.
+| candidate | slots | significance form | ratio form |
+|---|---:|---|---:|
+| (2, 15) | 30 | not significant -> passes | **0.17** |
+| (4, 15) | 60 | not significant -> passes | 0.15 |
+| (3, 23) | 69 | compares with itself | 0.00 |
 
-**THIS RULE NEEDS REVISING.** It was arrived at knowing the answer it had to reproduce -- the
-15-term arity-2 equation the study already defends. That is the shape of reasoning this project
-rejected once before, in the capability-ordered rung. What makes it admissible rather than
-fitted: it has no free parameter to have tuned, and its complexity measure is justified
-independently of the answer. What it has **not** had is a test against a corpus where the right
-answer is not already known. Revisit when there is one, and disclose the provenance in the
-chapter.
+The ratio form is a comparison of two measured quantities and it discriminates where
+significance did not. Against the same reference, on arity-2 lengths that are *not* candidates:
+(2, 6) 2.29, (2, 8) 1.94, (2, 9) 1.80, (2, 12) 1.16 all clear the bar and are rejected, where
+significance rejected only 6 and 8. (2, 10) 0.88, (2, 18) 0.59, (2, 20) 0.57 do not.
+
+**The one in `ratio > 1` is where signal equals noise, not a tuned constant**, and the verdict
+is not knife-edge on it -- 0.17 holds at 0.5, 1 and 2. **Where the bar sits against a sign
+test, measured:** the ratio reads signal-to-noise on the *mean*, so concentration lowers it
+without vetoing -- the same mean gain scores 1.02 carried by one fold of twenty, 1.50 by two,
+2.23 by four, unbounded when every fold carries an equal share. That is looser than a sign
+test, deliberately: the standing warning here is that the paired test *under*-calls, having
+once scored a 0.203 collapse of leave-one-dataset-out R2 as a tie. Read the ratio beside
+`floor_curve` and `protocol_spread`, never instead of them.
+
+**STILL OWED, and unchanged by the revision:** this rule was also written knowing the answer it
+had to reproduce. What is now defensible is the shape -- no free parameter, no corpus size, a
+length by argmax and a grammar by a test that fires. What it has **not** had is a corpus whose
+right answer is unknown. Disclose the provenance in the chapter, alongside the
+multiple-comparisons disclosure.
+
+### Why (2, 15) and not (3, 23): consistency, measured
+
+**Corrected framing, 2026-09-08 by the owner: 0.62 is not a threshold to hit.** The claim is
+that the arity-2, 15-term equation clears 0.62 on the evaluation R2 *and holds up across every
+leave-one-out form*, while the arity-3, 23-term bound reaches higher on a larger grammar and
+**drops further** under lomo, lodo and loo-cell. Both halves are now measured, and both hold.
+
+| | grammar | terms | slots | in-sample | lodo | lomo | loo-cell | floor | **spread** |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| **E3-Valid** | arity 2 | 15 | 30 | 0.6578 | 0.6381 | 0.6218 | 0.6162 | 0.6162 | **0.0416** |
+| E3-MAX | arity 3 | 23 | 69 | 0.6751 | 0.6439 | 0.6327 | 0.6213 | 0.6213 | 0.0539 |
+| (the arity-4 candidate) | arity 4 | 15 | 60 | 0.6508 | 0.6294 | 0.6114 | 0.6071 | 0.6071 | 0.0438 |
+
+`spread` is `in-sample - worst protocol`, and it is `selection.protocol_spread` -- **reported,
+never selected on.** The three evaluation protocols at (2, 15) read 0.6578 / 0.6381 / 0.6218,
+all above 0.62; the doubly-held-out cell reads 0.6162, and that is the strictest protocol in
+the study rather than a miss.
+
+**(2, 15) has the smallest spread of any configuration on the grid whose floor is competitive.**
+Among every point within 0.01 of the best floor, the ranking is 0.0416 (2, 15), 0.0499 (3, 17),
+0.0539 (3, 23), 0.0562 (3, 21), 0.0598 (3, 22), 0.0643 (3, 24). And within arity 2, among the
+ten lengths clearing 0.62 on all three evaluation protocols, 15 has **both** the highest floor
+and the smallest spread -- the next best spread is 0.0537 at k=18, a third worse.
+
+So E3-MAX buys **+0.0051 of floor for +0.0123 of spread and +39 feature slots**, and the
++0.0051 is inside the fold-to-fold spread twice over: the paired test cannot separate the two
+(mean +0.0008 of per-dataset MAE, 7/20, p = 0.263, CI [-0.0100, +0.0092]) and the unpaired
+bootstrap standard error of a pooled cell R2 is **0.059**. That is the whole argument for the
+smaller grammar, and it is now three measured quantities rather than a preference.
+
+**The spread is deliberately not in the selection score.** Combining a level and a spread needs
+a weight between them; a weight is a free parameter; a free parameter is exactly what this
+revision removed. The two are reported side by side and the argument is made in the chapter.
+`test_it_does_not_decide_anything` pins that the spread cannot flip the rule.
+
+**Bootstrap standard errors, measured this session** (2,000 rounds, resampling held-out groups)
+-- worth keeping, because every gap argued anywhere in this file is smaller than them:
+
+| configuration | loo-dataset | loo-model | loo-cell |
+|---|---:|---:|---:|
+| (2, 15) | 0.056 | 0.045 | 0.059 |
+| (3, 23) | 0.056 | 0.046 | 0.059 |
+
+That is why "within one fold-to-fold standard error of the best" was **tried and dropped**: at
+a scale of 0.056 the whole plateau from ten terms up is one band and the rule selects (2, 10)
+or shorter, below the floor. Pairing is what makes the spread usable, because it removes the
+between-dataset variance that dominates the unpaired number.
+
+**A penalty re-sweep is available and was not taken.** At (2, 15) with penalty 0.3-0.5 the four
+protocols read 0.6716 / 0.6460 / 0.6302 / 0.6202 -- better than penalty 20 on every one of
+them, by 0.004 to 0.014. Full sweep at (2, 15), cell-loo R2: 0.1 -> 0.5847, 0.3 -> 0.6202,
+0.5 -> 0.6201, 1 -> 0.6197, 2 -> 0.6180, 3 -> 0.6154, 5 -> 0.6000, 10 -> 0.6032, 15 -> 0.5927,
+**20 -> 0.6162**, 30 -> 0.6014, 50 -> 0.2817. Every one of those gaps is an order of magnitude
+inside the 0.059 standard error, so **if penalty 0.3 is adopted it has to be on the merits**,
+re-swept jointly with z-cap and length under C6 -- not because it moves a protocol across a
+round number. Job 15335 chose 20 and the note against an essentially unregularised ridge on
+476 rows still applies. Left unchanged.
 
 **What it replaced**, so it is not re-attempted: "the simplest grammar whose own best length is
 not significantly worse than the best overall". Same answer, three conditions and a paired test
 -- and that test *rejected nothing*: all three arities came out "not significantly worse", with
-arity 4 at 26 terms winning 13 of 20 folds. The discrimination came entirely from preferring
-the simplest grammar, so the statistics were decoration. Earlier attempts and why each failed:
+arity 4 at 26 terms winning 13 of 20 folds. Earlier attempts and why each failed:
 
 | rule | picked | LOO-dataset | |
 |---|---|---:|---|
@@ -185,6 +271,8 @@ the simplest grammar, so the statistics were decoration. Earlier attempts and wh
 | + sign test not against it | arity 4, 14 terms | 0.6148 | 0.023 below |
 | + mean not negative | arity 3, 23 terms | 0.6439 | degenerates to E3-MAX |
 | Pareto knee / gRDP knee | 4 to 8 terms | -- | every one significantly worse; already rejected 2026-09-07 |
+| consensus adjusted by degrees of freedom | (2, 15) | 0.6381 | right answer, priced by `n`; replaced 2026-09-08 |
+| within one fold-to-fold SE of the best | (2, 10) or shorter | 0.6151 | unpaired SE is 0.056; the plateau is one band |
 
 **The floor that rules these out:** E3-Valid may not land below the 15-term result (0.6381).
 `selection.pareto_knee` decides nothing and stays a reported diagnostic.
@@ -747,4 +835,3 @@ re-running: the cluster copy goes stale and the memory request is load-bearing.
   restructure; prefer moving files to a scratch directory over reverting.
 - **Splicing text with `s.index(a)` / `s.index(b)` silently duplicated a hundred lines** when the
   end marker occurred before the start marker. Assert `end > start`.
-

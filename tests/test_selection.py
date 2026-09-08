@@ -8,21 +8,25 @@ significantly worse than the selected equation when paired over the twenty held-
 The geometry stays as a reported diagnostic; `best_length` decides.
 """
 
+import inspect
 import unittest
 
 import numpy as np
 import polars as pl
 
 from ml_meta_perf.selection import (
-    adjusted_consensus,
+    arity_candidates,
     best_configuration,
     best_length,
     complexity,
     consensus_curve,
+    floor_curve,
+    grammar_margin,
     most_capable,
     pareto_front,
     pareto_knee,
     pareto_table,
+    protocol_spread,
     recommend,
 )
 
@@ -32,13 +36,28 @@ def curve(
     in_sample: list[float],
     loo: list[float] | None = None,
     loo_model: list[float] | None = None,
+    loo_cell: list[float] | None = None,
 ) -> pl.DataFrame:
     data: dict[str, list[float] | list[int]] = {"n_terms": sizes, "r2_in_sample": in_sample}
     if loo is not None:
         data["r2_loo_dataset"] = loo
     if loo_model is not None:
         data["r2_loo_model"] = loo_model
+    if loo_cell is not None:
+        data["r2_loo_cell"] = loo_cell
     return pl.DataFrame(data)
+
+
+def flat_errors(curves: dict[int, pl.DataFrame], error: float = 0.10) -> dict[int, dict[int, np.ndarray]]:
+    """Per-group errors that are identical everywhere, so no paired test can separate anything.
+
+    The default state for a rule test: with nothing distinguishable, `best_configuration` must
+    fall back on complexity alone, which is the behaviour worth pinning separately from the
+    behaviour when a difference is real.
+    """
+    return {
+        arity: {int(size): np.full(20, error) for size in table["n_terms"].to_list()} for arity, table in curves.items()
+    }
 
 
 class TestConsensusCurve(unittest.TestCase):
@@ -220,13 +239,104 @@ class TestRecommend(unittest.TestCase):
         self.assertGreater(recommend(plain).height, 0)
 
 
-class TestAdjustedConsensus(unittest.TestCase):
-    """The rule that picks the equation: one number, one argmax over arity x length.
+class TestFloorCurve(unittest.TestCase):
+    """A length scores as its worst protocol, over all four including the cell protocol."""
 
-    It replaced a chain of conditions ("the simplest grammar whose own best is not
-    significantly worse than the best overall"), which produced the same answer and could not
-    be read off a table. **It is also the rule flagged for revision** -- it was arrived at
-    knowing the answer it had to reproduce, so these pin its mechanics rather than its verdict.
+    def test_it_takes_the_minimum_over_every_protocol_present(self) -> None:
+        table = curve([4], [0.70], [0.65], [0.60], [0.55])
+        self.assertAlmostEqual(float(floor_curve(table)[0]), 0.55)
+
+    def test_the_cell_protocol_is_read_and_the_median_would_have_hidden_it(self) -> None:
+        """The point of the minimum. Three protocols agree at 0.66 and the cell reads 0.50;
+        a median of the four sits at 0.66 and reports a number no protocol achieved."""
+        table = curve([4], [0.66], [0.66], [0.66], [0.50])
+        self.assertAlmostEqual(float(floor_curve(table)[0]), 0.50)
+        self.assertGreater(float(consensus_curve(table)[0]), 0.60)
+
+    def test_it_works_on_a_curve_that_has_not_been_scored_on_every_protocol(self) -> None:
+        np.testing.assert_allclose(floor_curve(curve([2, 4], [0.5, 0.6], [0.4, 0.55])), [0.4, 0.55])
+
+    def test_it_refuses_a_curve_with_no_protocol_columns(self) -> None:
+        with self.assertRaises(ValueError):
+            floor_curve(pl.DataFrame({"n_terms": [2, 4]}))
+
+
+class TestGrammarMargin(unittest.TestCase):
+    """Gain, the paired spread of that gain, and the ratio the rule compares against one."""
+
+    def test_a_gain_with_no_fold_to_fold_variation_is_perfectly_consistent(self) -> None:
+        """Not unmeasurable -- the reference wins on every group by the same amount, which is
+        the strongest evidence a paired comparison can carry."""
+        gain, scale, ratio = grammar_margin(np.full(20, 0.12), np.full(20, 0.10))
+        self.assertAlmostEqual(gain, 0.02)
+        self.assertAlmostEqual(scale, 0.0)
+        self.assertEqual(ratio, float("inf"))
+
+    def test_identical_errors_give_a_zero_ratio(self) -> None:
+        """`most_capable` compares against itself in the loop and must never reject itself."""
+        errors = np.linspace(0.05, 0.20, 20)
+        self.assertAlmostEqual(grammar_margin(errors, errors)[2], 0.0)
+
+    def test_a_larger_grammar_that_is_worse_can_never_be_taken(self) -> None:
+        """A gain of zero or less is no gain, whatever its spread."""
+        self.assertAlmostEqual(grammar_margin(np.full(20, 0.08), np.full(20, 0.10))[2], 0.0)
+
+    def test_concentrating_a_gain_in_fewer_groups_lowers_the_ratio(self) -> None:
+        """The bar reads the mean's signal-to-noise, so the same mean gain scores lower the
+        fewer groups deliver it. It is looser than a sign test and `grammar_margin`'s
+        docstring says so: one group of twenty carrying all of it lands at 1.02, on the bar
+        rather than under it, where a sign test would call that a tie."""
+        reference = np.full(20, 0.10)
+        ratios = [grammar_margin(np.array([0.10] * (20 - n) + [0.10 + 0.02 / n] * n), reference)[2] for n in (1, 2, 4)]
+        self.assertEqual(ratios, sorted(ratios))
+        self.assertAlmostEqual(ratios[0], 1.02, places=2)
+
+    def test_it_refuses_mismatched_folds(self) -> None:
+        with self.assertRaises(ValueError):
+            grammar_margin(np.zeros(20), np.zeros(19))
+
+
+class TestProtocolSpread(unittest.TestCase):
+    """How far a length falls from its fit to its worst protocol. Reported, never selected on."""
+
+    def test_it_measures_the_drop_from_the_fit_to_the_floor(self) -> None:
+        table = curve([4], [0.70], [0.65], [0.63], [0.60])
+        self.assertAlmostEqual(float(protocol_spread(table)[0]), 0.10)
+
+    def test_the_floor_alone_cannot_tell_two_equations_apart_and_this_can(self) -> None:
+        """Two lengths reaching the same worst protocol from a different fit are one number to
+        `floor_curve`. They are not the same equation, and this is the column that says so."""
+        table = curve([4, 8], [0.66, 0.80], [0.64, 0.70], [0.63, 0.68], [0.60, 0.60])
+        np.testing.assert_allclose(floor_curve(table), [0.60, 0.60])
+        np.testing.assert_allclose(protocol_spread(table), [0.06, 0.20])
+
+    def test_it_refuses_a_curve_with_nothing_to_measure_the_drop_from(self) -> None:
+        with self.assertRaises(ValueError):
+            protocol_spread(pl.DataFrame({"n_terms": [2], "r2_loo_dataset": [0.5]}))
+
+    def test_it_does_not_decide_anything(self) -> None:
+        """The spread is not in the selection score, deliberately: weighting a level against a
+        spread is the free parameter this rule was revised to remove. Give the simplest
+        candidate the *worse* spread and it is still selected."""
+        curves = {
+            2: curve([15], [0.90], [0.60], [0.60], [0.60]),
+            3: curve([23], [0.62], [0.61], [0.61], [0.61]),
+        }
+        self.assertGreater(float(protocol_spread(curves[2])[0]), float(protocol_spread(curves[3])[0]))
+        self.assertEqual(best_configuration(curves, flat_errors(curves)), (2, 15))
+
+
+class TestBestConfiguration(unittest.TestCase):
+    """The rule that picks the equation: a length per grammar by argmax, then a paired test.
+
+    **This replaced the adjusted-consensus rule on 2026-09-08**, and the defect it fixes is
+    the one `best_configuration`'s docstring sets out: the old rule priced a feature slot by
+    the corpus size, so holding the curve and the folds fixed and growing the corpus from 476
+    rows to 5,000 flipped its answer from (2, 15) to (3, 23) with the plateau unmoved. There
+    is no row count in this one to flip it, which `test_no_corpus_size_enters_the_rule` pins.
+
+    The disclosure the old tests carried still applies: the rule was written knowing the
+    answer it had to reproduce, so these pin its mechanics rather than its verdict.
     """
 
     def test_complexity_charges_for_the_grammar_not_the_coefficients(self) -> None:
@@ -235,55 +345,102 @@ class TestAdjustedConsensus(unittest.TestCase):
         self.assertEqual(complexity(2, 15), 30)
         self.assertEqual(complexity(3, 15), 45)
 
-    def test_the_penalty_grows_with_complexity(self) -> None:
-        table = curve([10, 10], [0.7, 0.7], [0.7, 0.7], [0.7, 0.7])
-        cheap = adjusted_consensus(table, arity=2, rows=476)[0]
-        dear = adjusted_consensus(table, arity=4, rows=476)[0]
-        self.assertGreater(cheap, dear)
-
-    def test_equal_complexity_scores_equally(self) -> None:
-        table = curve([6], [0.6], [0.6], [0.6])
-        self.assertAlmostEqual(
-            float(adjusted_consensus(table, arity=2, rows=476)[0]),
-            float(adjusted_consensus(curve([4], [0.6], [0.6], [0.6]), arity=3, rows=476)[0]),
-            places=3,
-        )
-
-    def test_a_longer_equation_must_earn_its_length(self) -> None:
-        """The whole point of the discount: more terms at the same consensus scores worse."""
-        table = curve([5, 25], [0.6, 0.6], [0.6, 0.6], [0.6, 0.6])
-        scores = adjusted_consensus(table, arity=2, rows=476)
-        self.assertGreater(float(scores[0]), float(scores[1]))
-
-    def test_it_refuses_a_configuration_with_no_degrees_of_freedom_left(self) -> None:
-        """`rows - p - 1 <= 0` has no correction to make, and must not return a number."""
-        table = curve([300], [0.6], [0.6], [0.6])
-        self.assertFalse(np.isfinite(adjusted_consensus(table, arity=4, rows=476)[0]))
-
-    def test_best_configuration_takes_the_argmax_over_arities(self) -> None:
+    def test_each_grammar_contributes_one_candidate_at_its_own_floor_argmax(self) -> None:
         curves = {
-            2: curve([5, 10], [0.50, 0.60], [0.50, 0.60], [0.50, 0.60]),
-            3: curve([5, 10], [0.50, 0.605], [0.50, 0.605], [0.50, 0.605]),
+            2: curve([5, 10, 15], [0.50, 0.60, 0.58], [0.50, 0.60, 0.58], [0.50, 0.60, 0.58], [0.50, 0.60, 0.58]),
+            3: curve([5, 10, 15], [0.50, 0.58, 0.62], [0.50, 0.58, 0.62], [0.50, 0.58, 0.62], [0.50, 0.58, 0.62]),
         }
-        # At 476 rows a slot costs about 0.0008 of consensus, so arity 3's ten extra slots
-        # cost ~0.008 and it only buys 0.005. A gap wider than the price would win, correctly.
-        self.assertEqual(best_configuration(curves, rows=476), (2, 10))
+        self.assertEqual(arity_candidates(curves), {2: 10, 3: 15})
+
+    def test_a_candidate_is_the_worst_protocol_argmax_not_the_median_one(self) -> None:
+        """Ten terms wins on three protocols and craters on the cell; five is the candidate."""
+        curves = {
+            2: curve([5, 10], [0.60, 0.66], [0.60, 0.66], [0.60, 0.66], [0.58, 0.30]),
+        }
+        self.assertEqual(arity_candidates(curves), {2: 5})
+
+    def test_the_simplest_indistinguishable_grammar_wins(self) -> None:
+        """With nothing separable, the smallest `complexity` is the answer."""
+        curves = {
+            2: curve([5, 15], [0.50, 0.60], [0.50, 0.60], [0.50, 0.60], [0.50, 0.60]),
+            3: curve([5, 23], [0.50, 0.61], [0.50, 0.61], [0.50, 0.61], [0.50, 0.61]),
+        }
+        self.assertEqual(most_capable(curves), (3, 23))
+        self.assertEqual(best_configuration(curves, flat_errors(curves)), (2, 15))
+
+    def test_a_grammar_that_is_measurably_better_is_taken(self) -> None:
+        """The comparison is not decoration: give arity 3 a real per-group advantage and the
+        rule stops preferring the simpler grammar."""
+        curves = {
+            2: curve([5, 15], [0.50, 0.60], [0.50, 0.60], [0.50, 0.60], [0.50, 0.60]),
+            3: curve([5, 23], [0.50, 0.61], [0.50, 0.61], [0.50, 0.61], [0.50, 0.61]),
+        }
+        errors = flat_errors(curves)
+        errors[3][23] = np.full(20, 0.04)
+        self.assertEqual(best_configuration(curves, errors), (3, 23))
+
+    def test_the_decision_is_a_ratio_to_overcome_not_a_failed_test(self) -> None:
+        """The correction that produced `grammar_margin`.
+
+        A gain the size of its own spread is the boundary. Below it the simpler grammar
+        stands; above it the larger one is taken. Both sides are measured, so the rule is a
+        comparison of two numbers rather than a failure to reject a null.
+        """
+        rng = np.random.default_rng(0)
+        base = 0.10 + rng.normal(0.0, 0.02, 20)
+        curves = {
+            2: curve([15], [0.60], [0.60], [0.60], [0.60]),
+            3: curve([23], [0.61], [0.61], [0.61], [0.61]),
+        }
+        # Independent per-fold noise on both sides, so the *difference* varies from fold to
+        # fold as it does on the real corpus. A difference with no variation at all is the
+        # separate degenerate case `TestGrammarMargin` covers.
+        small = {2: {15: base}, 3: {23: base - 0.001 + rng.normal(0.0, 0.02, 20)}}
+        large = {2: {15: base}, 3: {23: base - 0.050 + rng.normal(0.0, 0.02, 20)}}
+        self.assertLess(grammar_margin(small[2][15], small[3][23])[2], 1.0)
+        self.assertGreater(grammar_margin(large[2][15], large[3][23])[2], 1.0)
+        self.assertEqual(best_configuration(curves, small), (2, 15))
+        self.assertEqual(best_configuration(curves, large), (3, 23))
+
+    def test_a_grammar_that_is_merely_better_on_average_is_not_taken(self) -> None:
+        """Half the groups better and half worse is a mean, not a result -- the standing rule
+        against reading a difference of two means over twenty folds."""
+        curves = {
+            2: curve([5, 15], [0.50, 0.60], [0.50, 0.60], [0.50, 0.60], [0.50, 0.60]),
+            3: curve([5, 23], [0.50, 0.61], [0.50, 0.61], [0.50, 0.61], [0.50, 0.61]),
+        }
+        errors = flat_errors(curves)
+        errors[3][23] = np.array([0.02] * 10 + [0.18] * 10)
+        self.assertEqual(best_configuration(curves, errors), (2, 15))
+
+    def test_no_corpus_size_enters_the_rule(self) -> None:
+        """The invariance the old rule failed, as a signature check.
+
+        Adjusted consensus took ``rows`` and its verdict moved with it. Nothing here does, so
+        the required check -- hold the curve fixed, vary the hypothetical corpus size, require
+        the answer not to move -- is satisfied by construction rather than by measurement.
+        """
+        for function in (best_configuration, most_capable, arity_candidates, floor_curve):
+            parameters = set(inspect.signature(function).parameters)
+            self.assertNotIn("rows", parameters, f"{function.__name__} must not price by corpus size")
+            self.assertNotIn("n", parameters, f"{function.__name__} must not price by corpus size")
 
     def test_most_capable_ignores_complexity(self) -> None:
         """The bound is not put forward as an equation to read, so length is not charged."""
         curves = {
-            2: curve([5, 10], [0.50, 0.60], [0.50, 0.60], [0.50, 0.60]),
-            3: curve([5, 28], [0.50, 0.65], [0.50, 0.65], [0.50, 0.65]),
+            2: curve([5, 10], [0.50, 0.60], [0.50, 0.60], [0.50, 0.60], [0.50, 0.60]),
+            3: curve([5, 28], [0.50, 0.65], [0.50, 0.65], [0.50, 0.65], [0.50, 0.65]),
         }
         self.assertEqual(most_capable(curves), (3, 28))
 
     def test_no_configuration_is_hardcoded(self) -> None:
-        """Moving where the consensus peaks moves the answer."""
+        """Moving where the floor peaks moves the answer."""
         for peak in (6, 12, 18):
             sizes = [6, 12, 18]
             scores = [0.5 + 0.1 * (size == peak) for size in sizes]
-            curves = {2: curve(sizes, scores, scores, scores)}
-            self.assertEqual(best_configuration(curves, rows=476)[1], peak)
+            curves = {2: curve(sizes, scores, scores, scores, scores)}
+            self.assertEqual(best_configuration(curves, flat_errors(curves))[1], peak)
+
 
 if __name__ == "__main__":
     unittest.main()
