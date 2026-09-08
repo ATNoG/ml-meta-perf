@@ -64,7 +64,17 @@ def _finish(figure: Figure, destination: str | Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     figure.tight_layout()
     figure.savefig(path, dpi=FIGURE_DPI, bbox_inches="tight", transparent=True)
-    figure.savefig(path.with_suffix(VECTOR_SUFFIX), bbox_inches="tight", transparent=True)
+    # `CreationDate: None` because matplotlib otherwise stamps the PDF with the wall clock,
+    # so every run rewrote seven tracked figures with byte-different, visually identical
+    # files. That makes `git status` dirty after any run and makes "did this change the
+    # output?" -- the check this project verifies optimisations with -- unanswerable for the
+    # vector figures. The PNGs were already deterministic.
+    figure.savefig(
+        path.with_suffix(VECTOR_SUFFIX),
+        bbox_inches="tight",
+        transparent=True,
+        metadata={"CreationDate": None},
+    )
     plt.close(figure)
     return path
 
