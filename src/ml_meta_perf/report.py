@@ -675,41 +675,67 @@ def _saturated_note(report: Report) -> str:
 
 
 def _coverage_note(report: Report, columns: dict[str, np.ndarray]) -> str:
-    """How far the equation reaches into the catalogue, counted over (practice, term) pairs.
+    """How far the equation reaches into the catalogue, and how to read a disagreement.
 
-    The verdict tally above and this count measure different things, and a reader who takes
-    the first for the second will badly overrate what the equation established. Counting pairs
-    rather than practices is what makes the interesting case visible: a practice carried by
-    several terms that disagree with each other is not one verdict, and the disagreement is
-    usually the most informative thing on the page.
+    Two counts a reader will otherwise conflate: the verdict tally above is drawn from corpus
+    statistics that any study with this data could compute, while this is about the terms. And
+    one reading that has to be spelled out, because the table looks self-contradictory without
+    it -- a feature in a denominator enters inverted, so the same feature can carry opposite
+    signs in two terms and mean one thing.
     """
     counts = equation_coverage(report, columns)
     if not counts["pairs"]:
         return ""
-    return (
-        f"**Read this table against the verdict tally above, not as part of it.** Of the "
-        f"{counts['practices']} practices, {counts['with_feature_claims']} make a claim about "
-        "a quantity the equation contains -- the rest are about a protocol, a metric, or a "
-        "family of learners, and pairing one of those with a coefficient would be inventing a "
-        f"connection. Those practices are carried by **{counts['carrying_terms']} of the "
-        f"equation's {counts['terms']} terms**, giving {counts['pairs']} (practice, term) "
+    lines = [
+        f"**Read this against the verdict tally above, not as part of it.** Of the "
+        f"{counts['practices']} practices, {counts['with_feature_claims']} make a claim about a "
+        "quantity the equation contains; the rest are about a protocol, a metric, or a family "
+        "of learners, and pairing one of those with a coefficient would be inventing a "
+        f"connection. Those are carried by **{counts['carrying_terms']} of the equation's "
+        f"{counts['terms']} terms**, giving {counts['pairs']} directed (practice, term) "
         f"pairings: **{counts['agree']} come out the way the practice predicts and "
         f"{counts['disagree']} do not**"
-        + (f", and {counts['unselected']} claim rests on a feature the search never took.\n"
-           if counts["unselected"] else ".\n")
-        + "\n**A practice split across terms that disagree is the most informative row here, "
-        "not a contradiction.** A raw feature can enter several terms, in numerators and in "
-        "denominators and under different transforms, and the sign of each is measured "
-        "separately for that reason. Where a feature carries one sign in a numerator and the "
-        "opposite in a denominator, the equation is saying that what matters is the *ratio* "
-        "rather than the quantity -- which is a conditional version of the practice rather "
-        "than a refutation of it, and is the kind of statement only a readable equation can "
-        "make.\n"
-        "\n``beta`` is the strength and ``effect`` is what the term is worth on this data. "
-        "**Agreement in sign with a negligible effect is agreement without evidence**, which "
-        "is why the two are printed together, and ``stability`` says how often the folds "
-        "chose that term at all.\n"
+        + (f", with {counts['undirected']} pairing too weak to state a direction for and "
+           f"{counts['unselected']} claim resting on a feature the search never took.\n"
+           if counts["undirected"] or counts["unselected"] else ".\n"),
+    ]
+    if counts["disagree"] and counts["disagree_in_denominator"] == counts["disagree"]:
+        lines.append(
+            f"\n**Every one of the {counts['disagree']} disagreements is the same feature "
+            "entering as a *denominator*, and that is arithmetic rather than conflict.** A "
+            "negatively-weighted ratio contributes more as its denominator grows, so a term "
+            "of the form `dataset property / capacity` must rise with capacity. Read the "
+            "`position` column across those rows and the equation is saying one coherent "
+            "thing: it has **no marginal statement about capacity at all**, only statements "
+            "about capacity *relative to* something the dataset demands. Where capacity is a "
+            "numerator instead — measured against the class count rather than against a "
+            "difficulty — it lowers predicted MCC, which is the practice's own claim.\n"
+            "\n**So the mismatch is in how the expectation was written down, not in what the "
+            "equation says.** A practice recommending that capacity be *matched to the "
+            "problem* is a conditional claim; encoding it as `capacity lowers MCC` is a "
+            "marginal one, and a marginal expectation cannot match a term that only ever "
+            "speaks conditionally. This is the clearest case in the study of why the equation "
+            "is worth reading term by term: no per-feature summary, and no opaque model, can "
+            "distinguish 'more capacity is better' from 'more capacity per unit of difficulty "
+            "is better'.\n"
+        )
+    else:
+        lines.append(
+            "\n**Read the `position` column before calling a row a disagreement.** A feature "
+            "in a denominator enters the term inverted, so a negatively-weighted ratio "
+            "contributes more as that feature rises. The same feature carrying opposite signs "
+            "in two terms is usually one statement about a ratio rather than two conflicting "
+            "ones about a quantity.\n"
+        )
+    lines.append(
+        "\n``beta`` is the strength and ``effect`` is what the term is worth on this data; "
+        "**agreement in sign with a negligible effect is agreement without evidence**, which "
+        "is why the two are printed together. ``rho`` is the measured association the "
+        "direction comes from, and a pairing below the same floor the per-feature statements "
+        "use is reported as having no direction rather than being given a sign it cannot "
+        "support.\n"
     )
+    return "\n".join(lines)
 
 
 def _identity_note(report: Report) -> str:

@@ -356,10 +356,38 @@ class TestEquationEvidence(unittest.TestCase):
         the equation saying the *ratio* matters rather than the quantity. A per-feature check
         cannot represent this at all."""
         capacity = self.evidence.filter(
-            (pl.col("feature") == "Processing Units Number") & (pl.col("term") != "")
+            (pl.col("feature") == "Processing Units Number") & (pl.col("direction") != "")
         )
         self.assertGreater(capacity.height, 1)
         self.assertGreater(len(set(capacity["direction"].to_list())), 1)
+
+    def test_a_denominator_and_a_numerator_of_the_same_feature_differ(self) -> None:
+        """Arithmetic, not conflict: a negatively-weighted ratio contributes more as its
+        denominator grows. If this ever stopped holding, either the weights changed sign or
+        `feature_position` is reporting the wrong slot -- and the chapter's whole reading of
+        the capacity practice rests on it."""
+        capacity = self.evidence.filter(
+            (pl.col("feature") == "Processing Units Number") & (pl.col("direction") != "")
+        ).to_dicts()
+        below = {row["direction"] for row in capacity if row["position"] == "denominator"}
+        above = {row["direction"] for row in capacity if row["position"] == "numerator"}
+        self.assertTrue(below and above, "expected the feature in both slots")
+        self.assertEqual(below & above, set(), "a denominator and a numerator agreed")
+
+    def test_every_weak_pairing_is_reported_as_undirected(self) -> None:
+        """A rank correlation of 0.05 between a feature and a term's contribution is the other
+        features in that term moving. Giving it a sign reads as a disagreement."""
+        from ml_meta_perf.guidance import MIN_TERM_DIRECTION
+
+        for row in self.evidence.to_dicts():
+            if row["term"] and abs(row["rho"]) < MIN_TERM_DIRECTION:
+                with self.subTest(term=row["term"]):
+                    self.assertEqual(row["agrees"], "no direction")
+                    self.assertEqual(row["direction"], "")
+
+    def test_position_is_one_of_the_three_slots(self) -> None:
+        slots = {row["position"] for row in self.evidence.to_dicts() if row["term"]}
+        self.assertTrue(slots <= {"numerator", "denominator", "factor"}, slots)
 
     def test_coverage_counts_pairs_and_matches_the_table(self) -> None:
         verdicts = self.evidence["agrees"].to_list()

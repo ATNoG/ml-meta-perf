@@ -170,25 +170,29 @@ At a glance:
 
 The verdicts above are drawn from corpus averages -- family means, variance shares, paired tests -- which any study with this corpus could compute. This table asks the stronger question, and the one an interpretability-first study is uniquely able to ask: **which of the fifteen terms carries this practice, with what strength and which sign?**
 
-| practice | feature | expected | term | beta | effect | stability | direction | agrees |
-|---|---|---|---|---|---|---|---|---|
-| clean-noise-before-adding-capacity | ns_ratio | lowers |  |  |  |  |  | not selected |
-| prefer-outlier-robust-learners | nr_outliers | lowers | [log(nr_class)] * [nr_outliers] | -0.1229 | 0.1892 | 0.1500 | lowers | yes |
-| capacity-is-not-free | Processing Units Number | lowers | [log(Input Distribution Modelling)] * [log(Processing Units Number)] | -0.0661 | 0.1358 | 0.8000 | raises | no |
-| capacity-is-not-free | Processing Units Number | lowers | [log(eq_num_attr)] / [log(Processing Units Number)] | -0.1408 | 0.3489 | 0.7000 | raises | no |
-| capacity-is-not-free | Processing Units Number | lowers | [log(gravity)] / [log(Processing Units Number)] | -0.1150 | 0.2940 | 1.0000 | raises | no |
-| capacity-is-not-free | Processing Units Number | lowers | [log(Processing Units Number)] / [log(nr_class)] | -0.0458 | 0.1239 | 0.5500 | lowers | yes |
-| capacity-is-not-free | Processing Units Number | lowers | [nr_cor_attr] / [log(Processing Units Number)] | -0.0656 | 0.1653 | 0.5000 | raises | no |
-| capacity-is-not-free | Model Capability | raises | [log(gravity)] * [log(Model Capability)] | 0.1515 | 0.3891 | 1.0000 | raises | yes |
-| capacity-is-not-free | Model Capability | raises | [nr_bin] * [log(Model Capability)] | 0.0605 | 0.0710 | 0.8500 | raises | yes |
+| practice | feature | expected | term | position | beta | effect | stability | rho | direction | agrees |
+|---|---|---|---|---|---|---|---|---|---|---|
+| clean-noise-before-adding-capacity | ns_ratio | lowers |  |  |  |  |  |  |  | not selected |
+| prefer-outlier-robust-learners | nr_outliers | lowers | [log(nr_class)] * [nr_outliers] | factor | -0.1229 | 0.1892 | 0.1500 | -0.9049 | lowers | yes |
+| capacity-is-not-free | Processing Units Number | lowers | [log(Input Distribution Modelling)] * [log(Processing Units Number)] | factor | -0.0661 | 0.1358 | 0.8000 | 0.0549 |  | no direction |
+| capacity-is-not-free | Processing Units Number | lowers | [log(eq_num_attr)] / [log(Processing Units Number)] | denominator | -0.1408 | 0.3489 | 0.7000 | 0.3749 | raises | no |
+| capacity-is-not-free | Processing Units Number | lowers | [log(gravity)] / [log(Processing Units Number)] | denominator | -0.1150 | 0.2940 | 1.0000 | 0.2011 | raises | no |
+| capacity-is-not-free | Processing Units Number | lowers | [log(Processing Units Number)] / [log(nr_class)] | numerator | -0.0458 | 0.1239 | 0.5500 | -0.5024 | lowers | yes |
+| capacity-is-not-free | Processing Units Number | lowers | [nr_cor_attr] / [log(Processing Units Number)] | denominator | -0.0656 | 0.1653 | 0.5000 | 0.3191 | raises | no |
+| capacity-is-not-free | Model Capability | raises | [log(gravity)] * [log(Model Capability)] | factor | 0.1515 | 0.3891 | 1.0000 | 0.5408 | raises | yes |
+| capacity-is-not-free | Model Capability | raises | [nr_bin] * [log(Model Capability)] | factor | 0.0605 | 0.0710 | 0.8500 | 0.4106 | raises | yes |
 
 **One row per (practice, term) pair**, because the equation is a sum of terms and a term is the unit a practice can be held against. `expected` is what the practice predicts as the feature rises; `direction` is what *that term's own contribution* does, measured on the data rather than read off the weight sign -- which would be wrong the moment the feature sits in a denominator, and several here do. `not selected` marks a claim resting on a feature the search never took, so the equation is silent on it rather than supporting it.
 
-**Read this table against the verdict tally above, not as part of it.** Of the 10 practices, 3 make a claim about a quantity the equation contains -- the rest are about a protocol, a metric, or a family of learners, and pairing one of those with a coefficient would be inventing a connection. Those practices are carried by **8 of the equation's 15 terms**, giving 8 (practice, term) pairings: **4 come out the way the practice predicts and 4 do not**, and 1 claim rests on a feature the search never took.
+**Read this against the verdict tally above, not as part of it.** Of the 10 practices, 3 make a claim about a quantity the equation contains; the rest are about a protocol, a metric, or a family of learners, and pairing one of those with a coefficient would be inventing a connection. Those are carried by **8 of the equation's 15 terms**, giving 7 directed (practice, term) pairings: **4 come out the way the practice predicts and 3 do not**, with 1 pairing too weak to state a direction for and 1 claim resting on a feature the search never took.
 
-**A practice split across terms that disagree is the most informative row here, not a contradiction.** A raw feature can enter several terms, in numerators and in denominators and under different transforms, and the sign of each is measured separately for that reason. Where a feature carries one sign in a numerator and the opposite in a denominator, the equation is saying that what matters is the *ratio* rather than the quantity -- which is a conditional version of the practice rather than a refutation of it, and is the kind of statement only a readable equation can make.
 
-``beta`` is the strength and ``effect`` is what the term is worth on this data. **Agreement in sign with a negligible effect is agreement without evidence**, which is why the two are printed together, and ``stability`` says how often the folds chose that term at all.
+**Every one of the 3 disagreements is the same feature entering as a *denominator*, and that is arithmetic rather than conflict.** A negatively-weighted ratio contributes more as its denominator grows, so a term of the form `dataset property / capacity` must rise with capacity. Read the `position` column across those rows and the equation is saying one coherent thing: it has **no marginal statement about capacity at all**, only statements about capacity *relative to* something the dataset demands. Where capacity is a numerator instead — measured against the class count rather than against a difficulty — it lowers predicted MCC, which is the practice's own claim.
+
+**So the mismatch is in how the expectation was written down, not in what the equation says.** A practice recommending that capacity be *matched to the problem* is a conditional claim; encoding it as `capacity lowers MCC` is a marginal one, and a marginal expectation cannot match a term that only ever speaks conditionally. This is the clearest case in the study of why the equation is worth reading term by term: no per-feature summary, and no opaque model, can distinguish 'more capacity is better' from 'more capacity per unit of difficulty is better'.
+
+
+``beta`` is the strength and ``effect`` is what the term is worth on this data; **agreement in sign with a negligible effect is agreement without evidence**, which is why the two are printed together. ``rho`` is the measured association the direction comes from, and a pairing below the same floor the per-feature statements use is reported as having no direction rather than being given a sign it cannot support.
 
 ## The measurements underneath
 

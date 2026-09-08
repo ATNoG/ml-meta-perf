@@ -121,13 +121,32 @@ its fold stability, and a **measured** direction — measured because reading a 
 weight is wrong the moment the feature sits in a denominator, and several do.
 
 **What it found, and it is the best single illustration of why the study fits equations at
-all.** `Processing Units Number` carries five of the fifteen terms. In the one where it is a
-*numerator* (`log(PUN)/log(nr_class)`) it lowers MCC; in the three where it is a *denominator*
-(`log(eq_num_attr)/log(PUN)`, `log(gravity)/log(PUN)`, `nr_cor_attr/log(PUN)`) it raises it.
-That is not the equation contradicting itself. It is the equation saying that what predicts
-MCC is **capacity measured against a property of the data**, not capacity on its own — which
-is the conditional form of "match capacity to the problem", the practice's own headline. No
-per-feature summary can express that, and no opaque model can be asked.
+all.** `Processing Units Number` carries five of the fifteen terms, all with negative weights.
+Where it is a *denominator* (`log(eq_num_attr)/log(PUN)`, `log(gravity)/log(PUN)`,
+`nr_cor_attr/log(PUN)`) the term rises with capacity; where it is a *numerator*
+(`log(PUN)/log(nr_class)`) it falls; and in the one product (`log(IDM) * log(PUN)`) the
+association is 0.05, which is no direction at all.
+
+That is arithmetic, not contradiction — a negatively-weighted ratio contributes more as its
+denominator grows — and read with the `position` column it is one coherent statement: **the
+equation has no marginal claim about capacity, only claims about capacity relative to
+something the dataset demands.** Which is the conditional form of "match capacity to the
+problem", the practice's own headline.
+
+**The reported mismatch was therefore in the expectation, not in the equation.** The practice
+is a conditional claim and it had been encoded as a marginal one (`capacity lowers MCC`); a
+marginal expectation can never match a term that only speaks conditionally. Two fixes on
+2026-09-08 made that legible rather than confusing: `guidance.feature_position` reports which
+slot the feature occupies, and `MIN_TERM_DIRECTION` (the same 0.15 floor the per-feature
+statements use) stops a pairing with |rho| = 0.05 being given a sign it cannot support. The
+counts moved from "4 agree, 4 disagree" to **4 agree, 3 disagree, 1 undirected, 1 not
+selected**, and all three disagreements are the same feature in a denominator.
+
+**The open question this leaves is whether the expectation language should carry conditional
+claims at all** — `capacity relative to dataset difficulty raises MCC` rather than a bare
+per-feature direction. It would score the capacity practice as agreeing, which it does. It
+would also need a way to say *relative to what*, and inventing one risks fitting the encoding
+to the answer. Left as-is deliberately, with the position column doing the work instead.
 
 Two intermediate designs were tried and dropped, both recorded so they are not re-attempted:
 

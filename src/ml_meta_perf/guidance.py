@@ -54,6 +54,7 @@ from ml_meta_perf.data import (
 )
 from ml_meta_perf.experiment import Report
 from ml_meta_perf.stats import spearman
+from ml_meta_perf.terms import Term
 from ml_meta_perf.validate import paired_comparison
 
 SUPPORTED = "supported"
@@ -720,6 +721,39 @@ def assess(frame: pl.DataFrame, report: Report) -> list[Verdict]:
     return [CHECKS[practice.id](evidence) for practice in CATALOGUE]
 
 
+#: Below this rank correlation a (term, feature) pair has no direction worth stating. The same
+#: floor `practices.MIN_DIRECTION` applies to the per-feature statements, and for the same
+#: reason: a correlation of 0.05 between a feature and a term's contribution is the other
+#: features that term contains moving, not the feature being asked about. Without it the table
+#: reports a sign for a pairing that has none, which reads as a disagreement.
+MIN_TERM_DIRECTION = 0.15
+
+
+def feature_position(term: Term, feature: str) -> str:
+    """Where a feature sits inside a term: ``numerator``, ``denominator``, or ``factor``.
+
+    **This is what makes a sign readable**, and without it the table looks self-contradictory.
+    A feature in a denominator enters the term inverted, so a negatively-weighted ratio
+    contributes *more* as that feature rises -- which is arithmetic, not a disagreement with
+    whatever the practice claims. Printing the position next to the direction is what lets a
+    reader see that ``eq_num_attr / PUN`` and ``PUN / nr_class`` carrying opposite signs is one
+    coherent statement about a ratio rather than two conflicting ones about a quantity.
+    """
+    match term.operation:
+        case "ratio":
+            below = 1
+        case "sum_ratio":
+            below = 2
+        case "ratio_of_sums":
+            below = 2
+        case _:
+            return "factor"
+    for index, operand in enumerate(term.operands):
+        if feature in set(operand.features if isinstance(operand, Term) else (operand.feature,)):
+            return "denominator" if index >= below else "numerator"
+    return "factor"
+
+
 def equation_evidence(report: Report, columns: dict[str, np.ndarray]) -> pl.DataFrame:
     """Each practice paired with the **terms** of the published equation that carry it.
 
@@ -774,9 +808,11 @@ def equation_evidence(report: Report, columns: dict[str, np.ndarray]) -> pl.Data
                         "feature": feature,
                         "expected": expected,
                         "term": "",
+                        "position": "",
                         "beta": float("nan"),
                         "effect": float("nan"),
                         "stability": float("nan"),
+                        "rho": float("nan"),
                         "direction": "",
                         "agrees": "not selected",
                     }
@@ -786,18 +822,21 @@ def equation_evidence(report: Report, columns: dict[str, np.ndarray]) -> pl.Data
                 share = contributions[:, index]
                 low, high = np.percentile(share, [10.0, 90.0])
                 slope = spearman(columns[feature], share)
-                observed = RAISES if slope > 0.0 else LOWERS
+                weak = abs(slope) < MIN_TERM_DIRECTION
+                observed = "" if weak else (RAISES if slope > 0.0 else LOWERS)
                 rows.append(
                     {
                         "practice": practice.id,
                         "feature": feature,
                         "expected": expected,
                         "term": term.name,
+                        "position": feature_position(term, feature),
                         "beta": float(betas[term.name]),
                         "effect": float(high - low),
                         "stability": stability.get(term.name, float("nan")),
+                        "rho": float(slope),
                         "direction": observed,
-                        "agrees": "yes" if observed == expected else "no",
+                        "agrees": "no direction" if weak else ("yes" if observed == expected else "no"),
                     }
                 )
     return pl.DataFrame(
@@ -807,9 +846,11 @@ def equation_evidence(report: Report, columns: dict[str, np.ndarray]) -> pl.Data
             "feature": pl.String,
             "expected": pl.String,
             "term": pl.String,
+            "position": pl.String,
             "beta": pl.Float64,
             "effect": pl.Float64,
             "stability": pl.Float64,
+            "rho": pl.Float64,
             "direction": pl.String,
             "agrees": pl.String,
         },
@@ -838,7 +879,17 @@ def equation_coverage(report: Report, columns: dict[str, np.ndarray]) -> dict[st
         "pairs": sum(1 for verdict in verdicts if verdict in ("yes", "no")),
         "agree": verdicts.count("yes"),
         "disagree": verdicts.count("no"),
+        "undirected": verdicts.count("no direction"),
         "unselected": verdicts.count("not selected"),
+        # How many of the disagreements are the same feature entering as a denominator. If
+        # every one of them is, the "disagreement" is arithmetic rather than a conflict: a
+        # negatively-weighted ratio contributes more as its denominator grows, so a marginal
+        # expectation about the feature can never match a term that only speaks about a ratio.
+        "disagree_in_denominator": sum(
+            1
+            for row in evidence.to_dicts()
+            if row["agrees"] == "no" and row["position"] == "denominator"
+        ),
         "terms": len(report.e3.equation.terms),
         "carrying_terms": len({term for term in evidence["term"].to_list() if term}),
     }
