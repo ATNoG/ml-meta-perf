@@ -173,6 +173,32 @@ class TestVanillaIsUnchanged(unittest.TestCase):
                 np.testing.assert_allclose(equation.weights, self.explicit.equations[size].weights, rtol=0, atol=0)
 
 
+class TestProbePolicies(unittest.TestCase):
+    """`probe_terms` is ESS used as a sampler; `seed_terms` is ESS used as a design.
+
+    They are different claims and the catalogue has to keep them apart, because the study
+    already has a measured negative against the design and it must not be read as covering
+    the sampler.
+    """
+
+    def test_probing_is_not_the_vanilla_path(self) -> None:
+        self.assertFalse(BeamPolicy(probe_terms=4).is_vanilla())
+
+    def test_the_attraction_weight_alone_is_still_vanilla(self) -> None:
+        """It does nothing without probes to place, so a policy that sets only the weight must
+        not take the slow path -- and must not be catalogued as a variant either."""
+        self.assertTrue(BeamPolicy(probe_attraction=1.0).is_vanilla())
+
+    def test_the_catalogue_carries_an_unguided_null(self) -> None:
+        """A probe policy adds candidates *and* guides them. Without a zero-attraction twin, a
+        win could be the extra candidates rather than the guidance, and the study would have
+        credited ESS for the beam simply looking at more terms."""
+        guided = [policy for policy in CATALOGUE if policy.probe_terms > 0]
+        self.assertTrue(guided)
+        self.assertTrue(any(policy.probe_attraction == 0.0 for policy in guided))
+        self.assertTrue(any(policy.probe_attraction > 0.0 for policy in guided))
+
+
 class TestPoliciesChangeSomething(unittest.TestCase):
     """A variant that never changes the equation is not being measured, it is being ignored.
 

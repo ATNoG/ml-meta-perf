@@ -29,8 +29,29 @@ components and rank-mapped to the unit cube, which is the domain ESA and TORANN 
 rather than min-max: a single extreme term would otherwise compress every other term into a
 corner, and the pool contains exactly that kind of term by construction.
 
-**None of this touches the published equation.** `beam.VANILLA` seeds nothing, and seeding is
-reached only through a policy that asks for it.
+**`guided_space` is the same algorithm used the way ESS is meant to be used.** One `ess.esa`
+call with no scores is a *design*, not a search: it places points once, against anchors that
+are only the pool's own geometry, and then the search never tells it anything. Measured that
+way, `empty_space` seeding lost -- worse equations and 1.5-2.8x slower -- and the negative was
+recorded as "space-filling initialisation does not pay", which was the wrong conclusion from
+the right measurement. What was tested was a one-shot sampler.
+
+ESS is a *continuous* sampler. `ess.esa` takes an `attractiveness` value per anchor and a
+`attraction_weight`, and relaxes new points under repulsion from the anchors **and** attraction
+towards the regions that scored well; the working implementations in `pyBlindOpt.init.oblesa`
+and the Optuna `ESSSampler` both run it in rounds, feeding each round's *measured* probes back
+in as anchors so the next field fit sees them at the same standing as the sampler's own points.
+`ProbeField` is that loop, with the beam supplying the measurements:
+
+* anchors are the terms whose objective the search has actually computed;
+* attractiveness is the negated objective, because `Subset.rss` is lower-is-better and ESS's
+  contract is higher-is-more-attractive -- ESS is not told which way the caller optimises and
+  cannot guess;
+* `tell` folds each round's results back in, so the field sharpens as the beam progresses
+  instead of being fixed before it starts.
+
+**None of this touches the published equation.** `beam.VANILLA` seeds nothing and probes
+nothing, and every path here is reached only through a policy that asks for it.
 """
 
 from __future__ import annotations
@@ -149,6 +170,157 @@ def empty_space(embedded: np.ndarray, strength: np.ndarray, count: int, *, seed:
         if np.isfinite(distances[nearest]):
             chosen.append(nearest)
     return chosen
+
+
+#: Attraction law for the guided field. `cauchy` rather than ESS's default of "same as the
+#: repulsion metric": a gaussian attraction dies off over the same short range the repulsion
+#: acts on, so it only weakens the push instead of pulling a point across the space. This is
+#: the choice `pyBlindOpt.init._ess_engine` documents and it is copied deliberately.
+ATTRACTION_METRIC = "cauchy"
+
+#: Neighbours the attractiveness of an unmeasured position is averaged over. Small, because
+#: the anchor count here starts at a handful of screened terms.
+ATTRACTION_NEIGHBOURS = 8
+
+
+class ProbeField:
+    """ESS run continuously: anchors accumulate and carry the objectives the search measured.
+
+    The unit is a **pool position**, not a coordinate, because a beam needs terms. `propose`
+    places points in the embedded pool under repulsion from everything already measured and
+    attraction towards what measured well, then snaps each to the nearest term not already
+    taken. `tell` folds the results back in, so the round after next is fitted against them.
+
+    Deliberately not a `dataclass`: it is mutable state threaded through a search, and the
+    frozen dataclasses elsewhere in this package are values.
+
+    Degrades rather than fails. Without `ess` installed, or before anything has been measured,
+    `propose` falls back to the maximin rule over the same embedding -- so a policy that asks
+    for probes still runs, and what it loses is the guidance rather than the search.
+    """
+
+    def __init__(
+        self,
+        embedded: np.ndarray,
+        strength: np.ndarray,
+        *,
+        attraction_weight: float = 0.5,
+        seed: int = 0,
+        epochs: int = ESA_EPOCHS,
+    ) -> None:
+        self.embedded = embedded
+        #: The screening score per pool position. Used only by the cold-start fallback, to
+        #: pick a first anchor that is at least strong -- the guided path never reads it,
+        #: because once anything has been measured the objectives are better evidence.
+        self.strength = strength
+        self.attraction_weight = attraction_weight
+        self.seed = seed
+        self.epochs = epochs
+        self.bounds = np.array([[0.0, 1.0]] * embedded.shape[1]) if embedded.size else np.zeros((0, 2))
+        #: The best objective seen for each pool position. Lower is better throughout this
+        #: package, and the sign is flipped only at the ESS boundary.
+        #:
+        #: **One anchor per term, not one per measurement.** A beam tries the same term against
+        #: many parents -- on the published configuration that is four thousand measurements
+        #: over a pool of six hundred -- and feeding all of them in would pile seven copies of
+        #: one coordinate into the anchor set. ESS reads anchors as occupied *space*, so
+        #: duplicates are not extra evidence: they are extra repulsion, and a term the beam
+        #: keeps trying because it is useful would end up pushing probes away hardest. Keeping
+        #: the best objective per position also makes the anchor set bounded by the pool, which
+        #: is what stops the field's cost growing with the length of the search.
+        self.best: dict[int, float] = {}
+
+    @property
+    def measured(self) -> list[int]:
+        """Pool positions with a measurement, in insertion order."""
+        return list(self.best)
+
+    @property
+    def objectives(self) -> list[float]:
+        """Their best objectives, aligned with `measured`."""
+        return list(self.best.values())
+
+    def tell(self, positions: list[int], objectives: list[float]) -> None:
+        """Record what the search learned about these pool positions. Lower objective is better."""
+        for position, objective in zip(positions, objectives, strict=True):
+            if not np.isfinite(objective):
+                continue
+            key = int(position)
+            current = self.best.get(key)
+            if current is None or objective < current:
+                self.best[key] = float(objective)
+
+    def _attractiveness(self) -> np.ndarray:
+        """Anchor scores on ESS's scale: higher is more attractive, and bounded.
+
+        Negated because the caller minimises, then scaled to unit range. Unscaled objectives
+        would make `attraction_weight` mean something different at every step, since `rss`
+        shrinks as the equation grows -- the weight has to be a property of the policy, not of
+        how far through the search it happens to be.
+        """
+        values = -np.asarray(self.objectives, dtype=float)
+        spread = float(values.max() - values.min()) if values.size else 0.0
+        return (values - values.min()) / spread if spread > 0.0 else np.zeros_like(values)
+
+    def propose(self, count: int, taken: list[int]) -> list[int]:
+        """`count` pool positions to try next, avoiding everything in ``taken``."""
+        if count <= 0 or self.embedded.shape[0] == 0:
+            return []
+        anchors = self.embedded[self.measured] if self.measured else None
+        if anchors is None or anchors.shape[0] < 2:
+            return self._fallback(count, taken)
+        try:
+            import ess
+        except ImportError:
+            return self._fallback(count, taken)
+
+        placed = ess.esa(
+            anchors,
+            self.bounds,
+            n=count,
+            epochs=self.epochs,
+            seed=self.seed,
+            attractiveness=self._attractiveness(),
+            attraction_weight=self.attraction_weight,
+            attraction_metric=ATTRACTION_METRIC,
+            attraction_kwargs={"power": 1.0},
+            k_att=min(ATTRACTION_NEIGHBOURS, anchors.shape[0]),
+        )
+        return self._snap(np.atleast_2d(placed), taken)
+
+    def _snap(self, points: np.ndarray, taken: list[int]) -> list[int]:
+        """Each placed coordinate to the nearest pool term nothing has claimed.
+
+        Toroidal, matching the geometry ESA placed into. A Euclidean snap after a toroidal
+        placement puts every probe at the nearest term under a different metric from the one
+        that chose where to look.
+        """
+        claimed = list(taken)
+        chosen: list[int] = []
+        for point in points:
+            distances = _toroidal_distance(point[None, :], self.embedded)[0]
+            distances[claimed] = np.inf
+            nearest = int(np.argmin(distances))
+            if np.isfinite(distances[nearest]):
+                chosen.append(nearest)
+                claimed.append(nearest)
+        return chosen
+
+    def _fallback(self, count: int, taken: list[int]) -> list[int]:
+        """Maximin over the unclaimed pool: the classical rule, when ESS cannot be asked."""
+        masked = self.strength.copy()
+        masked[taken] = -np.inf
+        if not np.isfinite(masked).any():
+            return []
+        chosen = [int(np.argmax(masked))]
+        while len(chosen) < min(count, self.embedded.shape[0] - len(taken)):
+            distances = _toroidal_distance(self.embedded, self.embedded[chosen + list(taken)]).min(axis=1)
+            distances[chosen] = -np.inf
+            distances[list(taken)] = -np.inf
+            if not np.isfinite(distances).any():
+                break
+            chosen.append(int(np.argmax(distances)))
+        return chosen
 
 
 #: The seeding rules the sweep compares, by the name a policy names them with.

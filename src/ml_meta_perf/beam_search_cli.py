@@ -162,7 +162,16 @@ def compare(args: argparse.Namespace) -> int:
             logging.warning("%s produced no equation at its best configuration; skipped", policy.name)
             continue
         runs.append(outcome)
-        logging.info("%s: loo-dataset %.4f in %.1fs", policy.name, outcome.r2_loo_dataset, outcome.seconds)
+        logging.info(
+            "%s: in-sample %.4f loo-dataset %.4f loo-model %.4f loo-cell %.4f (spread %.4f) in %.2fs",
+            policy.name,
+            outcome.r2_in_sample,
+            outcome.r2_loo_dataset,
+            outcome.r2_loo_model,
+            outcome.r2_loo_cell,
+            outcome.r2_spread,
+            outcome.seconds,
+        )
 
     verdicts = compare_all(runs, incumbent_name=args.incumbent)
     if verdicts.height == 0:
@@ -171,15 +180,28 @@ def compare(args: argparse.Namespace) -> int:
     args.output.mkdir(parents=True, exist_ok=True)
     destination = args.output / f"{args.name}_verdicts.csv"
     verdicts.write_csv(destination)
-    print(
-        verdicts.select(
-            "policy", "verdict", "mae_gain", "ci_low", "ci_high", "p_value", "wins", "r2_loo_dataset_delta", "speedup"
+    with pl.Config(tbl_cols=-1, tbl_width_chars=200):
+        print(
+            verdicts.select(
+                "policy", "standing", "mae_gain", "r2_loo_dataset_delta", "r2_loo_cell_delta",
+                "r2_spread", "speedup", "frontier",
+            )
         )
-    )
-    better = verdicts.filter(pl.col("verdict") == "better")
+    counts = dict(verdicts.group_by("standing").len().iter_rows())
     print(
-        f"\n{better.height} of {verdicts.height} policies beat {args.incumbent!r} on a paired test. "
-        "A tie is not a win: it is more machinery for no measured gain."
+        f"\nAgainst {args.incumbent!r}, over both axes and all four protocols: "
+        + ", ".join(f"{counts.get(name, 0)} {name}" for name in ("better", "cheaper", "equal", "worse"))
+        + f", of {verdicts.height}."
+    )
+    print(
+        "  better  = wins the paired test and gives up nothing on the strictest protocol\n"
+        "  cheaper = same accuracy, faster by more than the timing noise\n"
+        "  equal   = indistinguishable on both axes; more machinery for nothing\n"
+        "  worse   = loses the paired test, or buys speed with the worst protocol"
+    )
+    print(
+        "\nThis is ONE operating point. A policy that wins here and not at the published "
+        "configuration has not won: run the other configuration before quoting either."
     )
     return 0
 

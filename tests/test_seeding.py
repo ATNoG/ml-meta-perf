@@ -11,6 +11,7 @@ import numpy as np
 
 from ml_meta_perf.seeding import (
     EMBEDDING_DIMENSIONS,
+    ProbeField,
     _toroidal_distance,
     embed_terms,
     empty_space,
@@ -148,6 +149,94 @@ class TestSeedPositions(unittest.TestCase):
             with self.subTest(strategy=strategy):
                 chosen = seed_positions(design, pool, strength, 4, strategy=strategy)
                 self.assertEqual(len(chosen), 4)
+
+
+class TestProbeField(unittest.TestCase):
+    """ESS used as a sampler rather than as a design.
+
+    The distinction is the whole point of this class, and it is not visible in a score: a
+    one-shot placement and a continuous one both return coordinates. What separates them is
+    whether the search's measurements reach the field, so that is what these pin.
+    """
+
+    def _field(self, points: int = 60, **kwargs: object) -> ProbeField:
+        rng = np.random.default_rng(0)
+        return ProbeField(rng.random((points, 4)), rng.random(points), seed=1, **kwargs)  # type: ignore[arg-type]
+
+    def test_keeps_the_best_objective_per_position(self) -> None:
+        """One anchor per term. A beam tries the same term against many parents, and piling
+        every measurement in would read as occupied space rather than as evidence -- a term the
+        beam keeps returning to would push probes away hardest, which is backwards."""
+        field = self._field()
+        field.tell([1, 2, 1, 3], [0.9, 0.5, 0.4, 0.7])
+        self.assertEqual(field.measured, [1, 2, 3])
+        self.assertEqual(field.objectives, [0.4, 0.5, 0.7])
+
+    def test_the_anchor_set_is_bounded_by_the_pool(self) -> None:
+        """What stops the field's cost growing with the length of the search."""
+        field = self._field(points=10)
+        for _ in range(50):
+            field.tell([3, 4], [0.5, 0.6])
+        self.assertEqual(len(field.measured), 2)
+
+    def test_a_worse_measurement_does_not_overwrite_a_better_one(self) -> None:
+        field = self._field()
+        field.tell([5], [0.2])
+        field.tell([5], [0.9])
+        self.assertEqual(field.objectives, [0.2])
+
+    def test_ignores_a_measurement_that_is_not_finite(self) -> None:
+        """A subset the solver could not fit must not become an anchor at nan."""
+        field = self._field()
+        field.tell([1, 2], [float("nan"), 0.5])
+        self.assertEqual(field.measured, [2])
+
+    def test_a_cold_field_still_proposes(self) -> None:
+        """Before anything is measured there is no field to fit, so it degrades to the
+        classical rule rather than refusing -- a policy that asks for probes has to run."""
+        self.assertEqual(len(self._field().propose(3, taken=[0])), 3)
+
+    def test_never_proposes_something_already_taken(self) -> None:
+        field = self._field()
+        field.tell(list(range(12)), [1.0 - 0.05 * index for index in range(12)])
+        taken = list(range(12))
+        self.assertFalse(set(field.propose(5, taken=taken)) & set(taken))
+
+    def test_proposals_are_distinct(self) -> None:
+        field = self._field()
+        field.tell(list(range(12)), [0.5] * 12)
+        proposed = field.propose(6, taken=list(range(12)))
+        self.assertEqual(len(proposed), len(set(proposed)))
+
+    def test_the_attractiveness_field_is_scaled_and_signed(self) -> None:
+        """Negated because the caller minimises and ESS's contract is higher-is-better, then
+        scaled to unit range so `attraction_weight` means the same thing at every step --
+        `rss` shrinks as the equation grows, and an unscaled field would quietly change what
+        the policy's weight is worth."""
+        field = self._field()
+        field.tell([1, 2, 3], [1.0, 0.5, 0.0])
+        values = field._attractiveness()
+        self.assertAlmostEqual(float(values.min()), 0.0)
+        self.assertAlmostEqual(float(values.max()), 1.0)
+        self.assertLess(float(values[0]), float(values[2]))
+
+    def test_a_flat_field_does_not_divide_by_zero(self) -> None:
+        field = self._field()
+        field.tell([1, 2, 3], [0.5, 0.5, 0.5])
+        self.assertTrue(np.isfinite(field._attractiveness()).all())
+
+    def test_attraction_changes_where_the_probes_go(self) -> None:
+        """The null the guided policies have to beat: same probes, placed by repulsion alone.
+        If these agreed, `probe_attraction` would be an inert knob."""
+        measured = list(range(14))
+        objectives = [1.0 - 0.05 * index for index in measured]
+        unguided, guided = self._field(), self._field(attraction_weight=2.0)
+        unguided.attraction_weight = 0.0
+        for field in (unguided, guided):
+            field.tell(measured, objectives)
+        self.assertNotEqual(
+            unguided.propose(6, taken=measured), guided.propose(6, taken=measured)
+        )
 
 
 if __name__ == "__main__":

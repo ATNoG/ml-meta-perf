@@ -93,6 +93,22 @@ class BeamPolicy:
     #: caller, since seeding more starting points than the beam can hold does nothing.
     seed_terms: int = 0
 
+    #: How many extra children **every** step proposes from the guided space-filling field,
+    #: on top of the ones the residual ranking generates. ``0`` disables it.
+    #:
+    #: This is the difference between using ESS as a design and using it as a sampler.
+    #: ``seed_terms`` calls it once, before the search knows anything, and never speaks to it
+    #: again -- which is what the 2026-09-08 focused run measured and rejected. ``probe_terms``
+    #: runs it every step against the objectives the beam has actually computed, so the field
+    #: it places into is refitted as the search learns. See `ml_meta_perf.seeding.ProbeField`.
+    probe_terms: int = 0
+
+    #: How hard the probe field pulls towards the regions that scored well, in ESS's own
+    #: units. ``0.0`` is pure repulsion -- space-filling with no idea where the good terms are,
+    #: which is the null this variant has to beat. Larger values trade coverage for
+    #: exploitation, and the beam already exploits, so the useful range is small.
+    probe_attraction: float = 0.5
+
     def is_vanilla(self) -> bool:
         """Whether this policy leaves every beam decision to the incumbent code path.
 
@@ -106,6 +122,7 @@ class BeamPolicy:
             and self.per_parent_cap is None
             and self.diversity_weight == 0.0
             and self.seed_terms == 0
+            and self.probe_terms == 0
         )
 
     def threshold(self, best: Objective, total: float) -> Objective | None:
@@ -253,6 +270,13 @@ CATALOGUE: tuple[BeamPolicy, ...] = (
     BeamPolicy(name="cap-2+prune-0.02", per_parent_cap=2, relative_prune=0.02),
     BeamPolicy(name="cap-2+ess-6", per_parent_cap=2, seed_terms=6),
     BeamPolicy(name="cap-2+diverse-0.3", per_parent_cap=2, diversity_weight=0.3),
+    # ESS used as a sampler rather than as a design. `probe-0` is the null the guided ones have
+    # to beat: the same probes, placed by repulsion alone, with the measured objectives ignored.
+    # Without it a win could be the extra candidates rather than the guidance.
+    BeamPolicy(name="probe-4-attract-0.0", probe_terms=4, probe_attraction=0.0),
+    BeamPolicy(name="probe-4-attract-0.5", probe_terms=4, probe_attraction=0.5),
+    BeamPolicy(name="probe-4-attract-1.0", probe_terms=4, probe_attraction=1.0),
+    BeamPolicy(name="probe-8-attract-0.5", probe_terms=8, probe_attraction=0.5),
 )
 
 BY_NAME: dict[str, BeamPolicy] = {policy.name: policy for policy in CATALOGUE}

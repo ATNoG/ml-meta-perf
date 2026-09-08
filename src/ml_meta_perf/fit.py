@@ -43,6 +43,7 @@ import numpy as np
 from ml_meta_perf import beam
 from ml_meta_perf.beam import VANILLA, BeamPolicy
 from ml_meta_perf.model import Equation
+from ml_meta_perf.seeding import ProbeField
 from ml_meta_perf.stats import pearson, pearson_columns, rank_columns, rankdata, spearman
 from ml_meta_perf.terms import Library, Term, is_trivial, simplify
 
@@ -364,6 +365,7 @@ class Selector:
         refine_rounds: int = REFINE_ROUNDS_DEFAULT,
         policy: BeamPolicy = VANILLA,
         seeds: list[int] | None = None,
+        probes: ProbeField | None = None,
     ) -> dict[int, Subset]:
         """Return the best subset found at every size from 1 to ``max_terms``.
 
@@ -374,8 +376,18 @@ class Selector:
         ``seeds`` are library indices to guarantee a place in the *first* step's beam, which
         is where a redundant library does its damage: the six strongest single terms are often
         six spellings of one idea. `ml_meta_perf.seeding` chooses them.
+
+        ``probes`` is the same idea run *continuously*. Seeding speaks to the sampler once,
+        before anything has been measured; a `ProbeField` is asked at every step and told the
+        objective of everything it proposed, so the region it places into is refitted as the
+        search learns. It adds children the residual ranking would not have reached -- terms
+        that correlate poorly with the current residual but sit in a part of term space the
+        beam has never tried -- and it is off unless a policy asks for it.
         """
         available = np.array(pool)
+        # Library index to pool position, so a probe's answer can be turned back into a term
+        # and a measured child can be attributed to the position it came from.
+        positions_of = {index: position for position, index in enumerate(pool)}
         beam: list[Subset] = [Subset((), np.zeros(0), self.total)]
         best: dict[int, Subset] = {}
         vanilla = policy.is_vanilla()
@@ -384,6 +396,9 @@ class Selector:
             seen: set[tuple[int, ...]] = set()
             children: list[tuple[int, ...]] = []
             origins: list[int] = []
+            #: Which term each child added to its parent, so a probe field can be told what the
+            #: objective of trying that term turned out to be.
+            added: list[int] = []
             for position, parent in enumerate(beam):
                 scores = self._residual_scores(parent)
                 ranked = available[_descending(scores[available])]
@@ -401,12 +416,29 @@ class Selector:
                     seen.add(child)
                     children.append(child)
                     origins.append(position)
+                    added.append(index)
                     taken += 1
+            if probes is not None and policy.probe_terms > 0:
+                self._extend_with_probes(
+                    probes, policy, beam[0], pool, positions_of, seen, children, origins, added
+                )
             # Every child of this step has the same size, which is what lets them go
             # through the solver as one stack rather than one at a time.
             generated = self._evaluate_many(children)
             if not generated:
                 break
+            if probes is not None and policy.probe_terms > 0:
+                # Told every child, not only the probed ones: the field's whole advantage over a
+                # one-shot design is that it is fitted against what the search measured, and the
+                # beam's own children are the bulk of that evidence.
+                probes.tell(
+                    [positions_of[index] for index in added if index in positions_of],
+                    [
+                        subset.rss
+                        for index, subset in zip(added, generated, strict=True)
+                        if index in positions_of
+                    ],
+                )
             if vanilla:
                 generated.sort(key=lambda item: item.rss)
                 beam = generated[:beam_width]
@@ -451,6 +483,46 @@ class Selector:
 
         positions = beam.cap_per_parent(ranked_origins, beam_width, policy.per_parent_cap)
         return [ranked[position] for position in positions] or ranked[:beam_width]
+
+    def _extend_with_probes(
+        self,
+        probes: ProbeField,
+        policy: BeamPolicy,
+        parent: Subset,
+        pool: list[int],
+        positions_of: dict[int, int],
+        seen: set[tuple[int, ...]],
+        children: list[tuple[int, ...]],
+        origins: list[int],
+        added: list[int],
+    ) -> None:
+        """Add the probe field's proposals as children of the current best subset.
+
+        **Attached to the best parent, not to every parent.** A probe is a proposal about
+        *term space* -- "nothing has tried this region" -- and the beam already covers the
+        parents. Crossing every probe with every parent would multiply the step's cost by the
+        probe count for an answer to a question nobody asked; attaching each to the leader
+        asks the one that matters, which is whether the best equation so far improves when it
+        is offered a term the residual ranking would never have surfaced.
+
+        Nothing here can displace a child: probes are appended, so a policy with probes
+        evaluates a superset of what it would have evaluated without them. It can therefore
+        cost time and find nothing, which is the honest failure mode and the one the
+        `probe_attraction=0.0` null is there to separate from a real gain.
+        """
+        blocked = self._blocked(parent.indices)
+        taken = sorted({positions_of[index] for index in added if index in positions_of})
+        for position in probes.propose(policy.probe_terms, taken):
+            index = pool[position]
+            if index in parent.indices or (blocked is not None and blocked[index]):
+                continue
+            child = tuple(sorted((*parent.indices, index)))
+            if child in seen:
+                continue
+            seen.add(child)
+            children.append(child)
+            origins.append(0)
+            added.append(index)
 
     def _feature_names(self, subset: Subset) -> frozenset[str]:
         """Which raw features a subset talks about, for the diversity kernel.
@@ -593,6 +665,7 @@ def fit(
     features = [frozenset(term.features) for term in library.terms] if policy.diversity_weight > 0.0 else None
     selector = Selector(design, target, penalty, library.feature_groups, features)
     seeds = _seed_terms(design, library, target, pool, policy) if policy.seed_terms else None
+    probes = _probe_field(design, library, target, pool, policy) if policy.probe_terms else None
     subsets = selector.search(
         pool,
         max_terms,
@@ -601,12 +674,33 @@ def fit(
         refine_rounds=refine_rounds,
         policy=policy,
         seeds=seeds,
+        probes=probes,
     )
     equations = {
         size: to_equation(library, subset, standardizer, selector.offset, f"{name}_k{size}")
         for size, subset in subsets.items()
     }
     return FitResult(equations=equations, pool_size=len(pool))
+
+
+def _probe_field(
+    design: np.ndarray,
+    library: Library,
+    target: np.ndarray,
+    pool: list[int],
+    policy: BeamPolicy,
+) -> ProbeField:
+    """The continuous space-filling proposer, over the same embedding seeding uses.
+
+    Built once per fit and then *told* what the beam measures, which is the whole difference
+    from `_seed_terms`: that one asks the sampler a single question before the search starts.
+    """
+    from ml_meta_perf.seeding import ProbeField as _Field
+    from ml_meta_perf.seeding import embed_terms
+
+    columns = library.matrix[:, pool]
+    strength = np.abs(pearson_columns(columns, target))
+    return _Field(embed_terms(design, pool), strength, attraction_weight=policy.probe_attraction)
 
 
 def _seed_terms(

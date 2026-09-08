@@ -1,34 +1,501 @@
 # Working notes
 
-> **You are on `wip/beam-search-op`.** It branches from `fix/ci-docs-plots` at `f4ff8be`;
-> nothing in it changes the published equation, and `tests/test_beam.py` fits the real corpus
-> both ways to prove it. Everything under the "audit session" headings describes the parent.
+> **You are on `wip/beam-search-op`.** It carries the audit work that used to sit on
+> `fix/ci-docs-plots` — that branch and `feature/descriptor-selection` were deleted on
+> 2026-09-08, local and remote, after checking that every commit on them was reachable from
+> here or from `main`. **Only `main` and `wip/beam-search-op` exist now, and no branch is to be
+> created without being asked for.** Nothing here changes the published equation, and
+> `tests/test_beam.py` fits the real corpus both ways to prove it. Everything under the
+> "audit session" headings describes what is now this branch's own history.
 
-## Start here — 2026-09-08, session ended with a job still running
+## The plan — 2026-09-08
 
-**The one thing waiting on you: Slurm job 15337.** Started 2026-09-08 00:20 on `atari`, the
-full beam-policy sweep. At 47 minutes it had done 43,094 of 728,640 points (~917/min), so
-**expect ~13 hours total** — the earlier 7 h estimate came from timing the arity-2 focused
-grid, and the full grid includes arity 3 and six-feature subsets whose libraries are ~4x
-larger. The 24 h limit is comfortable. When it lands:
+Set by the owner this session. Five criteria changed or sharpened, and three of them change how
+job 15337's verdicts must be read:
 
-```bash
-ssh playstation 'squeue -h -j 15337; tail -40 ~/aiml-model/results/cluster/slurm-beam-15337.out'
-scp playstation:'~/aiml-model/results/cluster/beam_search*.csv' results/cluster/
-```
+- **Speed is a criterion, not a tie-break.** The corpus will grow, so a *faster* beam at equal
+  accuracy is a win, and a tie at 1.2x is not "more machinery for no gain". Any improvement
+  across the several evaluations is also a win, however small.
+- **The claim is stability across all four protocols.** In-sample, LODO, LOMO and LOO-cell,
+  on R2 **and** ranking — that is what separates this from shallow learning, which collapses.
+  A beam variant has to be judged there, and `evaluate` currently scores no cell protocol at
+  all (see B).
+- **ESS is a continuous sampler.** One-shot use "gets you nothing", which is what
+  `seeding.empty_space` does today. See D.
+- **One branch for this work.** Done — see below.
+- **The whole text needs revision**, not only chapter 6, and it waits on final results.
 
-`beam_search_verdicts.csv` is the decision — the sweep's `objective` column is a shortlist and
-has already, once, put a nine-term equation on top that a paired test called significantly
-worse. **The question it answers** is whether giving each policy its own configuration sweep
-overturns the focused run's verdict, below. If it does not, the beam line closes as a negative
-and the branch is ready to merge or drop.
+### Closing decisions — 2026-09-08, set by the owner
 
-## Where each branch stands
+**The beam line closes as a negative and the branch closes with it.** Nothing measured beat
+`beam.VANILLA` at the published operating point: the pruners and `cap-3` return the identical
+fifteen terms, `cap-2` loses 0.203 of leave-one-dataset-out and 0.213 of leave-one-cell, ESS as
+a continuous sampler inside the beam returns the identical equation at 3-7x the cost, and on
+the configuration grid no sampler beats stratified random by more than noise. The published
+configuration is unchanged, as it has been all along.
 
-| branch | head | pushed | state |
-|---|---|---|---|
-| `fix/ci-docs-plots` | `f4ff8be` | yes | the audit. **No CI run yet** — the workflow triggers only on push to `main` or a PR, so it still needs a PR to be verified on a runner, and this session added scikit-learn as a base dependency and widened `ruff` to `src tests`, neither of which a runner has seen. |
-| `wip/beam-search-op` | see `git log` | yes | the beam exploration plus the practice/identity/opaque work below |
+Two decisions follow, both the owner's:
+
+- **Strip to `VANILLA`.** Every beam variant and the whole ESS apparatus come out of the tree:
+  the fifteen extra policies, `seeding`, `beam_compare`, `beam_search_cli`, the two beam
+  sbatch scripts, `scripts/grid_replay.py`, their tests, and the `diversity` extra. The numbers
+  stay in this file and the code stays in `git log` -- that is what history is for, and ~1000
+  lines the published pipeline never executes is not evidence, it is maintenance. **The strip
+  must be provably a no-op**: snapshot `results/` and `assets/docs/`, remove in one step, re-run
+  and `cmp` every output. Anything that moves is a bug in the removal, not a finding.
+- **Documentation: this branch's six-chapter structure, regenerated here.** `origin/main`
+  carries `811253c` from a collaborator -- the pipeline re-run on their machine (the report's
+  header still reads `C:\Datos\IT projects\...`) plus prose updated to match, against the
+  eleven-chapter pre-audit layout. Numbers come from the pipeline in this tree, never from
+  anyone's laptop, so that commit is a **checklist of numbers to verify** rather than a merge.
+  Main's `07-practices`, `08-limitations`, `09-model-effects` and `10-report` are read for
+  hand-written prose the consolidation did not carry over, and that prose is ported.
+
+### Job 15337 landed 2026-09-08 15:23, 15h03m. The beam line closes
+
+`beam_search.csv` is 883 MB on the cluster and was **not** copied down; `beam_search_verdicts.csv`
+is in `results/cluster/`. The compare stage printed "5 of 14 policies beat 'vanilla' on a paired
+test", and that sentence is true and does not mean what it appears to.
+
+**Every row of that verdict table is at nine terms.** `_best_configuration` ranks by
+`OBJECTIVE_WEIGHTS`, whose `stability` and `brevity` both fall with length, so each policy's
+sweep-best is a short equation and the incumbent it was paired against scores **0.5751** --
+0.063 below the published equation's 0.6381. A0 is confirmed on the full grid, and A0 also
+measured that these verdicts do not transfer: at fifteen terms `cap-3` returns the *identical*
+fifteen terms and `cap-2` loses 0.203 of leave-one-dataset-out.
+
+| where | verdict |
+|---|---|
+| sweep's objective-best (9 terms) | 5 of 14 policies better than vanilla, best 0.5921 |
+| **published configuration (15 terms)** | **0 of 5 better; 2 of 5 catastrophic** |
+| published equation | 0.6381 |
+
+**The best-anywhere numbers are not evidence either.** Across all 48,576 points every policy,
+vanilla included, has about 2,800 points above 0.6381 -- roughly 6% of the grid -- because the
+published length comes from `selection.best_length` on the consensus curve and not from
+maximising leave-one-dataset-out. That is the grid-truncation finding again, not a beam finding.
+The per-policy maxima run 0.6809 (`prune-relative-0.005`) to 0.6925 (`diverse-0.1`) with vanilla
+at 0.6855, ninth of fifteen -- but each is the maximum of 48,576 draws, and comparing maxima is
+the unpaired difference-of-two-numbers this project has a standing rule against. No paired test
+supports any of it.
+
+**So the job answered its question and the answer is no.** The question was whether giving each
+policy its own configuration sweep overturns the focused run's verdict. It does not: at the
+operating point the study publishes, nothing beats the published beam.
+
+### A0. The published-point check, run on 2026-09-08 — and it changes the question
+
+**The whole beam comparison has been happening at 6-8 terms, not at the published 15.**
+`_best_configuration` ranks by `OBJECTIVE_WEIGHTS`, where `stability` (0.15) and `brevity`
+(0.05) both fall with length, so every policy's objective-best in the focused sweep landed at
+6, 7 or 8 terms. The incumbent it was paired against is therefore *not* the published equation:
+vanilla's focused-best scores LOO-dataset **0.5658**, which is the published length-curve's own
+value at 6 terms (0.5659), against **0.6381** at 15. The comparison was sound; it was answering
+"which beam finds the best short equation".
+
+So the six policies were re-scored at `DEFAULT_E3` itself — 15 terms, the published operating
+point. Four seconds, locally, `compare` with no sweep file on disk:
+
+| policy | terms shared with the published equation | LOO-dataset | delta | MAE gain | verdict |
+|---|---:|---:|---:|---:|---|
+| `prune-relative-0.02` | **15 of 15** | 0.6381 | 0.0000 | 0.0000 | tie |
+| `prune-relative-0.05` | **15 of 15** | 0.6381 | 0.0000 | 0.0000 | tie |
+| `cap-3` | **15 of 15** | 0.6381 | 0.0000 | 0.0000 | tie |
+| `cap-2` | 9 of 15 | **0.4355** | **-0.2026** | -0.0364 | tie |
+| `cap-2+prune-0.02` | 9 of 15 | **0.4355** | **-0.2026** | -0.0364 | tie |
+
+Three things follow, and they are the reason the beam line cannot be closed on the focused run:
+
+- **At the published operating point the pruners are a no-op.** Not a small gain — the same
+  fifteen terms, to four decimal places, on every protocol scored. The +0.0015 MAE win at six
+  terms says nothing about depth fifteen, because what a pruner removes at step 6 of a beam is
+  not what it removes at step 15.
+- **`cap-2` destroys the equation at fifteen terms** (-0.2026 of LOO-dataset, 6 of its 15 terms
+  gone) while the *same policy* was the largest positive dR2 in the focused run. A policy's
+  verdict does not transfer across lengths in either direction.
+- **The paired test calls that -0.2026 collapse a "tie"** (p = 0.115, 6/20 folds, CI
+  [-0.101, +0.029]). That is the test behaving correctly on per-dataset MAE and it is a
+  standing warning: on this comparison the paired test can under-call a catastrophic R2 loss,
+  so the R2 delta has to be read beside it, never instead of it.
+
+**The speedups do not survive either** — 1.02x, 0.88x, 1.04x, 1.01x, 0.86x at fifteen terms
+against the 1.12-1.28x measured at six. But these are single 0.35-0.41 s runs, one measurement
+each, so **no speed claim from this table is admissible without repeats.** Timing repeats are
+a prerequisite for any cost verdict, here and in the sweep.
+
+**Caveat on direction.** `DEFAULT_E3` was tuned under `beam.VANILLA`, so this test is biased
+*toward* the incumbent: a challenger winning here would be conclusive, a challenger losing here
+is not. Nothing won. But "identical equation, four decimal places, fifteen of fifteen terms" is
+not a bias artefact — it is the pruner having nothing to do at this depth.
+
+### A. Land job 15337 and make the verdict readable
+
+Status at 09:53: 495,884 of 728,640 points at 836/min, 9h58m elapsed of a 24h limit.
+Stage 1 ends ≈14:30, stage 2 (`compare`) a few minutes after. **Do not rsync `src/` to the
+cluster until stage 2 has finished** — it launches a fresh Python from the same tree.
+
+- **A1. Land it.** The sweep CSV will be ~730 MB at the focused file's ~1 KB/row, so gzip
+  before copying: `ssh playstation 'gzip -k …/beam_search.csv'`, then scp both files.
+  If stage 2 died, `compare` re-runs locally — it only reads `{name}.csv` off disk.
+- **A2. DONE — report the frontier, not the label.** `beam_compare` records `seconds` and `speedup`
+  but collapses `verdict` to better/tie/worse on accuracy alone, which discards the cost axis
+  the corpus growth makes load-bearing. Report the Pareto frontier over (speedup, mae_gain)
+  and let better-or-tie with speedup > 1 count as a candidate.
+- **A3. DONE — score the compare stage on all four protocols.** `validate.cross_validate_doubly_held_out`
+  exists and is 476 solves against LODO's 20 — prohibitive at 728,640 sweep points, negligible
+  at compare's 15 configurations. Add `loo_cell_r2`, the ranking scores under it, and a column
+  for the *spread* across the four. Offline; no re-running.
+- **A4. Score every policy at *both* operating points.** A0 shows one is not enough: the
+  sweep's objective-best (6-8 terms) and `DEFAULT_E3` (15 terms) disagree about the sign of
+  every policy tried. `compare` already has both paths — it reads the sweep when the CSV is
+  there and falls back to `DEFAULT_E3` when it is not — so this is a loop over two
+  configurations per policy, not new machinery. Report them side by side and treat a policy
+  that only wins at one length as not having won.
+- **A5. DONE — repeat the timings.** `seconds` is one measurement of a 0.35-0.41 s run, and the
+  speedups it produces (0.86x to 1.04x at fifteen terms) are inside its own noise. Best of
+  five, or a fixed repeat count, before any cost verdict is quoted.
+- **A6. `OBJECTIVE_WEIGHTS` is now a plan item, not a footnote** (it was open item 3). It does
+  not merely shortlist oddly — `stability` and `brevity` both fall with length, so it moved the
+  entire beam experiment to a length the study does not publish. Either re-weight it, or make
+  `_best_configuration` rank within the published length band, or state the two-operating-point
+  rule of A4 as the standing answer.
+- **A7. Re-run `compare` locally** on the landed sweep with A2-A6 in place. That table, not the
+  sweep's `objective` column, is the decision.
+
+### A2, A3, A5 — done 2026-09-08, and the cell protocol changes one verdict
+
+`beam_compare` now scores every run under all four protocols, reports the spread between them,
+repeats its timings, and marks a Pareto frontier. Re-running the published-point check with
+that in place (`results/cluster/beam_published_point_verdicts.csv`, 13 s locally):
+
+| policy | in-sample | LODO | LOMO | **LOO-cell** | **spread** | speedup |
+|---|---:|---:|---:|---:|---:|---:|
+| vanilla = `prune-relative-0.02` = `-0.05` = `cap-3` | 0.6578 | 0.6381 | 0.6218 | 0.6162 | **0.0416** | 1.00 |
+| `cap-2` = `cap-2+prune-0.02` | 0.6507 | 0.4355 | 0.6190 | **0.4028** | **0.2479** | 0.98 |
+
+**The strictest protocol is where `cap-2` actually fails.** Its leave-one-*model* R2 barely
+moves (-0.003) while leave-one-dataset drops 0.203 and leave-one-cell drops **0.213** — the six
+terms it loses are dataset-side, so the damage only shows when the dataset is withheld. Judged
+on LOMO alone it would have looked harmless. The spread column states the whole thing in one
+number: 0.0416 for the published equation, **0.2479** for `cap-2`, a six-fold widening.
+
+**That spread is also the study's headline claim as a single figure**, and it now costs nothing
+to compute: 0.042 for E3 against 0.967 for the RandomForest (0.959 in-sample to -0.008 at
+leave-one-cell). Worth generating into the chapters rather than leaving in a verdicts file.
+
+**R2 and ranking disagree, which is why both are columns.** `cap-2` loses 0.213 of
+leave-one-cell R2 and its ranking MAP under the same protocol goes *up* — 0.854 against the
+published equation's 0.831. A shorter, worse-calibrated equation can still order the models
+within a dataset correctly. The `candidate` rule is keyed on the worst-protocol R2, so it
+refuses `cap-2` as it should, but a check on ranking alone would have promoted it.
+
+**And the speed difference at fifteen terms is zero.** With best-of-five timings the speedups
+are 0.978x to 1.002x — the 1.02x and 1.04x of the single-run table were the clock. Three of
+those policies return the *identical* equation, so that band is a null measurement of this
+machine, which is what set `SPEED_TOLERANCE = 0.05`: a `candidate` has to beat the incumbent by
+more than five percent before its speed is called a result. Under the single-run numbers
+`cap-3` was flagged a candidate at 1.002x; under repeats, nothing is.
+
+What went in:
+
+- `PROTOCOLS`, `PolicyRun.r2_loo_cell`, `.ranking_map` (MAP under each protocol), `.r2_spread`,
+  `.r2_worst`, `.ranking_worst`. Ranking is scored under all four too — a policy that traded
+  ranking for R2 would otherwise pass unseen.
+- `TIMING_REPEATS = 5`, `PolicyRun.seconds` (best) and `.seconds_median` and `.repeats` beside
+  it. `run_policy(..., repeats=1)` is the escape hatch for an expensive fit, and the run
+  records the 1 so no speed claim is made from one sample by accident.
+- `SPEED_TOLERANCE = 0.05`, and two columns in `compare_all`. **`standing`** is the one to
+  read: `better` (wins the paired test, gives up nothing on the strictest protocol),
+  `cheaper` (same accuracy, faster by more than the timing noise), `equal` (indistinguishable
+  on both axes -- more machinery for nothing) or `worse` (loses the paired test, *or* buys its
+  speed with the worst protocol). **`frontier`** is the cross-row Pareto view.
+
+  The first version of this pair was two booleans and was not readable, which is a fair
+  complaint and it also hid a real bug: the frontier was computed over the *challengers only*,
+  so the least-bad of a set of losing policies came out `true`. Doing nothing is always an
+  option, so the incumbent now enters the Pareto set at (0.0 gain, 1.0x), and speed is compared
+  in units of `SPEED_TOLERANCE` so a 1.008x from the clock cannot dominate a 1.000x. At the
+  published point the table now reads **0 better, 0 cheaper, 3 equal, 2 worse**, which is the
+  finding in four words.
+- Fifteen tests in `tests/test_beam_compare.py`, including the trade `standing` exists to
+  refuse -- twice as fast, ties on leave-one-dataset-out, pays for it on leave-one-cell, which
+  the paired test alone calls a tie -- and the incumbent's place in the frontier.
+
+### B. Can pruning and capping be combined? — partly already answered
+
+`cap-2+prune-0.02` is in `POLICIES` and in the running sweep. On the focused grid it does not
+stack, in either direction:
+
+| policy | verdict | MAE gain | 95% CI | wins | dR2 LODO | speed | terms |
+|---|---|---:|---|---:|---:|---:|---:|
+| `prune-relative-0.02` | better | +0.00145 | [+0.00055, +0.00238] | 16/20 | +0.0010 | 1.28x | 6 |
+| `cap-2` | tie | +0.00489 | [-0.00313, +0.01808] | 10/20 | +0.0192 | 1.22x | 7 |
+| `cap-2+prune-0.02` | tie | +0.00401 | [-0.00367, +0.01640] | 9/20 | +0.0181 | 1.25x | 7 |
+| `cap-1` | tie | +0.00401 | [-0.00367, +0.01640] | 9/20 | +0.0181 | 1.22x | 7 |
+
+**The combination is numerically identical to `cap-1` on every accuracy column** — pruning on
+top of a cap of 2 removes the same children a cap of 1 would have, so the pair collapses to the
+stricter cap and the pruner's consistency (16/20) is lost with it. Speed does not stack either:
+1.28x and 1.22x alone give 1.25x together, because both cut the same children.
+
+**At fifteen terms the collapse is total and in the other direction** (A0): `cap-2+prune-0.02`
+is identical to `cap-2` — the same 9 of 15 terms, the same 0.4355, the same -0.2026 — while
+`prune-relative-0.02` alone is identical to *vanilla*. So at the published depth the pair is
+"whatever the cap does", and the cap does harm.
+
+- **B1.** Confirm or overturn that on the full sweep, where the combination gets its own
+  configuration sweep rather than sharing the focused grid's operating point — and at both
+  operating points, per A4.
+- **B2.** If it holds, the untested pairings are the *loose* ones — `cap-3+prune-0.05`,
+  `prune-0.02+diverse-0.1` — where the two policies may cut different children. One focused
+  job, ~40 min. If it does not hold, the full sweep already answers the question.
+- **B3.** Whatever the answer, it has to be stated per length. A0 is the counter-example to any
+  sentence of the form "policy X is better here": `cap-2` is the best dR2 at seven terms and
+  the worst measured anywhere at fifteen.
+
+### C. Re-sweep the shortlist on the correct evaluation protocol
+
+- **C1.** Take the shortlist from A4: every policy that is better-or-tie with speedup > 1.
+- **C2. Measure the per-point cost of the cell protocol first**, on one grid point, before
+  sizing anything. `evaluate` currently spends most of a point in `fit` and `_fold_selections`,
+  so 476 extra ridge solves may cost 2x rather than 10x — but sizing a cluster job on a guess
+  is how the 7h estimate became 13h.
+- **C3.** Focused sbatch over the shortlist only, scoring all four protocols and the ranking
+  tests under each, every policy still getting its own configuration sweep. Roughly 759 points
+  per policy on the focused grid, so a five-policy shortlist is ~3,800 points before the cell
+  overhead.
+- **C4.** The verdict then reads on what the study claims: R2 and ranking *stable across all
+  four protocols*, with speed alongside.
+
+### D. ESS, explored properly
+
+**First, narrow the existing negative.** `ess-seed-6` / `-12` measured worse and 1.5-2.8x
+slower, and TODO recorded that as "space-filling initialisation loses". It is not.
+`seeding.empty_space` calls `ess.esa(embedded, bounds, n=limit-1, epochs=…)` **once**, with no
+scores, no attractiveness field and no rounds, then snaps to the nearest unused term. That is a
+one-shot seeder, and the negative is about the misuse, not about ESS.
+
+What the two working implementations do — `~/git/Optuna_ESA_Sampler/ESSSampler.py` and
+`~/git/pyBlindOpt/src/pyBlindOpt/init.py` (`oblesa`, `_ess_engine`):
+
+- the anchor set **accumulates**: each round probes against everything placed so far, and the
+  probes are *scored* and join the anchors, so the next field fit sees them "at the same
+  standing as the sampler's own points";
+- the field is guided by **attractiveness** — `attractiveness=-scores` (ESS's contract is
+  higher-is-better and OBLESA minimises), with `attraction_weight`, `k_att` and a `cauchy`
+  attraction metric so the pull reaches across the space instead of only nudging;
+- `rounds=1` degenerates to exactly the single-pass pipeline, i.e. to what this repo does now.
+
+- **D1. DONE — replay harness against the oracle table.** The landed sweep is 728,640 exhaustively
+  scored grid points — a lookup oracle. Run the continuous ESS loop against it with every
+  query answered by lookup and zero refits, and measure *evaluations to reach the grid's best*
+  against random, LHS and Sobol baselines. This is the cheapest possible test of the claim that
+  matters: **ESS is slower per draw but may buy back far more in evaluations it never has to
+  run.** It costs no cluster time and it is the argument for the next, larger corpus where an
+  exhaustive grid is unaffordable.
+- **D2. DONE — port the attractiveness pattern.** The owner has approved importing both: they are
+  small, both are on PyPI (`EmptySpaceSearch` 0.7.1, `pyBlindOpt` 0.5.0) and both are already in
+  the local venv. Two mechanical consequences. **The floor has to move**: `pyproject.toml` pins
+  `EmptySpaceSearch>=0.2.1` and the attractiveness API (`attractiveness`, `attraction_weight`,
+  `k_att`, `att_power`, `attraction_metric`, `att_model`) is what 0.7.1 exposes — pin `>=0.7.1`
+  the moment any of it is used. **Placement stays the `diversity` extra for now**, with
+  `pyBlindOpt` added beside it, because the extra's stated reason still holds: the published
+  equation is fitted with `beam.VANILLA` and reaches none of this, so a study run without the
+  extra still reproduces it exactly. Promote both to base dependencies if and only if an ESS
+  policy ends up in the published pipeline — at which point the same argument that made
+  scikit-learn a base dependency applies.
+- **D3. DONE (ahead of D1, since it needed no sweep) — ESS inside the search.** At each beam step the candidate children
+  already carry scores, so the attractiveness field is free. ESS places probes in the empty
+  regions of term-embedding space and they enter the beam beside the enumerated children —
+  ESS as a continuous proposal over subsets, not a seeder. Measured as a new policy, through
+  the same `compare` gate.
+- **D4. Reframed — see the D1 section: successive halving first, TPE when the grid stops being affordable, and constraint search for the subset lattice. Originally: only if D3 pays.** A* and constraint search consume the
+  same proposals at the same interface point.
+
+### D2, D3 — done 2026-09-08. ESS used as a sampler finds the same equation, slower
+
+**The one-shot negative is now scoped, and the real version is measured.**
+`seeding.ProbeField` runs `ess.esa` the way `pyBlindOpt.init.oblesa` and the Optuna
+`ESSSampler` run it: anchors accumulate, each carries the objective the search *measured*, and
+the field is refitted every step. `beam.BeamPolicy` gained `probe_terms` (probes proposed per
+step, 0 = off) and `probe_attraction` (pull towards what scored well, in ESS's units), and
+`fit.Selector.search` takes a field, appends its proposals as children of the current best
+subset, and tells it the objective of every child it evaluated.
+
+Four policies are catalogued, including **`probe-4-attract-0.0`, the unguided null** — the same
+probes placed by repulsion alone. Without it a win could be the extra candidates rather than
+the guidance, which would credit ESS for the beam merely looking at more terms.
+
+Measured at two operating points, four features, arity 2:
+
+| policy | 15 terms: LODO / cell / terms shared / s | 6 terms: LODO / cell / shared / s |
+|---|---|---|
+| vanilla | 0.6381 / 0.6162 / — / **0.36** | 0.5659 / 0.5489 / — / **0.47** |
+| `probe-4-attract-0.0` | 0.6381 / 0.6162 / 15 of 15 / 1.86 | 0.5659 / 0.5489 / 6 of 6 / 1.64 |
+| `probe-4-attract-0.5` | 0.6381 / 0.6162 / 15 of 15 / 1.35 | 0.5659 / 0.5489 / 6 of 6 / 3.10 |
+| `probe-4-attract-1.0` | 0.6381 / 0.6162 / 15 of 15 / 1.18 | 0.5659 / 0.5489 / 6 of 6 / 1.45 |
+| `probe-8-attract-0.5` | 0.6381 / 0.6162 / 15 of 15 / 1.42 | 0.5659 / 0.5489 / 6 of 6 / 1.53 |
+
+**The identical equation at both lengths, at 3-7x the cost.** Probes are *appended* and never
+displace a child, so a probing beam evaluates a superset of what it would have evaluated
+anyway — it can only add. On this corpus, at these two configurations, it added nothing. That
+is the same shape as the standing negative that 8x compute converges to the fourth decimal:
+**the beam is not the binding constraint, and now that has been tested with a sampler that was
+actually being told what the search found.**
+
+**What this does and does not close.** It closes "ESS inside the beam, on the published
+grammar". It does not close **D1** — ESS over the *configuration* grid — and that is the one
+worth doing, because it is where an ESS draw would replace an expensive evaluation rather than
+adding one. Two features and arity 2 is also a small library; a corpus with more datasets and
+a wider feature set is where a proposal mechanism would have room to matter, and re-running
+this then is cheap now that the machinery exists.
+
+One implementation note worth not rediscovering: **the anchor set is one entry per pool
+position, keeping the best objective seen.** The first version appended every measurement, and
+on the published configuration that is 4,142 anchors over a pool of ~600 — seven duplicate
+coordinates per term. ESS reads anchors as occupied *space*, so duplicates are not extra
+evidence, they are extra repulsion: a term the beam keeps returning to because it is useful
+would end up pushing probes away hardest. Deduplicating also bounds the field's cost by the
+pool rather than by the length of the search, and it silenced TORANN's index-tuning chatter,
+which was going to the root logger and would have flooded a cluster job's output.
+
+### D1 — settled 2026-09-08. No sampler beats random on the configuration grid
+
+**Final numbers**, budget 2,000 draws of 48,576, 100 seeds, `validate.paired_comparison`,
+against an oracle best of 0.6855 leave-one-dataset-out:
+
+| | mean | vs random | 95% CI | wins |
+|---|---:|---|---|---:|
+| random | 0.6766 | — | — | — |
+| Sobol | 0.6778 | tie +0.0011 | [-0.0003, +0.0025] | 53/100 |
+| ESS w=1.0 | 0.6770 | tie +0.0004 | [-0.0009, +0.0018] | 53/100 |
+| LHS | 0.6759 | tie -0.0007 | [-0.0022, +0.0008] | 43/100 |
+
+**Nothing beats uniform random.** The only significant effect measured anywhere is Sobol over
+LHS (+0.0013 to +0.0018 at budgets from 1,000 up), which is the expected ordering between two
+low-discrepancy methods and does not lift either above the baseline. Power-of-two sample sizes,
+which scipy's Sobol asks for, change nothing (+0.0011/+0.0012/+0.0009 at 32/64/128 per stratum).
+
+**Why, measured rather than argued.** Over 32 strata x 20 seeds, Sobol samples with 3.7x lower
+discrepancy than random -- it does its job -- but the **correlation between a sample's
+discrepancy and the best score it finds is +0.02**. Low discrepancy is a guarantee about
+integration error; finding this grid's optimum is a hitting problem on one isolated lattice
+point (1 in 48,576, on a boundary at `k=28, z=5.00`). Coverage and hitting are different
+problems and this grid only rewards the second.
+
+**Three retractions got to that answer, and each is a lesson worth more than the result.**
+
+1. **The first harness never called ESS.** Blocks of 8 over 32 strata meant a budget of 200
+   spent every draw on the random cold start; at 1,000 only 93 of 125 blocks were guided. It
+   reported "ESS does not help" having measured random sampling with extra steps -- the same
+   one-shot-for-continuous substitution diagnosed in `seeding.empty_space` one section earlier.
+   The tell was in the output: `ESS w=0` and `ESS w=0.5` printed byte-identical means *and*
+   standard deviations. **`grid_replay.py` prints the ESS call count on every row** so it
+   cannot recur silently.
+2. **Nearest-level snapping halved the boundary sampling rate.** Rounding a continuous draw to
+   the nearest lattice level gives an axis's two extreme levels a half-width cell and every
+   interior level a full one: 0.200 against 0.333 on the six-level z-cap axis. Sobol and LHS hit
+   an axis extreme 21.5 times per 62 draws against random's 36.8, and **every optimum on this
+   grid is on an axis extreme**. That artifact alone produced four significant "worse than
+   random" verdicts. Equal-probability binning fixed it exactly (37.4 against an expected 37.3).
+3. **Twelve seeds could not resolve the effect.** Random's own mean moved 0.0038 between 12 and
+   100 seeds, and every effect being measured is 0.001 to 0.005 -- so a 12-seed run reported
+   ESS, Sobol *and* LHS all beating random, and an earlier one reported ESS beating random by
+   +0.0045. Neither survived. **Match the seed count to the effect size, not to the slowest
+   sampler**: the shared baseline is where power is free.
+
+**The prediction that opened this was right in its strongest form.** The grid is 37% categorical
+by variance (arity 29.4%, feature subset 6.8%) against 5.9% for the two continuous axes, with
+`penalty` at 0.3%; what continuity exists is rugged (adjacent penalties differ by 69% as much as
+random pairs); and the optima are on boundaries. A continuous space-filling sampler has almost
+nothing here to act on, and measures as having none.
+
+**The actionable finding is not about samplers at all: the grid is truncating the optimum.**
+Both R2 argmaxes sit at `k = 28` and `z = 5.00`, the top of both axes. Widening those axes is
+worth more than any search method, and it is a one-line change to `SCOPES`. Note this does not
+touch the published equation, whose length comes from `selection.best_length` on the consensus
+curve and not from this argmax -- but any statement about what the grid's best configuration is
+currently stops where the grid does.
+
+**Where a smarter search would actually pay** -- all of it indifferent to continuity, which is
+what bounds ESS here:
+
+- **Successive halving / Hyperband** is the strongest fit and the one to try next. A
+  configuration's cost is dominated by the fit and its cross-validation, and the protocols form
+  a natural ladder: rank cheaply on in-sample, promote survivors to leave-one-dataset-out, and
+  only the finalists to leave-one-cell's 476 solves. That is a real cost win, it assumes nothing
+  about the geometry, and it scales with the corpus.
+- **Optuna's TPE** handles mixed categorical/integer/float spaces natively, which is the shape
+  this grid actually has. Worth trying when the grid stops being affordable -- at 48,576 points
+  and 2.2 s it still is.
+- **Constraint or branch-and-bound over the feature subsets** is the only method that addresses
+  the axis that will explode: subsets grow as 2^k in the optional columns, and 4 optional
+  columns give 16 while 10 would give 1,024. It needs an admissible bound over the subset
+  lattice, which is real work and may not exist.
+- **A\*** is rejected on the same ground as OBL was: it needs an admissible heuristic on partial
+  configurations, and inventing one would be adding a knob rather than testing an idea.
+- **ESS stays on the list rather than off it.** It is the only sampler measured to beat random
+  here, and the reason to reach for Sobol instead is simplicity rather than evidence. If a
+  future grid is large enough that 2,000 draws is a small fraction of it -- which is the regime
+  where the win appeared -- ESS is the one with a paired win behind it.
+
+### The documentation audit against `origin/main`, done 2026-09-08
+
+Main's eleven chapters were checked topic by topic against this branch's six. **The
+consolidation lost almost nothing**, and where it did the replacement is better: main's
+standalone `08-limitations` was distributed into a "Limitations of ..." section inside each of
+the six chapters, which puts each threat beside the thing it threatens. `09-model-effects` is
+absorbed into `04-equation`, and with *current* numbers -- the per-model slope at +0.0162, CI
+[+0.0049, +0.0290], 14 folds, against the +0.017 the old chapter recorded.
+
+Topic-by-topic, only four things in main have no home here:
+
+| orphaned | where it belongs |
+|---|---|
+| "Ranking: a limitation that closed, and how" | `05-evaluation`, beside the ranking metrics |
+| "Status: measured, and deliberately not part of the study" (the identity work's standing) | `04-equation`, which now carries the measurement without saying what it is *for* |
+| **unadjusted p-values / the multiple-comparisons disclosure** | nowhere yet -- see below |
+| a single consolidated threats-to-validity statement | an editorial call, see below |
+
+**The multiple-comparisons disclosure is a real gap and not a porting problem** -- it is absent
+from main too. The ordinal, the dummies, the axes, five embeddings, `Model Capability`, and every
+beam and sampler variant in this file were all tried against the same 476 rows and the same
+protocols, so **the surviving result comes out of a search and its p-values are unadjusted**.
+That belongs in the text, and currently is not in either branch.
+
+**And the consolidation has one cost worth weighing.** Seven "Limitations of ..." sections read
+better in place, but a reviewer looking for threats to validity has no single section to open.
+A short index in `index.md` linking the seven would keep the distribution and restore the
+single entry point. Left to the owner.
+
+### E. The documentation revision
+
+Blocked on final results — the text can only be revised against numbers that will not move
+again. Three parts, and the first is a surprise:
+
+- **E1. Reconcile `origin/main`.** It carries one commit from a collaborator, `811253c`
+  "Updated documentation" (2026-09-07), touching README, TODO, `02`, `06`, `07`, `08`, `10`
+  and `cli.py`. It **does not merge cleanly** into this branch: the audit restructured and
+  renamed those chapters, so `06`, `07`, `08` and `10` come back as modify/delete conflicts.
+  `10-report.md` is *generated*, so hand edits to it are the thing the project's central rule
+  forbids. This is a reconciliation, not housekeeping, and it belongs with the revision.
+- **E2.** Regenerate everything (`python -m ml_meta_perf`), then read all the text end to end —
+  not only chapter 6. Chapters 0 and 2 have still never had a continuous read.
+- **E3.** Push every hand-written number into a generated block. Every stale figure found in
+  the audit was in prose the pipeline does not write.
+
+### Order
+
+A0 is done. A2, A3, A5 and A6 are offline and can start now — they are what make the landing
+table readable, and A4 needs them. A1 is gated only on the job. B1 falls out of A7 for free.
+C needs A7's shortlist. D1 needs A1's table but nothing else, and is the one piece that can
+start the moment the CSV is on disk; D2's dependency question is settled. E waits for C.
+
+**The beam line cannot be closed early.** A0 was the fastest available test of "is
+`prune-relative` simply better?" and the answer is no — it is a no-op at the published
+operating point and its focused-grid win does not transfer. What the full sweep can still find
+is a policy that prefers a *different* operating point, which is exactly the question A0 cannot
+answer, so the job is worth its remaining four hours.
 
 ## The three results this session produced
 
@@ -537,16 +1004,18 @@ way, or to accept the clip and justify it prominently in chapter 5.
    *capability* descriptor would do and what nothing in this corpus records. **Behavioural
    probing therefore stops being future work and becomes the next step** — see "When the
    meta-dataset can be recomputed", Group A, which is costed and specific.
-1. **Open a PR and confirm CI is green.** Both branches are pushed, but the workflow triggers
-   only on a push to `main` or a pull request, so **nothing has run on a runner yet**. That
-   matters more than before: this session made scikit-learn a base dependency and widened
-   `ruff` to `src tests`, neither of which CI has seen, and the original reason this branch
-   exists is a CI fix verified only in a local venv.
+1. **Open a PR from `wip/beam-search-op` and confirm CI is green.** The workflow triggers only
+   on a push to `main` or a pull request, so **nothing has run on a runner yet**. That matters
+   more than before: this branch made scikit-learn a base dependency and widened `ruff` to
+   `src tests`, neither of which CI has seen, and the audit it carries began as a CI fix
+   verified only in a local venv. The PR is also where `origin/main`'s `811253c` has to be
+   reconciled — see E1 in the plan; it does not merge cleanly.
 2. **Re-read chapters 0 and 2 end to end as a reader.** Chapters 1 and 3-6 had a continuous
    read on 2026-09-07 and their numbers were audited against the generated output; 0 and 2
    were not, beyond labelling chapter 2's historical tables.
-3. **`OBJECTIVE_WEIGHTS` may want re-weighting.** In the sweep, `stability` at 0.15 outvoted
-   an accuracy gap that a paired test called significant, and put a 9-term equation on top.
+3. **`OBJECTIVE_WEIGHTS` may want re-weighting — superseded by A6 in the plan, and worse than
+   recorded here.** In the sweep, `stability` at 0.15 outvoted an accuracy gap that a paired
+   test called significant, and put a 9-term equation on top.
    The objective is currently a shortlisting device with the paired test as the decision;
    either re-weight it or write that division of labour down as deliberate.
 4. **The equation's own `stability` is low** — terms reselect in roughly a third of folds.
@@ -819,9 +1288,10 @@ re-running: the cluster copy goes stale and the memory request is load-bearing.
 
 ## For the next session
 
-Both branches are pushed. Item 5 above is the ordered list; item 0 is the one that changes
-what the study claims, and job 15337 is the one that arrives on its own. Five working habits
-worth keeping:
+`wip/beam-search-op` is pushed and is the only working branch. **The plan at the top of this
+file is the current ordered list**; item 5 below is the older one it supersedes for the beam
+work, item 0 is the one that changes what the study claims, and job 15337 is the one that
+arrives on its own. Five working habits worth keeping:
 
 - **Audit prose numbers against `results/` mechanically, not by reading.** Harvest every
   decimal from `results/*.csv|json` and the generated blocks, then flag every decimal in
