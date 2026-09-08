@@ -26,10 +26,19 @@ So the chapter runs in two layers:
 
 And then a third thing, which is the one this study is uniquely placed to do. A verdict drawn
 from family means says the advice holds on this corpus, and any study with this data could
-compute it. **A practice can also be checked against the published equation itself** — does
-it appear in named terms, with the sign and the strength the practice predicts? That check is
-in the generated section under *Each practice against the equation's own terms*, and it is
-what the fifteen readable terms were bought for.
+compute it. **A practice can also be paired with the terms that carry it** — which of the
+fifteen, with what standardised weight, and with which sign. That is in the generated section
+under *Each practice against the equation's own terms*, and it is what the readable terms were
+bought for.
+
+The unit there is the **term**, not the raw feature, and that matters. A feature can enter
+several terms, in numerators and denominators and under different transforms, so a single
+per-feature direction throws away the thing worth reading. `Processing Units Number` is the
+case in point: it carries one sign in the term where it is a numerator and the opposite in the
+three where it is a denominator. That is not the equation contradicting itself — it is the
+equation saying that what predicts MCC is **capacity measured against a property of the data**
+rather than capacity on its own, which is the conditional form of the practice that recommends
+matching capacity to the problem.
 
 The second layer is where the study earns its keep. Twenty datasets from one domain is a
 narrow base from which to *invent* advice and a perfectly reasonable base from which to
@@ -159,18 +168,27 @@ At a glance:
 
 #### Each practice against the equation's own terms
 
-The verdicts above are drawn from corpus averages -- family means, variance shares, paired tests -- which any study with this corpus could compute. This table asks the stronger question, and the one an interpretability-first study is uniquely able to ask: **does the published equation encode the practice, in named terms, with a sign and a strength a reader can look up?**
+The verdicts above are drawn from corpus averages -- family means, variance shares, paired tests -- which any study with this corpus could compute. This table asks the stronger question, and the one an interpretability-first study is uniquely able to ask: **which of the fifteen terms carries this practice, with what strength and which sign?**
 
-| practice | feature | expected | terms | direction | effect | stability | agrees |
-|---|---|---|---|---|---|---|---|
-| clean-noise-before-adding-capacity | ns_ratio | lowers | 0 |  |  |  | not selected |
-| prefer-outlier-robust-learners | nr_outliers | lowers | 1 |  |  |  | no direction |
-| capacity-is-not-free | Processing Units Number | lowers | 5 | raises | 0.3396 | 0.7100 | no |
-| capacity-is-not-free | Model Capability | raises | 2 | raises | 0.3104 | 0.9250 | yes |
+| practice | feature | expected | term | beta | effect | stability | direction | agrees |
+|---|---|---|---|---|---|---|---|---|
+| clean-noise-before-adding-capacity | ns_ratio | lowers |  |  |  |  |  | not selected |
+| prefer-outlier-robust-learners | nr_outliers | lowers | [log(nr_class)] * [nr_outliers] | -0.1229 | 0.1892 | 0.1500 | lowers | yes |
+| capacity-is-not-free | Processing Units Number | lowers | [log(Input Distribution Modelling)] * [log(Processing Units Number)] | -0.0661 | 0.1358 | 0.8000 | raises | no |
+| capacity-is-not-free | Processing Units Number | lowers | [log(eq_num_attr)] / [log(Processing Units Number)] | -0.1408 | 0.3489 | 0.7000 | raises | no |
+| capacity-is-not-free | Processing Units Number | lowers | [log(gravity)] / [log(Processing Units Number)] | -0.1150 | 0.2940 | 1.0000 | raises | no |
+| capacity-is-not-free | Processing Units Number | lowers | [log(Processing Units Number)] / [log(nr_class)] | -0.0458 | 0.1239 | 0.5500 | lowers | yes |
+| capacity-is-not-free | Processing Units Number | lowers | [nr_cor_attr] / [log(Processing Units Number)] | -0.0656 | 0.1653 | 0.5000 | raises | no |
+| capacity-is-not-free | Model Capability | raises | [log(gravity)] * [log(Model Capability)] | 0.1515 | 0.3891 | 1.0000 | raises | yes |
+| capacity-is-not-free | Model Capability | raises | [nr_bin] * [log(Model Capability)] | 0.0605 | 0.0710 | 0.8500 | raises | yes |
 
-`expected` is what the practice predicts as the feature rises; `direction` is what the equation does, measured on the data rather than read off a weight sign, because a feature can sit in several terms and inside denominators. `effect` is the size of that move across the feature's deciles -- **agreement in sign with a negligible effect is agreement without evidence**, which is why the two are printed together. `not selected` means the search never took the feature, so the equation is silent on that practice rather than supporting it; `no direction` means the feature is in the equation but moves MCC too weakly or too non-monotonically for a direction to be stated.
+**One row per (practice, term) pair**, because the equation is a sum of terms and a term is the unit a practice can be held against. `expected` is what the practice predicts as the feature rises; `direction` is what *that term's own contribution* does, measured on the data rather than read off the weight sign -- which would be wrong the moment the feature sits in a denominator, and several here do. `not selected` marks a claim resting on a feature the search never took, so the equation is silent on it rather than supporting it.
 
-Only practices that make a claim about a raw feature appear here. A protocol rule, a metric choice or a statement about model families has no coefficient to check it against, and mapping one onto a term would be inventing a connection.
+**Read this table against the verdict tally above, not as part of it.** Of the 10 practices, 3 make a claim about a quantity the equation contains -- the rest are about a protocol, a metric, or a family of learners, and pairing one of those with a coefficient would be inventing a connection. Those practices are carried by **8 of the equation's 15 terms**, giving 8 (practice, term) pairings: **4 come out the way the practice predicts and 4 do not**, and 1 claim rests on a feature the search never took.
+
+**A practice split across terms that disagree is the most informative row here, not a contradiction.** A raw feature can enter several terms, in numerators and in denominators and under different transforms, and the sign of each is measured separately for that reason. Where a feature carries one sign in a numerator and the opposite in a denominator, the equation is saying that what matters is the *ratio* rather than the quantity -- which is a conditional version of the practice rather than a refutation of it, and is the kind of statement only a readable equation can make.
+
+``beta`` is the strength and ``effect`` is what the term is worth on this data. **Agreement in sign with a negligible effect is agreement without evidence**, which is why the two are printed together, and ``stability`` says how often the folds chose that term at all.
 
 ## The measurements underneath
 

@@ -48,7 +48,7 @@ from ml_meta_perf.data import (
 )
 from ml_meta_perf.experiment import Configuration, Report
 from ml_meta_perf.guidance import as_table as as_guidance_table
-from ml_meta_perf.guidance import assess, equation_evidence
+from ml_meta_perf.guidance import assess, equation_coverage, equation_evidence
 from ml_meta_perf.guidance import render as render_guidance
 from ml_meta_perf.model import Equation, direction
 from ml_meta_perf.practices import render as render_practices
@@ -674,28 +674,104 @@ def _saturated_note(report: Report) -> str:
     )
 
 
-def _identity_note(report: Report) -> str:
-    """What the identity ceiling is worth, as one generated sentence.
+def _coverage_note(report: Report, columns: dict[str, np.ndarray]) -> str:
+    """How far the equation reaches into the catalogue, counted over (practice, term) pairs.
 
-    The gap is the study's central negative result stated as a number: it is what every
-    rejected model-side encoding failed to recover, and it is a property of the corpus rather
-    than of the search.
+    The verdict tally above and this count measure different things, and a reader who takes
+    the first for the second will badly overrate what the equation established. Counting pairs
+    rather than practices is what makes the interesting case visible: a practice carried by
+    several terms that disagree with each other is not one verdict, and the disagreement is
+    usually the most informative thing on the page.
+    """
+    counts = equation_coverage(report, columns)
+    if not counts["pairs"]:
+        return ""
+    return (
+        f"**Read this table against the verdict tally above, not as part of it.** Of the "
+        f"{counts['practices']} practices, {counts['with_feature_claims']} make a claim about "
+        "a quantity the equation contains -- the rest are about a protocol, a metric, or a "
+        "family of learners, and pairing one of those with a coefficient would be inventing a "
+        f"connection. Those practices are carried by **{counts['carrying_terms']} of the "
+        f"equation's {counts['terms']} terms**, giving {counts['pairs']} (practice, term) "
+        f"pairings: **{counts['agree']} come out the way the practice predicts and "
+        f"{counts['disagree']} do not**"
+        + (f", and {counts['unselected']} claim rests on a feature the search never took.\n"
+           if counts["unselected"] else ".\n")
+        + "\n**A practice split across terms that disagree is the most informative row here, "
+        "not a contradiction.** A raw feature can enter several terms, in numerators and in "
+        "denominators and under different transforms, and the sign of each is measured "
+        "separately for that reason. Where a feature carries one sign in a numerator and the "
+        "opposite in a denominator, the equation is saying that what matters is the *ratio* "
+        "rather than the quantity -- which is a conditional version of the practice rather "
+        "than a refutation of it, and is the kind of statement only a readable equation can "
+        "make.\n"
+        "\n``beta`` is the strength and ``effect`` is what the term is worth on this data. "
+        "**Agreement in sign with a negligible effect is agreement without evidence**, which "
+        "is why the two are printed together, and ``stability`` says how often the folds "
+        "chose that term at all.\n"
+    )
+
+
+def _identity_note(report: Report) -> str:
+    """What the identity ceiling is worth, and whether the study's own test calls it real.
+
+    A difference of two pooled R2 values over twenty folds is not a measurement -- that has
+    produced three wrong conclusions on this project -- so the rungs are paired against the
+    uncorrected equation and the verdict comes from the test rather than from the size of the
+    gap. The two halves of the paired test are reported separately where they disagree,
+    because they answer different questions: the sign test asks whether the correction wins
+    *consistently*, the bootstrap whether the mean gain survives a different draw of datasets.
     """
     if report.identity.height < 3:
         return ""
     rows = report.identity.to_dicts()
-    base, level, slope = (float(row["r2_loo_dataset"]) for row in rows[:3])
-    return (
-        f"**The gap is {slope - base:.3f} of leave-one-dataset-out R2**, of which a per-model "
-        f"level alone recovers {level - base:.3f} and the level-plus-slope form the rest. The "
-        "slope is the half that matters: a level shifts every one of a model's rows equally, "
-        "while a slope lets its advantage depend on the data, which is what a *capability* "
-        "descriptor would have to do and what none of the descriptors this corpus records "
-        "does. Every model-side encoding the study tried and rejected was rejected for "
-        "failing to recover this gap -- so it is a property of the corpus, not of the "
-        "search, and the one route to closing it that survives is measuring what a model is "
+    base, level, slope = rows[0], rows[1], rows[2]
+    total = float(slope["r2_loo_dataset"]) - float(base["r2_loo_dataset"])
+    step = float(level["r2_loo_dataset"]) - float(base["r2_loo_dataset"])
+
+    lines = [
+        f"**The gap is {total:.3f} of leave-one-dataset-out R2**, of which a per-model *level* "
+        f"recovers {step:.3f} and the level-plus-slope form the remaining {total - step:.3f}.\n",
+        "**Whether that is real is a paired question**, so each rung is compared with the "
+        "uncorrected equation dataset by dataset, on absolute error, over the twenty held-out "
+        "folds. The two rungs come back differently, and the difference is the finding:\n",
+    ]
+    if level["verdict"] == "tie":
+        lines.append(
+            f"* a per-model **level** is a **tie** -- it wins on {int(level['wins'])} of the "
+            "twenty folds and its interval spans zero. A constant shift per model, which is "
+            "what a level is, adds nothing the equation does not already have.\n"
+        )
+    if slope["verdict"] == "real":
+        lines.append(
+            f"* a per-model **slope** is **not** a tie: the bootstrap interval "
+            f"[{float(slope['ci_low']):+.4f}, {float(slope['ci_high']):+.4f}] lies entirely "
+            f"above zero, on {int(slope['wins'])} winning folds of twenty. Read it with the "
+            f"sign test beside it, which at p = {float(slope['sign_p']):.3f} does **not** reach "
+            "significance -- so the gain is carried by its size on the folds it wins rather "
+            "than by winning nearly all of them. That is weaker evidence than the interval "
+            "alone suggests, and stronger than a tie.\n"
+        )
+        lines.append(
+            "**So the question this chapter was written to close is not closed.** The half of "
+            "the correction that survives is the one that lets a model's advantage depend on "
+            "the data -- exactly what a *capability* descriptor would have to do, and exactly "
+            "what none of the descriptors this corpus records does. The mixed terms were "
+            "supposed to absorb that interaction and have absorbed only part of it.\n"
+        )
+    else:
+        lines.append(
+            "* neither rung survives pairing, so on this corpus perfect model identity adds "
+            "nothing measurable to the published equation and the model side is as well "
+            "described as free per-model numbers could make it.\n"
+        )
+    lines.append(
+        "Every model-side encoding the study tried and rejected was rejected for failing to "
+        "recover this gap, so it is a property of the corpus rather than of the search -- and "
+        "the one route to closing it that survives on the merits is measuring what a model is "
         "good at rather than asserting it.\n"
     )
+    return "\n".join(lines)
 
 
 def _opaque_note(report: Report) -> str:
@@ -1306,27 +1382,21 @@ def render(
         "The verdicts above are drawn from corpus averages -- family means, variance shares, "
         "paired tests -- which any study with this corpus could compute. This table asks the "
         "stronger question, and the one an interpretability-first study is uniquely able to "
-        "ask: **does the published equation encode the practice, in named terms, with a sign "
-        "and a strength a reader can look up?**\n"
+        "ask: **which of the fifteen terms carries this practice, with what strength and "
+        "which sign?**\n"
     )
     if frame is not None:
-        parts.append(_table(equation_evidence(report)) + "\n")
+        parts.append(_table(equation_evidence(report, columns)) + "\n")
         parts.append(
-            "`expected` is what the practice predicts as the feature rises; `direction` is "
-            "what the equation does, measured on the data rather than read off a weight sign, "
-            "because a feature can sit in several terms and inside denominators. `effect` is "
-            "the size of that move across the feature's deciles -- **agreement in sign with a "
-            "negligible effect is agreement without evidence**, which is why the two are "
-            "printed together. `not selected` means the search never took the feature, so the "
-            "equation is silent on that practice rather than supporting it; `no direction` "
-            "means the feature is in the equation but moves MCC too weakly or too "
-            "non-monotonically for a direction to be stated.\n"
+            "**One row per (practice, term) pair**, because the equation is a sum of terms and "
+            "a term is the unit a practice can be held against. `expected` is what the "
+            "practice predicts as the feature rises; `direction` is what *that term's own "
+            "contribution* does, measured on the data rather than read off the weight sign -- "
+            "which would be wrong the moment the feature sits in a denominator, and several "
+            "here do. `not selected` marks a claim resting on a feature the search never took, "
+            "so the equation is silent on it rather than supporting it.\n"
         )
-        parts.append(
-            "Only practices that make a claim about a raw feature appear here. A protocol "
-            "rule, a metric choice or a statement about model families has no coefficient to "
-            "check it against, and mapping one onto a term would be inventing a connection.\n"
-        )
+        parts.append(_coverage_note(report, columns))
     else:
         parts.append("_(not checked: the meta-dataset was not supplied to the renderer)_\n")
 

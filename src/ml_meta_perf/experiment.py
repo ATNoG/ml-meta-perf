@@ -51,6 +51,7 @@ from ml_meta_perf.validate import (
     decision_report,
     fold_selections,
     interaction_capture,
+    leave_one_group_out,
     oracle_ladder,
     paired_comparison,
     random_kfold_groups,
@@ -603,12 +604,37 @@ def identity_ceiling(frame: pl.DataFrame, e3: EquationReport) -> pl.DataFrame:
             fold, columns, truth, datasets, models, features=DATASET_FEATURES
         ),
     }
-    return pl.DataFrame(
-        [
-            {"correction": label, "r2_loo_dataset": r2_score(truth, values), "mae": mae(truth, values)}
-            for label, values in rungs.items()
-        ]
-    )
+
+    def per_dataset_mae(prediction: np.ndarray) -> np.ndarray:
+        return np.array([mae(truth[test], prediction[test]) for _, _, test in leave_one_group_out(datasets)])
+
+    # **Whether the gap is real is a paired question, not a difference of two pooled numbers.**
+    # That distinction has produced three wrong conclusions on this project, and this gap is
+    # the one the study's central negative result is measured against -- so each rung is paired
+    # against the uncorrected equation over the twenty held-out datasets, on per-dataset MAE.
+    baseline = per_dataset_mae(fold.predictions)
+    rows: list[dict[str, object]] = []
+    for label, values in rungs.items():
+        row: dict[str, object] = {
+            "correction": label,
+            "r2_loo_dataset": r2_score(truth, values),
+            "mae": mae(truth, values),
+        }
+        if label.startswith("none"):
+            row |= {"gain": 0.0, "ci_low": float("nan"), "ci_high": float("nan"),
+                    "sign_p": float("nan"), "wins": 0, "verdict": "baseline"}
+        else:
+            paired = paired_comparison(per_dataset_mae(values), baseline, lower_is_better=True)
+            row |= {
+                "gain": paired.mean,
+                "ci_low": paired.low,
+                "ci_high": paired.high,
+                "sign_p": paired.p_value,
+                "wins": paired.wins,
+                "verdict": "real" if paired.significant else "tie",
+            }
+        rows.append(row)
+    return pl.DataFrame(rows)
 
 
 def interaction_reached(frame: pl.DataFrame, e3: EquationReport) -> pl.DataFrame:

@@ -282,5 +282,95 @@ class TestRendering(unittest.TestCase):
         self.assertIn("No practices", render([]))
 
 
+class TestEquationEvidence(unittest.TestCase):
+    """Practices paired with the terms that carry them.
+
+    The unit is the **term**, not the raw feature, and that is the whole point: a feature
+    enters several terms in different positions, and collapsing them into one direction throws
+    away the reading that makes a readable equation worth having.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        from ml_meta_perf.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays, load
+        from ml_meta_perf.experiment import run
+        from ml_meta_perf.guidance import equation_coverage, equation_evidence
+
+        frame = load()
+        cls.columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+        cls.report = run()
+        cls.evidence = equation_evidence(cls.report, cls.columns)
+        cls.counts = equation_coverage(cls.report, cls.columns)
+
+    def test_only_practices_making_a_feature_claim_appear(self) -> None:
+        from ml_meta_perf.guidance import CATALOGUE
+
+        claiming = {practice.id for practice in CATALOGUE if practice.expectations}
+        self.assertEqual(set(self.evidence["practice"].to_list()), claiming)
+
+    def test_every_named_term_is_in_the_published_equation(self) -> None:
+        """A pairing against a term the equation does not contain would be fabricated."""
+        published = {term.name for term in self.report.e3.equation.terms}
+        for name in self.evidence["term"].to_list():
+            if name:
+                self.assertIn(name, published)
+
+    def test_a_term_is_paired_only_with_a_feature_it_contains(self) -> None:
+        by_name = {term.name: set(term.features) for term in self.report.e3.equation.terms}
+        for row in self.evidence.to_dicts():
+            if row["term"]:
+                with self.subTest(term=row["term"]):
+                    self.assertIn(row["feature"], by_name[row["term"]])
+
+    def test_every_carrying_term_of_a_claimed_feature_is_listed(self) -> None:
+        """One row per (practice, term) pair, so a practice carried by five terms gets five
+        rows. Reporting only the strongest would hide exactly the disagreement worth seeing."""
+        from ml_meta_perf.guidance import CATALOGUE
+
+        for practice in CATALOGUE:
+            for feature, _ in practice.expectations:
+                expected = sum(1 for term in self.report.e3.equation.terms if feature in set(term.features))
+                listed = self.evidence.filter(
+                    (pl.col("practice") == practice.id) & (pl.col("feature") == feature) & (pl.col("term") != "")
+                ).height
+                with self.subTest(practice=practice.id, feature=feature):
+                    self.assertEqual(listed, expected)
+
+    def test_a_feature_the_search_never_took_is_marked_rather_than_dropped(self) -> None:
+        """Silence and support are different claims, and a missing row would read as neither."""
+        unselected = self.evidence.filter(pl.col("agrees") == "not selected")
+        for row in unselected.to_dicts():
+            with self.subTest(feature=row["feature"]):
+                self.assertEqual(row["term"], "")
+                self.assertNotIn(row["feature"], {f for term in self.report.e3.equation.terms for f in term.features})
+
+    def test_agreement_is_the_measured_direction_against_the_expected_one(self) -> None:
+        for row in self.evidence.to_dicts():
+            if row["agrees"] in ("yes", "no"):
+                with self.subTest(term=row["term"]):
+                    self.assertEqual(row["agrees"], "yes" if row["direction"] == row["expected"] else "no")
+
+    def test_the_same_feature_can_disagree_with_itself_across_terms(self) -> None:
+        """The finding the term-level view exists to surface: `Processing Units Number` carries
+        one sign where it is a numerator and the opposite where it is a denominator, which is
+        the equation saying the *ratio* matters rather than the quantity. A per-feature check
+        cannot represent this at all."""
+        capacity = self.evidence.filter(
+            (pl.col("feature") == "Processing Units Number") & (pl.col("term") != "")
+        )
+        self.assertGreater(capacity.height, 1)
+        self.assertGreater(len(set(capacity["direction"].to_list())), 1)
+
+    def test_coverage_counts_pairs_and_matches_the_table(self) -> None:
+        verdicts = self.evidence["agrees"].to_list()
+        self.assertEqual(self.counts["agree"], verdicts.count("yes"))
+        self.assertEqual(self.counts["disagree"], verdicts.count("no"))
+        self.assertEqual(self.counts["pairs"], verdicts.count("yes") + verdicts.count("no"))
+        self.assertEqual(self.counts["terms"], len(self.report.e3.equation.terms))
+
+    def test_carrying_terms_never_exceed_the_equation(self) -> None:
+        self.assertLessEqual(self.counts["carrying_terms"], self.counts["terms"])
+
+
 if __name__ == "__main__":
     unittest.main()

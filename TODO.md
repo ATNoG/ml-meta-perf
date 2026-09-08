@@ -1,91 +1,156 @@
 # Working notes
 
-> **You are on `wip/beam-search-op`.** It branches from `fix/ci-docs-plots` at `f4ff8be` and
-> adds the beam-search exploration below; nothing in it changes the published equation, and
-> `tests/test_beam.py::TestVanillaIsUnchanged` fits the real corpus both ways to prove it.
-> Everything above the "audit session" headings describes the parent branch.
+> **You are on `wip/beam-search-op`.** It branches from `fix/ci-docs-plots` at `f4ff8be`;
+> nothing in it changes the published equation, and `tests/test_beam.py` fits the real corpus
+> both ways to prove it. Everything under the "audit session" headings describes the parent.
 
-## The beam-search exploration — built, tested, and waiting on the cluster
+## Start here
 
-**Nothing has been run at scale yet.** The code, the tests and the two Slurm scripts are
-ready; what is missing is the cluster job, and the result is not knowable without it.
+Three things happened after the audit, in the order they matter.
+
+**1. The model-descriptor question is reopened — this is the study's live problem.** See item 0
+under "Open". Settled by measurement, not judgement.
+
+**2. The beam-search comparison has a first answer, and it is mostly negative.** Slurm job
+**15336** (focused scope, `atari`, ~17 min) ran the fifteen policies over the published
+operating point. Full verdicts in `results/cluster/beam_search_focused_verdicts.csv`; the
+headline, paired over the twenty held-out datasets on per-dataset MAE:
+
+| policy | verdict | MAE gain | 95% CI | wins | ΔR² LOO-dataset | speed |
+|---|---|---:|---|---:|---:|---:|
+| `prune-relative-0.02` | **better** | +0.0015 | [+0.0005, +0.0024] | 16/20 | +0.0010 | 1.28× |
+| `prune-relative-0.05` | **better** | +0.0015 | [+0.0005, +0.0024] | 16/20 | +0.0010 | 1.12× |
+| `cap-2`, `cap-3` | tie | +0.0049 | [-0.0031, +0.0181] | 10/20 | +0.0192 | 1.22× |
+| `diverse-1.0`, `ess-seed-6`, `ess-seed-12` | **worse** | -0.0011 | [-0.0018, -0.0005] | 4/20 | -0.0012 | 0.36-1.15× |
+| `prune-relative-0.005` | **worse** | -0.0137 | [-0.0235, -0.0059] | 4/20 | -0.0354 | 1.36× |
+
+Read it carefully, because the two columns disagree in an instructive way.
+
+- **Adaptive pruning is the only thing that wins, and it wins by almost nothing.** Significant
+  on 16 of 20 folds, and worth **+0.001 of R²**. It also runs 1.1–1.3× faster. On accuracy that
+  is not a reason to change the published configuration; **on cost it might be**, and that is
+  the one open question the job leaves.
+- **The per-parent cap has the largest ΔR² (+0.019) and is a tie.** This is exactly the case
+  `validate.paired_comparison` exists for: a favourable mean on 10 of 20 folds, interval
+  spanning zero. Do not read the +0.019 as a gain — an earlier session read three numbers of
+  that shape as results and all three were wrong.
+- **Diversity and ESS seeding are significantly *worse*.** The idea that a redundant library
+  makes a width-6 beam effectively one-wide is plausible and, on this data, wrong: forcing
+  spread costs accuracy. ESS seeding is also 1.5-2.8× *slower*. That is a real negative result
+  and worth writing up as one.
+- **Too-tight pruning is the worst policy tested** (-0.035 R²), which is the expected shape:
+  prune hard enough and the beam stops being a beam.
+
+**3. Slurm job 15337 (full scope) is still running** — the whole configuration grid crossed
+with all fifteen policies, ~7 h on 62 cores. It is the one that can still overturn the above,
+because it gives every policy *its own* configuration sweep rather than scoring it at a point
+tuned for the incumbent. When it lands:
+
+```bash
+scp playstation:'~/aiml-model/results/cluster/beam_search*.csv' results/cluster/
+ssh playstation 'tail -40 ~/aiml-model/results/cluster/slurm-beam-15337.out'
+```
+
+If it agrees with the focused run — pruning marginal, diversity harmful — the conclusion is
+that **the beam was never the binding constraint**, which matches the "more search converges
+to the 4th decimal" result already in the negatives table, and the whole line should be
+written up as a closed negative and merged. If it disagrees, re-run `compare` on its output
+before believing either.
+
+## The beam-search machinery, for when the full job lands
 
 `ml_meta_perf.beam` makes the beam's pruning, diversity and initialisation selectable, so the
-variants can be *measured* against the incumbent instead of argued about. Fifteen policies,
-from the beam-search literature and mapped onto subset selection rather than sequence
-decoding:
+variants are *measured* rather than argued about. Fifteen policies, from the beam-search
+literature, mapped onto subset selection rather than sequence decoding:
 
 - **Adaptive pruning** (Freitag & Al-Onaizan, WMT 2017) — drop a child too far from the step's
-  best, so the beam narrows itself where the landscape is peaked. Their *relative* form prunes
-  at a ratio of the best score, which does not transfer: `Subset.rss` is a penalised objective
-  that ridge shrinkage can drive negative, and a ratio test on a sign-changing quantity is
-  meaningless. Both forms here are differences, the relative one as a fraction of the target's
-  total sum of squares — the same denominator R² uses.
+  best. Their *relative* form prunes at a ratio of the best score, which cannot transfer:
+  `Subset.rss` is penalised and ridge shrinkage drives it negative, so a ratio test on a
+  sign-changing quantity is meaningless. Both forms here are differences, the relative one as a
+  fraction of the target's total sum of squares — the denominator R² uses.
 - **Max candidates per history** (same paper) — cap how many children one parent may place in
-  the beam. **The variant most likely to pay here**: the library is deliberately redundant, so
-  a width-6 beam can spend all six slots on near-spellings of one idea.
-- **Determinantal selection** (Meister et al., EMNLP 2021) — a weighted continuum from pure
-  score to pure diversity. The kernel is *feature overlap*, because two subsets over the same
-  features say the same thing twice, which is what matters for an equation meant to be read.
+  the beam. The hypothesis was that a redundant library lets one parent fill the width with
+  near-spellings of one idea. Measured: **a tie**.
+- **Determinantal selection** (Meister et al., EMNLP 2021) over a feature-overlap kernel.
+  Measured: tie at low weight, **worse** at high.
 - **Space-filling initialisation** — `ml_meta_perf.seeding`, using **ESS** (`ess.esa`) and
-  **TORANN**. A beam starting from the empty set has one first move: take the strongest single
-  terms, which in a redundant library look alike. Seeding instead with terms *spread out* in
-  term space gives it genuinely different starting points. The embedding is the part to be
-  sceptical about: terms are the standardised design's columns, projected onto their leading
-  principal components and **rank**-mapped to the unit cube (rank, not min-max, or the one
-  spiky column the z-cap bounds rather than forbids pushes everything else into a corner).
-  Both are an optional `diversity` extra, and `empty_space` degrades to classical maximin
-  without them — so a study run without them produces exactly the published equation.
+  **TORANN**, both an optional `diversity` extra; `empty_space` degrades to classical maximin
+  without them, so a study run without them produces exactly the published equation. Measured:
+  **worse, and slower**.
 
 **Two stages, and the first is not the answer.** `ml-meta-perf-beam sweep` ranks by
 `OBJECTIVE_WEIGHTS`, which has already put a nine-term equation on top that a paired test
-called significantly worse. `ml-meta-perf-beam compare` is the decision: each policy's best
-configuration refit and paired against the incumbent on per-dataset MAE, exact sign test plus
-a bootstrap over the twenty datasets. **A tie is not a win** — matching the published beam is
-more machinery for no measured gain.
+called significantly worse. `compare` is the decision: each policy's best configuration refit
+and paired against the incumbent on per-dataset MAE. **A tie is not a win.**
 
-**Every policy gets its own configuration sweep, and that is why the job is large.**
-`DEFAULT_E3` was itself chosen by a sweep under the vanilla beam, so scoring another beam at
-that point compares a tuned setup against an untuned one. Measured locally at 2.2 s/point:
+**Every policy gets its own configuration sweep, and that is why the full job is large.**
+`DEFAULT_E3` was itself chosen under the vanilla beam, so scoring another beam there compares
+a tuned setup with an untuned one. Measured at 2.2 s/point:
 
-| script | scope | points | core-hours | wall (62 cores) |
+| script | scope | points | core-hours | wall |
 |---|---|---:|---:|---:|
-| `scripts/beam_search_focused.sbatch` | arity 2, the two load-bearing columns | 11,385 | ~7 | ~15 min |
-| `scripts/beam_search.sbatch` | the full grid × 15 policies | 728,640 | ~445 | ~7 h |
-
-Run the focused one first — same-day answer at the operating point already chosen. The full
-one is still worth running afterwards: a different beam may prefer a different operating point
-entirely, which the focused grid cannot see.
+| `scripts/beam_search_focused.sbatch` | arity 2, the two load-bearing columns | 11,385 | ~7 | 17 min on 32 cores |
+| `scripts/beam_search.sbatch` | the full grid × 15 policies | 728,640 | ~445 | ~7 h on 62 cores |
 
 ```bash
 rsync -av --delete --exclude='__pycache__' --exclude='*.egg-info' \
   --relative ./src ./scripts ./pyproject.toml ./requirements.txt playstation:~/aiml-model/
 ssh playstation 'cd ~/aiml-model && venv/bin/pip install -e ".[search,diversity]"'
-ssh playstation 'cd ~/aiml-model && sbatch --job-name=beamf --cpus-per-task=32 scripts/beam_search_focused.sbatch'
+ssh playstation 'cd ~/aiml-model && sbatch --job-name=beam --cpus-per-task=62 scripts/beam_search.sbatch'
 ```
 
-**What a local smoke run already suggests, and why it is not evidence.** On a deliberately
-coarse grid, `cap-2` and `prune-relative-0.05` reached a better leave-one-dataset-out than
-vanilla and several policies produced equations sharing only 6 to 9 of vanilla's 15 terms — so
-the machinery moves the search rather than decorating it. But that grid is too small for the
-comparison to mean anything, and at `DEFAULT_E3` itself every variant *ties*, which is exactly
-what a configuration tuned for the incumbent should produce. **Neither observation is a
-result.** The cluster job is.
+**What is not attempted.** OBL proper — reflecting a candidate through the domain centre — has
+no obvious meaning for a subset of terms, and inventing one would be adding a knob rather than
+testing an idea. ESS is used only for the beam's starting points, and lost. Its more natural
+home is the **configuration sweep itself**: that grid is 48,576 points over five axes, two of
+them continuous, and a space-filling design over it is a direct use of what ESS is for. **That
+is the thing to try next on this branch**, and it is a different claim from the one the focused
+job just rejected — the beam variants lost on *accuracy*, whereas an ESS-designed sweep would
+be a claim about *cost*, which is where the one surviving win (pruning, 1.1-1.3x) also sits.
 
-**What is not attempted.** OBL (opposition-based learning) proper — reflecting a candidate
-through the domain centre — has no obvious meaning for a subset of terms, and inventing one
-would be adding a knob rather than testing an idea. ESS is used only for the beam's starting
-points. Its more natural home is the **configuration sweep itself**: that grid is 48,576
-points over five axes, two of them continuous, and a space-filling design over it would be a
-direct use of what ESS is for. That is the next thing to try if the beam variants come back
-ties.
+## Practices are paired with *terms* now, not with features
 
+`guidance.equation_evidence` was rewritten on 2026-09-08 and the unit changed. It first paired
+each practice with a raw **feature** and reported one direction per feature, which was the
+wrong shape twice over: the equation is a sum of *terms*, and a feature enters several of them
+in different positions. Collapsing that into one direction threw away the only reading a
+readable equation can offer.
 
-Session closed 2026-09-07 on branch `fix/ci-docs-plots`. Gate green —
-`venv/bin/pre-commit run --all-files`, 484 tests. The run is ~38s and byte-reproducible:
-two consecutive runs produce identical `results/*` and identical chapters. Most of the
-runtime is the opaque-regressor comparison, which refits a random forest 46 times; the
-equation half of the pipeline is 14s, down from 15.7s.
+One row per (practice, term) pair now, with the term's standardised weight, its 10-90 effect,
+its fold stability, and a **measured** direction — measured because reading a sign off the
+weight is wrong the moment the feature sits in a denominator, and several do.
+
+**What it found, and it is the best single illustration of why the study fits equations at
+all.** `Processing Units Number` carries five of the fifteen terms. In the one where it is a
+*numerator* (`log(PUN)/log(nr_class)`) it lowers MCC; in the three where it is a *denominator*
+(`log(eq_num_attr)/log(PUN)`, `log(gravity)/log(PUN)`, `nr_cor_attr/log(PUN)`) it raises it.
+That is not the equation contradicting itself. It is the equation saying that what predicts
+MCC is **capacity measured against a property of the data**, not capacity on its own — which
+is the conditional form of "match capacity to the problem", the practice's own headline. No
+per-feature summary can express that, and no opaque model can be asked.
+
+Two intermediate designs were tried and dropped, both recorded so they are not re-attempted:
+
+- **Feature-level directions.** Too coarse, as above. It also mislabelled `nr_outliers` as
+  "no direction" because the *summed* per-feature effect failed the monotonicity filter, while
+  the single term carrying it has a perfectly clear one.
+- **Family-level row predictions** — asking whether the equation's out-of-fold predictions
+  rank tree families above neural ones. It works (all three claims came out `yes`), and it is
+  answering a different question: whether the equation *predicts well*, which chapter 5 already
+  establishes. It says nothing about which part of the equation encodes the advice.
+
+**Coverage is honest and low, and the chapter says so.** Only 3 of the 10 practices make a
+claim about a quantity the equation contains; the other seven are about a protocol, a metric,
+or a family of learners and have no term to be checked against. The generated section counts
+this explicitly so the verdict tally ("5 supported") is not read as the equation having
+validated five practices — those verdicts come from corpus statistics that any study with this
+corpus could compute.
+
+**If the low coverage is unsatisfying, the fix is the catalogue, not the check.** Ten practices
+were chosen before this pairing existed. A catalogue chosen *for* it — practices that make
+claims about quantities the corpus records — would have far higher coverage and would be a
+more focused contribution. That is a research decision, and item 5 under "Open" already
+flagged that the ten have never been re-checked against the 15-term equation.
 
 ## What the 2026-09-07 audit session changed, part two
 
@@ -422,12 +487,16 @@ way, or to accept the clip and justify it prominently in chapter 5.
 
 ## 5. Open, in the order it is worth picking up
 
-0. **Decide what +0.050 means.** The identity ceiling is three times what the chapter said,
-   and the chapter's "the model side is adequately described, the question is closed" does not
-   follow from it. Chapter 4 now states the gap and marks the reading open. Either the study
-   argues that +0.050 is small enough — in which case say so against the measured number and
-   not the old one — or the model-descriptor question reopens, and the behavioural-probing
-   direction below stops being future work and becomes the next step.
+0. **The model-descriptor question is reopened, and this is now the study's live problem.**
+   The identity ceiling is +0.050, not the +0.017 the chapter recorded, and it was settled by
+   the study's own paired test rather than by judgement: a per-model **level** is a tie, and a
+   per-model **slope** is not — bootstrap interval [+0.0049, +0.0290], entirely above zero, on
+   14 winning folds of 20. (Its sign test is p = 0.115, so the gain is carried by magnitude
+   rather than by consistency; the generated section reports both.) The surviving half is
+   exactly the one that lets a learner's advantage depend on the data, which is what a
+   *capability* descriptor would do and what nothing in this corpus records. **Behavioural
+   probing therefore stops being future work and becomes the next step** — see "When the
+   meta-dataset can be recomputed", Group A, which is costed and specific.
 1. **Push, and confirm CI is green.** Nothing else in this branch has been seen by a runner,
    and CI now runs `ruff check src tests` rather than `src`.
 2. **Re-read chapters 0 and 2 end to end as a reader.** Chapters 1 and 3-6 had a continuous
@@ -440,9 +509,15 @@ way, or to accept the clip and justify it prominently in chapter 5.
 4. **The equation's own `stability` is low** — terms reselect in roughly a third of folds.
    That is the safeguard licensing the fixed-form protocol, so it deserves a number in the
    chapters rather than only in the generated tables.
-5. **Chapter 6's practice catalogue has not been re-checked** against the 15-term equation.
-   The verdicts are regenerated, but the ten practices were chosen when the equation had
-   different terms; whether they are still the right ten is a judgement nobody has made.
+5. **Chapter 6's practice catalogue is the highest-value open item now.** The verdicts are
+   regenerated and each practice is paired with the terms carrying it, but **only 3 of the 10
+   make a claim any term can answer** — the rest are about a protocol, a metric, or a family of
+   learners. The ten were chosen before that pairing existed. A catalogue chosen *for* it,
+   stating claims about quantities the corpus actually records, would raise coverage from 3/10
+   and make the term-level check the chapter's contribution rather than a footnote to it.
+   Concretely: practices about class imbalance, feature count, class entropy, and the
+   instances-per-attribute ratio are all expressible as feature claims and all have terms in
+   the equation to be checked against.
 6. **The per-family effect table.** The one measured model-side description that transfers to
    an *unseen* model: +0.075 LOO-model, where per-model identity gives exactly 0.000. It is a
    table rather than an equation, so it fails the single-equation gate. Publish as a second
@@ -696,8 +771,9 @@ re-running: the cluster copy goes stale and the memory request is load-bearing.
 
 ## For the next session
 
-The branch is `fix/ci-docs-plots`, unpushed. Item 5 above is the ordered list, and item 0 is
-the one that needs a person. Three working habits worth keeping:
+The branch is `wip/beam-search-op`, unpushed, on top of `fix/ci-docs-plots`. Item 5 above is
+the ordered list, and item 0 is the one that changes what the study claims. Four working
+habits worth keeping:
 
 - **Audit prose numbers against `results/` mechanically, not by reading.** Harvest every
   decimal from `results/*.csv|json` and the generated blocks, then flag every decimal in
@@ -711,6 +787,12 @@ the one that needs a person. Three working habits worth keeping:
 - **When a number belongs in a chapter, generate it.** Every stale figure found this session
   was in prose the pipeline does not write. The rule is not "check the numbers", it is "give
   the chapter nowhere to keep a number of its own".
+- **Pick the unit before building the check.** The practice-to-equation comparison was built
+  three times — against features, against family-level row predictions, and finally against
+  terms — and only the third says anything a reader could not get from a scatter plot or from
+  chapter 5. The equation is a sum of terms, so the term is the unit; asking what a *feature*
+  does averages over the positions it occupies, which is precisely the information that makes
+  the equation worth reading.
 
 Two habits that cost time in earlier sessions and are worth not repeating:
 

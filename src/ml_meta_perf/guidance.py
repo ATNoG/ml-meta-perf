@@ -41,6 +41,7 @@ from dataclasses import dataclass
 import numpy as np
 import polars as pl
 
+from ml_meta_perf.attribution import contributions as attribution_contributions
 from ml_meta_perf.data import (
     DATASET_COLUMN,
     DATASET_FEATURES,
@@ -52,6 +53,7 @@ from ml_meta_perf.data import (
     TREE_FAMILIES,
 )
 from ml_meta_perf.experiment import Report
+from ml_meta_perf.stats import spearman
 from ml_meta_perf.validate import paired_comparison
 
 SUPPORTED = "supported"
@@ -62,6 +64,7 @@ NOT_TESTED = "not tested"
 
 #: What a practice predicts a feature does to MCC as that feature rises.
 RAISES, LOWERS = "raises", "lowers"
+
 
 
 @dataclass(frozen=True)
@@ -81,11 +84,11 @@ class Practice:
     #: *equation* encodes it, which is a stronger and more falsifiable claim -- and the one
     #: an interpretability-first study is actually in a position to make.
     #:
-    #: Empty for a practice that is not about a feature at all -- a protocol rule, a metric
-    #: choice, a statement about model families. That is not a gap to be filled: mapping
-    #: "hold out whole groups" onto a coefficient would be inventing a connection, and the
-    #: generated table says so in as many words rather than leaving a blank row.
+    #: Empty for a practice that makes no claim about a single feature. Most do not: a
+    #: family-level recommendation is a claim about *rows*, not about a coefficient, and
+    #: `group_claims` is how those are checked.
     expectations: tuple[tuple[str, str], ...] = ()
+
 
 
 @dataclass(frozen=True)
@@ -717,85 +720,128 @@ def assess(frame: pl.DataFrame, report: Report) -> list[Verdict]:
     return [CHECKS[practice.id](evidence) for practice in CATALOGUE]
 
 
-def equation_evidence(report: Report) -> pl.DataFrame:
-    """Each practice's feature claims, checked against the published equation term by term.
+def equation_evidence(report: Report, columns: dict[str, np.ndarray]) -> pl.DataFrame:
+    """Each practice paired with the **terms** of the published equation that carry it.
 
-    **This is the check the study is uniquely able to make.** Every other verdict in this
-    module is drawn from corpus averages -- family means, variance shares, paired tests --
-    which any study with this corpus could compute and which say nothing about the equation.
-    A term-level check says something stronger: that the published equation *encodes* the
-    practice, in named terms, with a weight and a sign a reader can look up.
+    **The equation is a sum of terms, so a term is the unit a practice has to be checked
+    against.** A raw feature is not: `Processing Units Number` appears in five of the fifteen
+    terms, in numerators and denominators and under different transforms, and collapsing that
+    into one per-feature direction throws away exactly what a reader wants -- which part of
+    the equation encodes the advice, how strongly, and with what sign.
 
-    Three columns carry the check.
+    One row per (practice, term) pair. A term is paired with a practice when it contains a
+    feature the practice makes a claim about.
 
-    ``terms`` is how many of the equation's terms the feature appears in. A practice resting
-    on a feature the search never selected is not confirmed by this equation and not refuted
-    by it either -- it is silent, and silence is reported as such rather than as agreement.
+    ``beta`` is the **strength**: the standardised weight, already in MCC units because the
+    target is centred but never scaled, so it is comparable across terms whose raw units have
+    nothing to do with each other. ``effect`` is what the term is worth on this data -- the
+    swing in its contribution across the middle 80% of its range -- because a large weight on
+    a term that barely varies is not important.
 
-    ``direction`` is measured on the data by `ml_meta_perf.practices`, not read off a weight
-    sign. A feature can sit in several terms and inside denominators, so there is no single
-    coefficient whose sign answers the question; the measurement sweeps the feature across
-    its observed range with the rest of the equation in place and reports which way predicted
-    MCC actually moves.
+    ``direction`` is the **sign**, and it is *measured* rather than derived. Reading it off the
+    weight would be wrong as soon as the feature sits in a denominator or under a reciprocal,
+    which several of these do: the rank correlation between the feature and the contribution
+    that term actually makes is the only thing that answers "as this rises, what does this
+    term do to predicted MCC". ``agrees`` compares that with what the practice predicts.
 
-    ``effect`` is the size of that move across the feature's deciles -- the *strength* half
-    of the question. A feature that agrees in sign but moves predicted MCC by a thousandth is
-    agreement without evidence, and printing the two side by side is what stops the table
-    reading as ten confirmations.
-
-    Note that these are **conditional** statements: what the feature does with every other
-    term present, not what a scatter plot of it alone would show. The two disagree often, and
-    that is conditioning working rather than a defect.
+    A practice can therefore be **encoded by several terms that disagree with each other**,
+    and that is a finding rather than a defect: it means the equation says the effect is
+    conditional on which other quantity the feature is measured against.
     """
-    measured = {row["feature"]: row for row in report.practices.to_dicts()}
-    # Counted from the equation itself, not from `report.practices`. The practices table is
-    # filtered -- a feature has to move MCC enough, monotonically enough, in terms stable
-    # enough -- so a feature can be *in* the equation and absent from it. Those two states
-    # mean different things to a practice and must not both read as "0 terms": one is the
-    # search declining the feature, the other is the equation using it in a way too weak or
-    # too non-monotone to state a direction for.
-    in_equation: dict[str, int] = {}
-    for term in report.e3.equation.terms:
-        for feature in set(term.features):
-            in_equation[feature] = in_equation.get(feature, 0) + 1
+    equation = report.e3.equation
+    # `EquationReport.stability` is optional, and an absent one means "the folds were never
+    # re-run" rather than "no term was ever reselected". The column comes back as NaN in that
+    # case, which reads as unknown; a zero would read as a term the folds rejected.
+    fold_choices = report.e3.stability
+    stability = (
+        {row["term"]: float(row["frequency"]) for row in fold_choices.to_dicts()}
+        if fold_choices is not None and fold_choices.height
+        else {}
+    )
+    contributions = attribution_contributions(equation, columns)
+    betas = dict(zip((term.name for term in equation.terms), equation.standardized_weights, strict=True))
 
     rows: list[dict[str, object]] = []
     for practice in CATALOGUE:
         for feature, expected in practice.expectations:
-            found = measured.get(feature)
-            terms = in_equation.get(feature, 0)
-            observed = "" if found is None else (RAISES if float(found["direction"]) > 0 else LOWERS)
-            if found is not None:
-                verdict = "yes" if observed == expected else "no"
-            elif terms:
-                verdict = "no direction"
-            else:
-                verdict = "not selected"
-            rows.append(
-                {
-                    "practice": practice.id,
-                    "feature": feature,
-                    "expected": expected,
-                    "terms": terms,
-                    "direction": observed,
-                    "effect": float("nan") if found is None else abs(float(found["effect"])),
-                    "stability": float("nan") if found is None else float(found["stability"]),
-                    "agrees": verdict,
-                }
-            )
+            carrying = [
+                (index, term) for index, term in enumerate(equation.terms) if feature in set(term.features)
+            ]
+            if not carrying:
+                rows.append(
+                    {
+                        "practice": practice.id,
+                        "feature": feature,
+                        "expected": expected,
+                        "term": "",
+                        "beta": float("nan"),
+                        "effect": float("nan"),
+                        "stability": float("nan"),
+                        "direction": "",
+                        "agrees": "not selected",
+                    }
+                )
+                continue
+            for index, term in carrying:
+                share = contributions[:, index]
+                low, high = np.percentile(share, [10.0, 90.0])
+                slope = spearman(columns[feature], share)
+                observed = RAISES if slope > 0.0 else LOWERS
+                rows.append(
+                    {
+                        "practice": practice.id,
+                        "feature": feature,
+                        "expected": expected,
+                        "term": term.name,
+                        "beta": float(betas[term.name]),
+                        "effect": float(high - low),
+                        "stability": stability.get(term.name, float("nan")),
+                        "direction": observed,
+                        "agrees": "yes" if observed == expected else "no",
+                    }
+                )
     return pl.DataFrame(
         rows,
         schema={
             "practice": pl.String,
             "feature": pl.String,
             "expected": pl.String,
-            "terms": pl.Int64,
-            "direction": pl.String,
+            "term": pl.String,
+            "beta": pl.Float64,
             "effect": pl.Float64,
             "stability": pl.Float64,
+            "direction": pl.String,
             "agrees": pl.String,
         },
     )
+
+
+def equation_coverage(report: Report, columns: dict[str, np.ndarray]) -> dict[str, int]:
+    """How much of the catalogue the equation's *terms* can be held against, and what they say.
+
+    Kept separate from the verdict tally, and the distinction is the point. A verdict is drawn
+    from corpus statistics -- family means, variance shares, paired tests -- so "5 supported"
+    says the advice holds on these twenty datasets, which any study with this corpus could
+    establish and which the fitted equation plays no part in. This counts the narrower and
+    harder thing: how many of the fifteen terms carry a practice at all, and how many of those
+    pairings come out the way the practice predicts.
+
+    Counted over (practice, term) pairs rather than over practices, because a practice carried
+    by five terms that disagree with each other is not one verdict -- it is five readings, and
+    collapsing them would hide the disagreement that makes the equation worth reading.
+    """
+    evidence = equation_evidence(report, columns)
+    verdicts = evidence["agrees"].to_list()
+    return {
+        "practices": len(CATALOGUE),
+        "with_feature_claims": sum(1 for practice in CATALOGUE if practice.expectations),
+        "pairs": sum(1 for verdict in verdicts if verdict in ("yes", "no")),
+        "agree": verdicts.count("yes"),
+        "disagree": verdicts.count("no"),
+        "unselected": verdicts.count("not selected"),
+        "terms": len(report.e3.equation.terms),
+        "carrying_terms": len({term for term in evidence["term"].to_list() if term}),
+    }
 
 
 def as_table(verdicts: list[Verdict]) -> pl.DataFrame:

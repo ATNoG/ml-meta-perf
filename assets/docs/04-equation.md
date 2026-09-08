@@ -698,13 +698,23 @@ The vocabulary offers five operations and five transforms and the search is free
 
 Under leave-one-dataset-out every model appears in every training fold, so the equation's residual can be averaged per model on the training rows and applied to the held-out dataset with no leak. That replaces the model descriptors with the best possible substitute -- the model's **identity**, fitted freely -- so what it adds is a ceiling on what any descriptor set could reach by telling these classifiers apart.
 
-| correction | r2_loo_dataset | mae |
-|---|---|---|
-| none (E3, 15 terms) | 0.6381 | 0.1417 |
-| per-model level | 0.6583 | 0.1375 |
-| per-model level and slope | 0.6881 | 0.1252 |
+| correction | r2_loo_dataset | mae | gain | ci_low | ci_high | sign_p | wins | verdict |
+|---|---|---|---|---|---|---|---|---|
+| none (E3, 15 terms) | 0.6381 | 0.1417 | 0.0000 |  |  |  | 0 | baseline |
+| per-model level | 0.6583 | 0.1375 | 0.0038 | -0.0023 | 0.0102 | 1.0000 | 10 | tie |
+| per-model level and slope | 0.6881 | 0.1252 | 0.0162 | 0.0049 | 0.0290 | 0.1153 | 14 | real |
 
-**The gap is 0.050 of leave-one-dataset-out R2**, of which a per-model level alone recovers 0.020 and the level-plus-slope form the rest. The slope is the half that matters: a level shifts every one of a model's rows equally, while a slope lets its advantage depend on the data, which is what a *capability* descriptor would have to do and what none of the descriptors this corpus records does. Every model-side encoding the study tried and rejected was rejected for failing to recover this gap -- so it is a property of the corpus, not of the search, and the one route to closing it that survives is measuring what a model is good at rather than asserting it.
+**The gap is 0.050 of leave-one-dataset-out R2**, of which a per-model *level* recovers 0.020 and the level-plus-slope form the remaining 0.030.
+
+**Whether that is real is a paired question**, so each rung is compared with the uncorrected equation dataset by dataset, on absolute error, over the twenty held-out folds. The two rungs come back differently, and the difference is the finding:
+
+* a per-model **level** is a **tie** -- it wins on 10 of the twenty folds and its interval spans zero. A constant shift per model, which is what a level is, adds nothing the equation does not already have.
+
+* a per-model **slope** is **not** a tie: the bootstrap interval [+0.0049, +0.0290] lies entirely above zero, on 14 winning folds of twenty. Read it with the sign test beside it, which at p = 0.115 does **not** reach significance -- so the gain is carried by its size on the folds it wins rather than by winning nearly all of them. That is weaker evidence than the interval alone suggests, and stronger than a tie.
+
+**So the question this chapter was written to close is not closed.** The half of the correction that survives is the one that lets a model's advantage depend on the data -- exactly what a *capability* descriptor would have to do, and exactly what none of the descriptors this corpus records does. The mixed terms were supposed to absorb that interaction and have absorbed only part of it.
+
+Every model-side encoding the study tried and rejected was rejected for failing to recover this gap, so it is a property of the corpus rather than of the search -- and the one route to closing it that survives on the merits is measuring what a model is good at rather than asserting it.
 
 ## The dataset-only and model-only controls
 
@@ -873,12 +883,25 @@ drifted badly enough to invert the chapter's conclusion: it recorded the two run
 *identical*, which no run of `identity.correct_out_of_fold` can produce, and reported a gap
 of +0.017 where the measurement gives roughly three times that.
 
-**What the gap is worth is therefore an open question again, not a closed one.** The
-comparison that motivated this chapter still holds in direction — the gap was +0.121 against
-an E3 scoring 0.4658 before `Model Capability` was added, and +0.106 after — so the model
-side is far better described than it was. But the current figure is not small enough to say
-the question it was asked to answer is closed, and the reading that the model side is
-*adequately* described does not follow from it.
+**And the answer is that the question is not closed.** The gap is not merely larger than the
+chapter recorded; the half of it that matters survives the study's own paired test. Split into
+its two rungs and compared with the uncorrected equation dataset by dataset:
+
+- a per-model **level** — a constant shift for each learner — is a **tie**. The equation
+  already has whatever that would add.
+- a per-model **slope**, which lets a learner's advantage depend on the data, is **not**. Its
+  bootstrap interval lies entirely above zero.
+
+Read the second with its sign test beside it, as the generated section does: the sign test
+does not reach significance, so the gain comes from its size on the folds it wins rather than
+from winning nearly all of them. That is weaker evidence than a bare "significant" implies and
+clearly stronger than a tie.
+
+The comparison that motivated this chapter still holds in direction — the gap was +0.121
+against an E3 scoring 0.4658 before `Model Capability` was added, and +0.106 after — so the
+model side is far better described than it was. What does not follow is that it is
+*adequately* described. **The residual is specifically the interaction the mixed terms were
+supposed to absorb**, and they have absorbed only part of it.
 
 Free per-model numbers are the best any descriptor set could do at telling these 25 models
 apart — they are model identity itself, fitted out of fold — so what they add on top of the
