@@ -177,8 +177,15 @@ DEFAULT_E2 = Configuration(max_abs_zscore=3.0, penalty=5.0, pool_size=100, max_t
 # z-cap 4.50 on the four-feature subset, reaches 0.6317 leave-one-dataset-out against 0.6270
 # and is a tie when paired (p = 0.115) -- and on all six features the same knobs score 0.5798,
 # so the apparent gain is the feature drop rather than the shrinkage. Left unchanged.
+#
+# `max_terms` falls from 32 to 25 on 2026-09-08. It is the search *horizon*, not the published
+# length: `selection` picks 15 here and 23 under the full grammar, so lengths 26 to 32 were
+# only ever cost. They were also the worst-behaved part of the curve -- at arity 2 the
+# leave-one-dataset-out figure craters to 0.480, 0.517, 0.537 and 0.420 at 28, 29, 30 and 32,
+# which are extrapolations rather than fits and which nothing selects. Verified not to move
+# either published length.
 DEFAULT_E3 = Configuration(
-    max_abs_zscore=4.25, penalty=20.0, pool_size=600, max_terms=32, headline_terms=15, max_arity=2
+    max_abs_zscore=4.25, penalty=20.0, pool_size=600, max_terms=25, headline_terms=15, max_arity=2
 )
 
 # The same corpus and the same four features under the **full** grammar, arity 3. It is the
@@ -195,7 +202,7 @@ DEFAULT_E3 = Configuration(
 # equation's third, and form stability is what licenses fixing the form at all. So this is
 # reported as a *capability measurement* rather than as the study's recommendation.
 DEFAULT_E3_CAPABILITY = Configuration(
-    max_abs_zscore=4.25, penalty=3.0, pool_size=600, max_terms=32, headline_terms=23, max_arity=3
+    max_abs_zscore=4.25, penalty=3.0, pool_size=600, max_terms=25, headline_terms=23, max_arity=3
 )
 
 #: The model features the **equation** may build terms from.

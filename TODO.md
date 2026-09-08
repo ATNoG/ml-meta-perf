@@ -70,7 +70,7 @@ sites take it from there -- 566/568 (protocol scores), 757/759 (decision report)
 (baselines). `length_comparison` already derives and keeps `headline_terms` only as a fallback;
 that fallback becomes `max(path)`. `Configuration.headline_terms` then has no readers and goes.
 
-**C2. Search the arity too.** `--arity` becomes a list, default `(2, 3, 4)`: one `build_library`
+**C2. Search the arity too.** `--arity` becomes a list, **default `(2, 3)`**: one `build_library`
 and one `fit` per arity, then `best_configuration` across the combined curves. Re-timed on
 2026-09-08 -- the arity-4 build is **1.3 s, not 22.8 s** (the old number was measured against
 the six-feature model pool; the equation's pool is four). The whole three-arity grid including
@@ -82,8 +82,20 @@ all four protocols at all 32 lengths is **18 s**, against a 282 s run:
 | 3 | 838 terms | 0.16 s | 0.59 s | 4.1 s |
 | 4 | 4,223 terms | 1.28 s | 1.13 s | 4.2 s |
 
-The arity-4 candidate is **(4, 15)**, floor 0.6071 -- admissible under the paired test and
-never selected, because its complexity is 60 against arity 2's 30.
+**Arity 4 is out of the default set** (owner, 2026-09-08), and the measurement supports it:
+its candidate is **(4, 15)**, floor 0.6071 -- worse than arity 2's on every one of the four
+protocols, complexity 60 against 30, never selected, and ~6.6 s a run to compute. It stays
+available through the flag, because `max_arity = 4` is a recorded negative that a reader may
+want to reproduce, and because a search that cannot be widened is not a search.
+
+**`max_terms` is 25, down from 32** (2026-09-08). The horizon, not the published length --
+`selection` picks 15 and 23, so 26 to 32 were only ever cost, and they are the worst-behaved
+part of the curve: at arity 2 the leave-one-dataset-out figure craters to 0.480, 0.517, 0.537
+and 0.420 at 28, 29, 30 and 32. Verified the repo's way, by re-running and byte-comparing
+every output: `e1.json`, `e2.json`, `e3.json` and every table except three are **identical**;
+`curve_e3.csv`, `pareto.csv` and `length_choice.csv` lose rows 26-32 and keep rows 1-25
+byte-for-byte; one figure (`02_term_count_curve`) redraws with a shorter x-axis. Both
+published lengths are unmoved. The dropped `length_choice` rows were all `tie` or `worse`.
 
 **C3. Four equations, and only one of them is evaluated.**
 
@@ -276,6 +288,67 @@ arity 4 at 26 terms winning 13 of 20 folds. Earlier attempts and why each failed
 
 **The floor that rules these out:** E3-Valid may not land below the 15-term result (0.6381).
 `selection.pareto_knee` decides nothing and stays a reported diagnostic.
+
+## The test suite: 35 minutes to 2m35s, 2026-09-08
+
+**98% of the suite was one function.** `opaque.evaluate` is 226 s a call -- the leave-one-cell
+protocol refits every estimator once per observed cell, 476 of them, at 300 trees and 100
+stages -- and the suite called it six times. Profiled per test: 1,365 s of a 1,397 s attributed
+run, with the other 517 tests taking **32 seconds between them**. The wall time was 2,076 s;
+the gap is class fixtures, which a per-test timer does not attribute.
+
+| test | before | after |
+|---|---:|---:|
+| `TestCli.test_regenerating_a_chapter_is_idempotent` | 455 s | 27 s |
+| `TestFigureSet.test_generate_writes_the_whole_set` | 229 s | 16 s |
+| `TestCli.test_main_writes_equations_tables_and_chapter_sections` | 227 s | 14 s |
+| `TestCli.test_phase_selection_limits_what_is_printed` | 227 s | 14 s |
+| `TestFigureNaming.test_every_figure_has_a_caption...` | 226 s | 14 s |
+| `test_guidance.TestEquationEvidence` fixture | ~230 s | 17 s |
+| whole suite, wall | **35 min** | **2 min 35 s** |
+
+Three causes, all the same shape -- **the cheap path did not reach the expensive thing**:
+
+* **`--quick` reached the equation's knobs and nothing else.** It now also sets the opaque
+  ensemble sizes (`QUICK_TREES`, `QUICK_STAGES`) and the configurations for E2 and the
+  capability bound, which were built from the *tuned* ones whatever `quick` said -- the
+  capability bound alone was a full arity-3 search over an 838-term library at every wiring
+  check. `run(quick=True)`: 229 s to 14 s. A real run is unchanged.
+* **`test_opaque` was testing scikit-learn.** The estimators are not this project's to test;
+  the plumbing around them is. `evaluate` now takes the estimator factories, and the plumbing
+  tests pass doubles. **This is the standing rule going forward: unit tests exercise this
+  project's functions, not the libraries they call.**
+* **`test_guidance` called a full `run()`** for a fixture that reads `report.e3` and nothing
+  else.
+
+**What is left, and it is the next thing to look at:** five end-to-end CLI and figure tests at
+13-27 s each. They are integration tests wearing unit-test clothing, and CI already has a
+separate `The study reproduces end to end` step that covers the same ground.
+
+**The remaining floor is the cell protocol itself**: at five trees, `evaluate` is still 9.1 s,
+spread evenly across the three estimators (1.8 / 3.5 / 2.1 s), so it is the 476 refits and
+their joblib tasks rather than any one estimator. Fewer trees will not help further.
+
+**The reduced sizes are sound because the claim is size-independent**, measured:
+
+| trees / stages | forest in-sample | loo-dataset | loo-cell |
+|---:|---:|---:|---:|
+| 5 / 5 | 0.933 | 0.031 | -0.161 |
+| 30 / 30 | 0.957 | 0.028 | -0.061 |
+| 300 / 100 | 0.959 | 0.080 | -0.008 |
+
+The fit-versus-transfer gap is a property of the design matrix -- twenty dataset groups with
+features constant inside a group, so a flexible model identifies the dataset and looks the
+answer up -- not of how many trees vote on it.
+
+### CI's end-to-end step is broken and has never run
+
+`.github/workflows/main.yml`'s last step passes **`--report`, which is not a flag**;
+`ml-meta-perf` exits 2 with "unrecognized arguments". It has never been caught because nothing
+has ever run on a runner (see "Open", item 4). The working invocation is
+`--quiet --no-report --output DIR --figures DIR`, or `--docs DIR` if the generated chapter
+sections are wanted. **Fix this before opening the PR**, or the first runner pass fails on a
+step that has nothing to do with the branch.
 
 ## Documentation -- replaced, not merged
 

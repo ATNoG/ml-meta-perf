@@ -209,7 +209,7 @@ PYTHONPATH=src venv/bin/python -m ml_meta_perf --data mine.csv --output runs/min
 | `--figures` | `assets/figures` | where the figures go |
 | `--docs` | `assets/docs` | chapter directory whose generated sections are rewritten |
 | `--terms` | 15 | terms in the published E3 equation |
-| `--max-terms` | 32 | longest equation the search explores (drives the curve) |
+| `--max-terms` | 25 | longest equation the search explores (drives the curve) |
 | `--penalty` | 20.0 | ridge penalty on standardised terms |
 | `--arity` | 2 | raw features allowed per term — see [chapter 2](assets/docs/02-additive-model.md) |
 | `--pool` | 600 | terms surviving screening into the beam |
