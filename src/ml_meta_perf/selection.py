@@ -278,6 +278,21 @@ def protocol_spread(curve: pl.DataFrame) -> np.ndarray:
     return curve["r2_in_sample"].to_numpy() - floor_curve(curve)
 
 
+def floor_argmax(curve: pl.DataFrame) -> int:
+    """The length maximising `floor_curve`. **This is the length rule, for one grammar.**
+
+    `experiment.run_equation` calls it to decide how long the equation it just fitted should
+    be, and `arity_candidates` calls it once per grammar to build the candidate set
+    `best_configuration` chooses among. One function so the two cannot drift: the length a
+    published equation has and the length its grammar is represented by in the configuration
+    rule are the same number by construction.
+
+    An argmax, so there is no threshold, no smoothing window, no sensitivity parameter and no
+    corpus size in it -- see `best_configuration` for why that last one matters.
+    """
+    return int(curve["n_terms"].to_numpy()[int(np.argmax(floor_curve(curve)))])
+
+
 def arity_candidates(curves: dict[int, pl.DataFrame]) -> dict[int, int]:
     """One length per arity: the argmax of that arity's `floor_curve`.
 
@@ -289,9 +304,7 @@ def arity_candidates(curves: dict[int, pl.DataFrame]) -> dict[int, int]:
     strong enough to choose a length and is never asked to. Length is chosen here, by an
     argmax with no parameter in it; the test only ever chooses a *grammar*.
     """
-    return {
-        arity: int(curve["n_terms"].to_numpy()[int(np.argmax(floor_curve(curve)))]) for arity, curve in curves.items()
-    }
+    return {arity: floor_argmax(curve) for arity, curve in curves.items()}
 
 
 def most_capable(curves: dict[int, pl.DataFrame]) -> tuple[int, int]:

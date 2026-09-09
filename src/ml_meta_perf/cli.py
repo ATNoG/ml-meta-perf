@@ -171,12 +171,6 @@ def configurations(
         e3_only["max_arity"] = arguments.arity
     if arguments.max_terms is not None:
         e3_only["max_terms"] = arguments.max_terms
-    if arguments.terms is not None:
-        e3_only["headline_terms"] = arguments.terms
-        # A headline longer than the search would be silently truncated to whatever the
-        # search produced, so raise the search to meet it unless it was set explicitly.
-        if arguments.max_terms is None and arguments.terms > base_e3.max_terms:
-            e3_only["max_terms"] = arguments.terms
 
     return (
         dataclasses.replace(base_e1, **shared),  # pyright: ignore[reportArgumentType]
@@ -258,7 +252,10 @@ def build_parser() -> argparse.ArgumentParser:
     data.add_argument("--quiet", action="store_true", help="write files without printing the study")
 
     search = parser.add_argument_group("equation and search")
-    search.add_argument("--terms", type=int, default=None, help="terms in the published E3 equation")
+    # `--terms` was removed on 2026-09-09 with `Configuration.headline_terms`. It set the
+    # published length by hand, and the published length is now derived from the equation's own
+    # curve by `selection.floor_argmax`. `--max-terms` is a different thing and stays: the
+    # search *horizon*, which is a cost control and the range the reported curve covers.
     search.add_argument("--max-terms", type=int, default=None, help="longest equation the search explores")
     search.add_argument("--penalty", type=float, default=None, help="ridge penalty on standardised terms")
     search.add_argument("--arity", type=int, choices=(1, 2, 3, 4), default=None, help="raw features per term")

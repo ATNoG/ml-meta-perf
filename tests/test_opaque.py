@@ -297,7 +297,7 @@ class TestDoublyHeldOut(unittest.TestCase):
         from ml_meta_perf.experiment import DEFAULT_E3, doubly_held_out_predictions
         from ml_meta_perf.stats import r2_score
 
-        predictions = doubly_held_out_predictions(self.frame, DEFAULT_E3)
+        predictions = doubly_held_out_predictions(self.frame, 3, DEFAULT_E3)
         assert predictions is not None
         equation = r2_score(target(self.frame), predictions)
         for label, row in self.rows.items():

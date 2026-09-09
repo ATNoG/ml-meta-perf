@@ -38,7 +38,7 @@ from ml_meta_perf.model import Equation
 from ml_meta_perf.opaque import OpaqueRun, estimators
 from ml_meta_perf.opaque import evaluate as opaque_evaluate
 from ml_meta_perf.practices import best_practices
-from ml_meta_perf.selection import best_length, pareto_table, recommend
+from ml_meta_perf.selection import floor_argmax, pareto_table, recommend
 from ml_meta_perf.stats import mae, r2_score
 from ml_meta_perf.terms import Library, build_library
 from ml_meta_perf.validate import (
@@ -68,8 +68,13 @@ class Configuration:
     max_abs_zscore: float
     penalty: float
     pool_size: int
+    #: The search horizon: the longest equation `fit` explores, and the range the curve covers.
+    #: **Not the published length** -- that is derived per equation by `selection.floor_argmax`
+    #: and carried on `EquationReport.n_terms`. `headline_terms` used to live here and was the
+    #: one line in this module that *decided* anything; it was removed on 2026-09-09 (C1)
+    #: because it threw away work already done, `fit` having returned an equation at every
+    #: length and `run_equation` having cross-validated all of them before it was consulted.
     max_terms: int
-    headline_terms: int
     beam_width: int = 6
     max_arity: int = 3
 
@@ -82,7 +87,7 @@ class Configuration:
 # the 0.506 it produced read as *better* transfer than E3's 0.466 when on the common
 # scale it is 0.217. Fitting all three the same way costs 0.03 of in-sample R2 and
 # removes the caveat entirely. See [chapter 6](../../assets/docs/04-equation.md).
-DEFAULT_E1 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=200, max_terms=8, headline_terms=7)
+DEFAULT_E1 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=200, max_terms=8)
 
 # Model features only. Re-swept over penalty x length x z-cap x arity on the fixed-form
 # protocol, after `MODEL_FEATURES` was replaced and the reported protocol changed on
@@ -95,7 +100,7 @@ DEFAULT_E1 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=200, max_
 # either transfer protocol -- and six is now also *better* than eight on both of them
 # (0.185 against 0.183 leave-one-dataset-out, 0.229 against 0.226 leave-one-model-out) for
 # two fewer terms.
-DEFAULT_E2 = Configuration(max_abs_zscore=3.0, penalty=5.0, pool_size=100, max_terms=12, headline_terms=6, max_arity=2)
+DEFAULT_E2 = Configuration(max_abs_zscore=3.0, penalty=5.0, pool_size=100, max_terms=12, max_arity=2)
 
 # Re-swept over penalty x length x z-cap x arity after `MODEL_FEATURES` was replaced and the
 # reported protocol changed to fixed form, both on 2026-09-05. All four knobs moved.
@@ -184,9 +189,7 @@ DEFAULT_E2 = Configuration(max_abs_zscore=3.0, penalty=5.0, pool_size=100, max_t
 # leave-one-dataset-out figure craters to 0.480, 0.517, 0.537 and 0.420 at 28, 29, 30 and 32,
 # which are extrapolations rather than fits and which nothing selects. Verified not to move
 # either published length.
-DEFAULT_E3 = Configuration(
-    max_abs_zscore=4.25, penalty=20.0, pool_size=600, max_terms=25, headline_terms=15, max_arity=2
-)
+DEFAULT_E3 = Configuration(max_abs_zscore=4.25, penalty=20.0, pool_size=600, max_terms=25, max_arity=2)
 
 # The same corpus and the same four features under the **full** grammar, arity 3. It is the
 # more accurate equation and it is reported beside the published one to show how far the
@@ -201,9 +204,7 @@ DEFAULT_E3 = Configuration(
 # less stable: terms reselect in roughly a seventh of the folds against the published
 # equation's third, and form stability is what licenses fixing the form at all. So this is
 # reported as a *capability measurement* rather than as the study's recommendation.
-DEFAULT_E3_CAPABILITY = Configuration(
-    max_abs_zscore=4.25, penalty=3.0, pool_size=600, max_terms=25, headline_terms=23, max_arity=3
-)
+DEFAULT_E3_CAPABILITY = Configuration(max_abs_zscore=4.25, penalty=3.0, pool_size=600, max_terms=25, max_arity=3)
 
 #: The model features the **equation** may build terms from.
 #:
@@ -245,6 +246,11 @@ class EquationReport:
     """One equation together with everything said about it."""
 
     equation: Equation
+    #: The length `selection.floor_argmax` chose from this equation's own curve. **Every table
+    #: that needs "the published length" reads it from here**, so there is one derivation and
+    #: no constant for the six read sites to disagree about. It is `len(equation.terms)` only
+    #: when `fit.prune` removed nothing.
+    n_terms: int
     in_sample: dict[str, float | int]
     curve: pl.DataFrame
     cross_validated: dict[str, dict[str, float | int]] = field(default_factory=dict)
@@ -359,14 +365,27 @@ def run_equation(
         beam_width=config.beam_width,
         name=name,
     )
-    available = max(result.equations)
-    size = min(config.headline_terms, available)
     # Fixed form: the terms are chosen once, here, and only the weights are refit in each
     # fold. See `validate.cross_validate_fixed_form` for why that is the reported protocol.
     paths = {
         label: cross_validate_fixed_form(library, columns, truth, labels, result.equations, penalty=config.penalty)
         for label, labels in (("loo_dataset", datasets), ("loo_model", models))
     }
+    # The doubly-held-out protocol at **every** length, not just the published one. It is what
+    # `selection.floor_curve` needs, and the floor is what chooses the length below; scoring a
+    # length on three looser protocols and then publishing the fourth was the mismatch the
+    # 2026-09-08 selection revision closed. Measured at 4.1 s per equation over 25 lengths.
+    paths["loo_cell"] = cross_validate_doubly_held_out(
+        library, columns, truth, datasets, models, result.equations, penalty=config.penalty
+    )
+    in_sample = {k: score(truth, eq.predict(columns)) for k, eq in result.equations.items()}
+    curve = _curve(sizes or tuple(sorted(result.equations)), in_sample, paths, truth)
+
+    # **The length is derived, not asserted.** `fit` returns an equation at every length in one
+    # pass and every one of them has just been cross-validated, so the curve the rule reads
+    # already exists at this point -- the previous `min(config.headline_terms, available)` was
+    # throwing that away to reinstate a constant. See `selection.floor_argmax`.
+    size = floor_argmax(curve)
 
     # The same folds with selection re-run inside them, kept only for `stability`: the share
     # of the equation's terms that survive when a fifth of the data is removed. That is what
@@ -380,13 +399,13 @@ def run_equation(
         pool_size=config.pool_size,
         beam_width=config.beam_width,
     )
-    in_sample = {k: score(truth, eq.predict(columns)) for k, eq in result.equations.items()}
     equation = prune(result.equations[size], columns, truth, penalty=config.penalty)
 
     return EquationReport(
         equation=equation,
+        n_terms=size,
         in_sample=score(truth, equation.predict(columns)).as_dict(),
-        curve=_curve(sizes or tuple(sorted(result.equations)), in_sample, paths, truth),
+        curve=curve,
         cross_validated={
             label: path[size].scores(truth).as_dict() | path[size].dispersion() for label, path in paths.items()
         },
@@ -541,6 +560,7 @@ def baselines(frame: pl.DataFrame) -> pl.DataFrame:
 
 def leakage_demonstration(
     frame: pl.DataFrame,
+    n_terms: int,
     config: Configuration = DEFAULT_E3,
     known: dict[str, dict[int, CrossValidation]] | None = None,
 ) -> pl.DataFrame:
@@ -568,9 +588,10 @@ def leakage_demonstration(
     rows: list[dict[str, object]] = []
     for label, (key, labels) in protocols.items():
         path = (known or {}).get(key)
-        if path is None or config.headline_terms not in path:
+        if path is None or n_terms not in path:
             path, library = _fixed_form_path(columns, truth, labels, config, library)
-        rows.append({"protocol": label, **path[config.headline_terms].scores(truth).as_dict()})
+        size = n_terms if n_terms in path else max(path)
+        rows.append({"protocol": label, **path[size].scores(truth).as_dict()})
     return pl.DataFrame(rows)
 
 
@@ -754,6 +775,7 @@ def comparison(
 
 def decision_quality(
     frame: pl.DataFrame,
+    n_terms: int,
     config: Configuration = DEFAULT_E3,
     known: dict[int, CrossValidation] | None = None,
 ) -> pl.DataFrame:
@@ -766,14 +788,15 @@ def decision_quality(
     """
     truth = target(frame)
     datasets = groups(frame, DATASET_COLUMN)
-    doubly = doubly_held_out_predictions(frame, config)
+    doubly = doubly_held_out_predictions(frame, n_terms, config)
     if doubly is not None:
         return decision_report(truth, doubly, datasets)
     columns = columns_as_arrays(frame, DATASET_FEATURES + EQUATION_MODEL_FEATURES)
     path = known
-    if path is None or config.headline_terms not in path:
+    if path is None or n_terms not in path:
         path, _ = _fixed_form_path(columns, truth, datasets, config)
-    return decision_report(truth, path[config.headline_terms].predictions, datasets)
+    size = n_terms if n_terms in path else max(path)
+    return decision_report(truth, path[size].predictions, datasets)
 
 
 def length_comparison(frame: pl.DataFrame, e3: EquationReport, config: Configuration = DEFAULT_E3) -> pl.DataFrame:
@@ -804,9 +827,9 @@ def length_comparison(frame: pl.DataFrame, e3: EquationReport, config: Configura
     # Referenced to what the rule chose, not to a length passed in: the table has to be able
     # to say that the rule's own pick is the right one, which it cannot do if the pick is the
     # thing being assumed.
-    chosen = best_length(e3.curve)
+    chosen = e3.n_terms
     if chosen not in path:
-        chosen = min(config.headline_terms, max(path))
+        chosen = max(path)
     if chosen not in path:
         return pl.DataFrame()
     published = chosen
@@ -840,7 +863,9 @@ def length_comparison(frame: pl.DataFrame, e3: EquationReport, config: Configura
     return pl.DataFrame(rows)
 
 
-def doubly_held_out_predictions(frame: pl.DataFrame, config: Configuration = DEFAULT_E3) -> np.ndarray | None:
+def doubly_held_out_predictions(
+    frame: pl.DataFrame, n_terms: int, config: Configuration = DEFAULT_E3
+) -> np.ndarray | None:
     """E3's predictions with **both** the dataset and the model of each cell held out.
 
     Used for the ranking and the threshold decision and for nothing else. Those two are the
@@ -872,9 +897,9 @@ def doubly_held_out_predictions(frame: pl.DataFrame, config: Configuration = DEF
         pool_size=config.pool_size,
         beam_width=config.beam_width,
     )
-    size = min(config.headline_terms, max(result.equations))
-    if size not in result.equations:
+    if n_terms not in result.equations:
         return None
+    size = n_terms
     path = cross_validate_doubly_held_out(
         library,
         columns,
@@ -895,14 +920,14 @@ def _e3_predictions(frame: pl.DataFrame, e3: EquationReport, protocol: str, conf
     threshold decision are reported under.
     """
     if protocol == "loo_cell":
-        return doubly_held_out_predictions(frame, config)
+        return doubly_held_out_predictions(frame, e3.n_terms, config)
     if protocol == "in_sample":
         columns = columns_as_arrays(frame, DATASET_FEATURES + EQUATION_MODEL_FEATURES)
         return e3.equation.predict(columns)
     path = e3.paths.get(protocol)
     if not path:
         return None
-    size = min(config.headline_terms, max(path))
+    size = e3.n_terms if e3.n_terms in path else max(path)
     return path[size].predictions if size in path else None
 
 
@@ -984,7 +1009,7 @@ def ranking_baselines(
         prediction = _e3_predictions(frame, e3, protocol, config)
         if prediction is not None:
             candidates[label] = prediction
-    doubly = doubly_held_out_predictions(frame, config)
+    doubly = doubly_held_out_predictions(frame, e3.n_terms, config)
     if doubly is not None:
         candidates["equation (loo-cell: both held out)"] = doubly
     # The trivial predictors cannot be computed under the loo-cell protocol at all: a model
@@ -1057,14 +1082,14 @@ def decision_baselines(
             prediction = _e3_predictions(frame, e3, protocol, config)
             if prediction is not None:
                 candidates[label] = prediction
-        doubly = doubly_held_out_predictions(frame, config)
+        doubly = doubly_held_out_predictions(frame, e3.n_terms, config)
         if doubly is not None:
             candidates["equation (loo-cell: both held out)"] = doubly
     else:
         path = known
-        if path is None or config.headline_terms not in path:
+        if path is None or (e3 is not None and e3.n_terms not in path):
             path, _ = _fixed_form_path(columns, truth, datasets, config)
-        candidates["equation (loo-dataset)"] = path[config.headline_terms].predictions
+        candidates["equation (loo-dataset)"] = path[e3.n_terms if e3 is not None else max(path)].predictions
     candidates["per-model mean (loo-dataset)"] = baseline_group_centre(truth, datasets, models, centre="mean")
     candidates["per-model median (loo-dataset)"] = baseline_group_centre(truth, datasets, models, centre="median")
     if opaque is not None:
@@ -1131,8 +1156,8 @@ class Report:
 
 # Small enough to run in a couple of seconds. Intended for smoke-testing the wiring,
 # not for reporting: the equations it produces are far shorter than the studied ones.
-QUICK_E1 = Configuration(max_abs_zscore=3.0, penalty=1.0, pool_size=40, max_terms=3, headline_terms=3)
-QUICK_E3 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=40, max_terms=3, headline_terms=3)
+QUICK_E1 = Configuration(max_abs_zscore=3.0, penalty=1.0, pool_size=40, max_terms=3)
+QUICK_E3 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=40, max_terms=3)
 
 #: The opaque comparison's ensemble sizes under ``quick``.
 #:
@@ -1154,10 +1179,8 @@ QUICK_STAGES = 5
 #: the 0.6 s the quick E3 costs. Same z-cap and pool as `QUICK_E3`; arity 3 kept, because a
 #: capability bound that dropped to the parsimonious grammar would not be checking its own
 #: wiring.
-QUICK_E2 = Configuration(max_abs_zscore=3.0, penalty=5.0, pool_size=40, max_terms=3, headline_terms=3, max_arity=2)
-QUICK_E3_CAPABILITY = Configuration(
-    max_abs_zscore=3.0, penalty=3.0, pool_size=40, max_terms=3, headline_terms=3, max_arity=3
-)
+QUICK_E2 = Configuration(max_abs_zscore=3.0, penalty=5.0, pool_size=40, max_terms=3, max_arity=2)
+QUICK_E3_CAPABILITY = Configuration(max_abs_zscore=3.0, penalty=3.0, pool_size=40, max_terms=3, max_arity=3)
 
 
 def run(
@@ -1203,9 +1226,9 @@ def run(
         ceiling=ceiling,
         baselines=baselines(frame),
         comparison=comparison(frame, e1, e3, e2, e3_capability),
-        leakage=leakage_demonstration(frame, config_e3, e3.paths),
+        leakage=leakage_demonstration(frame, e3.n_terms, config_e3, e3.paths),
         selection=model_selection(frame, e3, "loo_cell", config_e3),
-        decision=decision_quality(frame, config_e3, e3.paths.get("loo_dataset")),
+        decision=decision_quality(frame, e3.n_terms, config_e3, e3.paths.get("loo_dataset")),
         ranking_baselines=ranking_baselines(frame, e3, config_e3, opaque_run),
         decision_baselines=decision_baselines(frame, config_e3, e3.paths.get("loo_dataset"), e3, opaque_run),
         term_choice=recommend(e3.curve, published=len(e3.equation.terms)),

@@ -34,11 +34,16 @@ the corpus grows. See "The selection rule" below for the design, what was reject
 and the one disclosure still owed. **It is still committed, tested and unused** -- wiring it in
 is C1.
 
-### The one thing to pick up: C1
+### The one thing to pick up: C2
 
-`selection.best_configuration` derives the equation, and **nothing uses it yet.**
-`experiment.py:356` still reads `size = min(config.headline_terms, available)`. Wiring that up
-is C1 and it is the next commit. Everything needed is in place and measured:
+**C1 and C4 are done (2026-09-09).** The length is derived per equation by
+`selection.floor_argmax` from that equation's own four-protocol curve, `EquationReport.n_terms`
+carries it, and `Configuration.headline_terms` and `--terms` are gone. It reproduces all four
+asserted lengths -- 7, 6, 15, 23 -- and moved no published output. Details under C1 below.
+
+**`selection.best_configuration` is still unused, and C2 is what uses it.** Nothing searches
+the arity yet: E3 is fitted at arity 2 and the capability bound at arity 3, both fixed. C2
+makes that one search:
 
 ```python
 from ml_meta_perf.selection import best_configuration, most_capable
@@ -46,14 +51,10 @@ best_configuration(curves, errors)   # -> (2, 15)   E3-Valid, the study's equati
 most_capable(curves)                 # -> (3, 23)   E3-MAX, the capability bound
 ```
 
-where `curves` is `{arity: EquationReport.curve}` for arities 2, 3 and 4, each carrying an
-`r2_loo_cell` column, and `errors` is `{arity: {n_terms: per-held-out-dataset MAE}}` under the
-doubly-held-out protocol.
-
-**C1 therefore has a prerequisite C2 did not have before:** the curve must carry
-`r2_loo_cell`. `run_equation` builds `paths` for `loo_dataset` and `loo_model` only, so
-`cross_validate_doubly_held_out` has to join them and `_curve` will pick the column up with no
-change. Measured cost: **4.1 s per arity** for the whole 32-length path, against a 282 s run.
+where `curves` is `{arity: EquationReport.curve}` for the default arities (2, 3) -- each now
+carrying `r2_loo_cell`, which C1 added -- and `errors` is
+`{arity: {n_terms: per-held-out-dataset MAE}}` under the doubly-held-out protocol, which
+`EquationReport.paths["loo_cell"]` now holds.
 
 ## The plan — C0 to C7
 
@@ -62,7 +63,44 @@ exist and nothing can regenerate; their findings are recorded below with their n
 CI stays push-and-PR only and gets its first runner pass whenever this branch opens a PR --
 deliberately not now.
 
-**C1. Derive the length instead of asserting it. NEXT.** `experiment.py:356` is the only line
+**C1. Done, 2026-09-09.** `experiment.py`'s ``size = min(config.headline_terms, available)`` is
+gone. `run_equation` now cross-validates the doubly-held-out protocol at every length as well
+as the two single-group ones, builds the curve, and calls `selection.floor_argmax` on it;
+`EquationReport.n_terms` carries the answer and all six read sites take it from there.
+`Configuration.headline_terms` is removed, and `--terms` with it (that was C4, forced by this).
+
+**The rule reproduces every asserted length, including two it was not written against:**
+
+| | asserted | derived | in-sample | lodo | lomo | cell |
+|---|---:|---:|---:|---:|---:|---:|
+| E1 | 7 | **7** | 0.3485 | 0.3411 | 0.3062 | 0.3049 |
+| E2 | 6 | **6** | 0.2485 | 0.1849 | 0.2285 | 0.1724 |
+| E3 | 15 | **15** | 0.6578 | 0.6381 | 0.6218 | 0.6162 |
+| E3-capability | 23 | **23** | 0.7068 | 0.6781 | 0.6512 | 0.6495 |
+
+E1's 7 and E2's 6 are the interesting rows. The selection rule was written knowing E3's 15 and
+the bound's 23 -- that is the provenance the docstring discloses -- but E1's and E2's lengths
+were set separately and earlier, by different reasoning, and `floor_argmax` recovers both. It
+is not the corpus-with-an-unknown-answer the disclosure still asks for, being the same 476
+rows, but it is two lengths the rule's author was not aiming at. **Record it in the chapter as
+that and no more.**
+
+**Nothing published moved.** Snapshot, re-run, byte-compare: every table, every equation and
+all fourteen figures are identical; the three `curve_*.csv` gain `r2_loo_cell`, `mae_loo_cell`
+and `smape_loo_cell` and their existing columns are byte-for-byte unchanged. `cross_validated`
+now carries three protocols instead of two, for the same reason -- the strictest one is
+computed anyway.
+
+**One bug this introduced and the fix worth keeping.** Giving the boundary functions
+``n_terms: int = 0`` let `ranking_baselines` and `decision_baselines` call
+`doubly_held_out_predictions(frame, config)` unchanged, fall through the default, and publish
+the **25-term** equation on the loo-cell row -- AP 0.790 against 0.831, MCC@0.7 0.660 against
+0.695. It passed every test and was caught only by the byte-comparison. `n_terms` is now a
+**required second positional parameter** on `leakage_demonstration`, `decision_quality` and
+`doubly_held_out_predictions`. *A default length is the thing C1 deletes; it must not come back
+as a parameter default.*
+
+**C1 (superseded, kept for the reasoning).** `experiment.py:356` is the only line
 that *decides*, and it throws away work already done: `fit()` returns an equation at every
 length in one pass and `run_equation` cross-validates all of them, so the curve exists at that
 point. Replace the assertion, carry the chosen size on `EquationReport`, and have the six read
@@ -105,8 +143,9 @@ published lengths are unmoved. The dropped `length_choice` rows were all `tie` o
 - **E3-MAX** -- `most_capable`. Bounds how far the additive form reaches, is reported in the
   docs, and is **not** evaluated as a predictor.
 
-**C4. Drop `--terms`, keep `--max-terms`.** Different things: the horizon is a knob and a cost
-control, the length is what C1 derives.
+**C4. Done with C1**, because removing `Configuration.headline_terms` left `--terms` nothing to
+set. `--max-terms` stays: different thing -- the horizon is a knob and a cost control, the
+length is what C1 derives. README's flag table and its worked example move with it.
 
 **C5. Drop `--quick`.** A preset of flags that already exist (`--max-terms 3 --pool 40
 --penalty 20`) carrying two Configuration objects whose only job is a third copy of a length.

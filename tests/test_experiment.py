@@ -65,8 +65,8 @@ def scored(table, prefix: str) -> float:
     return float(matched["r2"][0])
 
 
-FAST_E1 = Configuration(max_abs_zscore=3.0, penalty=1.0, pool_size=40, max_terms=3, headline_terms=3)
-FAST_E3 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=40, max_terms=3, headline_terms=3)
+FAST_E1 = Configuration(max_abs_zscore=3.0, penalty=1.0, pool_size=40, max_terms=3)
+FAST_E3 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=40, max_terms=3)
 
 
 class TestEquationReports(unittest.TestCase):
@@ -99,9 +99,14 @@ class TestEquationReports(unittest.TestCase):
         self.assertIn("r2_in_sample", self.e1.curve.columns)
         self.assertIn("r2_loo_dataset", self.e3.curve.columns)
         self.assertIn("r2_loo_model", self.e3.curve.columns)
+        self.assertIn("r2_loo_cell", self.e3.curve.columns)
 
-    def test_cross_validated_scores_are_reported_for_both_protocols(self) -> None:
-        self.assertEqual(set(self.e3.cross_validated), {"loo_dataset", "loo_model"})
+    def test_cross_validated_scores_are_reported_for_every_protocol(self) -> None:
+        """Three, not two, since C1 (2026-09-09). The doubly-held-out protocol is computed at
+        every length anyway -- `selection.floor_curve` needs it to choose the length -- and the
+        standing rule here is that a comparison missing its strictest column is not
+        conservative, it flatters whichever side had more left over."""
+        self.assertEqual(set(self.e3.cross_validated), {"loo_dataset", "loo_model", "loo_cell"})
 
     def test_cross_validated_scores_are_finite_and_bounded(self) -> None:
         # Deliberately *not* asserting cross-validated <= in-sample. Cross-validated
@@ -194,14 +199,12 @@ class TestStudyTables(unittest.TestCase):
     def test_per_model_mean_beats_the_global_mean(self) -> None:
         table = baselines(self.frame)
         scores = dict(zip(table["baseline"].to_list(), table["r2"].to_list(), strict=True))
-        self.assertGreater(
-            scores["per-model mean (loo-dataset)"], scores["global mean (loo-dataset)"]
-        )
+        self.assertGreater(scores["per-model mean (loo-dataset)"], scores["global mean (loo-dataset)"])
 
     def test_random_folds_look_better_than_grouped_ones(self) -> None:
         # The leakage this project exists to warn about: a random split scores the same
         # equation far higher because dataset identity is visible on both sides.
-        table = leakage_demonstration(self.frame, FAST_E3)
+        table = leakage_demonstration(self.frame, 3, FAST_E3)
         scores = dict(zip(table["protocol"].to_list(), table["r2"].to_list(), strict=True))
         self.assertGreater(scores["random 10-fold (leaky)"], scores["leave-one-dataset-out"])
 
@@ -217,9 +220,7 @@ class TestStudyTables(unittest.TestCase):
         # equation gets far closer to its own ceiling than the model-only one does.
         table = comparison(self.frame, self.e1, self.e3)
         self.assertGreater(scored(table, "E1, dataset only"), scored(table, "E2, model only"))
-        self.assertGreater(
-            scored(table, "E1 reference"), scored(table, "E2 reference")
-        )
+        self.assertGreater(scored(table, "E1 reference"), scored(table, "E2 reference"))
 
     def test_model_selection_reports_every_dataset(self) -> None:
         table = model_selection(self.frame, self.e3)
@@ -259,9 +260,9 @@ class TestCli(unittest.TestCase):
             **dict(zip(("reach", "ceiling"), reach_analysis(frame, FAST_E3), strict=True)),
             baselines=baselines(frame),
             comparison=comparison(frame, e1, e3, e2),
-            leakage=leakage_demonstration(frame, FAST_E3),
+            leakage=leakage_demonstration(frame, 3, FAST_E3),
             selection=model_selection(frame, e3),
-            decision=decision_quality(frame, FAST_E3),
+            decision=decision_quality(frame, 3, FAST_E3),
             ranking_baselines=ranking_baselines(frame, e3),
             decision_baselines=decision_baselines(frame, FAST_E3),
             term_choice=recommend(e3.curve, published=len(e3.equation.terms)),
@@ -281,8 +282,16 @@ class TestCli(unittest.TestCase):
         with redirect_stdout(buffer):
             render(self.report)
         printed = buffer.getvalue()
-        for expected in ("Correlation screening", "E1 --", "E2 --", "E3 --", "Where the signal lives",
-                         "Extracted practices", "Baselines", "Model selection"):
+        for expected in (
+            "Correlation screening",
+            "E1 --",
+            "E2 --",
+            "E3 --",
+            "Where the signal lives",
+            "Extracted practices",
+            "Baselines",
+            "Model selection",
+        ):
             self.assertIn(expected, printed)
 
     def test_main_writes_equations_tables_and_chapter_sections(self) -> None:
@@ -302,8 +311,10 @@ class TestCli(unittest.TestCase):
                         "--quick",
                         "--quiet",
                         "--no-figures",
-                        "--output", directory,
-                        "--docs", str(docs),
+                        "--output",
+                        directory,
+                        "--docs",
+                        str(docs),
                     ]
                 )
             self.assertEqual(code, 0)
@@ -329,8 +340,18 @@ class TestCli(unittest.TestCase):
             chapter.write_text("# 5. Evaluation\n\nProse.\n")
             for _ in range(2):
                 with redirect_stdout(io.StringIO()):
-                    main(["--quick", "--quiet", "--no-figures", "--no-tables",
-                          "--output", directory, "--docs", str(docs)])
+                    main(
+                        [
+                            "--quick",
+                            "--quiet",
+                            "--no-figures",
+                            "--no-tables",
+                            "--output",
+                            directory,
+                            "--docs",
+                            str(docs),
+                        ]
+                    )
             written = chapter.read_text()
             self.assertEqual(written.count(BEGIN), 1)
             self.assertEqual(written.count("Prose."), 1)
@@ -346,13 +367,18 @@ class TestCli(unittest.TestCase):
 
     def test_flags_override_the_tuned_configuration(self) -> None:
         parser = build_parser()
-        _, e3 = configurations(parser.parse_args(["--penalty", "3", "--arity", "2", "--terms", "40"]))
+        _, e3 = configurations(parser.parse_args(["--penalty", "3", "--arity", "2", "--max-terms", "40"]))
         self.assertEqual(e3.penalty, 3.0)
         self.assertEqual(e3.max_arity, 2)
-        self.assertEqual(e3.headline_terms, 40)
-        # A headline longer than the search would silently be truncated, so the search
-        # was raised to meet it.
-        self.assertGreaterEqual(e3.max_terms, 40)
+        self.assertEqual(e3.max_terms, 40)
+
+    def test_the_published_length_is_not_a_flag(self) -> None:
+        """`--terms` was removed with `Configuration.headline_terms` on 2026-09-09. The length
+        is derived from the equation's own curve, and a flag that set it by hand would be the
+        assertion C1 exists to delete -- reachable again through the command line."""
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["--terms", "12"])
 
     def test_unmentioned_flags_keep_their_tuned_values(self) -> None:
         parser = build_parser()
@@ -371,7 +397,6 @@ class TestDocumentedDefaults(unittest.TestCase):
 
     #: The README flag whose default each `Configuration` field is published as.
     FLAGS: ClassVar[dict[str, str]] = {
-        "headline_terms": "--terms",
         "max_terms": "--max-terms",
         "penalty": "--penalty",
         "max_arity": "--arity",

@@ -208,7 +208,6 @@ PYTHONPATH=src venv/bin/python -m ml_meta_perf --data mine.csv --output runs/min
 | `--output` | `results` | where the equations and CSV tables go |
 | `--figures` | `assets/figures` | where the figures go |
 | `--docs` | `assets/docs` | chapter directory whose generated sections are rewritten |
-| `--terms` | 15 | terms in the published E3 equation |
 | `--max-terms` | 25 | longest equation the search explores (drives the curve) |
 | `--penalty` | 20.0 | ridge penalty on standardised terms |
 | `--arity` | 2 | raw features allowed per term — see [chapter 2](assets/docs/02-additive-model.md) |
@@ -220,8 +219,9 @@ PYTHONPATH=src venv/bin/python -m ml_meta_perf --data mine.csv --output runs/min
 | `--no-figures`, `--no-tables`, `--no-report`, `--quiet` | off | skip an output |
 
 ```bash
-# a shorter, more heavily shrunk equation, no figures
-PYTHONPATH=src venv/bin/python -m ml_meta_perf --terms 8 --penalty 50 --no-figures
+# a shorter search and a heavier ridge, no figures. The published length is not a flag:
+# it is derived from the equation's own curve, so shortening the search is how you bound it
+PYTHONPATH=src venv/bin/python -m ml_meta_perf --max-terms 8 --penalty 50 --no-figures
 
 # four-feature terms: better fit, much worse transfer (chapter 2 measures this)
 PYTHONPATH=src venv/bin/python -m ml_meta_perf --arity 4 --pool 2000 --output runs/arity4
