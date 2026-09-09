@@ -720,8 +720,9 @@ testing an idea.
 | **E3 — both (published)** | **arity 2** | **15** | **12 of 16** | **0.658** | **0.638** | **0.622** |
 | E3 — capability | arity 3 | 23 | | 0.707 | 0.678 | 0.651 |
 
-`DEFAULT_E3`: arity 2, z-cap 4.25, penalty 20, 15 terms, four-feature model pool.
-`DEFAULT_E3_CAPABILITY`: arity 3, z-cap 4.25, penalty 3, 23 terms, same pool.
+`experiment.DEFAULT` (one configuration for all three equations since C6): arity 2 to start,
+z-cap 4.25, penalty 20, horizon 25 terms, four-feature model pool. E3-Valid comes out at arity
+2 and 15 terms, E3-MAX at arity 3 and 23, both from `search_grammars` over the same object.
 
 **The equation's model-feature pool is four; the corpus keeps six.** `MODEL_FEATURES` is the
 corpus schema and identification is a corpus property; `EQUATION_MODEL_FEATURES` is what the
@@ -730,10 +731,19 @@ equation may build terms from, because fitting is judged on *compression*. Dropp
 the corpus. Do not re-run the identification argument against the equation's pool — that
 mistake was made and corrected this session.
 
-**The length comes from a rule, not a constant.** `selection.best_length`: fit at every
-length, take the median of the three protocol R² per length, publish the argmax. No
-threshold, no smoothing, no sensitivity parameter. It selects 15 under arity 2 and 23 under
-arity 3; neither number appears anywhere in the code.
+**And do not read absence from the equation as evidence against a feature either way.** The
+framing is from `811253c` on `main` and it is the right one; the specifics there were measured
+at 16 terms and are re-measured here against the published grammar's whole curve:
+`Loss Margin Behaviour` is absent up to 15 terms and present at every length from 16 to 25,
+`Solution Stochasticity` appears only at 25. The published equation is 15 terms, so neither is
+in it — by one term.
+
+**The length comes from a rule, not a constant.** `selection.floor_argmax`: fit at every
+length, take the *minimum* of the four protocol R² per length, publish the argmax. No
+threshold, no smoothing, no sensitivity parameter, and no corpus size. It selects 15 under
+arity 2 and 23 under arity 3; neither number appears anywhere in the code.
+`selection.best_length` — the median of the three single-group protocols — is the second
+reading, reported beside it, and agrees on this corpus.
 
 **Four protocols, and the ranking and threshold decisions are reported under the strictest.**
 

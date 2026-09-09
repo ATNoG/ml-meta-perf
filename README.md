@@ -100,9 +100,10 @@ buys for that is eight fewer terms and a far more stable form.
   and DNNs last of ten families at 0.454. [chapter 6](assets/docs/06-practices.md).
 
 > **Status:** research prototype for an academic study. 476 rows is small, and every number
-> is reported both in-sample and under leave-one-out cross-validation because at this size
-> the two differ a lot. Current open work is in **[`TODO.md`](TODO.md)** — chiefly a full
-> configuration sweep, and re-deriving the equation length on its result.
+> is reported both in-sample and under held-out cross-validation because at this size the two
+> differ a lot. The full configuration sweep is done and the equation's length and grammar are
+> both derived from its result rather than asserted; current open work is in
+> **[`TODO.md`](TODO.md)**.
 
 ## Documentation
 

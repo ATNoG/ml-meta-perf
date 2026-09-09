@@ -48,12 +48,14 @@ That is the mechanism working, not a shortfall in the corpus, and an equation th
 eighteen would be one that had failed to generalise.
 
 So a column may earn its place at either stage. ``Solution Stochasticity`` and
-``Loss Margin Behaviour`` contribute no term to E3 and are kept regardless: they are what
+``Loss Margin Behaviour`` are kept for identification: they are what
 separate ``DT`` from ``ExtraTree``, ``LR`` from ``LinearSVC`` and ``LightGBM_RF`` from
 ``LightGBM_ExtraTrees``, and without them 134 of the 476 rows stop being identifiable.
-**Do not read their absence from the equation as evidence against them**, and do not read
-it as robust either: it is a property of one equation length, and at twelve, twenty and
-twenty-four terms the fit uses one or both.
+**Do not read absence from the equation as evidence against a feature**, and do not read
+it as robust either: it is a property of one equation length and configuration. Measured
+across the published grammar's whole curve, ``Loss Margin Behaviour`` is absent up to 15
+terms and present at every length from 16 to 25; ``Solution Stochasticity`` appears only at
+25. The published equation is 15 terms, so neither is in it -- one term either way.
 
 **``nr_inst`` describes the source dataset, not the training set.** Every model was
 trained on a stratified sample capped at 100,000 rows, and ten of the twenty datasets are
