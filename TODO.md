@@ -34,23 +34,19 @@ the corpus grows. See "The selection rule" below for the design, what was reject
 and the one disclosure still owed. **It is still committed, tested and unused** -- wiring it in
 is C1.
 
-### The one thing to pick up: C3
+### The one thing to pick up: C5
 
-**C0, C1, C2 and C4 are done.** The length is derived per grammar by
-`selection.floor_argmax`, the grammar is chosen across them by
-`selection.best_configuration`, and `experiment.search_grammars` is what runs both. Nothing in
-the study asserts an equation's shape any more.
+**C0 through C4 are done.** Nothing in the study asserts an equation's shape any more: the
+length is derived per grammar by `selection.floor_argmax`, the grammar across them by
+`selection.best_configuration`, and `experiment.search_grammars` runs both.
 
 ```
 search_grammars(frame)  ->  E3-Valid = arity 2, 15 terms
                             E3-MAX   = arity 3, 23 terms
 ```
 
-**C3 is next**, and after C2 it is mostly a naming and routing question rather than new
-machinery: make sure every evaluation lands on E3-Valid and that E3-MAX is reported without
-being evaluated as a predictor. `Report.e3` and `Report.e3_capability` are already the two
-reports `search_grammars` returns, so the work is auditing the call sites rather than building
-anything.
+**C5 and C6 are the remaining cleanups** and C7 the rename. None of them should move a number;
+all three are verified by snapshot-and-byte-compare.
 
 ## The plan — C0 to C7
 
@@ -160,13 +156,24 @@ every output: `e1.json`, `e2.json`, `e3.json` and every table except three are *
 byte-for-byte; one figure (`02_term_count_curve`) redraws with a shorter x-axis. Both
 published lengths are unmoved. The dropped `length_choice` rows were all `tie` or `worse`.
 
-**C3. Four equations, and only one of them is evaluated.**
+**C3. Done, 2026-09-09.** E3-MAX was already absent from `ranking_baselines` and
+`decision_baselines`, so the "only one is evaluated" half held. The half that did **not** hold
+was subtler and is the reason C3 was worth doing rather than asserting:
 
-- **E1** dataset features, **E2** model features -- both stay, both with lengths derived.
-- **E3-Valid** -- the study's equation, `best_configuration`. **Every evaluation lands here**:
-  the protocols, the decision and ranking tasks, the practice comparison, the baselines.
-- **E3-MAX** -- `most_capable`. Bounds how far the additive form reaches, is reported in the
-  docs, and is **not** evaluated as a predictor.
+**Nine downstream helpers took `config_e3`, and several of them rebuild the library and refit
+from `config.max_arity` -- the *default* arity, not the one the search chose.** With the two
+coinciding at 2 on this corpus it was invisible. Force them apart with `--arity 3` and the
+study published an arity-3, 23-term equation while scoring its leave-one-cell row on an
+**arity-2** refit: the strictest protocol measuring a different grammar from the published one.
+`EquationReport.arity` now carries the searched grammar and `run` rebuilds `config_e3` around
+it before any table is built.
+
+`TestOnlyTheValidEquationIsEvaluated` pins both halves, including the arity mismatch --
+`run(quick=True, arities=(2,))` against `QUICK_E3.max_arity == 3`, so the configuration and the
+search disagree and the test would fail on the old code.
+
+**Byte-identical output on this corpus**, because the two arities agree here. It is a
+correctness fix for every corpus where they do not, and the corpus is going to grow.
 
 **C4. Done with C1**, because removing `Configuration.headline_terms` left `--terms` nothing to
 set. `--max-terms` stays: different thing -- the horizon is a knob and a cost control, the

@@ -257,6 +257,13 @@ class EquationReport:
     #: no constant for the six read sites to disagree about. It is `len(equation.terms)` only
     #: when `fit.prune` removed nothing.
     n_terms: int
+    #: The grammar this equation was searched under. **Every helper that refits must be given
+    #: it**, because several of them rebuild the library from a `Configuration` and the arity
+    #: on that object is the default rather than the one `search_grammars` chose. Before this
+    #: field existed, a run whose chosen grammar was not the configuration's -- `--arity 3`
+    #: reproduces it -- published an arity-3 equation and scored its leave-one-cell row on an
+    #: arity-2 refit.
+    arity: int
     in_sample: dict[str, float | int]
     curve: pl.DataFrame
     cross_validated: dict[str, dict[str, float | int]] = field(default_factory=dict)
@@ -410,6 +417,7 @@ def run_equation(
     return EquationReport(
         equation=equation,
         n_terms=size,
+        arity=config.max_arity,
         in_sample=score(truth, equation.predict(columns)).as_dict(),
         curve=curve,
         cross_validated={
@@ -1319,6 +1327,11 @@ def run(
     grammars = search_grammars(frame, config_e3, arities)
     e3 = grammars.reports[grammars.valid]
     e3_capability = grammars.reports[grammars.maximum]
+    # **Every table below is built from the grammar the rule chose, not the one the
+    # configuration happened to carry.** Several of these helpers rebuild the library and
+    # refit; handing them `config_e3` scored the published equation's strictest protocol on a
+    # different grammar whenever the two disagreed.
+    config_e3 = dataclasses.replace(config_e3, max_arity=e3.arity)
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
     e2 = run_e2(frame, QUICK_E2 if quick else DEFAULT_E2)
     reach, ceiling = reach_analysis(frame, config_e3)

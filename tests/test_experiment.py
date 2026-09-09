@@ -387,6 +387,58 @@ class TestCli(unittest.TestCase):
         self.assertEqual(e3, DEFAULT_E3)
 
 
+class TestOnlyTheValidEquationIsEvaluated(unittest.TestCase):
+    """C3: four equations are fitted and exactly one of them is evaluated as a predictor.
+
+    E3-MAX bounds how far the additive form reaches. It is reported, and it must never appear
+    as a candidate in a comparison -- a bound that competes is being put forward as the
+    study's recommendation, which is precisely what it is not.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        from ml_meta_perf.experiment import run
+
+        cls.report = run(quick=True)
+
+    def test_no_comparison_carries_the_capability_bound_as_a_predictor(self) -> None:
+        for table in (self.report.ranking_baselines, self.report.decision_baselines):
+            for predictor in table["predictor"].to_list():
+                with self.subTest(predictor=predictor):
+                    self.assertNotIn("capability", predictor.lower())
+
+    def _row(self, role: str) -> dict[str, object]:
+        """The grammars row carrying a role. Matched by substring because one grammar can hold
+        both -- `role` reads "E3-Valid + E3-MAX" when the larger grammar earns nothing, which
+        is a legitimate outcome and the case `Report.e3_capability` documents."""
+        rows = [row for row in self.report.grammars.to_dicts() if role in str(row["role"])]
+        self.assertEqual(len(rows), 1, f"exactly one grammar should hold {role}")
+        return rows[0]
+
+    def test_the_published_equation_is_the_one_the_rule_chose(self) -> None:
+        chosen = self._row("E3-Valid")
+        self.assertEqual(self.report.e3.arity, chosen["arity"])
+        self.assertEqual(self.report.e3.n_terms, chosen["n_terms"])
+
+    def test_the_bound_is_the_grammar_most_capable_chose(self) -> None:
+        chosen = self._row("E3-MAX")
+        self.assertEqual(self.report.e3_capability.arity, chosen["arity"])
+        self.assertEqual(self.report.e3_capability.n_terms, chosen["n_terms"])
+
+    def test_every_refit_uses_the_grammar_that_was_published(self) -> None:
+        """The C3 defect, pinned. Several tables rebuild the library from a `Configuration`
+        and refit. Handing them the configuration's arity rather than the chosen one scored
+        the published equation's strictest protocol on a different grammar -- an arity-3
+        equation with an arity-2 leave-one-cell row -- and every test passed."""
+        from ml_meta_perf.experiment import QUICK_E3, run
+
+        # The configuration must disagree with the search, or this proves nothing.
+        self.assertEqual(QUICK_E3.max_arity, 3)
+        report = run(quick=True, arities=(2,))
+        self.assertEqual(report.e3.arity, 2)
+        self.assertLessEqual(max(len(term.features) for term in report.e3.equation.terms), 2)
+
+
 class TestDocumentedDefaults(unittest.TestCase):
     """The README's parameter table must state the defaults the code actually has.
 
