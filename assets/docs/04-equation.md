@@ -294,23 +294,34 @@ alternative headline. It is never analysed term by term and never used for guida
 arity trade behind it is a design decision, set out in [chapter 2](02-additive-model.md),
 which sweeps the penalty and the length inside each arity.
 
-## The two configurations the study reports
+## The two equations the study reports, and why it no longer names either
 
-`DEFAULT_E3` is what the study recommends. `DEFAULT_E3_CAPABILITY` is the same corpus and the
-same four model features under the **full** grammar, reported to answer a question the
-published equation cannot answer about itself.
+Both come from **one search over grammars**, not from two configurations written down.
+`experiment.search_grammars` fits the same corpus and the same four model features once per
+arity under a single configuration — the arity is the only thing that differs between the runs
+— and the selection rule then names them:
 
-| | grammar | z-cap | penalty | terms | in-sample | LOO-dataset | LOO-model |
-|---|---|---|---|---|---|---|---|
-| `DEFAULT_E3` | arity 2 | 4.25 | 20 | **15** | 0.6578 | **0.6381** | 0.6218 |
-| `DEFAULT_E3_CAPABILITY` | arity 3 | 4.25 | 3 | 23 | 0.7068 | 0.6781 | 0.6512 |
+* **E3-Valid** is what the study recommends: the simplest grammar the larger one does not beat
+  by more than the spread of that beating (`selection.best_configuration`).
+* **E3-MAX** is the capability measurement: the best floor any searched grammar reaches
+  (`selection.most_capable`).
 
-The second row answers a question the first cannot answer about itself: *is the additive form
-out of room, or is the published equation short of it?* Without it the published R² can only
-be read against oracles and baselines, none of which is an equation of this shape. With it,
-**+0.049 of in-sample R² and +0.040 of transfer are still available to the form** — so the
-published equation is not at the form's limit, and what it pays for that gap is eight fewer
-terms, one operation fewer, and a form that reselects far more often across folds.
+Neither the length nor the arity is asserted anywhere. The length inside a grammar is the
+argmax of that grammar's worst-protocol curve (`selection.floor_argmax`); the grammar across
+them is the rule above. Every number the choice rests on — the floor, the drop from fit to
+worst protocol, and the margin against the best — is written to `results/grammars.csv`, and
+the generated section below reports them. **This chapter deliberately restates none of them.**
+It used to carry its own copy of that table and went stale the moment the two grammars were
+made to share one configuration.
+
+The second equation answers a question the first cannot answer about itself: *is the additive
+form out of room, or is the published equation short of it?* Without it the published R² can
+only be read against oracles and baselines, none of which is an equation of this shape.
+
+**One caveat on reading the gap between them.** Until 2026-09-09 the bound was fitted with its
+own, much lighter, ridge penalty, which made "the full grammar reaches further" partly a
+statement about two hyperparameter sets. It is not any more, and the gap is correspondingly
+smaller. That is the comparison becoming honest rather than the form shrinking.
 
 **Every knob comes from the 2026-09-07 sweep** — 48,576 configurations over feature subsets ×
 penalties × lengths × z-caps × arities. It confirmed arity 2 for the published equation
@@ -517,14 +528,14 @@ Two ceilings, both computed from the library alone and so available *before* an 
 
 #### How far the additive form reaches
 
-The published equation is the **parsimonious** grammar (arity 2). The same features under the **full** grammar (arity 3), with the length chosen by the same rule, reach 23 terms at R² 0.7068 in-sample:
+The published equation is the **parsimonious** grammar (arity 2). The same features under the **full** grammar (arity 3), with the length chosen by the same rule, reach 23 terms at R² 0.6751 in-sample:
 
 | | terms | in-sample | LOO-dataset | LOO-model |
 |---|---|---|---|---|
 | published (arity 2) | 15 | 0.6578 | 0.6381 | 0.6218 |
-| capability (arity 3) | 23 | 0.7068 | 0.6781 | 0.6512 |
+| capability (arity 3) | 23 | 0.6751 | 0.6439 | 0.6327 |
 
-This is a **capability measurement, not a recommendation**. It answers the question the published equation cannot answer about itself — whether the additive form is out of room or whether this equation is short of it — and the answer is that +0.0490 of in-sample R² is still available to a longer equation over a wider grammar. What that costs is what the published equation is buying: more terms, an operation more, and a form that reselects far less often across folds.
+This is a **capability measurement, not a recommendation**. It answers the question the published equation cannot answer about itself — whether the additive form is out of room or whether this equation is short of it — and the answer is that +0.0174 of in-sample R² is still available to a longer equation over a wider grammar. What that costs is what the published equation is buying: more terms, an operation more, and a form that reselects far less often across folds.
 
 #### What the vocabulary could reach, before any search
 
@@ -749,41 +760,41 @@ MCC = +0.374877
 
 The same feature sets under the looser arity-3 grammar. It is **not** the study's recommendation and not what the term-by-term analysis above is about; it exists so that the published equation's accuracy can be read against what the additive *form* can do, rather than only against oracles and baselines. It is printed here in full because a ceiling quoted as a number and never shown is a ceiling a reader has to take on trust -- and because the reason it is not recommended is visible only in the reading: 23 terms over three-feature expressions is past the point where the equation can be reasoned about a term at a time, which is the whole thing this study is trading accuracy for.
 
-It reaches **0.7068** in-sample against the published equation's 0.6578, and **0.6781** leave-one-dataset-out against 0.6381.
+It reaches **0.6751** in-sample against the published equation's 0.6578, and **0.6439** leave-one-dataset-out against 0.6381.
 
 **E3 capability** (23 terms):
 
 ```
-MCC = +1.38199
-      -0.0371973 * ([log(gravity)] + [nr_norm]) / [log(Processing Units Number)]  # beta=-0.2665
-      +0.0125247 * [log(gravity)] * [log(Model Capability)]       # beta=+0.2463
-      +0.853208 * 1/Fitting Regime                                # beta=+0.2393
-      -0.188071 * ([log(eq_num_attr)] + [log(Processing Units Number)]) / [Fitting Regime]  # beta=-0.1988
-      -0.289067 * ([log(eq_num_attr)] + [log(nr_class)]) / [log(Processing Units Number)]  # beta=-0.1824
-      +0.012462 * ([log(class_ent)] + [nr_bin]) / [log(Processing Units Number)]  # beta=+0.1774
-      +0.141009 * ([log(nr_class)] + [log(Fitting Regime)]) / [log(eq_num_attr)]  # beta=+0.1646
-      +1.29483 * [nr_cor_attr] * [log(Processing Units Number)]   # beta=+0.1497
-      -0.0110339 * [log(gravity)] * [log(Fitting Regime)]         # beta=-0.1324
-      -0.132616 * ([log(Input Distribution Modelling)] + [log(Model Capability)]) / [log(eq_num_attr)]  # beta=-0.1300
-      -0.102309 * ([log(Input Distribution Modelling)] + [log(Processing Units Number)]) / [log(nr_class)]  # beta=-0.1143
-      -0.0934429 * ([log(class_ent)] + [log(Processing Units Number)]) / [log(eq_num_attr)]  # beta=-0.1103
-      +0.0023749 * [log(inst_to_attr)] * [nr_norm]                # beta=+0.1102
-      -1.3236 * [log(nr_class)] * [nr_cor_attr]                   # beta=-0.0990
-      +0.0976655 * ([log(class_ent)] + [log(Fitting Regime)]) / [log(eq_num_attr)]  # beta=+0.0887
-      -0.14122 * [nr_cor_attr] * [nr_norm]                        # beta=-0.0800
-      +0.040737 * ([log(inst_to_attr)] + [log(Input Distribution Modelling)]) / [log(Processing Units Number)]  # beta=+0.0786
-      +0.00963297 * ([nr_norm] + [log(Processing Units Number)]) / [Input Distribution Modelling]  # beta=+0.0730
-      -0.0120115 * ([log(gravity)] + [nr_bin]) / [log(nr_attr)]   # beta=-0.0694
-      -1.01469 * [nr_cor_attr] * [log(Fitting Regime)]            # beta=-0.0687
-      +0.0791699 * ([log(Input Distribution Modelling)] + [log(Model Capability)]) / [log(nr_class)]  # beta=+0.0671
-      -0.0549581 * ([log(nr_attr)] + [log(nr_class)]) / [log(Processing Units Number)]  # beta=-0.0386
-      -0.00890765 * ([log(inst_to_attr)] + [log(ns_ratio)]) / [Input Distribution Modelling]  # beta=-0.0327
+MCC = +1.4159
+      +0.00620241 * [log(gravity)] * [log(Model Capability)]      # beta=+0.1219
+      -0.181662 * ([log(eq_num_attr)] + [log(nr_class)]) / [log(Processing Units Number)]  # beta=-0.1146
+      -0.0795666 * [log(eq_num_attr)] * [log(nr_class)]           # beta=-0.1014
+      -0.0156297 * ([log(class_ent)] + [log(gravity)]) / [log(Processing Units Number)]  # beta=-0.0940
+      +0.713748 * [nr_cor_attr] * [log(Processing Units Number)]  # beta=+0.0825
+      -0.0107283 * ([log(gravity)] + [nr_norm]) / [log(Processing Units Number)]  # beta=-0.0769
+      +0.236138 * 1/Fitting Regime                                # beta=+0.0662
+      -0.11413 * [nr_cor_attr] * [nr_norm]                        # beta=-0.0647
+      +0.0389 * ([nr_norm] + [log(Input Distribution Modelling)]) / [log(nr_attr)]  # beta=+0.0647
+      -0.857491 * [log(nr_class)] * [nr_cor_attr]                 # beta=-0.0641
+      -0.0957516 * ([log(class_ent)] + [log(ns_ratio)]) / [log(Processing Units Number)]  # beta=-0.0640
+      -0.00523499 * [log(gravity)] * [log(Fitting Regime)]        # beta=-0.0628
+      +0.00126116 * [nr_bin] * [log(Model Capability)]            # beta=+0.0605
+      -0.0511404 * ([log(Input Distribution Modelling)] + [log(Processing Units Number)]) / [log(nr_class)]  # beta=-0.0571
+      +0.14378 * ([log(class_ent)] + [log(nr_class)]) / [log(inst_to_attr)]  # beta=+0.0549
+      -0.0533843 * [log(Input Distribution Modelling)] * [log(Processing Units Number)]  # beta=-0.0493
+      +0.0230306 * ([log(inst_to_attr)] + [log(Input Distribution Modelling)]) / [log(Processing Units Number)]  # beta=+0.0444
+      -0.454007 * ([log(Fitting Regime)] + [log(Processing Units Number)]) / [log(nr_inst)]  # beta=-0.0432
+      +0.0249962 * [log(eq_num_attr)] * [log(Model Capability)]   # beta=+0.0420
+      -0.0390788 * [log(Processing Units Number)] / [log(nr_class)]  # beta=-0.0369
+      -0.0565573 * [log(inst_to_attr)] * [nr_cor_attr]            # beta=-0.0340
+      +0.00476216 * Fitting Regime^2                              # beta=+0.0313
+      -0.00144581 * ([log(gravity)] + [log(ns_ratio)]) / [log(eq_num_attr)]  # beta=-0.0310
 ```
 
 LaTeX:
 
 ```latex
-\mathrm{MCC} = +1.382 -0.0372 \cdot \mathrm{([log(gravity)] + [nr\_norm]) / [log(Processing Units Number)]} +0.01252 \cdot \mathrm{[log(gravity)] * [log(Model Capability)]} +0.8532 \cdot \mathrm{1/Fitting Regime} -0.1881 \cdot \mathrm{([log(eq\_num\_attr)] + [log(Processing Units Number)]) / [Fitting Regime]} -0.2891 \cdot \mathrm{([log(eq\_num\_attr)] + [log(nr\_class)]) / [log(Processing Units Number)]} +0.01246 \cdot \mathrm{([log(class\_ent)] + [nr\_bin]) / [log(Processing Units Number)]} +0.141 \cdot \mathrm{([log(nr\_class)] + [log(Fitting Regime)]) / [log(eq\_num\_attr)]} +1.295 \cdot \mathrm{[nr\_cor\_attr] * [log(Processing Units Number)]} -0.01103 \cdot \mathrm{[log(gravity)] * [log(Fitting Regime)]} -0.1326 \cdot \mathrm{([log(Input Distribution Modelling)] + [log(Model Capability)]) / [log(eq\_num\_attr)]} -0.1023 \cdot \mathrm{([log(Input Distribution Modelling)] + [log(Processing Units Number)]) / [log(nr\_class)]} -0.09344 \cdot \mathrm{([log(class\_ent)] + [log(Processing Units Number)]) / [log(eq\_num\_attr)]} +0.002375 \cdot \mathrm{[log(inst\_to\_attr)] * [nr\_norm]} -1.324 \cdot \mathrm{[log(nr\_class)] * [nr\_cor\_attr]} +0.09767 \cdot \mathrm{([log(class\_ent)] + [log(Fitting Regime)]) / [log(eq\_num\_attr)]} -0.1412 \cdot \mathrm{[nr\_cor\_attr] * [nr\_norm]} +0.04074 \cdot \mathrm{([log(inst\_to\_attr)] + [log(Input Distribution Modelling)]) / [log(Processing Units Number)]} +0.009633 \cdot \mathrm{([nr\_norm] + [log(Processing Units Number)]) / [Input Distribution Modelling]} -0.01201 \cdot \mathrm{([log(gravity)] + [nr\_bin]) / [log(nr\_attr)]} -1.015 \cdot \mathrm{[nr\_cor\_attr] * [log(Fitting Regime)]} +0.07917 \cdot \mathrm{([log(Input Distribution Modelling)] + [log(Model Capability)]) / [log(nr\_class)]} -0.05496 \cdot \mathrm{([log(nr\_attr)] + [log(nr\_class)]) / [log(Processing Units Number)]} -0.008908 \cdot \mathrm{([log(inst\_to\_attr)] + [log(ns\_ratio)]) / [Input Distribution Modelling]}
+\mathrm{MCC} = +1.416 +0.006202 \cdot \mathrm{[log(gravity)] * [log(Model Capability)]} -0.1817 \cdot \mathrm{([log(eq\_num\_attr)] + [log(nr\_class)]) / [log(Processing Units Number)]} -0.07957 \cdot \mathrm{[log(eq\_num\_attr)] * [log(nr\_class)]} -0.01563 \cdot \mathrm{([log(class\_ent)] + [log(gravity)]) / [log(Processing Units Number)]} +0.7137 \cdot \mathrm{[nr\_cor\_attr] * [log(Processing Units Number)]} -0.01073 \cdot \mathrm{([log(gravity)] + [nr\_norm]) / [log(Processing Units Number)]} +0.2361 \cdot \mathrm{1/Fitting Regime} -0.1141 \cdot \mathrm{[nr\_cor\_attr] * [nr\_norm]} +0.0389 \cdot \mathrm{([nr\_norm] + [log(Input Distribution Modelling)]) / [log(nr\_attr)]} -0.8575 \cdot \mathrm{[log(nr\_class)] * [nr\_cor\_attr]} -0.09575 \cdot \mathrm{([log(class\_ent)] + [log(ns\_ratio)]) / [log(Processing Units Number)]} -0.005235 \cdot \mathrm{[log(gravity)] * [log(Fitting Regime)]} +0.001261 \cdot \mathrm{[nr\_bin] * [log(Model Capability)]} -0.05114 \cdot \mathrm{([log(Input Distribution Modelling)] + [log(Processing Units Number)]) / [log(nr\_class)]} +0.1438 \cdot \mathrm{([log(class\_ent)] + [log(nr\_class)]) / [log(inst\_to\_attr)]} -0.05338 \cdot \mathrm{[log(Input Distribution Modelling)] * [log(Processing Units Number)]} +0.02303 \cdot \mathrm{([log(inst\_to\_attr)] + [log(Input Distribution Modelling)]) / [log(Processing Units Number)]} -0.454 \cdot \mathrm{([log(Fitting Regime)] + [log(Processing Units Number)]) / [log(nr\_inst)]} +0.025 \cdot \mathrm{[log(eq\_num\_attr)] * [log(Model Capability)]} -0.03908 \cdot \mathrm{[log(Processing Units Number)] / [log(nr\_class)]} -0.05656 \cdot \mathrm{[log(inst\_to\_attr)] * [nr\_cor\_attr]} +0.004762 \cdot \mathrm{Fitting Regime\^{}2} -0.001446 \cdot \mathrm{([log(gravity)] + [log(ns\_ratio)]) / [log(eq\_num\_attr)]}
 ```
 
 <!-- end generated -->

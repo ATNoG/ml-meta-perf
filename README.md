@@ -54,7 +54,7 @@ levels it can be read against are both reached or passed, and that is the result
 | all 75 single-feature terms | 0.6437 | the best a sum of per-feature functions can do |
 | additive oracle | 0.6605 | the best a per-dataset value **plus** a per-model value can do |
 | **E3, 15 terms** | **0.6578** | — |
-| **E3 under the full grammar, 23 terms** | **0.7068** | — |
+| **E3 under the full grammar, 23 terms** | **0.6751** | — |
 
 Both bounds describe predictors that never combine a dataset feature with a model one. E3
 does — 7 of its 15 terms are mixed — and clearing them by two independent routes is the
