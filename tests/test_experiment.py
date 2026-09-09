@@ -281,7 +281,12 @@ class TestOnlyTheValidEquationIsEvaluated(unittest.TestCase):
         # The configuration must disagree with the search, or this proves nothing.
         self.assertEqual(corpus.E3.max_arity, 3)
         report = run(
-            str(corpus.sample_path()), quick=True, config_e3=corpus.E3, arities=(2,), opaque_models=corpus.DOUBLES
+            str(corpus.sample_path()),
+            config_e1=corpus.E1,
+            config_e2=corpus.E2,
+            config_e3=corpus.E3,
+            arities=(2,),
+            opaque_models=corpus.DOUBLES,
         )
         self.assertEqual(report.e3.arity, 2)
         self.assertLessEqual(max(len(term.features) for term in report.e3.equation.terms), 2)

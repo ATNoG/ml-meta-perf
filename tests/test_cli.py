@@ -24,7 +24,7 @@ from pathlib import Path
 from unittest import mock
 
 from ml_meta_perf.cli import build_parser, configurations, main, render
-from ml_meta_perf.experiment import ARITIES, DEFAULT_E1, DEFAULT_E3, QUICK_E1, QUICK_E3
+from ml_meta_perf.experiment import ARITIES, DEFAULT_E1, DEFAULT_E3
 from ml_meta_perf.model import Equation
 from ml_meta_perf.report import BEGIN, END
 from tests import corpus
@@ -38,12 +38,6 @@ class TestFlags(unittest.TestCase):
         e1, e3 = configurations(parser.parse_args([]))
         self.assertEqual(e1, DEFAULT_E1)
         self.assertEqual(e3, DEFAULT_E3)
-
-    def test_quick_selects_the_reduced_configurations(self) -> None:
-        parser = build_parser()
-        e1, e3 = configurations(parser.parse_args(["--quick"]))
-        self.assertEqual(e1, QUICK_E1)
-        self.assertEqual(e3, QUICK_E3)
 
     def test_flags_override_the_tuned_configuration(self) -> None:
         parser = build_parser()
@@ -128,18 +122,19 @@ class TestWhatTheFlagsReachTheEngineAs(CliTestCase):
         self.assertEqual(keywords["config_e1"], DEFAULT_E1)
         self.assertEqual(keywords["config_e3"], DEFAULT_E3)
         self.assertEqual(keywords["arities"], ARITIES)
-        self.assertFalse(keywords["quick"])
 
     def test_a_repeated_arity_becomes_the_searched_set(self) -> None:
         self.run_main("--quiet", "--no-report", "--no-tables", "--arity", "3", "--arity", "2", "--arity", "3")
         self.assertEqual(self.engine.call_args.kwargs["arities"], (3, 2))
 
-    def test_quick_is_passed_through_rather_than_being_only_a_configuration(self) -> None:
-        """`quick` also picks the opaque ensemble sizes and E2's configuration, neither of
-        which `configurations` returns, so dropping the keyword would leave a `--quick` run
-        paying full price for two thirds of the study."""
-        self.run_main("--quiet", "--no-report", "--no-tables", "--quick")
-        self.assertTrue(self.engine.call_args.kwargs["quick"])
+    def test_there_is_no_preset_that_sets_knobs_the_flags_do_not(self) -> None:
+        """`--quick` was three flags that already existed plus two that did not: it also chose
+        E2's configuration and the opaque ensemble sizes, which is how it came to advertise
+        "seconds" while paying 226 s for the comparison. Every knob is a flag or a parameter
+        now, so a cheap run says at its call site which parts of it are cheap."""
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["--quick"])
 
 
 class TestWhatIsWritten(CliTestCase):

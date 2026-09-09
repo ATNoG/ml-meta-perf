@@ -45,8 +45,8 @@ search_grammars(frame)  ->  E3-Valid = arity 2, 15 terms
                             E3-MAX   = arity 3, 23 terms
 ```
 
-**C5 and C6 are the remaining cleanups** and C7 the rename. None of them should move a number;
-all three are verified by snapshot-and-byte-compare.
+**C5 is done. C6 is the remaining cleanup** and C7 the rename. C6 *will* move E1's and E2's
+numbers, on purpose; C7 must not. Both are verified by snapshot-and-byte-compare.
 
 ## The plan — C0 to C7
 
@@ -179,10 +179,19 @@ correctness fix for every corpus where they do not, and the corpus is going to g
 set. `--max-terms` stays: different thing -- the horizon is a knob and a cost control, the
 length is what C1 derives. README's flag table and its worked example move with it.
 
-**C5. Drop `--quick`.** A preset of flags that already exist (`--max-terms 3 --pool 40
---penalty 20`) carrying two Configuration objects whose only job is a third copy of a length.
-Three tests use it -- `test_plots` x2, `test_experiment` x3 -- and pass the flags explicitly
-instead, which makes what "quick" meant visible at the call site.
+**C5. Done, 2026-09-09.** `--quick` is gone from the command line, and `quick` from
+`experiment.run`. It was a preset of three flags that already exist, plus two things they did
+not reach -- E2's configuration and the opaque ensemble sizes -- which is exactly how it came
+to advertise "seconds" while paying 226 s for the comparison. `run` now takes `config_e2`
+alongside `config_e1` and `config_e3`, and `opaque_models` covers the rest, so what a cheap
+call is asking for is readable at the call site. `tests/corpus.py` writes all three out.
+
+Verified by snapshot-and-byte-compare: `results/` (27 files), all fourteen figures, and the
+six chapters are identical before and after.
+
+**Left where it was, deliberately:** `configurations` folds the shared flags onto E1 and E3
+and not onto E2, so `--penalty 3` does not reach it. That is where the three separately-tuned
+configurations left things rather than a decision, and C6 is what removes the asymmetry.
 
 **C6. One set of named constants feeding argparse**, with a comment recording that they are
 where the 2026-09 sweep landed: `PENALTY`, `MAX_ABS_ZSCORE`, `POOL_SIZE`, `BEAM_WIDTH`,

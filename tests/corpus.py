@@ -105,11 +105,16 @@ DOUBLES: tuple[tuple[str, Builder], ...] = (
 )
 
 #: The configurations the unit suite fits under. Short and cheap, and **not** the tuned ones:
-#: a test that reproduced the published search would be reproducing the study, which is what
-#: `study/` is for. Six terms rather than the three `--quick` uses, because three is short
-#: enough that several tables come out degenerate -- a practice carried by one term, a curve
-#: with two points -- and a degenerate table passes checks a real one would fail.
+#: a test that reproduced the published search would be reproducing the study rather than
+#: checking it. Six terms, because three is short enough that several tables come out
+#: degenerate -- a practice carried by one term, a curve with two points -- and a degenerate
+#: table passes checks a real one would fail.
+#:
+#: All three are written out. They used to come from `--quick`, which set E1 and E3 from a
+#: preset, E2 from somewhere else, and the opaque ensembles from a third place; what a call
+#: site was actually asking for could not be read off it.
 E1 = Configuration(max_abs_zscore=3.0, penalty=1.0, pool_size=60, max_terms=6)
+E2 = Configuration(max_abs_zscore=3.0, penalty=5.0, pool_size=60, max_terms=6, max_arity=2)
 E3 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=60, max_terms=6)
 
 _FRAME: list[pl.DataFrame] = []
@@ -174,12 +179,20 @@ def report() -> Report:
     object -- two fixtures that fit separately can disagree, and then a failure is about the
     fixtures rather than about the code.
 
-    Under `quick` and over the doubles: the numbers in it are not the study's and no test here
-    should read them as such. What it is for is shape -- that every table has the columns the
+    Fitted at the configurations above and over the doubles: the numbers in it are not the
+    study's and no test here should read them as such. What it is for is shape -- that every table has the columns the
     figures and the chapters ask for, and that they line up with each other.
     """
     if not _REPORT:
         from ml_meta_perf.experiment import run
 
-        _REPORT.append(run(str(sample_path()), quick=True, config_e1=E1, config_e3=E3, opaque_models=DOUBLES))
+        _REPORT.append(
+            run(
+                str(sample_path()),
+                config_e1=E1,
+                config_e2=E2,
+                config_e3=E3,
+                opaque_models=DOUBLES,
+            )
+        )
     return _REPORT[0]

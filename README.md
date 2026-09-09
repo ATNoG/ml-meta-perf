@@ -177,16 +177,18 @@ features and which grammar operations the search actually used — so a flat equ
 dominant term is still readable, at a larger unit than one term.
 
 Every phase can be skipped and every destination redirected, so the same entry point
-serves a full study, a numbers-only run and a smoke test:
+serves a full study and a numbers-only run:
 
 ```bash
 ml-meta-perf --no-figures                        # tables and report only
 ml-meta-perf --quiet --no-tables --no-report     # figures only
-ml-meta-perf --quick --output /tmp/check         # seconds, not minutes: wiring, not numbers
 ml-meta-perf --output results --docs assets/docs --figures figures
 ```
 
-`ml-meta-perf --help` lists all of them.
+`ml-meta-perf --help` lists all of them. There is no smoke-test flag: `--quick` was a preset
+of three flags that already exist, and it quietly reached two things they did not, which is
+how it came to advertise "seconds" while still paying for the full opaque comparison. The
+wiring check is `python -m unittest discover -s tests`, which is 44 seconds and checks more.
 
 **One note on threading.** The inner loop is ~87k solves of matrices no larger than 32×32,
 far below the size where BLAS parallelism pays: threading buys no wall time and burns 3.5×
@@ -215,7 +217,6 @@ PYTHONPATH=src venv/bin/python -m ml_meta_perf --data mine.csv --output runs/min
 | `--beam` | 6 | beam width |
 | `--zscore` | 4.25 | largest standard score a term may reach before it is rejected as a spike |
 | `--phase` | all | `screen`, `equations`, `validation`, `practices`, `figures`, `report`; repeatable |
-| `--quick` | off | a reduced configuration for smoke-testing; **not** the study |
 | `--no-figures`, `--no-tables`, `--no-report`, `--quiet` | off | skip an output |
 
 ```bash

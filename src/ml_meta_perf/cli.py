@@ -29,8 +29,6 @@ from ml_meta_perf.experiment import (
     ARITIES,
     DEFAULT_E1,
     DEFAULT_E3,
-    QUICK_E1,
-    QUICK_E3,
     Configuration,
     Report,
     run,
@@ -153,10 +151,11 @@ def configurations(
     tuned value rather than being reset to an argparse default. Knobs that mean the same
     thing everywhere -- the penalty, the pool, the beam, the stability cap -- are applied
     to E1 as well; the ones that describe the published E3 specifically are not.
-    """
-    base_e1 = QUICK_E1 if arguments.quick else DEFAULT_E1
-    base_e3 = QUICK_E3 if arguments.quick else DEFAULT_E3
 
+    **E2 is not folded onto and gets no configuration from here**, so `run` gives it
+    `DEFAULT_E2`. That is not a decision, it is where the three separately-tuned
+    configurations left things, and C6 is what replaces all three with one set of constants.
+    """
     shared: dict[str, object] = {}
     if arguments.penalty is not None:
         shared["penalty"] = arguments.penalty
@@ -172,8 +171,8 @@ def configurations(
         e3_only["max_terms"] = arguments.max_terms
 
     return (
-        dataclasses.replace(base_e1, **shared),  # pyright: ignore[reportArgumentType]
-        dataclasses.replace(base_e3, **e3_only),  # pyright: ignore[reportArgumentType]
+        dataclasses.replace(DEFAULT_E1, **shared),  # pyright: ignore[reportArgumentType]
+        dataclasses.replace(DEFAULT_E3, **e3_only),  # pyright: ignore[reportArgumentType]
     )
 
 
@@ -285,11 +284,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="run a subset of the phases; repeatable (default: all)",
     )
-    parser.add_argument(
-        "--quick",
-        action="store_true",
-        help="a reduced configuration that checks the wiring in seconds; not the reported study",
-    )
     return parser
 
 
@@ -301,7 +295,6 @@ def main(argv: list[str] | None = None) -> int:
     started = time.perf_counter()
     report = run(
         arguments.data,
-        quick=arguments.quick,
         config_e1=config_e1,
         config_e3=config_e3,
         arities=tuple(dict.fromkeys(arguments.arity)) if arguments.arity else ARITIES,

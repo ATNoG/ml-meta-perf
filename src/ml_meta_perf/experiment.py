@@ -37,7 +37,7 @@ from ml_meta_perf.fit import fit, prune
 from ml_meta_perf.identity import correct_out_of_fold
 from ml_meta_perf.model import Equation
 from ml_meta_perf.opaque import Builder as OpaqueBuilder
-from ml_meta_perf.opaque import OpaqueRun, estimators
+from ml_meta_perf.opaque import OpaqueRun
 from ml_meta_perf.opaque import evaluate as opaque_evaluate
 from ml_meta_perf.practices import best_practices
 from ml_meta_perf.selection import (
@@ -1275,49 +1275,27 @@ class Report:
     saturated: pl.DataFrame
 
 
-# Small enough to run in a couple of seconds. Intended for smoke-testing the wiring,
-# not for reporting: the equations it produces are far shorter than the studied ones.
-QUICK_E1 = Configuration(max_abs_zscore=3.0, penalty=1.0, pool_size=40, max_terms=3)
-QUICK_E3 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=40, max_terms=3)
-
-#: The opaque comparison's ensemble sizes under ``quick``.
-#:
-#: **`--quick` promised "checks the wiring in seconds" and did not deliver, because it reached
-#: the equation's knobs and not these.** `opaque.evaluate` refits each estimator once per
-#: observed cell -- 476 of them -- so at the published 300 trees and 100 stages one call is
-#: 226 s. Measured 2026-09-08: that single call was 1,365 s of a 1,397 s test suite, across
-#: the five end-to-end tests that each paid for it, and the equation's own work in those tests
-#: is about three seconds. Five trees checks exactly the same wiring.
-#:
-#: Not a reduced *study*: `run` without ``quick`` still uses `opaque.FOREST_TREES` and
-#: `opaque.BOOSTING_STAGES`, so every reported number is unchanged.
-QUICK_TREES = 5
-QUICK_STAGES = 5
-
-#: E2 and the capability bound under ``quick``. They were the other half of the same bug: `run`
-#: built them from the *tuned* configurations whatever ``quick`` said, so the capability bound
-#: paid a full arity-3 search over a 838-term library at every wiring check -- 7.3 s against
-#: the 0.6 s the quick E3 costs. Same z-cap and pool as `QUICK_E3`; arity 3 kept, because a
-#: capability bound that dropped to the parsimonious grammar would not be checking its own
-#: wiring.
-QUICK_E2 = Configuration(max_abs_zscore=3.0, penalty=5.0, pool_size=40, max_terms=3, max_arity=2)
-
-
 def run(
     path: str | None = None,
     *,
-    quick: bool = False,
     config_e1: Configuration | None = None,
+    config_e2: Configuration | None = None,
     config_e3: Configuration | None = None,
     arities: tuple[int, ...] = ARITIES,
     opaque_models: tuple[tuple[str, OpaqueBuilder], ...] | None = None,
 ) -> Report:
     """Run the whole study.
 
-    The three configurations default to the tuned ones (or to the quick ones under
-    ``quick``). Passing them explicitly is how the command line exposes the knobs: a
-    caller who overrides ``config_e3`` gets a study that is internally consistent, since
-    every table that mentions E3 is computed from the same configuration object.
+    The three configurations default to the tuned ones. Passing them explicitly is how the
+    command line exposes the knobs: a caller who overrides ``config_e3`` gets a study that is
+    internally consistent, since every table that mentions E3 is computed from the same
+    configuration object.
+
+    **There is no ``quick`` any more.** It was a preset of three flags that already exist,
+    and it silently reached two things they did not -- E2's configuration and the opaque
+    ensemble sizes -- which is how it came to promise "seconds" while paying 226 s for a
+    comparison. Every knob it set is now a parameter here, so a caller that wants a cheap run
+    says which parts are cheap and the reader of that call site can see it.
 
     ``opaque_models`` replaces the estimators the comparison is run against, in the shape
     `opaque.evaluate` takes. It exists for the same reason that parameter does: the opaque
@@ -1326,8 +1304,9 @@ def run(
     first -- which at 476 refits per estimator is most of what a run costs.
     """
     frame = load(path)
-    config_e1 = config_e1 or (QUICK_E1 if quick else DEFAULT_E1)
-    config_e3 = config_e3 or (QUICK_E3 if quick else DEFAULT_E3)
+    config_e1 = config_e1 or DEFAULT_E1
+    config_e2 = config_e2 or DEFAULT_E2
+    config_e3 = config_e3 or DEFAULT_E3
     e1 = run_e1(frame, config_e1)
     # One fit per grammar and the rule picks, rather than two hand-fixed arities. `e3` and
     # `e3_capability` are both drawn from this: the same search, the same configuration, the
@@ -1341,14 +1320,12 @@ def run(
     # different grammar whenever the two disagreed.
     config_e3 = dataclasses.replace(config_e3, max_arity=e3.arity)
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
-    e2 = run_e2(frame, QUICK_E2 if quick else DEFAULT_E2)
+    e2 = run_e2(frame, config_e2)
     reach, ceiling = reach_analysis(frame, config_e3)
     # Fitted once and shared: the folds are the expensive part, and the regression table and
     # the two decision comparisons have to be scored from the same predictions or they can
     # disagree with each other.
-    opaque_run = opaque_evaluate(
-        frame, models=opaque_models or (estimators(QUICK_TREES, QUICK_STAGES) if quick else None)
-    )
+    opaque_run = opaque_evaluate(frame, models=opaque_models)
     return Report(
         opaque=opaque_run.table,
         saturated=pl.DataFrame([saturated_analysis(frame, config_e3)]),
