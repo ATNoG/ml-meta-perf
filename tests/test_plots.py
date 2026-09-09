@@ -21,6 +21,7 @@ from ml_meta_perf.plots import (
     term_effects,
     term_to_math,
 )
+from tests import corpus
 
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
@@ -243,10 +244,9 @@ class TestOracleLookup(unittest.TestCase):
 
 class TestFigureSet(PlotTestCase):
     def test_generate_writes_the_whole_set(self) -> None:
-        from ml_meta_perf.experiment import run
         from ml_meta_perf.figures import generate
 
-        written = generate(run(quick=True), self.folder)
+        written = generate(corpus.report(), self.folder, corpus.sample_path())
         self.assertEqual(len(written), len(set(written)))
         for path in written:
             self.assertIsPng(path)
@@ -270,10 +270,9 @@ class TestFigureNaming(unittest.TestCase):
 
     def test_every_figure_has_a_caption_under_its_published_name(self) -> None:
         """A caption keyed by the unnumbered stem would silently go missing on rename."""
-        from ml_meta_perf.experiment import run
         from ml_meta_perf.figures import FIGURE_ORDER, captions, figure_name
 
-        available = captions(run(quick=True))
+        available = captions(corpus.report(), corpus.sample_path())
         self.assertEqual(set(available), {figure_name(stem) for stem in FIGURE_ORDER})
 
     def test_an_unknown_stem_is_refused(self) -> None:

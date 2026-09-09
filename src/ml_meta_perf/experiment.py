@@ -36,6 +36,7 @@ from ml_meta_perf.data import (
 from ml_meta_perf.fit import fit, prune
 from ml_meta_perf.identity import correct_out_of_fold
 from ml_meta_perf.model import Equation
+from ml_meta_perf.opaque import Builder as OpaqueBuilder
 from ml_meta_perf.opaque import OpaqueRun, estimators
 from ml_meta_perf.opaque import evaluate as opaque_evaluate
 from ml_meta_perf.practices import best_practices
@@ -1309,6 +1310,7 @@ def run(
     config_e1: Configuration | None = None,
     config_e3: Configuration | None = None,
     arities: tuple[int, ...] = ARITIES,
+    opaque_models: tuple[tuple[str, OpaqueBuilder], ...] | None = None,
 ) -> Report:
     """Run the whole study.
 
@@ -1316,6 +1318,12 @@ def run(
     ``quick``). Passing them explicitly is how the command line exposes the knobs: a
     caller who overrides ``config_e3`` gets a study that is internally consistent, since
     every table that mentions E3 is computed from the same configuration object.
+
+    ``opaque_models`` replaces the estimators the comparison is run against, in the shape
+    `opaque.evaluate` takes. It exists for the same reason that parameter does: the opaque
+    side is scikit-learn's, the leave-one-cell refit around it is this project's, and a
+    caller checking the wiring should be able to exercise the second without paying for the
+    first -- which at 476 refits per estimator is most of what a run costs.
     """
     frame = load(path)
     config_e1 = config_e1 or (QUICK_E1 if quick else DEFAULT_E1)
@@ -1338,7 +1346,9 @@ def run(
     # Fitted once and shared: the folds are the expensive part, and the regression table and
     # the two decision comparisons have to be scored from the same predictions or they can
     # disagree with each other.
-    opaque_run = opaque_evaluate(frame, models=estimators(QUICK_TREES, QUICK_STAGES) if quick else None)
+    opaque_run = opaque_evaluate(
+        frame, models=opaque_models or (estimators(QUICK_TREES, QUICK_STAGES) if quick else None)
+    )
     return Report(
         opaque=opaque_run.table,
         saturated=pl.DataFrame([saturated_analysis(frame, config_e3)]),

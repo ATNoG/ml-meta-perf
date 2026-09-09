@@ -28,6 +28,7 @@ from ml_meta_perf.validate import (
     sign_test,
     term_stability,
 )
+from tests import corpus
 
 
 def grid(n_groups: int = 6, per_group: int = 5, seed: int = 4):
@@ -482,11 +483,8 @@ class TestGrammarReach(unittest.TestCase):
         terms are not that, so exceeding it is expected -- and is the independent route to
         the same conclusion the additive oracle reaches.
         """
-        from ml_meta_perf.data import load
-        from ml_meta_perf.experiment import run_e3
-
         ladder = grammar_ceiling(self.library, self.truth, self.features)
-        fitted = float(run_e3(load()).in_sample["r2"])
+        fitted = float(corpus.published().in_sample["r2"])
         self.assertGreater(fitted, ladder["r2_all_single_feature"])
 
 
@@ -528,8 +526,5 @@ class TestSaturatedFit(unittest.TestCase):
         self.assertLess(self.result["r2_loo_dataset_unclipped"], self.result["r2_loo_dataset_clipped"])
 
     def test_it_transfers_worse_than_the_published_equation(self) -> None:
-        from ml_meta_perf.data import load
-        from ml_meta_perf.experiment import run_e3
-
-        published = float(run_e3(load()).cross_validated["loo_dataset"]["r2"])
+        published = float(corpus.published().cross_validated["loo_dataset"]["r2"])
         self.assertGreater(published, self.result["r2_loo_dataset_clipped"])

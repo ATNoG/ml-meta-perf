@@ -25,41 +25,12 @@ import unittest
 
 import numpy as np
 import polars as pl
-from sklearn.dummy import DummyRegressor
 
 from ml_meta_perf.data import DATASET_COLUMN, MODEL_COLUMN, groups, load, target
-from ml_meta_perf.opaque import Builder, OpaqueRun, _cross_validate, _design, estimators, evaluate
+from ml_meta_perf.opaque import OpaqueRun, _cross_validate, _design, estimators, evaluate
 from ml_meta_perf.validate import leave_one_group_out
-
-
-class _Stub:
-    """A regressor double. Fits nothing, and predicts a scaled raw column plus the training
-    mean -- deterministic, instant, varying per fold, and free to land outside MCC's range so
-    that the clip has something to bite on.
-
-    **This is what most of the tests below need.** The estimators are scikit-learn's and are
-    not this project's to test; what *is* this project's is the plumbing around them -- how
-    the folds are built, that the doubly-held-out split removes both groups, that predictions
-    are clipped to the training range, and that the table is scored from the predictions that
-    are kept. A double exercises every one of those and costs nothing.
-    """
-
-    offset: float = 0.0
-
-    def fit(self, design: np.ndarray, truth: np.ndarray, /) -> "_Stub":
-        self.offset = float(truth.mean())
-        return self
-
-    def predict(self, design: np.ndarray, /) -> np.ndarray:
-        return design[:, 0] * 1e-5 + self.offset
-
-
-#: The doubles, in the shape `evaluate` takes: one that varies with the data and one constant,
-#: so the table has more than one row to be wrong about.
-DOUBLES: tuple[tuple[str, Builder], ...] = (
-    ("stub (varying)", lambda _threads=-1: _Stub()),
-    ("stub (constant)", lambda _threads=-1: DummyRegressor(strategy="mean")),
-)
+from tests import corpus
+from tests.corpus import DOUBLES, Stub
 
 #: The reduced real sizes, for the handful of assertions that are claims about the *study*
 #: rather than about this module. See the module docstring: those claims are size-independent
@@ -75,9 +46,14 @@ _RUN: list[OpaqueRun] = []
 
 
 def _outcome() -> OpaqueRun:
-    """The shared `evaluate` result over the doubles, computed on first use."""
+    """The shared `evaluate` result over the doubles, computed on first use.
+
+    Over the slice rather than the corpus: the cell protocol refits once per observed cell, so
+    the corpus is 476 joblib tasks per estimator to check that a fold excludes what it says it
+    excludes. The slice is 78, and it is ragged, which is the part that can go wrong.
+    """
     if not _RUN:
-        _RUN.append(evaluate(load(), models=DOUBLES))
+        _RUN.append(evaluate(corpus.sample(), models=DOUBLES))
     return _RUN[0]
 
 
@@ -96,7 +72,7 @@ class TestOpaqueBaselines(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.frame = load()
+        cls.frame = corpus.sample()
         cls.outcome = _outcome()
         cls.rows = {row["model"]: row for row in cls.outcome.table.to_dicts()}
 
@@ -109,8 +85,8 @@ class TestOpaqueBaselines(unittest.TestCase):
         an unexplained good number rather than as an error."""
         built: list[object] = []
 
-        def counting(_threads: int = -1) -> _Stub:
-            built.append(stub := _Stub())
+        def counting(_threads: int = -1) -> Stub:
+            built.append(stub := Stub())
             return stub
 
         evaluate(self.frame, models=(("counted", counting),))
@@ -168,6 +144,7 @@ class TestTheStudysOpaqueClaim(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.frame = load()
         cls.rows = {row["model"]: row for row in _real_outcome().table.to_dicts()}
+        cls.equation = corpus.published()
 
     def test_the_forest_fits_far_better_than_it_transfers(self) -> None:
         """The study's argument in two numbers. If this ever stopped holding, the trade the
@@ -177,9 +154,7 @@ class TestTheStudysOpaqueClaim(unittest.TestCase):
         self.assertLess(forest["r2_loo_dataset"], 0.4)
 
     def test_no_opaque_model_transfers_as_well_as_the_equation(self) -> None:
-        from ml_meta_perf.experiment import run_e3
-
-        equation = float(run_e3(self.frame).cross_validated["loo_dataset"]["r2"])
+        equation = float(self.equation.cross_validated["loo_dataset"]["r2"])
         for label, row in self.rows.items():
             with self.subTest(model=label):
                 self.assertLess(row["r2_loo_dataset"], equation)
@@ -197,9 +172,9 @@ class TestTheStudysOpaqueClaim(unittest.TestCase):
         to the equation. A claim about real estimators -- a double predicting a constant makes
         no positive calls at all and scores an undefined MCC -- so it lives here rather than
         with the plumbing."""
-        from ml_meta_perf.experiment import DEFAULT_E3, decision_baselines, run_e3
+        from ml_meta_perf.experiment import DEFAULT_E3, decision_baselines
 
-        equation = run_e3(self.frame)
+        equation = self.equation
         table = decision_baselines(self.frame, DEFAULT_E3, equation.paths.get("loo_dataset"), equation, _real_outcome())
         at_threshold = {
             row["predictor"]: float(row["mcc"]) for row in table.to_dicts() if abs(float(row["threshold"]) - 0.7) < 1e-9
@@ -234,12 +209,12 @@ class TestOpaqueEntersTheComparisons(unittest.TestCase):
     def setUpClass(cls) -> None:
         # Both the forest folds and the beam search are seconds each, so they are paid once
         # for the class rather than once per assertion.
-        from ml_meta_perf.experiment import DEFAULT_E3, decision_baselines, ranking_baselines, run_e3
+        from ml_meta_perf.experiment import decision_baselines, ranking_baselines, run_e3
 
-        frame = load()
-        equation, outcome = run_e3(frame), evaluate(frame, models=DOUBLES)
-        cls.ranking = ranking_baselines(frame, equation, DEFAULT_E3, outcome)
-        cls.decision = decision_baselines(frame, DEFAULT_E3, equation.paths.get("loo_dataset"), equation, outcome)
+        frame = corpus.sample()
+        equation, outcome = run_e3(frame, corpus.E3), evaluate(frame, models=DOUBLES)
+        cls.ranking = ranking_baselines(frame, equation, corpus.E3, outcome)
+        cls.decision = decision_baselines(frame, corpus.E3, equation.paths.get("loo_dataset"), equation, outcome)
 
     def test_ranking_baselines_carry_the_opaque_rows(self) -> None:
         for label, _ in DOUBLES:
@@ -274,7 +249,7 @@ class TestDoublyHeldOut(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.frame = load()
+        cls.frame = corpus.sample()
         cls.rows = {row["model"]: row for row in _outcome().table.to_dicts()}
 
     def test_removing_both_identities_is_the_hardest_protocol(self) -> None:

@@ -17,6 +17,7 @@ from ml_meta_perf.identity import (
 from ml_meta_perf.model import Equation
 from ml_meta_perf.terms import Atom, Library, Term
 from ml_meta_perf.validate import CrossValidation, cross_validate_fixed_form
+from tests import corpus
 
 
 def _grid(n_datasets: int = 6, n_models: int = 5) -> tuple[dict[str, np.ndarray], np.ndarray, np.ndarray]:
@@ -212,10 +213,10 @@ class TestIdentityCeiling(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         from ml_meta_perf.data import load
-        from ml_meta_perf.experiment import identity_ceiling, run_e3
+        from ml_meta_perf.experiment import identity_ceiling
 
         frame = load()
-        cls.table = identity_ceiling(frame, run_e3(frame))
+        cls.table = identity_ceiling(frame, corpus.published())
 
     def test_reports_both_rungs_against_the_uncorrected_equation(self) -> None:
         self.assertEqual(self.table.height, 3)
@@ -237,10 +238,7 @@ class TestIdentityCeiling(unittest.TestCase):
     def test_the_uncorrected_row_is_the_reported_equation(self) -> None:
         """The ceiling is only a ceiling *for* the published equation, so its baseline row has
         to be that equation's own reported leave-one-dataset-out score."""
-        from ml_meta_perf.data import load
-        from ml_meta_perf.experiment import run_e3
-
-        reported = float(run_e3(load()).cross_validated["loo_dataset"]["r2"])
+        reported = float(corpus.published().cross_validated["loo_dataset"]["r2"])
         self.assertAlmostEqual(self.table["r2_loo_dataset"][0], reported, places=9)
 
 

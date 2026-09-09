@@ -20,9 +20,9 @@ d92d8d3  Stop stamping the PDF figures with the wall clock
 f7b4a7c  Score beam policies on four protocols, and use ESS as a sampler not a design
 ```
 
-**The suite is green (522 tests, 35 minutes).** The selection rule was replaced on
-2026-09-08 -- see below -- and `tests/test_selection.py` went from 30 test methods to 45. Nothing is half-done in
-the tree; what is unfinished is unstarted, and it is listed under "The plan" below.
+**The suite is green (540 tests, 44 seconds, no test over 8 s).** It was 35 minutes on
+2026-09-08 and 2m35s after the first pass; the second pass is described below. Nothing is
+half-done in the tree; what is unfinished is unstarted, and it is listed under "The plan" below.
 
 ### Read this first
 
@@ -392,13 +392,56 @@ Three causes, all the same shape -- **the cheap path did not reach the expensive
 * **`test_guidance` called a full `run()`** for a fixture that reads `report.e3` and nothing
   else.
 
-**What is left, and it is the next thing to look at:** five end-to-end CLI and figure tests at
-13-27 s each. They are integration tests wearing unit-test clothing, and CI already has a
-separate `The study reproduces end to end` step that covers the same ground.
-
 **The remaining floor is the cell protocol itself**: at five trees, `evaluate` is still 9.1 s,
 spread evenly across the three estimators (1.8 / 3.5 / 2.1 s), so it is the 476 refits and
 their joblib tasks rather than any one estimator. Fewer trees will not help further.
+
+## The test suite: 2m35s to 44 seconds, 2026-09-09
+
+The five end-to-end tests the previous pass left behind are gone, and with them the reason
+anything in the suite was slow. Three changes, and `tests/corpus.py` is where all three land.
+
+**A slice of the corpus, not the corpus.** Eight datasets by ten models, 78 of 476 rows,
+derived from the shipped CSV at import rather than checked in as a second copy. `KPI-KQI`
+with `MLP` and `XGBoost` keeps it ragged, so the doubly-held-out protocol is still exercised
+against missing cells. A unit test asks whether a function builds its table correctly, and 78
+rows answer that as well as 476 -- while `opaque.evaluate` refits once per observed cell, so
+the row count is a multiplier on the most expensive thing in the package.
+
+**The CLI is tested against a mocked engine.** `main` folds flags onto a configuration, runs
+the study, and writes what came back; the first and third are the command line's and the
+second is not. `tests/test_cli.py` patches `cli.run`, which made the three end-to-end tests
+(13, 13 and 25 s) into nineteen tests in 3.4 s -- and sharper, because asserting on the
+mock's call is how you check that `--arity 3 --arity 2` reaches the engine as `(3, 2)`. An
+end-to-end run only ever sees what came out the far side.
+
+**One published fit, shared.** `run_e3(load())` under `DEFAULT_E3` is 4.6 s and five modules
+were each calling it for themselves, seven times in all. `corpus.published()` fits it once.
+
+| test | before | after |
+|---|---:|---:|
+| `TestCli.test_regenerating_a_chapter_is_idempotent` | 25 s | 0.3 s |
+| `TestCli.test_main_writes_...` | 13 s | 0.3 s |
+| `TestCli.test_phase_selection_limits_what_is_printed` | 13 s | 1.7 s |
+| `TestFigureSet.test_generate_writes_the_whole_set` | 15 s | 2.5 s |
+| `TestFigureNaming.test_every_figure_has_a_caption...` | 13 s | 0.4 s |
+| `test_guidance`, module | 30 s | 7 s |
+| `test_experiment`, module | 93 s | 12 s |
+| whole suite, wall | **2 min 35 s** | **44 s** |
+
+**`run` gained `opaque_models`**, mirroring the parameter `opaque.evaluate` already had and
+for the same reason: the opaque side is scikit-learn's, the leave-one-cell refit around it is
+this project's, and a caller checking the wiring should be able to exercise the second without
+paying for the first. The study's own output is unchanged -- all six chapters regenerate
+byte-identically.
+
+**Where a test belongs, stated once.** On the slice if it is about a function; on the real
+corpus if its assertion is a claim about the meta-data. "Dataset features explain more than
+model features" inverts on the slice (0.106 against 0.362), and a test that asserted it there
+would be asserting nothing. `TestWhatTheCorpusSays` in `test_experiment.py` and
+`TestTheStudysOpaqueClaim` in `test_opaque.py` are where those live, and they still fit at the
+cheap configuration: reproducing the tuned search to check the *direction* of a gap would be
+reproducing the study, which is what CI's end-to-end step is for.
 
 **The reduced sizes are sound because the claim is size-independent**, measured:
 

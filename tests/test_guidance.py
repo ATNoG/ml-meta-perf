@@ -5,6 +5,7 @@ what the study found and the verdict has to change with it.
 """
 
 import unittest
+from types import SimpleNamespace
 
 import numpy as np
 import polars as pl
@@ -22,6 +23,7 @@ from ml_meta_perf.guidance import (
     gather,
     render,
 )
+from tests import corpus
 
 
 def frame() -> pl.DataFrame:
@@ -288,19 +290,16 @@ class TestEquationEvidence(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        from ml_meta_perf.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays, load
-        from ml_meta_perf.experiment import DEFAULT_E3, run
+        from ml_meta_perf.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays
         from ml_meta_perf.guidance import equation_coverage, equation_evidence
 
-        frame = load()
-        cls.columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
-        # The published E3 with everything else quick. `equation_evidence` and
-        # `equation_coverage` read `report.e3` and nothing else, and two of the assertions
-        # below are about the fifteen-term equation specifically -- the capacity feature in
-        # both a numerator and a denominator -- so E3 has to be the real one. The rest of the
-        # study is not consulted here, and a bare `run()` was paying 226 s for an opaque
-        # comparison no assertion in this class looks at.
-        cls.report = run(quick=True, config_e3=DEFAULT_E3)
+        # Every assertion here is about the *pairing* -- that a term is listed against a
+        # feature it contains, that a weak correlation is reported as undirected, that the
+        # counts match the rows -- and holds of any fitted equation. Two that did not, both
+        # about the published fifteen-term equation carrying capacity in a numerator and a
+        # denominator, are claims about the study and moved to its own class below, fitting only the published E3.
+        cls.report = corpus.report()
+        cls.columns = columns_as_arrays(corpus.sample(), DATASET_FEATURES + MODEL_FEATURES)
         cls.evidence = equation_evidence(cls.report, cls.columns)
         cls.counts = equation_coverage(cls.report, cls.columns)
 
@@ -352,28 +351,6 @@ class TestEquationEvidence(unittest.TestCase):
                 with self.subTest(term=row["term"]):
                     self.assertEqual(row["agrees"], "yes" if row["direction"] == row["expected"] else "no")
 
-    def test_the_same_feature_can_disagree_with_itself_across_terms(self) -> None:
-        """The finding the term-level view exists to surface: `Processing Units Number` carries
-        one sign where it is a numerator and the opposite where it is a denominator, which is
-        the equation saying the *ratio* matters rather than the quantity. A per-feature check
-        cannot represent this at all."""
-        capacity = self.evidence.filter((pl.col("feature") == "Processing Units Number") & (pl.col("direction") != ""))
-        self.assertGreater(capacity.height, 1)
-        self.assertGreater(len(set(capacity["direction"].to_list())), 1)
-
-    def test_a_denominator_and_a_numerator_of_the_same_feature_differ(self) -> None:
-        """Arithmetic, not conflict: a negatively-weighted ratio contributes more as its
-        denominator grows. If this ever stopped holding, either the weights changed sign or
-        `feature_position` is reporting the wrong slot -- and the chapter's whole reading of
-        the capacity practice rests on it."""
-        capacity = self.evidence.filter(
-            (pl.col("feature") == "Processing Units Number") & (pl.col("direction") != "")
-        ).to_dicts()
-        below = {row["direction"] for row in capacity if row["position"] == "denominator"}
-        above = {row["direction"] for row in capacity if row["position"] == "numerator"}
-        self.assertTrue(below and above, "expected the feature in both slots")
-        self.assertEqual(below & above, set(), "a denominator and a numerator agreed")
-
     def test_every_weak_pairing_is_reported_as_undirected(self) -> None:
         """A rank correlation of 0.05 between a feature and a term's contribution is the other
         features in that term moving. Giving it a sign reads as a disagreement."""
@@ -398,6 +375,49 @@ class TestEquationEvidence(unittest.TestCase):
 
     def test_carrying_terms_never_exceed_the_equation(self) -> None:
         self.assertLessEqual(self.counts["carrying_terms"], self.counts["terms"])
+
+
+class TestTheCapacityReading(unittest.TestCase):
+    """The two pairings the chapter's reading of the capacity practice rests on.
+
+    Unlike everything in `TestEquationEvidence`, these are claims about the **published**
+    fifteen-term equation rather than about the pairing code, so they fit the real corpus
+    under `DEFAULT_E3`. That is one fit and no protocols -- `equation_evidence` reads
+    `report.e3` and nothing else -- which is why this does not need a whole `run`.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        from ml_meta_perf.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays
+        from ml_meta_perf.experiment import DEFAULT_E3, run_e3
+        from ml_meta_perf.guidance import equation_evidence
+
+        frame = load()
+        columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+        e3 = run_e3(frame, DEFAULT_E3)
+        cls.evidence = equation_evidence(SimpleNamespace(e3=e3), columns)  # pyright: ignore[reportArgumentType]
+
+    def test_the_same_feature_can_disagree_with_itself_across_terms(self) -> None:
+        """The finding the term-level view exists to surface: `Processing Units Number` carries
+        one sign where it is a numerator and the opposite where it is a denominator, which is
+        the equation saying the *ratio* matters rather than the quantity. A per-feature check
+        cannot represent this at all."""
+        capacity = self.evidence.filter((pl.col("feature") == "Processing Units Number") & (pl.col("direction") != ""))
+        self.assertGreater(capacity.height, 1)
+        self.assertGreater(len(set(capacity["direction"].to_list())), 1)
+
+    def test_a_denominator_and_a_numerator_of_the_same_feature_differ(self) -> None:
+        """Arithmetic, not conflict: a negatively-weighted ratio contributes more as its
+        denominator grows. If this ever stopped holding, either the weights changed sign or
+        `feature_position` is reporting the wrong slot -- and the chapter's whole reading of
+        the capacity practice rests on it."""
+        capacity = self.evidence.filter(
+            (pl.col("feature") == "Processing Units Number") & (pl.col("direction") != "")
+        ).to_dicts()
+        below = {row["direction"] for row in capacity if row["position"] == "denominator"}
+        above = {row["direction"] for row in capacity if row["position"] == "numerator"}
+        self.assertTrue(below and above, "expected the feature in both slots")
+        self.assertEqual(below & above, set(), "a denominator and a numerator agreed")
 
 
 if __name__ == "__main__":
