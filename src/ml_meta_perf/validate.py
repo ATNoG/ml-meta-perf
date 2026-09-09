@@ -28,8 +28,9 @@ from math import comb
 import numpy as np
 import polars as pl
 
-from ml_meta_perf.fit import Selector, Standardizer, guided_screen
+from ml_meta_perf.fit import Standardizer
 from ml_meta_perf.model import MCC_LOWER, MCC_UPPER, Equation
+from ml_meta_perf.search import Selector, guided_screen
 from ml_meta_perf.stats import mae, pearson, r2_score, rmse, smape, spearman
 from ml_meta_perf.terms import Library
 

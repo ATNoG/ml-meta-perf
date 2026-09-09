@@ -29,7 +29,7 @@ ground from the implementation side.
 | 0 | [Related work and positioning](00-related-work.md) | — |
 | 1 | [The dataset](01-dataset.md) — the corpus, the meta-features, and what each one means | `ml_meta_perf.data` |
 | 2 | [The additive model](02-additive-model.md) — the equation form, and what a term is | `ml_meta_perf.terms`, `ml_meta_perf.model` |
-| 3 | [Term generation and selection](03-term-selection.md) — screening, beam search, the ridge solve, and how many terms to keep | `ml_meta_perf.fit`, `ml_meta_perf.analysis`, `ml_meta_perf.selection` |
+| 3 | [Term generation and selection](03-term-selection.md) — screening, beam search, the ridge solve, and how many terms to keep | `ml_meta_perf.search`, `ml_meta_perf.fit`, `ml_meta_perf.analysis`, `ml_meta_perf.selection` |
 | 4 | [The equation](04-equation.md) — the three equations, the ceilings that bound them, and what interpretability buys | `ml_meta_perf.experiment`, `ml_meta_perf.validate` |
 | 5 | [Evaluation](05-evaluation.md) — protocols, metrics, baselines, and the ranking and threshold decisions | `ml_meta_perf.validate`, `ml_meta_perf.stats` |
 | 6 | [Best practices against the equation](06-practices.md) — published guidance checked term by term | `ml_meta_perf.practices`, `ml_meta_perf.attribution`, `ml_meta_perf.guidance` |

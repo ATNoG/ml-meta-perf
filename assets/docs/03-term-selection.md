@@ -1,6 +1,6 @@
 # 3. Term generation and selection
 
-*Implemented in `ml_meta_perf.fit`, `ml_meta_perf.analysis` and `ml_meta_perf.selection`.*
+*Implemented in `ml_meta_perf.search`, `ml_meta_perf.fit`, `ml_meta_perf.analysis` and `ml_meta_perf.selection`.*
 
 Two problems are involved and only one of them is hard.
 
@@ -23,7 +23,7 @@ two disagree informatively:
 - when Spearman is clearly the larger, the relation is monotone but curved, which is the
   signal that a log, an inverse or a ratio will pay for itself.
 
-`ml_meta_perf.fit.transform_gap` is exactly $|\rho_s| - |\rho_p|$, and `guided_screen` ranks by
+`ml_meta_perf.search.transform_gap` is exactly $|\rho_s| - |\rho_p|$, and `guided_screen` ranks by
 the stronger of the two while applying a small penalty to terms that are only monotone,
 because linear terms read more simply. Near-duplicates of an already-kept term are
 dropped so the beam does not spend its width on variations of one idea.

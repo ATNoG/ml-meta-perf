@@ -148,9 +148,9 @@ class TestCorrectOutOfFold(unittest.TestCase):
             Term("atom", (Atom("capacity"),)),
         ]
         self.library = Library(terms, self.columns)
-        from ml_meta_perf.fit import fit
+        from ml_meta_perf.search import search
 
-        self.equations = fit(self.library, self.target, max_terms=2, penalty=0.0, pool_size=2).equations
+        self.equations = search(self.library, self.target, max_terms=2, penalty=0.0, pool_size=2).equations
         self.path = cross_validate_fixed_form(
             self.library, self.columns, self.target, self.datasets, self.equations, penalty=0.0
         )

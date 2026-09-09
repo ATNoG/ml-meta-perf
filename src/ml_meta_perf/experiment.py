@@ -33,13 +33,13 @@ from ml_meta_perf.data import (
     load,
     target,
 )
-from ml_meta_perf.fit import fit, prune
 from ml_meta_perf.identity import correct_out_of_fold
 from ml_meta_perf.model import Equation
 from ml_meta_perf.opaque import Builder as OpaqueBuilder
 from ml_meta_perf.opaque import OpaqueRun
 from ml_meta_perf.opaque import evaluate as opaque_evaluate
 from ml_meta_perf.practices import best_practices
+from ml_meta_perf.search import prune, search
 from ml_meta_perf.selection import (
     best_configuration,
     complexity,
@@ -249,7 +249,7 @@ class EquationReport:
     #: The length `selection.floor_argmax` chose from this equation's own curve. **Every table
     #: that needs "the published length" reads it from here**, so there is one derivation and
     #: no constant for the six read sites to disagree about. It is `len(equation.terms)` only
-    #: when `fit.prune` removed nothing.
+    #: when `search.prune` removed nothing.
     n_terms: int
     #: The grammar this equation was searched under. **Every helper that refits must be given
     #: it**, because several of them rebuild the library from a `Configuration` and the arity
@@ -322,7 +322,7 @@ def _fixed_form_path(
             max_arity=config.max_arity,
             max_abs_zscore=config.max_abs_zscore,
         )
-    result = fit(
+    result = search(
         library,
         truth,
         max_terms=config.max_terms,
@@ -363,7 +363,7 @@ def run_equation(
         max_arity=config.max_arity,
         max_abs_zscore=config.max_abs_zscore,
     )
-    result = fit(
+    result = search(
         library,
         truth,
         max_terms=config.max_terms,
@@ -997,7 +997,7 @@ def doubly_held_out_predictions(
         max_arity=config.max_arity,
         max_abs_zscore=config.max_abs_zscore,
     )
-    result = fit(
+    result = search(
         library,
         truth,
         max_terms=config.max_terms,

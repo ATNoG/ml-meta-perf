@@ -115,7 +115,7 @@ figures.
 | 0 | [Related work and positioning](assets/docs/00-related-work.md) | — |
 | 1 | [The dataset](assets/docs/01-dataset.md) | `ml_meta_perf.data` |
 | 2 | [The additive model](assets/docs/02-additive-model.md) | `ml_meta_perf.terms`, `ml_meta_perf.model` |
-| 3 | [Term generation and selection](assets/docs/03-term-selection.md) | `ml_meta_perf.fit`, `ml_meta_perf.analysis`, `ml_meta_perf.selection` |
+| 3 | [Term generation and selection](assets/docs/03-term-selection.md) | `ml_meta_perf.search`, `ml_meta_perf.fit`, `ml_meta_perf.analysis`, `ml_meta_perf.selection` |
 | 4 | [The equation](assets/docs/04-equation.md) | `ml_meta_perf.experiment`, `ml_meta_perf.validate` |
 | 5 | [Evaluation](assets/docs/05-evaluation.md) | `ml_meta_perf.validate`, `ml_meta_perf.stats` |
 | 6 | [Best practices against the equation](assets/docs/06-practices.md) | `ml_meta_perf.practices`, `ml_meta_perf.attribution`, `ml_meta_perf.guidance` |
@@ -280,7 +280,8 @@ src/ml_meta_perf/
     stats.py        pearson, spearman, ranks, R2/MAE/RMSE/SMAPE, written out
     opaque.py       the opaque-regressor comparison (scikit-learn), same protocols
     analysis.py     correlation screening, redundancy clustering
-    fit.py          standardisation, ridge solve, beam search, refinement
+    search.py       screening, beam search, refinement, pruning
+    fit.py          standardisation, the ridge solve, and reading weights back out
     model.py        the Equation object: predict, render, serialise
     validate.py     leave-one-group-out protocols, baselines, oracles
     selection.py    knee detection and Pareto fronts over equation length

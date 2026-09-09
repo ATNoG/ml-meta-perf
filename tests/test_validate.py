@@ -7,7 +7,7 @@ import numpy as np
 import polars as pl
 
 from ml_meta_perf.analysis import feature_reach, grammar_ceiling, redundancy_groups, saturated_fit, screen
-from ml_meta_perf.fit import fit
+from ml_meta_perf.search import search
 from ml_meta_perf.stats import mae, r2_score
 from ml_meta_perf.terms import build_library
 from ml_meta_perf.validate import (
@@ -91,7 +91,7 @@ class TestCrossValidation(unittest.TestCase):
     def setUp(self) -> None:
         self.columns, self.target, self.outer, self.inner = grid()
         self.library = build_library(("f1", "f2"), ("g1", "g2"), self.columns)
-        result = fit(self.library, self.target, max_terms=4, penalty=1.0, pool_size=30)
+        result = search(self.library, self.target, max_terms=4, penalty=1.0, pool_size=30)
         self.equations = result.equations
 
     def path(self, penalty: float = 1.0) -> dict[int, CrossValidation]:

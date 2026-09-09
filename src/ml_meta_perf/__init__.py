@@ -22,7 +22,6 @@ from ml_meta_perf.data import (
     load,
     target,
 )
-from ml_meta_perf.fit import FitResult, fit, prune
 from ml_meta_perf.guidance import CATALOGUE, Practice, Verdict, assess
 from ml_meta_perf.identity import ModelEffects, correct_out_of_fold, fit_effects
 from ml_meta_perf.model import Equation
@@ -37,6 +36,7 @@ from ml_meta_perf.report import (
     term_sentences,
     unstable_majors,
 )
+from ml_meta_perf.search import SearchResult, prune, search
 from ml_meta_perf.selection import (
     arity_candidates,
     best_configuration,
@@ -80,11 +80,11 @@ __all__ = [
     "Atom",
     "CrossValidation",
     "Equation",
-    "FitResult",
     "Library",
     "ModelEffects",
     "Practice",
     "Scores",
+    "SearchResult",
     "Term",
     "Verdict",
     "__version__",
@@ -108,7 +108,6 @@ __all__ = [
     "decision_report",
     "feature_practices",
     "feature_usage",
-    "fit",
     "fit_effects",
     "floor_argmax",
     "floor_curve",
@@ -130,6 +129,7 @@ __all__ = [
     "recommend",
     "redundancy_groups",
     "screen",
+    "search",
     "simplify",
     "target",
     "term_effects",

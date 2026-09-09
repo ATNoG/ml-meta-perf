@@ -45,7 +45,9 @@ search_grammars(frame)  ->  E3-Valid = arity 2, 15 terms
                             E3-MAX   = arity 3, 23 terms
 ```
 
-**C5 and C6 are done. C7, the rename, is what is left**, and it must move no number.
+**C0 through C7 are done.** What is left is listed under "Still open" further down: the
+documentation replacement, the multiple-comparisons disclosure, and a chapter that
+contradicts itself (see C6).
 
 ## The plan — C0 to C7
 
@@ -230,14 +232,40 @@ rather than set. The chapter contradicts itself and the code. It predates the ar
 and wants its own pass. It is the same failure the generated-section markers exist to prevent,
 in the half of the chapter the markers do not cover.
 
-**C7. Rename so the code says what the study claims** -- after C1-C6, as its own commit with no
-behaviour change. `fit.fit()` performs a *search* (a beam over term subsets) and uses a ridge
-fit only as its scoring function; calling the whole thing `fit` blurs the form-versus-weights
-line the study is built on, which `validate.cross_validate_fixed_form` names correctly and
-chapter 3 calls "term selection". Split into `search.py` (`guided_screen`, `Subset`,
-`Selector`, `search()`, `SearchResult`) and `fit.py` (`Standardizer`, `ridge_solve`,
-`to_equation`, `prune`). `search` imports from `fit`; that direction is correct and the
-docstring should say so rather than implying a clean layering.
+**C7. Done, 2026-09-09.** `fit.py` is split in two along the line the study already draws
+between a form and its weights.
+
+* **`search.py`** -- choosing which terms enter: `transform_gap`, `guided_screen`, `Selector`,
+  `search()`, `SearchResult`, `prune`, `selected_terms`, and the beam constants.
+* **`fit.py`** -- fitting weights to a form already chosen: `Standardizer`, `Subset`,
+  `ridge_solve`, `to_equation`, `RIDGE_DEFAULT`.
+
+`fit.fit()` became `search.search()` and `FitResult` became `SearchResult`. A function
+performing a beam search called `fit`, in a module called `fit`, blurred exactly the
+distinction `validate.cross_validate_fixed_form` exists to make and chapter 3 has always
+called "term selection".
+
+**Two placements differ from the plan above, and the callers decided both.**
+
+`Selector` is in `search.py`, not `fit.py`. Its `_evaluate` is a ridge fit, but the class is
+a Gram matrix, a collinearity matrix, a group-membership matrix and a cache, all built by one
+constructor to be called several hundred thousand times by the beam. Splitting it would put
+two halves of one constructor in two files to make a naming point. Nothing outside the search
+wants it: `cross_validate_fixed_form` -- the protocol this whole distinction is *for* --
+solves its own ridge inline and never touches `Selector`. Only `validate.term_stability`
+does, and that runs a search per fold.
+
+`prune` is in `search.py`, not `fit.py`. It drops terms and simplifies them, which are
+decisions about *form*; the refit afterwards is the part it delegates. It also needs
+`Selector`, so the planned placement was a cycle.
+
+`tests/test_fit.py` split the same way into `test_fit.py` and `test_search.py`.
+`TestToEquation` now solves its subset directly instead of running a beam to get one -- what
+`to_equation` folds back out is indices and weights, and where they came from was never its
+business.
+
+Verified: `results/` (27 files), all fourteen figures and every generated chapter block are
+byte-identical. The only chapter lines that moved are two hand-written module lists.
 
 **How each step is checked.** C1-C3 and C6 are *meant* to move numbers, so for those the
 snapshot check is a diff read line by line rather than a byte compare. C4, C5 and C7 change
