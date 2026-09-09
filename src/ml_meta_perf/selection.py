@@ -188,7 +188,17 @@ def pareto_knee(curve: pl.DataFrame, column: str = "consensus") -> dict[str, int
 
 
 def best_length(curve: pl.DataFrame, column: str = "consensus") -> int:
-    """The length that maximises ``column``. **This is the rule that chooses the length.**
+    """The length that maximises ``column``: the three-protocol reading of the same question.
+
+    **`floor_argmax` is what publishes a length**, and this is what is reported beside it.
+    The two differ in what they combine: this takes the median of the three single-group
+    protocols, that takes the minimum over all four including the doubly-held-out cell. On the
+    current corpus they agree -- both select 15 terms under the parsimonious grammar and 23
+    under the full one -- and they are kept apart because agreement is a result rather than a
+    guarantee, and because the chapters plot and caption this reading.
+
+    Until 2026-09-09 this docstring called itself the rule and `run_equation` had already
+    stopped calling it. Nothing caught that, because the two agreed.
 
     It has no threshold, no smoothing window and no sensitivity parameter, so it is a property
     of the curve rather than of a value someone picked to get a preferred answer -- and it
@@ -198,11 +208,7 @@ def best_length(curve: pl.DataFrame, column: str = "consensus") -> int:
     the number of terms, so its argmax is always the longest equation searched and the rule
     would be vacuous.
 
-    The same rule serves both published equations, under the two grammars the study reports.
-    Under the parsimonious grammar (arity 2) it selects 15 terms; under the full grammar
-    (arity 3) it selects 23, which is the more accurate equation and the one that shows how
-    far the additive form reaches. Neither number is written down anywhere -- both fall out of
-    this function.
+    Neither length is written down anywhere: both fall out of a curve.
 
     `experiment.length_comparison` reports the alternative that trades accuracy for brevity:
     the shortest length whose paired interval against this one spans zero. On the current
@@ -278,6 +284,11 @@ def protocol_spread(curve: pl.DataFrame) -> np.ndarray:
     return curve["r2_in_sample"].to_numpy() - floor_curve(curve)
 
 
+def floor_argmax_index(curve: pl.DataFrame) -> int:
+    """The *row position* of `floor_argmax`'s length, for callers indexing the curve."""
+    return int(np.argmax(floor_curve(curve)))
+
+
 def floor_argmax(curve: pl.DataFrame) -> int:
     """The length maximising `floor_curve`. **This is the length rule, for one grammar.**
 
@@ -290,7 +301,7 @@ def floor_argmax(curve: pl.DataFrame) -> int:
     An argmax, so there is no threshold, no smoothing window, no sensitivity parameter and no
     corpus size in it -- see `best_configuration` for why that last one matters.
     """
-    return int(curve["n_terms"].to_numpy()[int(np.argmax(floor_curve(curve)))])
+    return int(curve["n_terms"].to_numpy()[floor_argmax_index(curve)])
 
 
 def arity_candidates(curves: dict[int, pl.DataFrame]) -> dict[int, int]:
@@ -483,7 +494,13 @@ def recommend(curve: pl.DataFrame, published: int | None = None) -> pl.DataFrame
         rows.append(row("best loo-dataset", int(np.argmax(curve["r2_loo_dataset"].to_numpy()))))
 
     consensus = consensus_curve(curve)
-    rows.append(row("best consensus (the rule)", int(np.argmax(consensus))))
+    rows.append(row("best consensus (median of three)", int(np.argmax(consensus))))
+    # The rule that actually publishes a length. Reported beside the consensus reading rather
+    # than instead of it: the two agree on this corpus and the table exists to show what the
+    # rule beats, which includes showing that a second defensible reading lands in the same
+    # place. The label said "the rule" on the consensus row until 2026-09-09, by which time
+    # `run_equation` had been calling this one for a day.
+    rows.append(row("best floor over four protocols (the rule)", floor_argmax_index(curve)))
 
     if published is not None:
         matches = np.flatnonzero(sizes == published)

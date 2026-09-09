@@ -53,8 +53,8 @@ solve at every step. One term per combination of raw features, so no relationshi
 twice.
 
 **The contrast.** Three equations differ *only* in which features they may use — E1 dataset,
-E2 model, E3 both — fitted by one function on the same rows and scored on the same rows
-under both protocols. The gaps between them are the evidence about what each half of the
+E2 model, E3 both — fitted by one function, from one configuration, on the same rows, and
+scored on the same rows under all four protocols. The gaps between them are the evidence about what each half of the
 meta-data is worth. They share a scale but **not a ceiling**: E1 can only predict a
 per-dataset constant, so its structural maximum is well below E3's, and the comparable
 quantity is the fraction of its own ceiling each equation attains — the `reached` column of

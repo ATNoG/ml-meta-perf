@@ -24,7 +24,8 @@ equation the study publishes.
 ### One process, three feature sets
 
 All three are fitted by the same function on the same 476 rows, scored on the same 476
-rows, under the same two protocols, with penalty and length chosen by the same rule.
+rows, under the same four protocols, from **one** configuration, with the length chosen by
+the same rule.
 `experiment.run_equation` is that function and `run_e1`, `run_e2` and `run_e3` are one
 line each. The uniformity is not tidiness: the gaps between the three are only evidence
 about what each half of the meta-data is worth if *nothing else* differs between them.
@@ -36,7 +37,7 @@ group's mean anyway — but it puts E1's R² on a twenty-point denominator:
 | E1 fitted on | in-sample R² | LOO-dataset R² | comparable with E3? |
 |---|---|---|---|
 | 20 dataset means | 0.337 | 0.506 *(on 20 points)* | no |
-| **476 rows** | **0.349** | **0.341** *(on 476 rows)* | yes |
+| **476 rows** | **0.351** | **0.338** *(on 476 rows)* | yes |
 
 Two R² values computed over different row sets share no denominator. Printed in one table
 they invite the conclusion that the dataset-only control transfers *better* than the full
@@ -94,25 +95,30 @@ applies to E2 against the true model means.
 So the comparable quantity is the *fraction of its own ceiling* each equation reaches, which
 is the `reached` column of the generated headline table and what the next section reads.
 
-## Under both protocols
+## Under all four protocols
 
-All three equations are scored under both leave-one-group-out protocols. The numbers are on
-the [index page](index.md) and, with the full metric set, in
-[chapter 5](05-evaluation.md) — this chapter does not keep a second copy of them.
+All three equations are scored under every protocol
+[chapter 5](05-evaluation.md#four-protocols) defines: in-sample, leave-one-dataset-out,
+leave-one-model-out, and the doubly-held-out cell. The numbers are on the
+[index page](index.md) and, with the full metric set, in [chapter 5](05-evaluation.md) —
+this chapter does not keep a second copy of them.
 
 What is worth stating here is what to look for in them.
 
-**E3's two transfer numbers should be close to each other and to its fit.** An equation that
-loses little R² when a whole dataset or a whole learner is withheld is transferring rather
-than memorising, and a small gap *between* the two protocols says that neither half of the
-meta-data is carrying the equation alone. That is what the table shows.
+**E3's transfer numbers should be close to each other and to its fit, and the gap between the
+best and the worst is a reported quantity.** `selection.protocol_spread` is exactly that
+gap — in-sample minus the floor over the four — and for the published equation it is 0.0416.
+An equation that loses little R² when a whole dataset, a whole learner, or both are withheld
+is transferring rather than memorising; a small spread says no single protocol is carrying
+it. The arity-3 bound scores higher on every column and spreads wider, 0.0539, which is the
+shape of a grammar leaning harder on what it has seen.
 
 **The two controls are not symmetric, and not in the direction the design suggests.** E1
 predicts a per-dataset constant, so holding out a *model* leaves its constant well estimated
 while holding out a *dataset* asks it to extrapolate — the naive expectation is that E1
 transfers better across models than across datasets. Measured, it is the other way round, and
 E2 mirrors it. The reason is the denominator rather than the fit: pooled R² is taken against
-the variance of all 476 rows under both protocols, and a fold that removes a whole model
+the variance of all 476 rows under every protocol, and a fold that removes a whole model
 removes rows spread across every dataset, which is a different perturbation from removing a
 contiguous dataset block. Read the two controls each against its own ceiling — the `reached`
 column — and not against each other across protocols.
@@ -281,18 +287,9 @@ are artefacts:
   by construction. Only model terms can score well there. It is a diagnostic for model
   effects, not a statement of relative importance.
 - **Model features carry more in combination than alone.** Adding them to E1 is worth
-  +0.309 R² (0.349 → 0.658), beyond the 0.248 they achieve by themselves. The surplus is
+  +0.307 R² (0.351 → 0.658), beyond the 0.252 they achieve by themselves. The surplus is
   dataset×model interaction, which is why **7 of E3's 15 terms are mixed** and drive 60%
   of its output variance.
-
-### Why two configurations, and why that is not two headlines
-
-Reporting two equations risks quoting whichever number suits the argument. The capability
-equation avoids that in two ways: it gives up nothing on transfer — it is the better equation
-on both protocols — and it is reported as the answer to one stated question rather than as an
-alternative headline. It is never analysed term by term and never used for guidance. The
-arity trade behind it is a design decision, set out in [chapter 2](02-additive-model.md),
-which sweeps the penalty and the length inside each arity.
 
 ## The two equations the study reports, and why it no longer names either
 
@@ -317,6 +314,14 @@ made to share one configuration.
 The second equation answers a question the first cannot answer about itself: *is the additive
 form out of room, or is the published equation short of it?* Without it the published R² can
 only be read against oracles and baselines, none of which is an equation of this shape.
+
+**Reporting two equations risks quoting whichever number suits the argument, and the rule is
+what stops that.** E3-MAX scores higher on every protocol and is still not the recommendation,
+because the rule asks whether it *beats* E3-Valid rather than whether it outscores it — see
+[chapter 2](02-additive-model.md#the-arity-is-searched-not-set) for that comparison in
+numbers. It is reported as the answer to one stated question, never analysed term by term,
+never used for guidance, and it is kept out of every ranking and threshold comparison in
+chapter 5 so that it cannot appear as a candidate a reader might pick.
 
 **One caveat on reading the gap between them.** Until 2026-09-09 the bound was fitted with its
 own, much lighter, ridge penalty, which made "the full grammar reaches further" partly a

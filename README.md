@@ -31,8 +31,8 @@ equation a practitioner can inspect, argue with, and derive guidance from.
 
 The three equations differ only in which features they may draw on — **E1** sees the
 dataset, **E2** sees the model, **E3** sees both. All three are fitted on the same 476 rows
-by the same function and scored on the same 476 rows under the same two protocols, so the
-gaps between them measure the features and nothing else.
+by the same function, from one configuration, and scored on the same 476 rows under the same
+four protocols, so the gaps between them measure the features and nothing else.
 
 **Their R² values share a scale but not a ceiling, and this is the most common way to
 misread the table.** E1 predicts one value per dataset, so 0.354 — the variance of the true
@@ -150,9 +150,9 @@ venv/bin/pip install -e .
 
 ## Running it
 
-**One command runs every phase**: screening, fitting E1/E3 and the two controls,
-cross-validating under both protocols, extracting the practices, writing the figures, and
-generating the report.
+**One command runs every phase**: screening, searching the grammars, fitting E1, E2 and both
+E3s, cross-validating under all four protocols, pricing the opaque comparison, extracting the
+practices, writing the figures, and splicing the generated sections into the chapters.
 
 ```bash
 venv/bin/ml-meta-perf          # or: PYTHONPATH=src venv/bin/python -m ml_meta_perf
@@ -212,7 +212,7 @@ PYTHONPATH=src venv/bin/python -m ml_meta_perf --data mine.csv --output runs/min
 | `--docs` | `assets/docs` | chapter directory whose generated sections are rewritten |
 | `--max-terms` | 25 | longest equation the search explores (drives the curve) |
 | `--penalty` | 20.0 | ridge penalty on standardised terms |
-| `--arity` | 2 | raw features allowed per term — see [chapter 2](assets/docs/02-additive-model.md) |
+| `--arity` | 2 and 3 | raw features allowed per term; **repeatable**, and the set given is searched — see [chapter 2](assets/docs/02-additive-model.md#the-arity-is-searched-not-set) |
 | `--pool` | 600 | terms surviving screening into the beam |
 | `--beam` | 6 | beam width |
 | `--zscore` | 4.25 | largest standard score a term may reach before it is rejected as a spike |
@@ -224,7 +224,8 @@ PYTHONPATH=src venv/bin/python -m ml_meta_perf --data mine.csv --output runs/min
 # it is derived from the equation's own curve, so shortening the search is how you bound it
 PYTHONPATH=src venv/bin/python -m ml_meta_perf --max-terms 8 --penalty 50 --no-figures
 
-# four-feature terms: better fit, much worse transfer (chapter 2 measures this)
+# search one grammar instead of two, and a recorded negative: four-feature terms fit better
+# and transfer much worse (chapter 2 measures this)
 PYTHONPATH=src venv/bin/python -m ml_meta_perf --arity 4 --pool 2000 --output runs/arity4
 
 # just the screening table

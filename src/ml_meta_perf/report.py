@@ -866,9 +866,11 @@ def _length_note(report: Report) -> str:
 
     lines = [
         f"The length is chosen by one rule with no threshold and no smoothing: **the argmax of "
-        f"the consensus curve** (`selection.best_length`), which here selects "
+        f"the worst protocol at each length** (`selection.floor_argmax`), which here selects "
         f"**{int(selected['n_terms'])} terms**. Nothing about that number is written down — it "
-        "falls out of the curve, and it re-derives itself if the corpus changes.\n",
+        "falls out of the curve, and it re-derives itself if the corpus changes. The "
+        "three-protocol median reading of the same curve (`selection.best_length`) is reported "
+        "beside it in the table below and agrees here.\n",
         _crater_note(report),
         "Every alternative rule is reported beside it, because a selection rule is only "
         "defensible if what it beats is on the page:\n",

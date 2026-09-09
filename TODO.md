@@ -49,6 +49,63 @@ search_grammars(frame)  ->  E3-Valid = arity 2, 15 terms
 documentation replacement, the multiple-comparisons disclosure, and a chapter that
 contradicts itself (see C6).
 
+## The documentation pass, 2026-09-09
+
+The chapters were written against a three-protocol study with a fixed arity and a hand-set
+length. Every hand-written claim was checked against the code and the generated output.
+
+**Four hand-written copies of generated tables, all stale.** This is the failure the
+`generated:` markers exist to prevent, in the half of each chapter the markers do not cover.
+Every one of them is now a pointer to the generated section beside it:
+
+| chapter | copied table | how it was wrong |
+|---|---|---|
+| 5 | the three equations on every metric | three protocols of four; E1 and E2 at pre-C6 values |
+| 5 | the trivial predictors at both centres | correct, and would have drifted the moment the corpus did |
+| 5 | random-split leakage | 0.651/0.627/0.622 against the current 0.6388/0.6381/0.6218 |
+| 3 | the alternative length rules | listed a Pareto front from a configuration two changes ago |
+
+**Two functions each called themselves "the rule".** `selection.best_length` -- the argmax of
+the three-protocol median -- said "**This is the rule that chooses the length**" in its
+docstring, and `experiment.run_equation` had been calling `floor_argmax` instead. The
+generated sentence in chapter 3, the figure caption for `02_term_count_curve`, and the
+`term_choice` row label all named `best_length`. **Nothing caught it because the two agree**
+-- both select 15 under arity 2 and 23 under arity 3. They are now labelled for what they are,
+`recommend` reports both rows, and `test_selection` pins that exactly one row calls itself the
+rule and that it is `floor_argmax`'s.
+
+That agreement is a result and not a guarantee, and it is the sort of thing that should be
+watched: if the two ever disagree, the chapters plot one and the study publishes the other.
+
+**Chapter 2's arity argument was rewritten.** It concluded "`max_arity = 3` is the default
+because it is the only setting that is not dominated", thirteen lines below a sentence saying
+`DEFAULT` sets `max_arity=2`, and supported it with "in the published 20-term E3 the
+three-feature `sum_ratio` accounts for 7 terms and 37% of the standardised weight mass" --
+false of a 15-term arity-2 equation, where `sum_ratio` is not in the library at all. The
+measurement survives as a statement about **E3-MAX**, where `sum_ratio` carries 10 of 23 terms
+and 44% of the weight mass, and it makes a better point there: the search reaches for the
+third arity whenever it is offered, and still cannot be shown to predict better than the
+grammar that does without it.
+
+**Chapter 3's Pareto paragraph had a wrong premise, not just wrong numbers.** It said every
+length is on the in-sample front "because fit is monotone in terms". Fit is not monotone here:
+the beam is a heuristic, and its best-at-24 is 0.670655 against best-at-23's 0.670709, so 24
+is off the front. Corrected rather than dropped -- it is a small standing reminder that the
+search is not exhaustive.
+
+**Also corrected:** chapter 3's "the whole study runs in 27 seconds" (24 s for everything this
+study fits; a full run is about four minutes, 215 s of which is the opaque comparison);
+chapter 5's protocol table (three rows, now four, with the cell protocol named as the strictest
+and as what the decisions are reported under); chapter 4's "under both protocols" section and
+its E1 row; the README's `--arity` default (`2`, now `2 and 3` and searched);
+`README`/`index`/`CLAUDE.md` module lists for the `search.py` split; and `CLAUDE.md`'s
+references to a `10-report.md` that has not existed since the report was spliced into the
+chapters.
+
+**`test_experiment.TestDocumentedDefaults` gained a check for `--arity`**, which its regex
+could never have covered: it publishes a set rather than a number, and it read `2` for as long
+as the arity was fixed.
+
 ## The plan — C0 to C7
 
 **C0. Done.** `results/cluster/` deleted (79 MB of artifacts from cluster jobs that no longer

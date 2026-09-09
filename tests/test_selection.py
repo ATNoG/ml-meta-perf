@@ -20,6 +20,7 @@ from ml_meta_perf.selection import (
     best_length,
     complexity,
     consensus_curve,
+    floor_argmax,
     floor_curve,
     grammar_margin,
     most_capable,
@@ -214,16 +215,29 @@ class TestRecommend(unittest.TestCase):
         rules = recommend(self.table)["rule"].to_list()
         self.assertTrue(any(rule.startswith("pareto front") for rule in rules))
         self.assertIn("best loo-dataset", rules)
-        self.assertIn("best consensus (the rule)", rules)
+        self.assertIn("best consensus (median of three)", rules)
+        self.assertIn("best floor over four protocols (the rule)", rules)
+
+    def test_exactly_one_row_calls_itself_the_rule(self) -> None:
+        """The label said "the rule" on the consensus row for a day after `run_equation` had
+        started calling `floor_argmax` instead. The two agreed, so nothing failed."""
+        rules = recommend(self.table)["rule"].to_list()
+        self.assertEqual([rule for rule in rules if "(the rule)" in rule].__len__(), 1)
 
     def test_best_rule_picks_the_maximum(self) -> None:
         rows = {row["rule"]: row for row in recommend(self.table).iter_rows(named=True)}
         self.assertEqual(rows["best loo-dataset"]["n_terms"], 14)
         self.assertAlmostEqual(rows["best loo-dataset"]["r2_loo_dataset"], 0.441)
 
-    def test_the_rule_row_agrees_with_best_length(self) -> None:
+    def test_the_consensus_row_agrees_with_best_length(self) -> None:
         rows = {row["rule"]: row for row in recommend(self.table).iter_rows(named=True)}
-        self.assertEqual(rows["best consensus (the rule)"]["n_terms"], best_length(self.table))
+        self.assertEqual(rows["best consensus (median of three)"]["n_terms"], best_length(self.table))
+
+    def test_the_rule_row_is_the_one_that_publishes(self) -> None:
+        """`floor_argmax` decides the published length, so the row labelled "the rule" has to
+        be that function's answer and not a second reading that happens to agree with it."""
+        rows = {row["rule"]: row for row in recommend(self.table).iter_rows(named=True)}
+        self.assertEqual(rows["best floor over four protocols (the rule)"]["n_terms"], floor_argmax(self.table))
 
     def test_the_published_length_is_reported_when_given(self) -> None:
         rows = {row["rule"]: row for row in recommend(self.table, published=8).iter_rows(named=True)}

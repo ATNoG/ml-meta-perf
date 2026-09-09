@@ -2,22 +2,36 @@
 
 *Implemented in `ml_meta_perf.validate` and `ml_meta_perf.stats`.*
 
-## Protocols
+## Four protocols
 
 | protocol | fitted on | scored on | question answered |
 |---|---|---|---|
 | **in-sample** | all 476 rows | the same 476 rows | how well does the equation *describe* the data |
 | **leave-one-dataset-out** | 19 datasets | the held-out 20th, rotated | what will these models score on a dataset nobody has run |
 | **leave-one-model-out** | 24 models | the held-out 25th, rotated | what will a new model score on datasets we know |
+| **doubly-held-out cell** | every row sharing neither the dataset nor the model | one observed (dataset, model) cell, rotated over all 476 | what will *this* model score on *this* dataset, when neither has been run |
+
+**The fourth is the question the study is actually for**, and it is the strictest of the
+four: leave-one-dataset-out still shows a predictor the held-out learner on nineteen other
+problems, and leave-one-model-out still shows it the held-out dataset. Only the cell protocol
+denies both, which makes it the one place an equation and an opaque regressor are denied the
+same things. `ml_meta_perf.validate.cross_validate_doubly_held_out` implements it, one refit
+per observed cell rather than per group.
+
+It is also where the study's decisions are settled. `selection.floor_curve` takes the
+**minimum over all four**, so a length and a grammar are judged by their worst showing rather
+than their best; the ranking and threshold tables in the generated sections below report the
+equation under it; and the strictest column is the one the arity comparison in
+[chapter 2](02-additive-model.md#the-arity-is-searched-not-set) is decided on.
 
 In-sample is reported as a first-class result rather than dismissed. Term count is capped
 and terms are drawn from a screened pool, so this is **equation fitting, not model
-fitting**: the capacity to memorise 476 rows with 20 terms is limited, and the gap between
-in-sample and cross-validated columns is itself the diagnostic. For contrast, a
-RandomForest reaches 0.910 in-sample and 0.067 leave-one-dataset-out on the same features.
-
-Leave-one-dataset-out is the harder and more useful number, and is the one the study
-leads with for transfer claims.
+fitting**: the capacity to memorise 476 rows with 15 terms is limited, and the gap between
+in-sample and the other three is itself the diagnostic. For contrast, a RandomForest on the
+same eighteen raw columns reaches 0.9586 in-sample, 0.0802 leave-one-dataset-out and
+**-0.0083** with both held out — the table is in the generated
+[opaque section](#what-an-opaque-model-reaches-and-does-not) below, and that ordering is the
+whole of the argument this study makes for a readable form.
 
 ## One equation, refit — not one search per fold
 
@@ -63,13 +77,10 @@ Dataset meta-features are **constant across a dataset's 25 rows**. A random spli
 therefore puts the same dataset on both sides of the fold, and the equation recognises the
 dataset rather than generalising to it.
 
-The **same equation**, three protocols:
-
-| protocol | R² | MAE |
-|---|---|---|
-| random 10-fold | **0.651** | 0.138 |
-| leave-one-dataset-out | **0.627** | 0.144 |
-| leave-one-model-out | **0.622** | 0.142 |
+The same equation under all three splits is the generated
+[Why a random split is not a protocol](#why-a-random-split-is-not-a-protocol) table below —
+this section does not keep a second copy, for the reason given
+[above](#where-the-numbers-are).
 
 **The three now agree, and that is itself the finding.** A random split used to score 0.083
 above leave-one-dataset-out, because putting rows from the same dataset on both sides of the
@@ -102,35 +113,25 @@ constant, so it separates none of the things the ranking section compares; avera
 reciprocal rank, hit@1 and regret weight the head of the list, which is where a model
 recommendation is actually read.
 
-### The three equations on every metric, under every protocol
+### Where the numbers are
 
-| | protocol | R² | MAE | SMAPE |
-|---|---|---|---|---|
-| E1 — dataset features | in-sample | 0.349 | 0.210 | 43.3 |
-| | leave-one-dataset-out | 0.341 | 0.214 | 43.6 |
-| | leave-one-model-out | 0.306 | 0.217 | 44.1 |
-| E2 — model features | in-sample | 0.248 | 0.234 | 46.3 |
-| | leave-one-dataset-out | 0.185 | 0.244 | 47.3 |
-| | leave-one-model-out | 0.228 | 0.237 | 46.5 |
-| **E3 — both** | **in-sample** | **0.658** | **0.137** | **34.5** |
-| | **leave-one-dataset-out** | **0.638** | **0.142** | **34.9** |
-| | **leave-one-model-out** | **0.622** | **0.145** | **35.4** |
-| E3 — full grammar | in-sample | 0.707 | 0.122 | 32.5 |
-| | leave-one-dataset-out | 0.678 | 0.130 | 33.8 |
-| | leave-one-model-out | 0.651 | 0.133 | 34.1 |
+Every equation on every metric under every protocol, and every trivial predictor beside them,
+is in the generated [How well it does](#how-well-it-does) section below. **This chapter used
+to carry its own copy of that table and it went stale twice** — once when the fourth protocol
+was added and the copy still showed three, and once when the three equations were put on one
+configuration and E1 and E2 both moved. A hand-written table beside a generated one is a
+second source of truth for numbers that have exactly one.
 
-Read against the hardest trivial predictor on each metric — which is a **different**
-predictor for R² than for MAE and SMAPE, for the reason the next section gives:
+Two things about it are worth saying in prose, because they are not visible in the table.
 
-| | R² | MAE | SMAPE |
-|---|---|---|---|
-| strongest mean baseline | 0.296 | 0.213 | 43.8 |
-| strongest median baseline | 0.129 | **0.192** | **40.3** |
-| **E3, leave-one-dataset-out** | **0.638** | **0.142** | **34.9** |
+**The hardest trivial predictor is a different one for R² than for MAE and SMAPE.** MAE is
+minimised by the median and R² by the mean, so a comparison that reports only mean baselines
+is not reading each metric against the predictor that is hardest to beat on it. Both centres
+are reported, which is what the `at both centres` sub-table below is for.
 
-E3 clears both on all three. The margin is widest on R² and narrowest on SMAPE, which is
-the caveat below doing its work: SMAPE is dominated by the 15 rows at exactly MCC = 0, and
-a median baseline predicting near zero on a low-scoring model scores well on them.
+**E3's margin is widest on R² and narrowest on SMAPE**, and that is the SMAPE caveat below
+doing its work rather than a weakness: the metric is dominated by the 15 rows at exactly
+MCC = 0, where a median baseline predicting near zero scores well.
 
 ### A caveat on R²
 
@@ -143,7 +144,7 @@ which put its 0.506 on a twenty-point denominator beside E3's on a 476-row one �
 inviting exactly the comparison the caveat forbids, and in the direction that flatters the
 control. All three equations are now fitted and scored on the same 476 rows
 ([chapter 4](04-equation.md)), so the caveat is a general warning rather than a live hazard
-in this study's own tables. E1's transfer figure on the common scale is 0.341.
+in this study's own tables. E1's transfer figure on the common scale is in the table below.
 
 ### A caveat on SMAPE
 
@@ -184,12 +185,12 @@ if its MCC is within 0.01 of the best on its dataset, rather than by a fixed top
 the 476 rows sit at exactly MCC 1.0, so many datasets have several genuinely tied best models
 and a top-3 rule would score a correct answer as a miss.
 
-| metric | E3 |
-|---|---|
-| average precision | 0.850 |
-| mean reciprocal rank | 0.882 |
-| hit@1 — best model ranked first | 0.800 |
-| top-1 regret | 0.015 |
+The equation and every competitor are in the generated [Acting on it](#acting-on-it) tables
+below, **each row naming the protocol it was scored under** — which matters more here than
+anywhere else in the chapter, because a ranking scored in-sample and a ranking scored with
+both the dataset and the model held out are not the same claim. The four E3 rows differ by
+0.019 of average precision across the four protocols, and the strictest one, `loo-cell`, is
+what this section's conclusions are read from.
 
 ![Per-dataset ranking quality](../figures/06_ranking_quality.png)
 
@@ -206,21 +207,13 @@ disagree about which is the honest opponent: the mean minimises squared error, t
 minimises absolute error. An MAE quoted against a mean baseline is quoted against a predictor
 that is not minimising the metric it is being judged on.
 
-| baseline | R² | MAE | SMAPE |
-|---|---|---|---|
-| global mean (loo-dataset) | -0.040 | 0.293 | 50.9 |
-| per-model mean (loo-dataset) | 0.201 | 0.238 | 47.3 |
-| global mean (loo-model) | -0.024 | 0.290 | 50.7 |
-| per-dataset mean (loo-model) | **0.296** | 0.213 | 43.8 |
-| global median (loo-dataset) | -0.303 | 0.258 | 43.6 |
-| per-model median (loo-dataset) | 0.090 | 0.226 | 45.2 |
-| global median (loo-model) | -0.294 | 0.256 | 43.4 |
-| per-dataset median (loo-model) | 0.129 | **0.192** | **40.3** |
+The table is generated: [The trivial predictors, at both
+centres](#the-trivial-predictors-at-both-centres), with the strongest of each kind picked out
+per metric beneath it.
 
-The two halves of that table disagree, and predictably: the strongest R² baseline is a mean
-(0.296 against 0.129) and the strongest MAE and SMAPE baselines are medians (0.192 against
-0.213, 40.3 against 43.8). Each metric has to be read against whichever is harder on it.
-E3 clears both — 0.627 R², 0.144 MAE, 35.2 SMAPE under leave-one-dataset-out.
+The two halves of it disagree, and predictably: the strongest R² baseline is a mean and the
+strongest MAE and SMAPE baselines are medians. Each metric has to be read against whichever
+is harder on it, and E3 clears both on all three.
 
 All of these are computed leave-one-group-out. With 17–25 rows per group, letting the row
 being predicted into its own group's centre inflates the per-model mean's R² by 0.082;

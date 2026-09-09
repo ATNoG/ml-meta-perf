@@ -128,9 +128,10 @@ def captions(report: Report, data: str | Path | None = None) -> dict[str, str]:
             "interactions, and it scores above the oracle. All bars are in-sample."
         ),
         figure_name("term_count_curve"): (
-            "Accuracy against equation length for E3, in-sample and under both "
-            "cross-validation protocols. The vertical line is the length chosen by "
-            "`selection.best_length`, the argmax of the consensus over the three protocols. "
+            "Accuracy against equation length for E3, in-sample and under every "
+            "cross-validation protocol. The vertical line is the published length, chosen by "
+            "`selection.floor_argmax`: the argmax of the worst of the four protocols at each "
+            "length. "
             "The additive oracle is the best score reachable by an equation additive in "
             "dataset and model effects; an equation passes it only by representing the "
             "dataset-by-model interaction the oracle cannot."

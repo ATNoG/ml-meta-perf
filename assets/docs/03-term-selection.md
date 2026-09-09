@@ -79,9 +79,16 @@ identity against the literal definition across penalties and subset sizes.
 ### Cost
 
 Every candidate refit is a $k \times k$ solve against a precomputed Gram matrix rather
-than a least-squares call against the full design. The whole study — seven cross-validated
-sweeps, three equations, both protocols — runs in **27 seconds**, and every optimisation
-that got it there was verified to leave every output file byte-identical.
+than a least-squares call against the full design. Everything this study fits — the term
+sweeps, four equations across two grammars, and all four protocols including the
+doubly-held-out cell — runs in **24 seconds**, and every optimisation that got it there was
+verified to leave every output file byte-identical.
+
+A full `python -m ml_meta_perf` takes about four minutes, and the other 215 seconds are the
+opaque comparison in [chapter 5](05-evaluation.md#what-an-opaque-model-reaches-and-does-not):
+three scikit-learn regressors refitted once per observed cell, 476 times each. That the
+priced *alternative* to a readable equation costs an order of magnitude more than the
+equation is not the point of this section, but it is not nothing either.
 
 | change | what it does | effect |
 |---|---|---|
@@ -234,12 +241,19 @@ extrapolates without limit and `validate._clip_to_training` pins the fold to its
 floor. `ASNM-CDX-2009` is the fold this happens to. One fold's extrapolation should not
 choose the published length.
 
-So the detector runs on a **consensus across all three protocols** — `selection.consensus_curve`,
-the per-length median. The median is what makes it robust: it discards the crater where a
-mean would be dragged down by it. **Which length craters moves with the configuration**, so
-the worked example is generated rather than written here — [chapter 5](05-evaluation.md)
-names the deepest one on the current curve and gives the median and the mean side by side.
-`min` is available as the conservative reading and is not the default.
+So the rule reads **every protocol at once**, and it takes the **minimum** —
+`selection.floor_curve`, the worst of the four at each length, including the doubly-held-out
+cell. A length is judged by its weakest showing, so a length that is strong in-sample and
+craters when both groups are held out cannot be selected on the strength of the first.
+
+A second reading is computed and reported beside it: `selection.consensus_curve`, the
+per-length **median** of the three single-group protocols. The median is robust in a different
+way — it discards a crater where a mean would be dragged down by it — and it is what the
+chapters plot. The two agree on the current corpus, both selecting 15 terms under the
+parsimonious grammar and 23 under the full one, and they are kept apart because agreement is a
+result rather than a guarantee. **Which length craters moves with the configuration**, so the
+worked example is generated rather than written here — the section below names the deepest one
+on the current curve and gives the median and the mean side by side.
 
 ### Which lengths the curve is reported at
 
@@ -257,42 +271,43 @@ twenty groups and they belong on the plot.
 
 ### The rule, and everything it beats
 
-**The rule is the argmax of the consensus curve**, implemented as `selection.best_length`.
-Stated in full, so that nothing about it has to be taken on trust:
+**The rule is the argmax of the worst protocol at each length**, implemented as
+`selection.floor_argmax`. Stated in full, so that nothing about it has to be taken on trust:
 
 1. Fit the equation at every length from 1 to `max_terms`, and score each length under all
-   three protocols — in-sample, leave-one-dataset-out, leave-one-model-out.
-2. For each length, take the **median** of those three R² values. That is the consensus
-   curve, and the median is what makes it robust to the craters below.
-3. Publish the length where the consensus curve is highest.
+   four protocols — in-sample, leave-one-dataset-out, leave-one-model-out, and the
+   doubly-held-out cell ([chapter 5](05-evaluation.md#four-protocols)).
+2. For each length, take the **minimum** of those four R² values. That is the floor curve.
+3. Publish the length where the floor is highest.
 
 It has no threshold, no smoothing window and no sensitivity parameter, so the chosen length
 is a property of the curve rather than of a value picked to produce a preferred answer, and
 it re-derives itself when the corpus changes rather than needing to be re-tuned by hand.
+**Nothing in the rule mentions how many rows the corpus has** — an earlier version priced a
+term against `n` and would have selected a different length on a corpus of a different size,
+which is the defect `tests/test_selection.py` now pins as a signature check.
 
 Applied under the two grammars the study reports, it selects **15 terms** under arity 2 and
 **23** under arity 3. Neither number appears anywhere in the code.
 
-Every alternative that was computed is reported beside it, because a selection rule is only
-defensible if what it beats is on the page:
+The same floor is what decides between the two grammars, one step up: `floor_argmax` gives one
+length per grammar and `selection.best_configuration` chooses among those candidates. That
+comparison is in [chapter 2](02-additive-model.md#the-arity-is-searched-not-set).
 
-| rule | terms | in-sample R² | LOO-dataset R² |
-|---|---|---|---|
-| Pareto front, closest to the utopia point | 4 | 0.539 | 0.505 |
-| Pareto front, furthest from the nadir | 4 | 0.539 | 0.505 |
-| Pareto front, furthest from the chord | 4 | 0.539 | 0.505 |
-| knee detectors, gRDP-smoothed *(removed)* | 8 | 0.601 | 0.597 |
-| parsimony: shortest not significantly worse | 10 | 0.634 | 0.615 |
-| **argmax of the consensus curve — the rule** | **15** | **0.658** | **0.638** |
+Every alternative that was computed is reported beside it, because a selection rule is only
+defensible if what it beats is on the page. The table is generated, in the section below;
+`selection.recommend` builds it and it carries one row per stated rule, the two readings of
+the curve among them.
 
 **The geometric rules and the paired test disagree, and the disagreement is the finding.**
 Every geometric reading of this curve — three knee detectors on four curves, raw and
 gRDP-smoothed at seven tolerances, plus the Pareto-front knee by all three standard forms —
-lands between 4 and 8 terms. Every one of those lengths is **significantly worse** than 15
-when the two are paired fold by fold over the twenty held-out datasets; 11 of the 32 lengths
-searched are. A knee finds where the *marginal* return per term collapses, which on a
-saturating curve is early. It does not ask whether the accuracy still being added is real,
-and here it is, for several terms past the bend.
+lands between 4 and 8 terms. Every one of those lengths is **significantly worse** than the
+selected one when the two are paired fold by fold over the twenty held-out datasets, and the
+generated section counts how many of the searched lengths are. A knee finds where the
+*marginal* return per term collapses, which on a saturating curve is early. It does not ask
+whether the accuracy still being added is real, and here it is, for several terms past the
+bend.
 
 **Knee detection has therefore been removed rather than reported.** It was tried properly
 first — the gRDP simplification works exactly as intended, taking three detectors that split
@@ -305,11 +320,20 @@ readability budget is tighter than this study's. It gives up 0.023 of leave-one-
 R², which is measurable even where it is not significant, so the study takes the accuracy;
 `results/length_choice.csv` carries the whole table so that choice can be remade.
 
-Both **Pareto fronts** are also reported. Over (length, LOO-dataset R²) the front is 1–8, 10,
-11, 14, 16, 19, 21 and 23 — nothing longer than 23 terms earns its length on transfer. Over
-(length, in-sample R²) *every* length is on the front, because fit is monotone in terms and
-so nothing is ever dominated. That is precisely why the in-sample curve cannot choose a
-length by itself.
+Both **Pareto fronts** are reported, in `results/pareto.csv`. The two behave differently and
+the difference is the point.
+
+Over (length, in-sample R²) **almost every length is on the front**, because a longer equation
+contains a longer search and fit does not fall as terms are added — so nothing is dominated
+and the front says nothing. That is precisely why the in-sample curve cannot choose a length
+by itself. *Almost*: one length is off it, and only because the beam is a heuristic rather
+than an exhaustive search, so its best-at-24 can be a hair below its best-at-23. A front that
+is nearly everything is not a selection device either way.
+
+Over (length, LOO-dataset R²) the front is much shorter — it runs out well before the search
+horizon does, which is the transfer curve flattening and then wandering. The membership moves
+with the configuration, so it is in the file rather than written here; **this paragraph used
+to list it, and listed a front from a configuration two changes ago.**
 
 <!-- generated: do not edit below -->
 
@@ -325,7 +349,7 @@ The control for the whole selection stage. If handing every candidate term to un
 
 ## Equation length
 
-The length is chosen by one rule with no threshold and no smoothing: **the argmax of the consensus curve** (`selection.best_length`), which here selects **15 terms**. Nothing about that number is written down — it falls out of the curve, and it re-derives itself if the corpus changes.
+The length is chosen by one rule with no threshold and no smoothing: **the argmax of the worst protocol at each length** (`selection.floor_argmax`), which here selects **15 terms**. Nothing about that number is written down — it falls out of the curve, and it re-derives itself if the corpus changes. The three-protocol median reading of the same curve (`selection.best_length`) is reported beside it in the table below and agrees here.
 
 **Why the consensus is a median and not a mean.** The deepest crater on this curve is at **24 terms**, where the three protocols read 0.671 / 0.387 / 0.626. The median takes 0.626 and ignores it; a mean would be dragged to 0.562. The crater is 0.244 below the neighbouring lengths and is not a property of the length at all -- it is one held-out dataset sitting outside the convex hull of the other nineteen in term space, where a linear equation extrapolates without limit and `validate._clip_to_training` pins the fold to its training floor. One fold's extrapolation should not choose the published length.
 
@@ -337,7 +361,8 @@ Every alternative rule is reported beside it, because a selection rule is only d
 | pareto front, furthest from nadir | 4 | 0.5390 | 0.5053 |
 | pareto front, furthest from chord | 4 | 0.5390 | 0.5053 |
 | best loo-dataset | 15 | 0.6578 | 0.6381 |
-| best consensus (the rule) | 15 | 0.6578 | 0.6381 |
+| best consensus (median of three) | 15 | 0.6578 | 0.6381 |
+| best floor over four protocols (the rule) | 15 | 0.6578 | 0.6381 |
 | published | 15 | 0.6578 | 0.6381 |
 
 The geometric rules — the Pareto-front knee by its three standard forms — choose far shorter equations, and **9 of the 25 lengths searched are significantly worse** than the selected one when paired fold by fold over the held-out datasets. A knee finds where the *marginal* return per term collapses, which on a saturating curve is early; it does not ask whether the accuracy still being added is real.

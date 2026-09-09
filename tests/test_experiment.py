@@ -20,6 +20,7 @@ from ml_meta_perf.data import (
     load,
 )
 from ml_meta_perf.experiment import (
+    ARITIES,
     DEFAULT,
     baselines,
     comparison,
@@ -302,10 +303,13 @@ class TestDocumentedDefaults(unittest.TestCase):
     """
 
     #: The README flag whose default each `Configuration` field is published as.
+    #:
+    #: `--arity` is **not** here, and cannot be: it is repeatable and its default is the set
+    #: `ARITIES` searches, not a `Configuration` field. `test_the_searched_arities_are_documented`
+    #: checks that row separately.
     FLAGS: ClassVar[dict[str, str]] = {
         "max_terms": "--max-terms",
         "penalty": "--penalty",
-        "max_arity": "--arity",
         "pool_size": "--pool",
         "beam_width": "--beam",
         "max_abs_zscore": "--zscore",
@@ -330,6 +334,15 @@ class TestDocumentedDefaults(unittest.TestCase):
             with self.subTest(flag=flag):
                 actual = getattr(DEFAULT, field)
                 self.assertEqual(float(self.documented[flag]), float(actual))
+
+    def test_the_searched_arities_are_documented(self) -> None:
+        """`--arity` publishes a set rather than a number, so it needs its own check --
+        and it is the row most likely to go stale, because it read "2" for as long as the
+        arity was fixed and nothing noticed when the search replaced it."""
+        readme = Path(__file__).resolve().parent.parent / "README.md"
+        row = next(line for line in readme.read_text().splitlines() if line.startswith("| `--arity` |"))
+        documented = re.findall(r"\d+", row.split("|")[2])
+        self.assertEqual([int(value) for value in documented], list(ARITIES))
 
 
 if __name__ == "__main__":
