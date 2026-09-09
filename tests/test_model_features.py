@@ -204,7 +204,7 @@ class TestReportedProtocol(unittest.TestCase):
 
     def test_run_equation_reports_the_fixed_form(self) -> None:
         from ml_meta_perf.data import DATASET_FEATURES, columns_as_arrays, groups, target
-        from ml_meta_perf.experiment import DEFAULT_E3
+        from ml_meta_perf.experiment import DEFAULT
         from ml_meta_perf.terms import build_library
         from ml_meta_perf.validate import cross_validate_fixed_form
 
@@ -215,8 +215,8 @@ class TestReportedProtocol(unittest.TestCase):
             DATASET_FEATURES,
             MODEL_FEATURES,
             columns,
-            max_arity=DEFAULT_E3.max_arity,
-            max_abs_zscore=DEFAULT_E3.max_abs_zscore,
+            max_arity=DEFAULT.max_arity,
+            max_abs_zscore=DEFAULT.max_abs_zscore,
         )
         size = len(report.equation.terms)
         direct = cross_validate_fixed_form(
@@ -225,7 +225,7 @@ class TestReportedProtocol(unittest.TestCase):
             target(frame),
             groups(frame, "Dataset"),
             {size: report.equation},
-            penalty=DEFAULT_E3.penalty,
+            penalty=DEFAULT.penalty,
         )
         self.assertAlmostEqual(
             report.cross_validated["loo_dataset"]["r2"],

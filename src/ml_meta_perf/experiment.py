@@ -7,7 +7,7 @@ measure what each half of the meta-data is worth.
 The defaults below are not arbitrary. They are the configuration that survived a sweep
 over the term stability cap, the ridge penalty and the equation length, scored on
 leave-one-dataset-out rather than on fit. The sweep is reproducible through
-``sweep_configurations``; ``DEFAULT_E1`` and ``DEFAULT_E3`` are simply where it landed.
+``sweep_configurations``; ``DEFAULT`` is simply where it landed.
 
 Study chapter: [4. The equation](../../assets/docs/04-equation.md) -- the rationale, in
 prose, with the figures.
@@ -91,117 +91,61 @@ class Configuration:
     max_arity: int = 3
 
 
-# Dataset features only, fitted on all 476 rows like the other two. An earlier version
-# fitted it on the 20 aggregated per-dataset means, on the grounds that a predictor which
-# is constant inside a group can only ever predict that group's mean anyway. That was
-# true and it was still the wrong choice: it put E1's R2 on a 20-point denominator, so
-# its headline could not be compared with E3's without a paragraph of explanation, and
-# the 0.506 it produced read as *better* transfer than E3's 0.466 when on the common
-# scale it is 0.217. Fitting all three the same way costs 0.03 of in-sample R2 and
-# removes the caveat entirely. See [chapter 6](../../assets/docs/04-equation.md).
-DEFAULT_E1 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=200, max_terms=8)
+#: **One configuration, shared by all three equations.** Until 2026-09-09 there were three,
+#: separately swept: E1 at z-cap 3.0 / penalty 20 / pool 200 / 8 terms, E2 at 3.0 / 5 / 100 /
+#: 12, E3 at 4.25 / 20 / 600 / 25. Each was defensible on its own and together they broke the
+#: study's own claim -- that the three equations "differ only in which features they may use",
+#: which is what makes the gaps between them evidence about the meta-data rather than about
+#: three tuning runs. E3 gets a pool three times E1's and a horizon three times its own
+#: published length; nothing about that difference was a finding.
+#:
+#: The shared values are E3's, because E3's are the ones a full sweep chose (Slurm job 15335,
+#: 48,576 points, 2026-09-07) and the other two were swept by hand over narrower grids. The
+#: reasoning behind each is below, unchanged; what is gone is the idea that it applies to one
+#: equation and not the others.
+#:
+#: Measured, 2026-09-09, the whole study re-run against these:
+#:
+#: | equation | before | after |
+#: |---|---|---|
+#: | E3-Valid, E3-MAX | (2, 15) and (3, 23) | **identical, to four decimals** |
+#: | E2 | 6 terms, loo-cell 0.1724 | 6 terms, loo-cell **0.1813** -- better on all four |
+#: | E1 | 7 terms at arity 3, loo-cell 0.3049 | 10 terms at arity 2, loo-cell 0.3034 |
+#:
+#: E2's own tuning was costing it on every protocol. E1 moves by less than 0.003 in either
+#: direction -- it is 0.006 under its structural ceiling of 0.354 either way, which is what
+#: "E1 is done" means -- and its complexity `arity * n_terms` falls from 21 to 20: three more
+#: terms over a grammar with no triple products. See `selection.complexity`.
 
-# Model features only. Re-swept over penalty x length x z-cap x arity on the fixed-form
-# protocol, after `MODEL_FEATURES` was replaced and the reported protocol changed on
-# 2026-09-05.
-#
-# Length falls from 8 to 6 on 2026-09-07, when `terms.Library.feature_groups` made one term
-# per feature combination a rule of the protocol. E2 draws on six features, so it has only
-# fifteen pairs to spend a term on and the constraint binds hardest here. Six is the knee by
-# the same rule that chose eight before it -- every longer equation gains under 0.005 on
-# either transfer protocol -- and six is now also *better* than eight on both of them
-# (0.185 against 0.183 leave-one-dataset-out, 0.229 against 0.226 leave-one-model-out) for
-# two fewer terms.
-DEFAULT_E2 = Configuration(max_abs_zscore=3.0, penalty=5.0, pool_size=100, max_terms=12, max_arity=2)
+#: The ridge penalty on standardised terms. Falls from 20 to 15 on fit alone and stays at 20:
+#: under the fixed-form protocol the ridge only shrinks weights, it no longer also scores which
+#: subset the beam chose, so heavy shrinkage stopped paying for itself -- but across the whole
+#: range 1 to 20 the difference is under 0.01 on either transfer protocol, and an essentially
+#: unregularised ridge on a 476-row design is not worth that.
+PENALTY = 20.0
 
-# Re-swept over penalty x length x z-cap x arity after `MODEL_FEATURES` was replaced and the
-# reported protocol changed to fixed form, both on 2026-09-05. All four knobs moved.
-#
-# `penalty` falls from 20 to 15, and would fall further on fit alone. Under the previous
-# protocol the ridge did two jobs -- shrinking the weights *and* scoring which subset the beam
-# chose, since the penalty sits in the selection score. With the form fixed it only does the
-# first, so heavy shrinkage stopped paying for itself. Fifteen rather than the sweep's optimum
-# of one or three: across that whole range the difference is under 0.01 on either transfer
-# protocol, and an essentially unregularised ridge on a 476-row design is not worth that.
-#
-# `max_arity` drops from 3 to 2. The third arity buys `(f1+f2)/f3` and it is not selected --
-# the best arity-2 point matches the best arity-3 point to within 0.007. A smaller grammar
-# that scores the same is not a trade.
-#
-# `max_abs_zscore` rises from 3.0 to 4.25. The cap exists to stop a term being carried by a
-# handful of extreme rows, and it is safe to loosen here in a way it was not before: all six
-# model features are positive, bounded and fully supported, with none of the low-support tail
-# that made a loose cap dangerous when hyperparameter columns were in the pool.
-#
-# Length stays at 16 under the one-term-per-feature-combination protocol, and the reason is
-# brevity rather than accuracy, because on accuracy the two candidates cannot be separated.
-#
-# Twenty terms is the maximum of the transfer curve: 0.638 against 0.627 leave-one-dataset-out
-# and 0.677 against 0.665 in-sample. It is also better *within* a dataset, which is the half
-# of the variance a ranking sees -- 0.468 against 0.460 once each dataset's mean is removed
-# from both sides. Nothing about a longer equation is hurting the fit.
-#
-# The 20-term equation appears to rank worse -- average precision 0.778 against 0.819, hit@1
-# 0.700 against 0.800 -- and that appearance does not survive a paired test. It is two
-# datasets of twenty flipping their top-1 pick, ASNM-CDX-2009 and KPI-KQI; on twenty folds
-# hit@1 moves only in steps of 0.05, so 0.80 to 0.70 *is* those two. Per dataset, twenty terms
-# has the better average precision on nine of the seventeen that changed at all -- sign test
-# p = 1.000, bootstrap interval [-0.115, +0.023]. Do not read the ranking column as a trend in
-# length; it is a mean over twenty groups and a single group moves it by 0.03.
-#
-# So neither R2 nor ranking decides this, and what is left is the study's standing tie-break:
-# at indistinguishable measured performance, the shorter equation wins.
-# The consensus curve agrees -- 0.689 at sixteen against 0.679 at twenty --
-# though that margin is drawn from the same twenty folds and should not be read as decisive
-# on its own either.
-#
-# CONFIRMED BY THE FULL SWEEP, 2026-09-07 (Slurm job 15335, 48,576 points, 71 minutes on 62
-# cores). This configuration is now what a search chose, not a length read off a curve.
-#
-# `max_arity=2` is confirmed outright: the best arity-2 point scores 0.7297 against 0.6866 for
-# the best arity-3 point, and every configuration in the top band is arity 2.
-#
-# **The sweep's top row is not the answer, and this is the case the warning was written for.**
-# It ranks a 9-term equation first (objective 0.7297 against this one's 0.6861). Paired over
-# the twenty held-out datasets on per-dataset MAE, that equation is *significantly worse*:
-# the incumbent wins on 16 of 20, sign test p = 0.012, bootstrap CI [+0.0082, +0.0303] entirely
-# above zero. The standing rule is the shortest configuration that is **not significantly
-# worse**, and nine terms does not qualify. Sixteen stands.
-#
-# What makes the objective prefer it is `stability`, not brevity. Decomposed against
-# `OBJECTIVE_WEIGHTS`: stability contributes +0.0525 of the +0.0379 net gap and brevity only
-# +0.0146, against -0.029 summed over the five accuracy components. The 9-term form reselects
-# in 88% of folds where this one reselects in 53%. That is a real property and a real tension
-# -- a shorter form is more stable and transfers worse -- but `stability` is weighted 0.15
-# against 0.40 for the three R2 combined, so it should not be able to overturn an accuracy gap
-# this size. Treat the objective as a shortlisting device and the paired test as the decision.
-#
-# The sweep also prefers a four-feature subset -- `Model Capability`, `Processing Units
-# Number`, `Fitting Regime`, `Input Distribution Modelling` -- dropping `Solution
-# Stochasticity` and `Loss Margin Behaviour` from the *equation*. **That is admissible, and it
-# is the mechanism working rather than a loss.** The two stages have different criteria: the
-# corpus is designed for *identification* and keeps all six columns, which is what makes every
-# learner distinguishable on every dataset; the equation is judged on *compression*, and an
-# equation that used every column would be one that had failed to generalise. See `data`'s
-# module docstring. What must not change is the corpus: `MODEL_FEATURES` is the schema
-# `load` validates and the set `tests/test_model_features.py` checks identification against.
-#
-# On the sweep's own numbers the four-feature pool dominates on every axis -- best objective
-# 0.7297 against 0.7222 for six, best leave-one-dataset-out 0.6855 against 0.6716, best
-# leave-one-model-out 0.6543 against 0.6404.
-#
-# Penalty and z-cap: no candidate significantly beats this one. The nearest, penalty 20 with
-# z-cap 4.50 on the four-feature subset, reaches 0.6317 leave-one-dataset-out against 0.6270
-# and is a tie when paired (p = 0.115) -- and on all six features the same knobs score 0.5798,
-# so the apparent gain is the feature drop rather than the shrinkage. Left unchanged.
-#
-# `max_terms` falls from 32 to 25 on 2026-09-08. It is the search *horizon*, not the published
-# length: `selection` picks 15 here and 23 under the full grammar, so lengths 26 to 32 were
-# only ever cost. They were also the worst-behaved part of the curve -- at arity 2 the
-# leave-one-dataset-out figure craters to 0.480, 0.517, 0.537 and 0.420 at 28, 29, 30 and 32,
-# which are extrapolations rather than fits and which nothing selects. Verified not to move
-# either published length.
-DEFAULT_E3 = Configuration(max_abs_zscore=4.25, penalty=20.0, pool_size=600, max_terms=25, max_arity=2)
+#: The largest standard score a term may reach before it is rejected as a spike. Raised from
+#: 3.0 to 4.25 on 2026-09-05. The cap exists to stop a term being carried by a handful of
+#: extreme rows, and loosening it is safe here in a way it was not before: all six model
+#: features are positive, bounded and fully supported, with none of the low-support tail that
+#: made a loose cap dangerous when the hyperparameter columns were in the pool. No candidate
+#: significantly beats it -- the nearest, penalty 20 at z-cap 4.50 on a four-feature pool,
+#: is a tie when paired (p = 0.115).
+MAX_ABS_ZSCORE = 4.25
+
+#: Terms surviving the correlation screen into the beam.
+POOL_SIZE = 600
+
+#: Beam width. Eight times the search converges to the fourth decimal; see `TODO.md`.
+BEAM_WIDTH = 6
+
+#: The longest equation the search explores. **The horizon, not the published length** --
+#: `selection.floor_argmax` picks that from the curve. Cut from 32 to 25 on 2026-09-08: the
+#: rule picks 15 under the parsimonious grammar and 23 under the full one, so 26 to 32 were
+#: only ever cost, and they were the worst-behaved part of the curve (leave-one-dataset-out
+#: craters to 0.480, 0.517, 0.537 and 0.420 at 28, 29, 30 and 32 -- extrapolations that
+#: nothing selects). Verified not to move either published length.
+MAX_TERMS = 25
 
 #: The grammars the arity search covers, and the default for ``--arity``.
 #:
@@ -212,6 +156,55 @@ DEFAULT_E3 = Configuration(max_abs_zscore=4.25, penalty=20.0, pool_size=600, max
 #: a search. Arity 1 is admissible too and is never worth a default: a grammar with no products
 #: cannot express the conditional claims the whole study is about.
 ARITIES: tuple[int, ...] = (2, 3)
+
+# The measured case for these values, kept because it is the evidence and not the setting.
+#
+# `max_arity=2` is confirmed outright by the full sweep: the best arity-2 point scores 0.7297
+# against 0.6866 for the best arity-3 point, and every configuration in the top band is arity
+# 2. The third arity buys `(f1+f2)/f3` and it is not selected. A smaller grammar that scores
+# the same is not a trade. Arity is now *searched* rather than set -- see `ARITIES` and
+# `search_grammars` -- and `max_arity` here is only where a non-searching caller starts.
+#
+# **The sweep's top row is not the answer, and this is the case the warning was written for.**
+# It ranks a 9-term equation first (objective 0.7297 against 0.6861). Paired over the twenty
+# held-out datasets on per-dataset MAE, that equation is *significantly worse*: the incumbent
+# wins on 16 of 20, sign test p = 0.012, bootstrap CI [+0.0082, +0.0303] entirely above zero.
+# What makes the objective prefer it is `stability`, not brevity: decomposed against
+# `OBJECTIVE_WEIGHTS`, stability contributes +0.0525 of the +0.0379 net gap and brevity only
+# +0.0146, against -0.029 summed over the five accuracy components. The 9-term form reselects
+# in 88% of folds where this one reselects in 53%. That is a real tension -- a shorter form is
+# more stable and transfers worse -- but stability is weighted 0.15 against 0.40 for the three
+# R2 combined, so it should not overturn an accuracy gap this size. Treat the objective as a
+# shortlisting device and the paired test as the decision.
+#
+# The sweep also prefers a four-feature subset -- `Model Capability`, `Processing Units
+# Number`, `Fitting Regime`, `Input Distribution Modelling` -- dropping `Solution
+# Stochasticity` and `Loss Margin Behaviour` from the *equation*. **That is admissible, and it
+# is the mechanism working rather than a loss.** The two stages have different criteria: the
+# corpus is designed for *identification* and keeps all six columns, which is what makes every
+# learner distinguishable on every dataset; the equation is judged on *compression*, and an
+# equation that used every column would be one that had failed to generalise. See `data`'s
+# module docstring. What must not change is the corpus: `MODEL_FEATURES` is the schema `load`
+# validates and the set `tests/test_model_features.py` checks identification against.
+#
+# E1 is fitted on all 476 rows like the other two. An earlier version fitted it on the 20
+# aggregated per-dataset means, on the grounds that a predictor constant inside a group can
+# only ever predict that group's mean anyway. That was true and still the wrong choice: it put
+# E1's R2 on a 20-point denominator, so its headline could not be compared with E3's without a
+# paragraph of explanation, and the 0.506 it produced read as *better* transfer than E3's
+# 0.466 when on the common scale it is 0.217. See [chapter 4](../../assets/docs/04-equation.md).
+DEFAULT = Configuration(
+    max_abs_zscore=MAX_ABS_ZSCORE,
+    penalty=PENALTY,
+    pool_size=POOL_SIZE,
+    beam_width=BEAM_WIDTH,
+    max_terms=MAX_TERMS,
+    # Where a caller that does *not* search starts: E1 and E2 are fitted once, over the most
+    # parsimonious grammar in `ARITIES`. E3's arity is chosen by `search_grammars`, which
+    # replaces this field per candidate grammar.
+    max_arity=min(ARITIES),
+)
+
 
 #: The model features the **equation** may build terms from.
 #:
@@ -429,7 +422,7 @@ def run_equation(
     )
 
 
-def run_e1(frame: pl.DataFrame, config: Configuration = DEFAULT_E1) -> EquationReport:
+def run_e1(frame: pl.DataFrame, config: Configuration = DEFAULT) -> EquationReport:
     """Dataset features only -- how much of MCC the data alone explains.
 
     Every model on a given dataset shares one feature vector, so this equation can only
@@ -438,12 +431,12 @@ def run_e1(frame: pl.DataFrame, config: Configuration = DEFAULT_E1) -> EquationR
 
     Least squares finds that per-dataset constant on its own, so the aggregation an
     earlier version performed up front was unnecessary as well as harmful to the
-    comparison -- see the note on `DEFAULT_E1`.
+    comparison -- see the note on `DEFAULT`.
     """
     return run_equation(frame, DATASET_FEATURES, (), config, "E1")
 
 
-def run_e2(frame: pl.DataFrame, config: Configuration = DEFAULT_E2) -> EquationReport:
+def run_e2(frame: pl.DataFrame, config: Configuration = DEFAULT) -> EquationReport:
     """Model features only -- the mirror image of E1.
 
     There are six model features and five of them are constant per model, so the library
@@ -485,7 +478,7 @@ class GrammarSearch:
 
 def search_grammars(
     frame: pl.DataFrame,
-    config: Configuration = DEFAULT_E3,
+    config: Configuration = DEFAULT,
     arities: tuple[int, ...] = ARITIES,
 ) -> GrammarSearch:
     """Fit E3 once per grammar and let the rule pick, instead of fixing the arity by hand.
@@ -568,12 +561,12 @@ def search_grammars(
     return GrammarSearch(reports=reports, valid=valid_arity, maximum=max_arity, candidates=pl.DataFrame(rows))
 
 
-def run_e3(frame: pl.DataFrame, config: Configuration = DEFAULT_E3) -> EquationReport:
+def run_e3(frame: pl.DataFrame, config: Configuration = DEFAULT) -> EquationReport:
     """Dataset and model features -- one input, one output, and the published equation."""
     return run_equation(frame, DATASET_FEATURES, EQUATION_MODEL_FEATURES, config, "E3", SWEEP_SIZES)
 
 
-def reach_analysis(frame: pl.DataFrame, config: Configuration = DEFAULT_E3) -> tuple[pl.DataFrame, pl.DataFrame]:
+def reach_analysis(frame: pl.DataFrame, config: Configuration = DEFAULT) -> tuple[pl.DataFrame, pl.DataFrame]:
     """What each raw feature is worth, and how far the grammar reaches before any search.
 
     Returns the per-feature table and the three-level ceiling ladder as a one-row frame.
@@ -594,7 +587,7 @@ def reach_analysis(frame: pl.DataFrame, config: Configuration = DEFAULT_E3) -> t
     return feature_reach(library, truth, features), pl.DataFrame([ladder])
 
 
-def saturated_analysis(frame: pl.DataFrame, config: Configuration = DEFAULT_E3) -> dict[str, float]:
+def saturated_analysis(frame: pl.DataFrame, config: Configuration = DEFAULT) -> dict[str, float]:
     """`analysis.saturated_fit` over the library E3 actually searches.
 
     The library rather than the screened pool, and the E3 grammar rather than the capability
@@ -612,7 +605,7 @@ def saturated_analysis(frame: pl.DataFrame, config: Configuration = DEFAULT_E3) 
     return saturated_fit(library, target(frame), groups(frame, DATASET_COLUMN))
 
 
-def correlation_analysis(frame: pl.DataFrame, config: Configuration = DEFAULT_E3, top: int = 15) -> pl.DataFrame:
+def correlation_analysis(frame: pl.DataFrame, config: Configuration = DEFAULT, top: int = 15) -> pl.DataFrame:
     """Rank candidate terms by how they relate to MCC, linearly and monotonically.
 
     Both correlations are reported because they say different things and the difference
@@ -672,7 +665,7 @@ def baselines(frame: pl.DataFrame) -> pl.DataFrame:
 def leakage_demonstration(
     frame: pl.DataFrame,
     n_terms: int,
-    config: Configuration = DEFAULT_E3,
+    config: Configuration = DEFAULT,
     known: dict[str, dict[int, CrossValidation]] | None = None,
 ) -> pl.DataFrame:
     """The same equation scored under a random split and under a grouped split.
@@ -891,7 +884,7 @@ def comparison(
 def decision_quality(
     frame: pl.DataFrame,
     n_terms: int,
-    config: Configuration = DEFAULT_E3,
+    config: Configuration = DEFAULT,
     known: dict[int, CrossValidation] | None = None,
 ) -> pl.DataFrame:
     """Go/no-go decision quality, with both the dataset and the model held out.
@@ -914,7 +907,7 @@ def decision_quality(
     return decision_report(truth, path[size].predictions, datasets)
 
 
-def length_comparison(frame: pl.DataFrame, e3: EquationReport, config: Configuration = DEFAULT_E3) -> pl.DataFrame:
+def length_comparison(frame: pl.DataFrame, e3: EquationReport, config: Configuration = DEFAULT) -> pl.DataFrame:
     """Every equation length paired against the published one, per held-out dataset.
 
     **This is the rule that chooses the length**, and it replaced knee detection on
@@ -979,7 +972,7 @@ def length_comparison(frame: pl.DataFrame, e3: EquationReport, config: Configura
 
 
 def doubly_held_out_predictions(
-    frame: pl.DataFrame, n_terms: int, config: Configuration = DEFAULT_E3
+    frame: pl.DataFrame, n_terms: int, config: Configuration = DEFAULT
 ) -> np.ndarray | None:
     """E3's predictions with **both** the dataset and the model of each cell held out.
 
@@ -1050,7 +1043,7 @@ def model_selection(
     frame: pl.DataFrame,
     e3: EquationReport,
     protocol: str = "loo_cell",
-    config: Configuration = DEFAULT_E3,
+    config: Configuration = DEFAULT,
 ) -> pl.DataFrame:
     """Can the equation pick a good model for a dataset it has never run it on?
 
@@ -1096,7 +1089,7 @@ def _opaque_candidates(opaque: OpaqueRun) -> dict[str, np.ndarray]:
 def ranking_baselines(
     frame: pl.DataFrame,
     e3: EquationReport,
-    config: Configuration = DEFAULT_E3,
+    config: Configuration = DEFAULT,
     opaque: OpaqueRun | None = None,
 ) -> pl.DataFrame:
     """The equation's ranking against the trivial rankings, averaged over datasets.
@@ -1170,7 +1163,7 @@ def ranking_baselines(
 
 def decision_baselines(
     frame: pl.DataFrame,
-    config: Configuration = DEFAULT_E3,
+    config: Configuration = DEFAULT,
     known: dict[int, CrossValidation] | None = None,
     e3: EquationReport | None = None,
     opaque: OpaqueRun | None = None,
@@ -1304,9 +1297,9 @@ def run(
     first -- which at 476 refits per estimator is most of what a run costs.
     """
     frame = load(path)
-    config_e1 = config_e1 or DEFAULT_E1
-    config_e2 = config_e2 or DEFAULT_E2
-    config_e3 = config_e3 or DEFAULT_E3
+    config_e1 = config_e1 or DEFAULT
+    config_e2 = config_e2 or DEFAULT
+    config_e3 = config_e3 or DEFAULT
     e1 = run_e1(frame, config_e1)
     # One fit per grammar and the rule picks, rather than two hand-fixed arities. `e3` and
     # `e3_capability` are both drawn from this: the same search, the same configuration, the

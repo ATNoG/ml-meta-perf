@@ -20,7 +20,7 @@ doubly-held-out protocol pass while assuming a rectangle.
 **What does not belong here.** This corpus cannot answer whether the study's findings hold --
 eight datasets is not the corpus the paper reports, and a finding measured on a slice is not
 the finding. A test asserting something about the study loads the real corpus, and it fits
-only what its claim is about: `run_e3(load(), DEFAULT_E3)` is 4.6 s and a whole `run` is
+only what its claim is about: `run_e3(load(), DEFAULT)` is 4.6 s and a whole `run` is
 twelve, so a claim about the published equation should never reach for the second.
 """
 

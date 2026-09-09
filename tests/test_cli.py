@@ -23,8 +23,8 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
-from ml_meta_perf.cli import build_parser, configurations, main, render
-from ml_meta_perf.experiment import ARITIES, DEFAULT_E1, DEFAULT_E3
+from ml_meta_perf.cli import arities, build_parser, configuration, main, render
+from ml_meta_perf.experiment import ARITIES, DEFAULT
 from ml_meta_perf.model import Equation
 from ml_meta_perf.report import BEGIN, END
 from tests import corpus
@@ -33,31 +33,28 @@ from tests import corpus
 class TestFlags(unittest.TestCase):
     """Parsing and folding, with nothing else involved."""
 
-    def test_unmentioned_flags_keep_their_tuned_values(self) -> None:
-        parser = build_parser()
-        e1, e3 = configurations(parser.parse_args([]))
-        self.assertEqual(e1, DEFAULT_E1)
-        self.assertEqual(e3, DEFAULT_E3)
+    def test_a_bare_run_is_the_tuned_configuration(self) -> None:
+        self.assertEqual(configuration(build_parser().parse_args([])), DEFAULT)
 
     def test_flags_override_the_tuned_configuration(self) -> None:
         parser = build_parser()
-        _, e3 = configurations(parser.parse_args(["--penalty", "3", "--arity", "2", "--max-terms", "40"]))
-        self.assertEqual(e3.penalty, 3.0)
-        self.assertEqual(e3.max_arity, 2)
-        self.assertEqual(e3.max_terms, 40)
+        config = configuration(parser.parse_args(["--penalty", "3", "--arity", "2", "--max-terms", "40"]))
+        self.assertEqual(config.penalty, 3.0)
+        self.assertEqual(config.max_arity, 2)
+        self.assertEqual(config.max_terms, 40)
+        self.assertEqual(config.pool_size, DEFAULT.pool_size, "an unmentioned knob keeps its tuned value")
 
-    def test_shared_knobs_reach_e1_and_the_published_length_does_not(self) -> None:
-        """`--penalty` means the same thing to both equations; `--max-terms` describes the E3
-        search specifically, and applying it to E1 would silently retune the control."""
+    def test_the_grammar_a_non_searching_equation_gets_is_the_smallest_searched(self) -> None:
+        """E1 and E2 are fitted once rather than searched, so they need an arity from
+        somewhere. It is the most parsimonious of the ones asked for, not the first written."""
         parser = build_parser()
-        e1, e3 = configurations(parser.parse_args(["--penalty", "7", "--max-terms", "40"]))
-        self.assertEqual(e1.penalty, 7.0)
-        self.assertEqual(e1.max_terms, DEFAULT_E1.max_terms)
-        self.assertEqual(e3.max_terms, 40)
+        self.assertEqual(configuration(parser.parse_args(["--arity", "3", "--arity", "2"])).max_arity, 2)
+        self.assertEqual(configuration(parser.parse_args(["--arity", "3"])).max_arity, 3)
 
-    def test_arity_is_repeatable(self) -> None:
+    def test_arity_is_repeatable_and_de_duplicated_in_order(self) -> None:
         parser = build_parser()
-        self.assertEqual(parser.parse_args(["--arity", "2", "--arity", "3"]).arity, [2, 3])
+        self.assertEqual(arities(parser.parse_args(["--arity", "3", "--arity", "2", "--arity", "3"])), (3, 2))
+        self.assertEqual(arities(parser.parse_args([])), ARITIES)
 
     def test_the_published_length_is_not_a_flag(self) -> None:
         """`--terms` was removed with `Configuration.headline_terms` on 2026-09-09. The length
@@ -119,8 +116,9 @@ class TestWhatTheFlagsReachTheEngineAs(CliTestCase):
         self.engine.assert_called_once()
         arguments, keywords = self.engine.call_args
         self.assertEqual(arguments[0], str(corpus.sample_path()))
-        self.assertEqual(keywords["config_e1"], DEFAULT_E1)
-        self.assertEqual(keywords["config_e3"], DEFAULT_E3)
+        self.assertEqual(keywords["config_e1"], DEFAULT)
+        self.assertEqual(keywords["config_e2"], DEFAULT)
+        self.assertEqual(keywords["config_e3"], DEFAULT)
         self.assertEqual(keywords["arities"], ARITIES)
 
     def test_a_repeated_arity_becomes_the_searched_set(self) -> None:

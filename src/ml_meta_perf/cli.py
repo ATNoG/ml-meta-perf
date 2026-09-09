@@ -27,8 +27,12 @@ import polars as pl
 from ml_meta_perf.data import DATASET_FEATURES, DEFAULT_PATH, MODEL_FEATURES, columns_as_arrays, load, target
 from ml_meta_perf.experiment import (
     ARITIES,
-    DEFAULT_E1,
-    DEFAULT_E3,
+    BEAM_WIDTH,
+    DEFAULT,
+    MAX_ABS_ZSCORE,
+    MAX_TERMS,
+    PENALTY,
+    POOL_SIZE,
     Configuration,
     Report,
     run,
@@ -142,38 +146,33 @@ def render(
         )
 
 
-def configurations(
-    arguments: argparse.Namespace,
-) -> tuple[Configuration, Configuration]:
-    """Fold the command line onto the tuned configurations.
+def configuration(arguments: argparse.Namespace) -> Configuration:
+    """The configuration the run fits every equation under.
 
-    Only flags the caller actually passed are applied, so an unmentioned knob keeps its
-    tuned value rather than being reset to an argparse default. Knobs that mean the same
-    thing everywhere -- the penalty, the pool, the beam, the stability cap -- are applied
-    to E1 as well; the ones that describe the published E3 specifically are not.
+    **One, not three.** Until 2026-09-09 this returned a pair and E2 got a third object no
+    flag reached, so `--penalty 3` moved two of the three equations and the comparison between
+    them stopped being like-for-like. `experiment.DEFAULT` is now the single tuned
+    configuration and the argparse defaults *are* the constants behind it, which is also what
+    makes `--help` state the real values rather than `None`.
 
-    **E2 is not folded onto and gets no configuration from here**, so `run` gives it
-    `DEFAULT_E2`. That is not a decision, it is where the three separately-tuned
-    configurations left things, and C6 is what replaces all three with one set of constants.
+    `max_arity` is not read from here. E3's is chosen by `experiment.search_grammars` over
+    ``--arity``, and E1 and E2 -- which are fitted once rather than searched -- take the most
+    parsimonious grammar in that set.
     """
-    shared: dict[str, object] = {}
-    if arguments.penalty is not None:
-        shared["penalty"] = arguments.penalty
-    if arguments.pool is not None:
-        shared["pool_size"] = arguments.pool
-    if arguments.beam is not None:
-        shared["beam_width"] = arguments.beam
-    if arguments.zscore is not None:
-        shared["max_abs_zscore"] = arguments.zscore
-
-    e3_only: dict[str, object] = dict(shared)
-    if arguments.max_terms is not None:
-        e3_only["max_terms"] = arguments.max_terms
-
-    return (
-        dataclasses.replace(DEFAULT_E1, **shared),  # pyright: ignore[reportArgumentType]
-        dataclasses.replace(DEFAULT_E3, **e3_only),  # pyright: ignore[reportArgumentType]
+    return dataclasses.replace(
+        DEFAULT,
+        max_abs_zscore=arguments.zscore,
+        penalty=arguments.penalty,
+        pool_size=arguments.pool,
+        beam_width=arguments.beam,
+        max_terms=arguments.max_terms,
+        max_arity=min(arities(arguments)),
     )
+
+
+def arities(arguments: argparse.Namespace) -> tuple[int, ...]:
+    """The grammars to search, de-duplicated in the order the flags gave them."""
+    return tuple(dict.fromkeys(arguments.arity)) if arguments.arity else ARITIES
 
 
 def _save_tables(report: Report, folder: Path) -> list[Path]:
@@ -255,8 +254,8 @@ def build_parser() -> argparse.ArgumentParser:
     # published length by hand, and the published length is now derived from the equation's own
     # curve by `selection.floor_argmax`. `--max-terms` is a different thing and stays: the
     # search *horizon*, which is a cost control and the range the reported curve covers.
-    search.add_argument("--max-terms", type=int, default=None, help="longest equation the search explores")
-    search.add_argument("--penalty", type=float, default=None, help="ridge penalty on standardised terms")
+    search.add_argument("--max-terms", type=int, default=MAX_TERMS, help="longest equation the search explores")
+    search.add_argument("--penalty", type=float, default=PENALTY, help="ridge penalty on standardised terms")
     # Repeatable, because the arity is searched rather than fixed: `--arity 2 --arity 3` is the
     # default set and `--arity 4` narrows the search to the grammar the negatives were measured
     # under. One value is a search over one grammar, which is what fixing the arity now means.
@@ -266,14 +265,14 @@ def build_parser() -> argparse.ArgumentParser:
         choices=(1, 2, 3, 4),
         action="append",
         default=None,
-        help="raw features per term; repeat to search several grammars (default: 2 and 3)",
+        help=f"raw features per term; repeat to search several grammars; unset searches {ARITIES}",
     )
-    search.add_argument("--pool", type=int, default=None, help="terms surviving screening into the beam")
-    search.add_argument("--beam", type=int, default=None, help="beam width")
+    search.add_argument("--pool", type=int, default=POOL_SIZE, help="terms surviving screening into the beam")
+    search.add_argument("--beam", type=int, default=BEAM_WIDTH, help="beam width")
     search.add_argument(
         "--zscore",
         type=float,
-        default=None,
+        default=MAX_ABS_ZSCORE,
         help="largest standard score a term may reach before it is rejected as a spike",
     )
 
@@ -291,13 +290,14 @@ def main(argv: list[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
     phases = frozenset(PHASES) if not arguments.phase or "all" in arguments.phase else frozenset(arguments.phase)
 
-    config_e1, config_e3 = configurations(arguments)
+    config = configuration(arguments)
     started = time.perf_counter()
     report = run(
         arguments.data,
-        config_e1=config_e1,
-        config_e3=config_e3,
-        arities=tuple(dict.fromkeys(arguments.arity)) if arguments.arity else ARITIES,
+        config_e1=config,
+        config_e2=config,
+        config_e3=config,
+        arities=arities(arguments),
     )
     elapsed = time.perf_counter() - started
 
@@ -329,7 +329,7 @@ def main(argv: list[str] | None = None) -> int:
             MODEL_FEATURES,
             arguments.docs,
             frame=frame,
-            config=config_e3,
+            config=config,
             source=source,
         )
         print(f"{len(pages)} chapters regenerated in {arguments.docs}")

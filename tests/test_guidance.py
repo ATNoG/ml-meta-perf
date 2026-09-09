@@ -382,19 +382,19 @@ class TestTheCapacityReading(unittest.TestCase):
 
     Unlike everything in `TestEquationEvidence`, these are claims about the **published**
     fifteen-term equation rather than about the pairing code, so they fit the real corpus
-    under `DEFAULT_E3`. That is one fit and no protocols -- `equation_evidence` reads
+    under `DEFAULT`. That is one fit and no protocols -- `equation_evidence` reads
     `report.e3` and nothing else -- which is why this does not need a whole `run`.
     """
 
     @classmethod
     def setUpClass(cls) -> None:
         from ml_meta_perf.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays
-        from ml_meta_perf.experiment import DEFAULT_E3, run_e3
+        from ml_meta_perf.experiment import DEFAULT, run_e3
         from ml_meta_perf.guidance import equation_evidence
 
         frame = load()
         columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
-        e3 = run_e3(frame, DEFAULT_E3)
+        e3 = run_e3(frame, DEFAULT)
         cls.evidence = equation_evidence(SimpleNamespace(e3=e3), columns)  # pyright: ignore[reportArgumentType]
 
     def test_the_same_feature_can_disagree_with_itself_across_terms(self) -> None:

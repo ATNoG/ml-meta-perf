@@ -341,9 +341,9 @@ Against the baselines and the ceiling that bounds any additive equation:
 
 | equation | n_terms | r2 | mae | rmse | smape | spearman | n |
 |---|---|---|---|---|---|---|---|
-| E1, dataset only (7 terms) | 7 | 0.3485 | 0.2103 | 0.2770 | 43.2650 | 0.6566 | 476 |
+| E1, dataset only (10 terms) | 10 | 0.3506 | 0.2094 | 0.2766 | 43.1850 | 0.6580 | 476 |
 | E1 reference: true dataset means |  | 0.3539 | 0.2042 | 0.2758 | 42.7254 | 0.6533 | 476 |
-| E2, model only (6 terms) | 6 | 0.2485 | 0.2339 | 0.2975 | 46.2526 | 0.4594 | 476 |
+| E2, model only (6 terms) | 6 | 0.2515 | 0.2345 | 0.2969 | 46.3101 | 0.4539 | 476 |
 | E2 reference: true model means |  | 0.2821 | 0.2257 | 0.2908 | 45.8786 | 0.4870 | 476 |
 | E3, dataset + model (15 terms) | 15 | 0.6578 | 0.1371 | 0.2008 | 34.4737 | 0.8194 | 476 |
 | E3 capability, arity 3 (23 terms) | 23 | 0.6751 | 0.1324 | 0.1956 | 33.6903 | 0.8288 | 476 |

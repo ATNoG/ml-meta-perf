@@ -114,7 +114,7 @@ The table above was measured under the re-selecting protocol and the five-descri
 side. Re-swept on 2026-09-05 against the fixed-form protocol and the current features, the
 third arity stopped paying: `(f1+f2)/f3` is not selected, and the best arity-2 point matches
 the best arity-3 point to within 0.007. A smaller grammar that scores the same is not a
-trade, so `DEFAULT_E3` sets `max_arity=2`. What survives from this table is the *method* —
+trade, so `DEFAULT` sets `max_arity=2`. What survives from this table is the *method* —
 sweep the penalty inside each arity, or the ridge gets credited with the arity's effect — and
 the arity-4 result, which is a fit-only option at roughly six units of transfer per unit of
 fit and is not worth revisiting.

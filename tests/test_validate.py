@@ -438,7 +438,7 @@ class TestGrammarReach(unittest.TestCase):
     def setUp(self) -> None:
         from ml_meta_perf.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays, load
         from ml_meta_perf.data import target as load_target
-        from ml_meta_perf.experiment import DEFAULT_E3
+        from ml_meta_perf.experiment import DEFAULT
 
         frame = load()
         self.features = DATASET_FEATURES + MODEL_FEATURES
@@ -448,8 +448,8 @@ class TestGrammarReach(unittest.TestCase):
             DATASET_FEATURES,
             MODEL_FEATURES,
             columns,
-            max_arity=DEFAULT_E3.max_arity,
-            max_abs_zscore=DEFAULT_E3.max_abs_zscore,
+            max_arity=DEFAULT.max_arity,
+            max_abs_zscore=DEFAULT.max_abs_zscore,
         )
 
     def test_a_feature_is_never_worse_after_the_grammar_than_before(self) -> None:
@@ -499,7 +499,7 @@ class TestSaturatedFit(unittest.TestCase):
     def setUpClass(cls) -> None:
         from ml_meta_perf.data import DATASET_COLUMN, DATASET_FEATURES, columns_as_arrays, groups, load
         from ml_meta_perf.data import target as load_target
-        from ml_meta_perf.experiment import DEFAULT_E3, EQUATION_MODEL_FEATURES
+        from ml_meta_perf.experiment import DEFAULT, EQUATION_MODEL_FEATURES
 
         frame = load()
         columns = columns_as_arrays(frame, DATASET_FEATURES + EQUATION_MODEL_FEATURES)
@@ -507,8 +507,8 @@ class TestSaturatedFit(unittest.TestCase):
             DATASET_FEATURES,
             EQUATION_MODEL_FEATURES,
             columns,
-            max_arity=DEFAULT_E3.max_arity,
-            max_abs_zscore=DEFAULT_E3.max_abs_zscore,
+            max_arity=DEFAULT.max_arity,
+            max_abs_zscore=DEFAULT.max_abs_zscore,
         )
         cls.result = saturated_fit(cls.library, load_target(frame), groups(frame, DATASET_COLUMN))
 

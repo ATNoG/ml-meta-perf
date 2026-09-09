@@ -92,7 +92,7 @@ A best practice is general, transferable advice that already circulates in the f
 
 #### 1. Characterise the dataset before choosing a model. What the data is like bounds what any model can reach, and that bound is usually the larger effect.
 
-**Verdict: supported.** Knowing only which dataset a row came from explains 35.4% of MCC variance; knowing only which model, 28.2%. The dataset side is also the better described: 12 dataset meta-features reach 98% of what dataset identity explains, while 6 model meta-features reach 88% of theirs. Both the effect and our ability to measure it favour the data.
+**Verdict: supported.** Knowing only which dataset a row came from explains 35.4% of MCC variance; knowing only which model, 28.2%. The dataset side is also the better described: 12 dataset meta-features reach 99% of what dataset identity explains, while 6 model meta-features reach 89% of theirs. Both the effect and our ability to measure it favour the data.
 
 *Practice from:* Zha et al., 'Data-centric Artificial Intelligence: A Survey', ACM Computing Surveys 57(5) (2025). The data-centric position holds that returns from improving data exceed returns from swapping architectures. It is an argument about where to spend effort.
 

@@ -172,10 +172,10 @@ class TestTheStudysOpaqueClaim(unittest.TestCase):
         to the equation. A claim about real estimators -- a double predicting a constant makes
         no positive calls at all and scores an undefined MCC -- so it lives here rather than
         with the plumbing."""
-        from ml_meta_perf.experiment import DEFAULT_E3, decision_baselines
+        from ml_meta_perf.experiment import DEFAULT, decision_baselines
 
         equation = self.equation
-        table = decision_baselines(self.frame, DEFAULT_E3, equation.paths.get("loo_dataset"), equation, _real_outcome())
+        table = decision_baselines(self.frame, DEFAULT, equation.paths.get("loo_dataset"), equation, _real_outcome())
         at_threshold = {
             row["predictor"]: float(row["mcc"]) for row in table.to_dicts() if abs(float(row["threshold"]) - 0.7) < 1e-9
         }
@@ -269,10 +269,10 @@ class TestDoublyHeldOut(unittest.TestCase):
                 self.assertLess(row["r2_loo_cell"], 0.1)
 
     def test_the_equation_beats_every_opaque_model_on_the_same_protocol(self) -> None:
-        from ml_meta_perf.experiment import DEFAULT_E3, doubly_held_out_predictions
+        from ml_meta_perf.experiment import DEFAULT, doubly_held_out_predictions
         from ml_meta_perf.stats import r2_score
 
-        predictions = doubly_held_out_predictions(self.frame, 3, DEFAULT_E3)
+        predictions = doubly_held_out_predictions(self.frame, 3, DEFAULT)
         assert predictions is not None
         equation = r2_score(target(self.frame), predictions)
         for label, row in self.rows.items():

@@ -45,8 +45,7 @@ search_grammars(frame)  ->  E3-Valid = arity 2, 15 terms
                             E3-MAX   = arity 3, 23 terms
 ```
 
-**C5 is done. C6 is the remaining cleanup** and C7 the rename. C6 *will* move E1's and E2's
-numbers, on purpose; C7 must not. Both are verified by snapshot-and-byte-compare.
+**C5 and C6 are done. C7, the rename, is what is left**, and it must move no number.
 
 ## The plan — C0 to C7
 
@@ -193,13 +192,43 @@ six chapters are identical before and after.
 and not onto E2, so `--penalty 3` does not reach it. That is where the three separately-tuned
 configurations left things rather than a decision, and C6 is what removes the asymmetry.
 
-**C6. One set of named constants feeding argparse**, with a comment recording that they are
-where the 2026-09 sweep landed: `PENALTY`, `MAX_ABS_ZSCORE`, `POOL_SIZE`, `BEAM_WIDTH`,
-`MAX_TERMS`, `ARITIES`. **Shared by all three equations** -- E1 and E2 carried their own
-(E1 at z-cap 3.0/penalty 20/pool 200, E2 at 3.0/5/100, against E3's 4.25/20/600) and no longer
-do. This *will* move E1's and E2's numbers, and that is the point: three hyperparameter sets
-meant the comparison between the equations was never quite like-for-like. Gone:
-`DEFAULT_E1`, `DEFAULT_E2`, `DEFAULT_E3`, `DEFAULT_E3_CAPABILITY`, `QUICK_E1`, `QUICK_E3`.
+**C6. Done, 2026-09-09.** One `Configuration`, `experiment.DEFAULT`, built from six named
+constants -- `PENALTY`, `MAX_ABS_ZSCORE`, `POOL_SIZE`, `BEAM_WIDTH`, `MAX_TERMS`, `ARITIES` --
+and fitted by all three equations. `DEFAULT_E1`, `DEFAULT_E2` and `DEFAULT_E3` are gone, and
+the constants are the argparse defaults, so `--help` states the tuned values instead of
+`None`. `cli.configurations` (a pair) became `cli.configuration` (one).
+
+The three sets were each defensible and together they broke the study's own claim -- that the
+equations "differ only in which features they may use", which is what makes the gaps between
+them evidence about the meta-data rather than about three tuning runs. E3 had a pool three
+times E1's and a horizon three times its own published length, and none of that was a finding.
+The shared values are E3's, because E3's are what a full sweep chose and the other two were
+swept by hand over narrower grids.
+
+**Measured, and this is the point of the step:**
+
+| | before | after |
+|---|---|---|
+| E3-Valid / E3-MAX | (2, 15) and (3, 23) | **unchanged to four decimals** |
+| E2 | 6 terms, in 0.2485 / lodo 0.1849 / lomo 0.2285 / cell 0.1724 | 6 terms, **0.2515 / 0.1931 / 0.2310 / 0.1813** |
+| E1 | 7 terms at arity 3, 0.3485 / 0.3411 / 0.3062 / 0.3049 | 10 terms at arity 2, 0.3506 / 0.3383 / 0.3077 / 0.3034 |
+| E1 fraction of own ceiling | 0.9848 | **0.9906** |
+| E2 fraction of own ceiling | 0.8808 | **0.8915** |
+
+E2's own tuning was costing it on every protocol. E1 moves by under 0.003 either way -- it is
+within 0.006 of its structural ceiling of 0.354 both before and after, which is what "E1 is
+done" means -- and its complexity `arity * n_terms` falls from 21 to 20. **Both controls got
+closer to their own ceilings, which is the comparable quantity** (`index.md` says so, and
+`CLAUDE.md` says so). Verified idempotent: two consecutive runs give identical chapters.
+
+**Found while doing it, not fixed:** `assets/docs/02-additive-model.md` argues in hand-written
+prose that "`max_arity = 3` is the default because it is the only setting that is not
+dominated", citing "the published 20-term E3" -- against a line 13 above it saying `DEFAULT`
+sets `max_arity=2`, and against an E3 that is 15 terms and whose arity is now *searched*
+rather than set. The chapter contradicts itself and the code. It predates the arity search
+(C2) and the derived length (C1); rewriting an argument a chapter makes is not a cleanup step
+and wants its own pass. It is the same failure the generated-section markers exist to prevent,
+in the half of the chapter the markers do not cover.
 
 **C7. Rename so the code says what the study claims** -- after C1-C6, as its own commit with no
 behaviour change. `fit.fit()` performs a *search* (a beam over term subsets) and uses a ridge
@@ -210,9 +239,10 @@ chapter 3 calls "term selection". Split into `search.py` (`guided_screen`, `Subs
 `to_equation`, `prune`). `search` imports from `fit`; that direction is correct and the
 docstring should say so rather than implying a clean layering.
 
-**How each step is checked.** C1-C3 are *meant* to move numbers, so the snapshot check does not
-apply. C4-C7 change nothing and are verified by snapshot-and-compare over `results/`,
-`assets/docs/` and all fourteen figures -- which the PDF determinism fix now makes possible.
+**How each step is checked.** C1-C3 and C6 are *meant* to move numbers, so for those the
+snapshot check is a diff read line by line rather than a byte compare. C4, C5 and C7 change
+nothing and are verified by byte-compare over `results/`, `assets/docs/` and all fourteen
+figures -- which the PDF determinism fix makes possible. C5 came out identical on all three.
 
 ## The selection rule -- REVISED 2026-09-08, and now n-free
 

@@ -731,29 +731,32 @@ Every model-side encoding the study tried and rejected was rejected for failing 
 
 E1 sees dataset meta-features only, so it can predict just one value per dataset; E2 sees model meta-features only. Together they show how much of MCC each half of the meta-data explains on its own.
 
-**E1** (7 terms):
+**E1** (10 terms):
 
 ```
-MCC = +1.24602
-      -0.109215 * [log(eq_num_attr)] * [log(nr_class)]            # beta=-0.1392
-      -0.0284191 * ([log(gravity)] + [log(nr_class)]) / [log(nr_attr)]  # beta=-0.1072
-      -0.415152 * ([log(eq_num_attr)] + [log(ns_ratio)]) / [log(nr_inst)]  # beta=-0.0860
-      -0.128423 * [nr_cor_attr] * [nr_norm]                       # beta=-0.0728
-      -0.00254076 * ([log(gravity)] + [nr_norm]) / [log(nr_class)]  # beta=-0.0523
-      +0.0272363 * ([nr_norm] + [log(ns_ratio)]) / [log(nr_attr)]  # beta=+0.0465
-      +0.0057269 * ([nr_bin] + [nr_norm]) / [log(nr_attr)]        # beta=+0.0342
+MCC = +1.10961
+      -0.0384221 * [log(gravity)] / [log(nr_attr)]                # beta=-0.1422
+      -0.0920537 * sqrt(eq_num_attr)                              # beta=-0.0962
+      -0.0671274 * [log(eq_num_attr)] * [log(nr_class)]           # beta=-0.0856
+      -0.12376 * [nr_cor_attr] * [nr_norm]                        # beta=-0.0701
+      +0.000175192 * [nr_bin] * [log(nr_inst)]                    # beta=+0.0559
+      -0.000120213 * [log(inst_to_attr)] * [nr_outliers]          # beta=-0.0444
+      +0.000891407 * [log(inst_to_attr)] * [nr_norm]              # beta=+0.0413
+      +0.257987 * [log(inst_to_attr)] / [log(nr_inst)]            # beta=+0.0351
+      +0.107512 * 1/ns_ratio                                      # beta=+0.0321
+      -0.318387 * [log(nr_class)] / [log(nr_inst)]                # beta=-0.0241
 ```
 
 **E2** (6 terms):
 
 ```
-MCC = +0.374877
-      +0.13883 * [log(Model Capability)] * [log(Processing Units Number)]  # beta=+0.2564
-      -0.268522 * log(Fitting Regime)                             # beta=-0.1359
-      -0.0315036 * Processing Units Number                        # beta=-0.1346
-      +0.101647 * [log(Fitting Regime)] * [log(Processing Units Number)]  # beta=+0.1183
-      +0.322689 * 1/Loss Margin Behaviour                         # beta=+0.0896
-      +0.231211 * [log(Loss Margin Behaviour)] / [Model Capability]  # beta=+0.0519
+MCC = +0.550917
+      +0.00473396 * Model Capability^2                            # beta=+0.1549
+      +0.372154 * 1/Loss Margin Behaviour                         # beta=+0.1034
+      -0.10871 * [log(Input Distribution Modelling)] * [log(Processing Units Number)]  # beta=-0.1004
+      -0.19829 * [log(Model Capability)] / [log(Processing Units Number)]  # beta=-0.0733
+      +0.106722 * [log(Input Distribution Modelling)] * [log(Model Capability)]  # beta=+0.0360
+      -0.00029715 * Processing Units Number^2                     # beta=-0.0264
 ```
 
 #### The capability variant, in full

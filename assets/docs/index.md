@@ -82,8 +82,8 @@ The one table the study is summarised by, so that the summary cannot drift from 
 
 | equation | features | terms | in-sample R2 | LOO-dataset R2 | LOO-model R2 | own ceiling | reached |
 |---|---|---|---|---|---|---|---|
-| E1 | dataset | 7 | 0.3485 | 0.3411 | 0.3062 | 0.3539 | 0.9848 |
-| E2 | model | 6 | 0.2485 | 0.1849 | 0.2285 | 0.2821 | 0.8808 |
+| E1 | dataset | 10 | 0.3506 | 0.3383 | 0.3077 | 0.3539 | 0.9906 |
+| E2 | model | 6 | 0.2515 | 0.1931 | 0.2310 | 0.2821 | 0.8915 |
 | E3 | both | 15 | 0.6578 | 0.6381 | 0.6218 |  |  |
 | E3 capability | both | 23 | 0.6751 | 0.6439 | 0.6327 |  |  |
 

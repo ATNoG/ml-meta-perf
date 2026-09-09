@@ -24,10 +24,10 @@ equation a practitioner can inspect, argue with, and derive guidance from.
 
 | | in-sample | LOO-dataset | LOO-model |
 |---|---|---|---|
-| E1 — dataset features only, 7 terms | 0.349 | 0.341 | 0.306 |
-| E2 — model features only, 6 terms | 0.248 | 0.185 | 0.228 |
+| E1 — dataset features only, 10 terms | 0.351 | 0.338 | 0.308 |
+| E2 — model features only, 6 terms | 0.252 | 0.193 | 0.231 |
 | **E3 — both, 15 terms** | **0.658** | **0.638** | **0.622** |
-| *E3 under the full grammar, 23 terms* | *0.707* | *0.678* | *0.651* |
+| *E3 under the full grammar, 23 terms* | *0.675* | *0.644* | *0.633* |
 
 The three equations differ only in which features they may draw on — **E1** sees the
 dataset, **E2** sees the model, **E3** sees both. All three are fitted on the same 476 rows
@@ -37,13 +37,13 @@ gaps between them measure the features and nothing else.
 **Their R² values share a scale but not a ceiling, and this is the most common way to
 misread the table.** E1 predicts one value per dataset, so 0.354 — the variance of the true
 per-dataset means — is the most it could *ever* reach, however good its terms were. E1 at
-0.349 is not "much worse than E3"; it is finished. The comparable quantity is the fraction
+0.351 is not "much worse than E3"; it is finished. The comparable quantity is the fraction
 of its own ceiling each equation attains:
 
 | | reached | its ceiling | fraction |
 |---|---|---|---|
-| E1 (dataset features) | 0.349 | 0.354 | **99%** |
-| E2 (model features) | 0.248 | 0.282 | **88%** |
+| E1 (dataset features) | 0.351 | 0.354 | **99%** |
+| E2 (model features) | 0.252 | 0.282 | **89%** |
 | E3 (both) | 0.658 | *see below* | — |
 
 E3 has no ceiling of that kind, because it is not constant within either group. The two

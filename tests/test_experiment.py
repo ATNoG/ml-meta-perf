@@ -20,7 +20,7 @@ from ml_meta_perf.data import (
     load,
 )
 from ml_meta_perf.experiment import (
-    DEFAULT_E3,
+    DEFAULT,
     baselines,
     comparison,
     correlation_analysis,
@@ -298,7 +298,7 @@ class TestDocumentedDefaults(unittest.TestCase):
     It stated four numbers that had all moved: 24 terms against 15, penalty 5 against 20,
     arity 3 against 2, z-cap 3.0 against 4.25. Nothing was checking, because the README is
     the one document the pipeline does not write -- so this reads the table and compares it
-    with `DEFAULT_E3` instead.
+    with `DEFAULT` instead.
     """
 
     #: The README flag whose default each `Configuration` field is published as.
@@ -328,7 +328,7 @@ class TestDocumentedDefaults(unittest.TestCase):
     def test_documented_defaults_match_the_configuration(self) -> None:
         for field, flag in self.FLAGS.items():
             with self.subTest(flag=flag):
-                actual = getattr(DEFAULT_E3, field)
+                actual = getattr(DEFAULT, field)
                 self.assertEqual(float(self.documented[flag]), float(actual))
 
 
