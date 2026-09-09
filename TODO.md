@@ -34,27 +34,23 @@ the corpus grows. See "The selection rule" below for the design, what was reject
 and the one disclosure still owed. **It is still committed, tested and unused** -- wiring it in
 is C1.
 
-### The one thing to pick up: C2
+### The one thing to pick up: C3
 
-**C1 and C4 are done (2026-09-09).** The length is derived per equation by
-`selection.floor_argmax` from that equation's own four-protocol curve, `EquationReport.n_terms`
-carries it, and `Configuration.headline_terms` and `--terms` are gone. It reproduces all four
-asserted lengths -- 7, 6, 15, 23 -- and moved no published output. Details under C1 below.
+**C0, C1, C2 and C4 are done.** The length is derived per grammar by
+`selection.floor_argmax`, the grammar is chosen across them by
+`selection.best_configuration`, and `experiment.search_grammars` is what runs both. Nothing in
+the study asserts an equation's shape any more.
 
-**`selection.best_configuration` is still unused, and C2 is what uses it.** Nothing searches
-the arity yet: E3 is fitted at arity 2 and the capability bound at arity 3, both fixed. C2
-makes that one search:
-
-```python
-from ml_meta_perf.selection import best_configuration, most_capable
-best_configuration(curves, errors)   # -> (2, 15)   E3-Valid, the study's equation
-most_capable(curves)                 # -> (3, 23)   E3-MAX, the capability bound
+```
+search_grammars(frame)  ->  E3-Valid = arity 2, 15 terms
+                            E3-MAX   = arity 3, 23 terms
 ```
 
-where `curves` is `{arity: EquationReport.curve}` for the default arities (2, 3) -- each now
-carrying `r2_loo_cell`, which C1 added -- and `errors` is
-`{arity: {n_terms: per-held-out-dataset MAE}}` under the doubly-held-out protocol, which
-`EquationReport.paths["loo_cell"]` now holds.
+**C3 is next**, and after C2 it is mostly a naming and routing question rather than new
+machinery: make sure every evaluation lands on E3-Valid and that E3-MAX is reported without
+being evaluated as a predictor. `Report.e3` and `Report.e3_capability` are already the two
+reports `search_grammars` returns, so the work is auditing the call sites rather than building
+anything.
 
 ## The plan — C0 to C7
 
@@ -108,11 +104,40 @@ sites take it from there -- 566/568 (protocol scores), 757/759 (decision report)
 (baselines). `length_comparison` already derives and keeps `headline_terms` only as a fallback;
 that fallback becomes `max(path)`. `Configuration.headline_terms` then has no readers and goes.
 
-**C2. Search the arity too.** `--arity` becomes a list, **default `(2, 3)`**: one `build_library`
-and one `fit` per arity, then `best_configuration` across the combined curves. Re-timed on
-2026-09-08 -- the arity-4 build is **1.3 s, not 22.8 s** (the old number was measured against
-the six-feature model pool; the equation's pool is four). The whole three-arity grid including
-all four protocols at all 32 lengths is **18 s**, against a 282 s run:
+**C2. Done, 2026-09-09.** `experiment.search_grammars` fits E3 once per arity and lets
+`best_configuration` pick; `ARITIES = (2, 3)` is the default and `--arity` is repeatable.
+`run_e3_capability`, `DEFAULT_E3_CAPABILITY` and `QUICK_E3_CAPABILITY` are gone --
+`Report.e3` and `Report.e3_capability` are now two entries from the same search.
+
+```
+arity  n_terms  complexity   floor   spread   gain   paired spread   ratio   role
+    2       15          30  0.6162   0.0416 0.0008          0.0049  0.1718   E3-Valid
+    3       23          69  0.6213   0.0539 0.0000          0.0000  0.0000   E3-MAX
+```
+
+That table is written as `results/grammars.csv` -- the rule's working, on the page, because a
+selection rule is only defensible if what it beats is visible.
+
+**The one number this moved, and it is the point of the change.** The capability bound used to
+be fitted at penalty 3 while the published equation was fitted at penalty 20, so
+"arity 3 reaches further" was a statement about two hyperparameter sets as much as about two
+grammars -- and `best_configuration` *compares* them. Every grammar is now fitted under one
+configuration with the arity the only difference. The bound is no longer allowed its own
+shrinkage and its in-sample R2 falls **0.7068 to 0.6751** (lodo 0.6781 to 0.6439, lomo 0.6512
+to 0.6327, cell 0.6495 to 0.6213). Its length is still 23 and it is still E3-MAX. **Anywhere
+the old capability numbers are quoted in prose, they are now wrong.**
+
+Verified otherwise unchanged by snapshot-and-byte-compare: `comparison.csv` is the *only*
+altered file, every equation and all fourteen figures identical, plus the new `grammars.csv`.
+
+**Equations are named for their role, not for the search.** `search_grammars` fits under
+`E3-arity{a}` and renames to `E3` and `E3-capability` once the rule has spoken, so `e3.json`
+keeps its identity. Without that the published equation's name changed to `E3-arity2_k15`,
+which the byte-comparison caught and no test would have.
+
+**Timing:** 14.0 s for the two-grammar search, against 9.7 s for the two hand-fixed runs it
+replaced. Re-timed on 2026-09-08, the arity-4 build is **1.3 s, not 22.8 s** (the old number
+was measured against the six-feature model pool; the equation's pool is four):
 
 | arity | library | build | fit | 3 protocols + cell |
 |---:|---:|---:|---:|---:|

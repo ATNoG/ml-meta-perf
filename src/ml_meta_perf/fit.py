@@ -141,9 +141,7 @@ def guided_screen(
     ranked_target = rankdata(target)
     ranked = rank_columns(matrix) if matrix.shape[0] > 1 else matrix
     linear = np.abs(pearson_columns(matrix, target))
-    monotone = (
-        np.abs(pearson_columns(ranked, ranked_target)) if matrix.shape[0] > 1 else np.zeros(matrix.shape[1])
-    )
+    monotone = np.abs(pearson_columns(ranked, ranked_target)) if matrix.shape[0] > 1 else np.zeros(matrix.shape[1])
     # A term that is only monotone is still useful, but it is preferred a little
     # less than an equally strong linear one: linear terms read more simply.
     strength = np.maximum(linear, monotone) - np.where(monotone - linear > linear_gap, 0.02, 0.0)
@@ -356,9 +354,7 @@ class Selector:
         candidates: int = CANDIDATE_POOL_DEFAULT,
         refine_rounds: int = REFINE_ROUNDS_DEFAULT,
     ) -> dict[int, Subset]:
-        """Return the best subset found at every size from 1 to ``max_terms``.
-
-        """
+        """Return the best subset found at every size from 1 to ``max_terms``."""
         available = np.array(pool)
         beam: list[Subset] = [Subset((), np.zeros(0), self.total)]
         best: dict[int, Subset] = {}
@@ -491,9 +487,7 @@ def fit(
     refine_rounds: int = REFINE_ROUNDS_DEFAULT,
     name: str = "equation",
 ) -> FitResult:
-    """Fit equations of every size up to ``max_terms`` over the given library.
-
-    """
+    """Fit equations of every size up to ``max_terms`` over the given library."""
     standardizer = Standardizer.fit(library.matrix)
     design = standardizer.apply(library.matrix)
     pool = guided_screen(library, target, keep=pool_size)

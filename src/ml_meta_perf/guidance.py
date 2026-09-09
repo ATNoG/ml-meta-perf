@@ -67,7 +67,6 @@ NOT_TESTED = "not tested"
 RAISES, LOWERS = "raises", "lowers"
 
 
-
 @dataclass(frozen=True)
 class Practice:
     """One general recommendation, and where it comes from."""
@@ -89,7 +88,6 @@ class Practice:
     #: family-level recommendation is a claim about *rows*, not about a coefficient, and
     #: `group_claims` is how those are checked.
     expectations: tuple[tuple[str, str], ...] = ()
-
 
 
 @dataclass(frozen=True)
@@ -182,9 +180,7 @@ RANKING_METRICS: tuple[str, ...] = ("ap", "mrr", "hit_at_1", "regret")
 def _mean_ranking(table: pl.DataFrame) -> dict[str, float]:
     """Mean of each ranking metric over the held-out groups."""
     return {
-        name: float(np.mean(table[name].to_numpy()))
-        for name in (*RANKING_METRICS, "spearman")
-        if name in table.columns
+        name: float(np.mean(table[name].to_numpy())) for name in (*RANKING_METRICS, "spearman") if name in table.columns
     }
 
 
@@ -798,9 +794,7 @@ def equation_evidence(report: Report, columns: dict[str, np.ndarray]) -> pl.Data
     rows: list[dict[str, object]] = []
     for practice in CATALOGUE:
         for feature, expected in practice.expectations:
-            carrying = [
-                (index, term) for index, term in enumerate(equation.terms) if feature in set(term.features)
-            ]
+            carrying = [(index, term) for index, term in enumerate(equation.terms) if feature in set(term.features)]
             if not carrying:
                 rows.append(
                     {
@@ -886,9 +880,7 @@ def equation_coverage(report: Report, columns: dict[str, np.ndarray]) -> dict[st
         # negatively-weighted ratio contributes more as its denominator grows, so a marginal
         # expectation about the feature can never match a term that only speaks about a ratio.
         "disagree_in_denominator": sum(
-            1
-            for row in evidence.to_dicts()
-            if row["agrees"] == "no" and row["position"] == "denominator"
+            1 for row in evidence.to_dicts() if row["agrees"] == "no" and row["position"] == "denominator"
         ),
         "terms": len(report.e3.equation.terms),
         "carrying_terms": len({term for term in evidence["term"].to_list() if term}),

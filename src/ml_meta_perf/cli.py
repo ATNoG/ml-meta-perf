@@ -26,6 +26,7 @@ import polars as pl
 
 from ml_meta_perf.data import DATASET_FEATURES, DEFAULT_PATH, MODEL_FEATURES, columns_as_arrays, load, target
 from ml_meta_perf.experiment import (
+    ARITIES,
     DEFAULT_E1,
     DEFAULT_E3,
     QUICK_E1,
@@ -167,8 +168,6 @@ def configurations(
         shared["max_abs_zscore"] = arguments.zscore
 
     e3_only: dict[str, object] = dict(shared)
-    if arguments.arity is not None:
-        e3_only["max_arity"] = arguments.arity
     if arguments.max_terms is not None:
         e3_only["max_terms"] = arguments.max_terms
 
@@ -203,6 +202,7 @@ def _save_tables(report: Report, folder: Path) -> list[Path]:
         "term_choice": report.term_choice,
         "length_choice": report.length_choice,
         "pareto": report.pareto,
+        "grammars": report.grammars,
     }
     if report.e3.stability is not None:
         tables["stability"] = report.e3.stability
@@ -258,7 +258,17 @@ def build_parser() -> argparse.ArgumentParser:
     # search *horizon*, which is a cost control and the range the reported curve covers.
     search.add_argument("--max-terms", type=int, default=None, help="longest equation the search explores")
     search.add_argument("--penalty", type=float, default=None, help="ridge penalty on standardised terms")
-    search.add_argument("--arity", type=int, choices=(1, 2, 3, 4), default=None, help="raw features per term")
+    # Repeatable, because the arity is searched rather than fixed: `--arity 2 --arity 3` is the
+    # default set and `--arity 4` narrows the search to the grammar the negatives were measured
+    # under. One value is a search over one grammar, which is what fixing the arity now means.
+    search.add_argument(
+        "--arity",
+        type=int,
+        choices=(1, 2, 3, 4),
+        action="append",
+        default=None,
+        help="raw features per term; repeat to search several grammars (default: 2 and 3)",
+    )
     search.add_argument("--pool", type=int, default=None, help="terms surviving screening into the beam")
     search.add_argument("--beam", type=int, default=None, help="beam width")
     search.add_argument(
@@ -294,6 +304,7 @@ def main(argv: list[str] | None = None) -> int:
         quick=arguments.quick,
         config_e1=config_e1,
         config_e3=config_e3,
+        arities=tuple(dict.fromkeys(arguments.arity)) if arguments.arity else ARITIES,
     )
     elapsed = time.perf_counter() - started
 

@@ -564,7 +564,10 @@ def ranking_quality(selection: pl.DataFrame, destination: str | Path) -> Path:
     positions = np.arange(table.height)
 
     figure, (axes, cost) = plt.subplots(
-        1, 2, figsize=(9.0, 0.34 * table.height + 1.8), sharey=True,
+        1,
+        2,
+        figsize=(9.0, 0.34 * table.height + 1.8),
+        sharey=True,
         gridspec_kw={"width_ratios": [2.1, 1.0], "wspace": 0.10},
     )
 
@@ -572,8 +575,17 @@ def ranking_quality(selection: pl.DataFrame, destination: str | Path) -> Path:
     axes.barh(positions + 0.19, table["mrr"], height=0.36, color=LOO_MODEL, label="reciprocal rank")
     hits = [index for index, value in enumerate(table["hit_at_1"]) if value >= 1.0]
     if hits:
-        axes.scatter([0.03] * len(hits), hits, marker="*", s=70, color="white",
-                     edgecolor="#333333", linewidth=0.7, zorder=5, label="best model ranked first")
+        axes.scatter(
+            [0.03] * len(hits),
+            hits,
+            marker="*",
+            s=70,
+            color="white",
+            edgecolor="#333333",
+            linewidth=0.7,
+            zorder=5,
+            label="best model ranked first",
+        )
     axes.set_yticks(positions)
     axes.set_yticklabels([_shorten(name, 24) for name in table["group"]], fontsize=8)
     axes.set_xlim(0.0, 1.0)

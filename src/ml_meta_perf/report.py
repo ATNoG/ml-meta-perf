@@ -695,9 +695,12 @@ def _coverage_note(report: Report, columns: dict[str, np.ndarray]) -> str:
         f"{counts['terms']} terms**, giving {counts['pairs']} directed (practice, term) "
         f"pairings: **{counts['agree']} come out the way the practice predicts and "
         f"{counts['disagree']} do not**"
-        + (f", with {counts['undirected']} pairing too weak to state a direction for and "
-           f"{counts['unselected']} claim resting on a feature the search never took.\n"
-           if counts["undirected"] or counts["unselected"] else ".\n"),
+        + (
+            f", with {counts['undirected']} pairing too weak to state a direction for and "
+            f"{counts['unselected']} claim resting on a feature the search never took.\n"
+            if counts["undirected"] or counts["unselected"]
+            else ".\n"
+        ),
     ]
     if counts["disagree"] and counts["disagree_in_denominator"] == counts["disagree"]:
         lines.append(
@@ -990,10 +993,7 @@ def _protocol_note(report: Report) -> str:
     rank_rows = {str(row["predictor"]): row for row in ranking.to_dicts()}
     mid = sorted({float(value) for value in decision["threshold"]})
     threshold = mid[len(mid) // 2]
-    dec_rows = {
-        str(row["predictor"]): row
-        for row in decision.filter(pl.col("threshold") == threshold).to_dicts()
-    }
+    dec_rows = {str(row["predictor"]): row for row in decision.filter(pl.col("threshold") == threshold).to_dicts()}
 
     lines = [
         "The ranking and the go/no-go decision are reported with **both the dataset and the "
@@ -1505,7 +1505,7 @@ def render(
     parts.append(_table(report.decision) + "\n")
     parts.append(
         "`majority` is the floor any such rule has to clear. The harder comparison is a "
-        "predictor that answers \"how well does this model usually do\", thresholded the same "
+        'predictor that answers "how well does this model usually do", thresholded the same '
         "way — at both centres, for the reason the error metrics report both:\n"
     )
     parts.append(_table(report.decision_baselines) + "\n")
@@ -1515,8 +1515,7 @@ def render(
     parts.append("Ranking models within a held-out dataset:\n")
     regret = float(np.mean(report.selection["regret"].to_numpy()))
     parts.append(
-        f"- mean top-1 regret **{regret:.3f}** MCC — what you "
-        "give up by taking the model the equation ranks first\n"
+        f"- mean top-1 regret **{regret:.3f}** MCC — what you give up by taking the model the equation ranks first\n"
     )
     parts.append(_table(report.ranking_baselines) + "\n")
     parts.append(_ranking_verdict(report.ranking_baselines))
@@ -1595,14 +1594,20 @@ CHAPTER_SECTIONS: dict[str, tuple[str, ...]] = {
     # evaluation. `term_choice` and the length note were rendered into two chapters at once
     # until 2026-09-07, which is most of what made chapters 4 and 5 read as repetitive.
     "03-term-selection.md": ("3b. Why a subset rather than every term", "8. Equation length"),
-    "04-equation.md": ("2. The equation", "3c. How far the form could reach", "4. Equation analysis",
-                       "4b. The ceiling on model descriptors",
-                       "9. The dataset-only and model-only controls"),
-    "05-evaluation.md": ("3. How well it does", "6. Acting on it",
-                        "6b. What an opaque model reaches, and does not",
-                        "7. Why a random split is not a protocol"),
-    "06-practices.md": ("5. Best practices", "5b. The measurements underneath",
-                        "5c. Reading a single prediction"),
+    "04-equation.md": (
+        "2. The equation",
+        "3c. How far the form could reach",
+        "4. Equation analysis",
+        "4b. The ceiling on model descriptors",
+        "9. The dataset-only and model-only controls",
+    ),
+    "05-evaluation.md": (
+        "3. How well it does",
+        "6. Acting on it",
+        "6b. What an opaque model reaches, and does not",
+        "7. Why a random split is not a protocol",
+    ),
+    "06-practices.md": ("5. Best practices", "5b. The measurements underneath", "5c. Reading a single prediction"),
 }
 
 #: The markers a generated block sits between. Everything between them is replaced on every
@@ -1671,8 +1676,14 @@ def write_into_chapters(
     property the separate report chapter existed to guarantee.
     """
     text = render(
-        report, columns, truth, dataset_features, model_features,
-        frame=frame, config=config, source=source,
+        report,
+        columns,
+        truth,
+        dataset_features,
+        model_features,
+        frame=frame,
+        config=config,
+        source=source,
     )
     available = sections(text)
     folder = Path(docs)

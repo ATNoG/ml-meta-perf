@@ -15,6 +15,7 @@ prose, with the figures.
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -38,7 +39,17 @@ from ml_meta_perf.model import Equation
 from ml_meta_perf.opaque import OpaqueRun, estimators
 from ml_meta_perf.opaque import evaluate as opaque_evaluate
 from ml_meta_perf.practices import best_practices
-from ml_meta_perf.selection import floor_argmax, pareto_table, recommend
+from ml_meta_perf.selection import (
+    best_configuration,
+    complexity,
+    floor_argmax,
+    floor_curve,
+    grammar_margin,
+    most_capable,
+    pareto_table,
+    protocol_spread,
+    recommend,
+)
 from ml_meta_perf.stats import mae, r2_score
 from ml_meta_perf.terms import Library, build_library
 from ml_meta_perf.validate import (
@@ -191,20 +202,15 @@ DEFAULT_E2 = Configuration(max_abs_zscore=3.0, penalty=5.0, pool_size=100, max_t
 # either published length.
 DEFAULT_E3 = Configuration(max_abs_zscore=4.25, penalty=20.0, pool_size=600, max_terms=25, max_arity=2)
 
-# The same corpus and the same four features under the **full** grammar, arity 3. It is the
-# more accurate equation and it is reported beside the published one to show how far the
-# additive form reaches when brevity is not traded for: 23 terms, and on the 2026-09-07 sweep
-# the best leave-one-dataset-out of any configuration searched.
-#
-# Both lengths come from one rule -- `selection.best_length`, the argmax of the consensus
-# curve -- applied under each grammar. Neither 15 nor 23 is written down; both fall out.
-#
-# What it costs is what the published equation is buying. Twenty-three terms over a grammar
-# that also admits `(f1+f2)/f3` is a longer and less readable statement, and its form is far
-# less stable: terms reselect in roughly a seventh of the folds against the published
-# equation's third, and form stability is what licenses fixing the form at all. So this is
-# reported as a *capability measurement* rather than as the study's recommendation.
-DEFAULT_E3_CAPABILITY = Configuration(max_abs_zscore=4.25, penalty=3.0, pool_size=600, max_terms=25, max_arity=3)
+#: The grammars the arity search covers, and the default for ``--arity``.
+#:
+#: **Arity 4 is deliberately out.** Its candidate is (4, 15) at floor 0.6071 -- worse than
+#: arity 2's on all four protocols, twice the complexity, never selected, and about 6.6 s a
+#: run to compute. It stays reachable through the flag because ``max_arity = 4`` is a recorded
+#: negative a reader may want to reproduce, and because a search that cannot be widened is not
+#: a search. Arity 1 is admissible too and is never worth a default: a grammar with no products
+#: cannot express the conditional claims the whole study is about.
+ARITIES: tuple[int, ...] = (2, 3)
 
 #: The model features the **equation** may build terms from.
 #:
@@ -446,15 +452,111 @@ def run_e2(frame: pl.DataFrame, config: Configuration = DEFAULT_E2) -> EquationR
     return run_equation(frame, (), MODEL_FEATURES, config, "E2")
 
 
-def run_e3_capability(frame: pl.DataFrame, config: Configuration = DEFAULT_E3_CAPABILITY) -> EquationReport:
-    """The same features under the full grammar: how far the additive form reaches.
+@dataclass(frozen=True)
+class GrammarSearch:
+    """One fit per grammar, and the rule's verdict over them.
 
-    Not the study's recommendation and not what the chapters analyse term by term. It exists
-    so that the published equation's accuracy can be read against what the *form* could do
-    rather than only against oracles and baselines -- the question "is the additive model out
-    of room, or is this equation short of it" needs an answer, and this is it.
+    Replaces the pair of hand-fixed configurations the study used to carry -- E3 at arity 2 and
+    a capability bound at arity 3, each with its own penalty. Two grammars fitted under two
+    different penalties cannot be compared, and `selection.best_configuration` compares them,
+    so the arity is now the only thing that differs between the runs.
     """
-    return run_equation(frame, DATASET_FEATURES, EQUATION_MODEL_FEATURES, config, "E3-capability", SWEEP_SIZES)
+
+    #: One `EquationReport` per arity searched, each already at its own derived length.
+    reports: dict[int, EquationReport]
+    #: The arity `selection.best_configuration` chose: the study's published equation.
+    valid: int
+    #: The arity `selection.most_capable` chose: how far the additive form reaches.
+    maximum: int
+    #: One row per grammar, with the floor, the spread, and the margin against the best. The
+    #: rule's working shown, because a selection rule is only defensible if what it beats is
+    #: on the page.
+    candidates: pl.DataFrame
+
+
+def search_grammars(
+    frame: pl.DataFrame,
+    config: Configuration = DEFAULT_E3,
+    arities: tuple[int, ...] = ARITIES,
+) -> GrammarSearch:
+    """Fit E3 once per grammar and let the rule pick, instead of fixing the arity by hand.
+
+    **Every grammar is fitted under the same configuration bar the arity.** That is the point:
+    the study used to fit its published equation at arity 2 with penalty 20 and its capability
+    bound at arity 3 with penalty 3, and a comparison between two equations tuned differently
+    is not a comparison. It moves the bound's numbers -- it is no longer allowed its own
+    shrinkage -- and what it buys is that "arity 3 reaches further" becomes a statement about
+    the grammar rather than about two hyperparameter sets.
+
+    The length inside each grammar is `selection.floor_argmax`, applied by `run_equation`; the
+    grammar across them is `selection.best_configuration`. Both read the same `floor_curve`, so
+    ``reports[a].n_terms`` is exactly the candidate length the configuration rule sees.
+    """
+    reports = {
+        arity: run_equation(
+            frame,
+            DATASET_FEATURES,
+            EQUATION_MODEL_FEATURES,
+            dataclasses.replace(config, max_arity=arity),
+            f"E3-arity{arity}",
+            SWEEP_SIZES,
+        )
+        for arity in arities
+    }
+    curves = {arity: report.curve for arity, report in reports.items()}
+    truth = target(frame)
+    datasets = groups(frame, DATASET_COLUMN)
+    folds = [test for _, _, test in leave_one_group_out(datasets)]
+    # Per-held-out-dataset error under the strictest protocol, which is what `grammar_margin`
+    # pairs on. No refitting: `run_equation` already computed this path at every length.
+    errors = {
+        arity: {
+            size: np.array([mae(truth[test], outcome.predictions[test]) for test in folds])
+            for size, outcome in report.paths["loo_cell"].items()
+        }
+        for arity, report in reports.items()
+    }
+    valid_arity, valid_size = best_configuration(curves, errors)
+    max_arity, max_size = most_capable(curves)
+
+    # Named for the role the rule gave them, not for the grammar they were searched under. The
+    # arity is a search detail; "E3" and "E3-capability" are what the chapters and the saved
+    # equations refer to, and they must not change name because the search that found them did.
+    # `maximum` first so that a corpus where one grammar wins both leaves the published name.
+    for arity, role in ((max_arity, "E3-capability"), (valid_arity, "E3")):
+        report = reports[arity]
+        report.equation = dataclasses.replace(
+            report.equation, name=report.equation.name.replace(f"E3-arity{arity}", role)
+        )
+
+    reference = errors[max_arity][max_size]
+    rows: list[dict[str, object]] = []
+    for arity in sorted(reports):
+        size = reports[arity].n_terms
+        position = list(curves[arity]["n_terms"]).index(size)
+        gain, scale, ratio = grammar_margin(errors[arity][size], reference)
+        roles = [
+            name
+            for name, chosen in (
+                ("E3-Valid", (arity, size) == (valid_arity, valid_size)),
+                ("E3-MAX", arity == max_arity),
+            )
+            if chosen
+        ]
+        rows.append(
+            {
+                "arity": arity,
+                "n_terms": size,
+                "complexity": complexity(arity, size),
+                "floor": float(floor_curve(curves[arity])[position]),
+                "spread": float(protocol_spread(curves[arity])[position]),
+                "gain_over_it": gain,
+                "paired_spread": scale,
+                "ratio": ratio,
+                "role": " + ".join(roles) or "not selected",
+            }
+        )
+    return GrammarSearch(reports=reports, valid=valid_arity, maximum=max_arity, candidates=pl.DataFrame(rows))
 
 
 def run_e3(frame: pl.DataFrame, config: Configuration = DEFAULT_E3) -> EquationReport:
@@ -756,7 +858,11 @@ def comparison(
             *(
                 [
                     {
-                        "equation": f"E3 capability, arity 3 ({len(e3_capability.equation.terms)} terms)",
+                        "equation": (
+                            f"E3 capability, arity "
+                            f"{max((len(term.features) for term in e3_capability.equation.terms), default=0)}"
+                            f" ({len(e3_capability.equation.terms)} terms)"
+                        ),
                         "n_terms": len(e3_capability.equation.terms),
                         **score(truth, e3_capability.equation.predict(columns)).as_dict(),
                     }
@@ -1110,8 +1216,14 @@ class Report:
     e3: EquationReport
     e2: EquationReport
     #: The same features under the full grammar (arity 3). Reported to show how far the
-    #: additive form reaches, not as the study's recommendation. See `run_e3_capability`.
+    #: additive form reaches, not as the study's recommendation. See `search_grammars`.
+    #: **It is the same object as `e3` when the rule picks one grammar for both**, which is a
+    #: legitimate outcome: the bound and the equation coincide when the larger grammar earns
+    #: nothing.
     e3_capability: EquationReport
+    #: One row per grammar searched, with the floor, the spread and the margin against the
+    #: best -- `search_grammars` shows the rule's working.
+    grammars: pl.DataFrame
     practices: pl.DataFrame
     effects: pl.DataFrame
     shares: pl.DataFrame
@@ -1180,7 +1292,6 @@ QUICK_STAGES = 5
 #: capability bound that dropped to the parsimonious grammar would not be checking its own
 #: wiring.
 QUICK_E2 = Configuration(max_abs_zscore=3.0, penalty=5.0, pool_size=40, max_terms=3, max_arity=2)
-QUICK_E3_CAPABILITY = Configuration(max_abs_zscore=3.0, penalty=3.0, pool_size=40, max_terms=3, max_arity=3)
 
 
 def run(
@@ -1189,6 +1300,7 @@ def run(
     quick: bool = False,
     config_e1: Configuration | None = None,
     config_e3: Configuration | None = None,
+    arities: tuple[int, ...] = ARITIES,
 ) -> Report:
     """Run the whole study.
 
@@ -1201,10 +1313,14 @@ def run(
     config_e1 = config_e1 or (QUICK_E1 if quick else DEFAULT_E1)
     config_e3 = config_e3 or (QUICK_E3 if quick else DEFAULT_E3)
     e1 = run_e1(frame, config_e1)
-    e3 = run_e3(frame, config_e3)
+    # One fit per grammar and the rule picks, rather than two hand-fixed arities. `e3` and
+    # `e3_capability` are both drawn from this: the same search, the same configuration, the
+    # arity the only difference between them.
+    grammars = search_grammars(frame, config_e3, arities)
+    e3 = grammars.reports[grammars.valid]
+    e3_capability = grammars.reports[grammars.maximum]
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
     e2 = run_e2(frame, QUICK_E2 if quick else DEFAULT_E2)
-    e3_capability = run_e3_capability(frame, QUICK_E3_CAPABILITY if quick else DEFAULT_E3_CAPABILITY)
     reach, ceiling = reach_analysis(frame, config_e3)
     # Fitted once and shared: the folds are the expensive part, and the regression table and
     # the two decision comparisons have to be scored from the same predictions or they can
@@ -1217,6 +1333,7 @@ def run(
         e2=e2,
         e3=e3,
         e3_capability=e3_capability,
+        grammars=grammars.candidates,
         practices=best_practices(e3.equation, columns, e3.stability),
         effects=term_effects(e3.equation, columns, DATASET_FEATURES, MODEL_FEATURES),
         shares=group_shares(e3.equation, columns, DATASET_FEATURES, MODEL_FEATURES),

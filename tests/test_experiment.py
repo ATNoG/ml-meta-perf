@@ -250,6 +250,7 @@ class TestCli(unittest.TestCase):
             e2=e2,
             e3=e3,
             e3_capability=e3,
+            grammars=pl.DataFrame(),
             practices=best_practices(e3.equation, cols, e3.stability),
             effects=term_effects(e3.equation, cols, DATASET_FEATURES, MODEL_FEATURES),
             shares=group_shares(e3.equation, cols, DATASET_FEATURES, MODEL_FEATURES),

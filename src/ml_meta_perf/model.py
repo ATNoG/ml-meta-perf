@@ -116,6 +116,7 @@ class Equation:
 def _escape(name: str) -> str:
     return name.replace("_", r"\_").replace("^", r"\^{}")
 
+
 #: How a term's direction is written in every exported table.
 #:
 #: One spelling, in one place, because `attribution.term_effects` and `report` both write a
