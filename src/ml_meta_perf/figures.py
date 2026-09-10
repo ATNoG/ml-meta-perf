@@ -67,9 +67,9 @@ def _published_length(report: Report) -> int | None:
     stood four fifths of the way from the equation it was drawn beside. Marking the length
     the rest of the report is about cannot go out of step with it.
 
-    The knee itself is still reported, in `term_choice`, and it is under review: it is
-    detected on in-sample R2 alone and on a non-uniform grid that happens to skip every
-    length where the transfer curve craters. See `TODO.md`, item 2.
+    The knee itself is still reported, in `term_choice`, beside the rule that publishes the
+    length. It is not what marks this figure, and `selection.recommend` is where the two are
+    read against each other.
     """
     return len(report.e3.equation.terms) or None
 

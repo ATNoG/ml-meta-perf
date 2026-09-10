@@ -102,8 +102,7 @@ buys for that is eight fewer terms and a far more stable form.
 > **Status:** research prototype for an academic study. 476 rows is small, and every number
 > is reported both in-sample and under held-out cross-validation because at this size the two
 > differ a lot. The full configuration sweep is done and the equation's length and grammar are
-> both derived from its result rather than asserted; current open work is in
-> **[`TODO.md`](TODO.md)**.
+> both derived from its result rather than asserted.
 
 ## Documentation
 

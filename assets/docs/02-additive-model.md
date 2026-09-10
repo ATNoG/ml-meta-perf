@@ -140,7 +140,8 @@ dataset on mean absolute error under the strictest protocol. It gains 0.0008 the
 bootstrap spread of 0.0049 over the same folds — a ratio of 0.17 where the bar is 1. Half a
 percent of R², carried by folds that disagree with each other five times as loudly as the
 gain, does not buy a grammar with 2.3× the complexity. `selection.grammar_margin` computes
-that ratio and `TODO.md` records the alternatives that were tried and rejected.
+that ratio, and `tests/test_selection.py` pins the alternatives that were tried and rejected
+on the way to it.
 
 **The search does use the third arity when it is offered, which is why the bound is worth
 reporting.** In E3-MAX the three-feature `sum_ratio` carries 10 of the 23 terms and **44% of

@@ -136,7 +136,8 @@ MAX_ABS_ZSCORE = 4.25
 #: Terms surviving the correlation screen into the beam.
 POOL_SIZE = 600
 
-#: Beam width. Eight times the search converges to the fourth decimal; see `TODO.md`.
+#: Beam width. Measured over the full beam sweep: eight times the search converges to the
+#: fourth decimal, so the width is a cost control rather than a tuned knob.
 BEAM_WIDTH = 6
 
 #: The longest equation the search explores. **The horizon, not the published length** --

@@ -534,8 +534,9 @@ def _prefer_outlier_robust_learners(evidence: Evidence) -> Verdict:
     answers "do outliers hurt?" and not "does robustness help?". Re-pointing the check at
     it would produce a verdict that reads as though the practice had been tested.
 
-    Nor can it be recovered: no model may be re-run and no descriptor measured (`TODO.md`),
-    so the only route left is asserting a robustness ordinal from the literature, which
+    Nor can it be recovered: no model may be re-run and no descriptor measured under this
+    study's standing constraints, so the only route left is asserting a robustness ordinal
+    from the literature, which
     would test the assertion rather than the practice. This returns `NOT_TESTED`
     unconditionally and says why, which is the honest report of a practice this study
     cannot weigh.
