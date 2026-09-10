@@ -31,10 +31,10 @@ adjusted-consensus rule that priced a feature slot by `n` is gone; `best_configu
 floor-curve argmax per grammar followed by a paired test across grammars. It still derives
 (2, 15) and (3, 23), it still has no free parameter, and it can no longer flip its verdict as
 the corpus grows. See "The selection rule" below for the design, what was rejected on the way,
-and the one disclosure still owed. **It is still committed, tested and unused** -- wiring it in
-is C1.
+**It is wired in** -- `experiment.search_grammars` calls it, and C1 through C3 are what
+connected it.
 
-### The one thing to pick up: C5
+### Where this stands
 
 **C0 through C4 are done.** Nothing in the study asserts an equation's shape any more: the
 length is derived per grammar by `selection.floor_argmax`, the grammar across them by
@@ -45,9 +45,10 @@ search_grammars(frame)  ->  E3-Valid = arity 2, 15 terms
                             E3-MAX   = arity 3, 23 terms
 ```
 
-**C0 through C7 are done.** What is left is listed under "Still open" further down: the
-documentation replacement, the multiple-comparisons disclosure, and a chapter that
-contradicts itself (see C6).
+**C0 through C7 are done, and so is the documentation pass.** The repo-side work this branch
+existed for is finished: the study is derived end to end, the suite is a 44-second gate, CI
+runs, and `main` reproduces its own chapters byte-for-byte. **Everything still listed under
+"Open" below is research**, not cleanup.
 
 ## The documentation pass, 2026-09-09
 
@@ -403,11 +404,17 @@ test, deliberately: the standing warning here is that the paired test *under*-ca
 once scored a 0.203 collapse of leave-one-dataset-out R2 as a tie. Read the ratio beside
 `floor_curve` and `protocol_spread`, never instead of them.
 
-**STILL OWED, and unchanged by the revision:** this rule was also written knowing the answer it
-had to reproduce. What is now defensible is the shape -- no free parameter, no corpus size, a
-length by argmax and a grammar by a test that fires. What it has **not** had is a corpus whose
-right answer is unknown. Disclose the provenance in the chapter, alongside the
-multiple-comparisons disclosure.
+**Where the answer came from, stated correctly** (this paragraph said the opposite until
+2026-09-10, and the owner corrected it): the equation was **found** by the Slurm sweeps --
+job 15335, 48,576 configurations, and job 15337, 728,640 beam policies. It was not known in
+advance and nothing was close to it. Those sweeps are the search this study performed, and
+their result is the finding.
+
+What `best_configuration` does is *state the criterion the sweeps established*, in a form that
+runs in seconds and has no free parameter, no corpus size and no threshold. Deriving the same
+(2, 15) and (3, 23) is the check that the rule captures the criterion -- a rule that disagreed
+with the sweep would be the thing to worry about. That is a code-level property and it is what
+C1-C3 wired in.
 
 ### Why (2, 15) and not (3, 23): consistency, measured
 
@@ -792,7 +799,8 @@ way, or to accept the clip and justify it prominently in chapter 5.
 
 ## Open, in the order it is worth picking up
 
-1. **C1 through C7 above** -- the CLI and selection rebuild. C1 is the next commit.
+1. ~~**C1 through C7** -- the CLI and selection rebuild.~~ **Done, 2026-09-09**, and merged to
+   `main` in PR #2 on 2026-09-10 with CI green on 3.12 and 3.14 for the first time.
 2. **The model-descriptor question, which is the study's live problem.**
    The identity ceiling is +0.050, not the +0.017 the chapter recorded, and it was settled by
    the study's own paired test rather than by judgement: a per-model **level** is a tie, and a
@@ -804,11 +812,12 @@ way, or to accept the clip and justify it prominently in chapter 5.
    probing therefore stops being future work and becomes the next step** — see "When the
    meta-dataset can be recomputed", Group A, which is costed and specific.
 
-3. **The documentation replacement** -- six chapters, everything regenerated here, plus the
-   multiple-comparisons disclosure missing from both branches. See "Documentation" above.
-4. **Open a PR and let CI run.** Nothing has ever run on a runner, and this branch has changed
-   the dependency set twice: scikit-learn became a base dependency on 2026-09-07, joblib on
-   2026-09-08. Deliberately deferred, not forgotten.
+3. ~~**The documentation replacement.**~~ **Done, 2026-09-09.** Six chapters, everything
+   regenerated, four stale hand-written copies of generated tables replaced by pointers. See
+   "The documentation pass" above.
+4. ~~**Open a PR and let CI run.**~~ **Done, 2026-09-10** -- PR #2, green on 3.12 and 3.14.
+   The workflow had been passing `--report`, a flag that never existed, so the reproduction
+   step exited 2 on argparse every time and nothing had ever run on a runner to notice.
 5. **Chapter 6's practice catalogue.** The verdicts are regenerated and each practice is paired
    with the terms carrying it, but only 3 of the 10 make a claim any term can answer -- the rest
    are about a protocol, a metric, or a family of learners. The ten were chosen before that
