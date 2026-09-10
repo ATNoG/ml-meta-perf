@@ -30,6 +30,7 @@ from ml_meta_perf.data import (
     MODEL_ORDINALS,
     load,
 )
+from ml_meta_perf.experiment import EQUATION_MODEL_FEATURES
 from tests import corpus
 
 
@@ -161,9 +162,10 @@ class TestIdentification(unittest.TestCase):
         self.assertLess(distinct, self.frame[MODEL_COLUMN].n_unique())
 
     def test_dropping_the_identification_only_columns_costs_identification(self) -> None:
-        # `Solution Stochasticity` and `Loss Margin Behaviour` earn their place here rather
-        # than in the fit. Without them the corpus stops naming its own learners.
-        reduced = [name for name in MODEL_FEATURES if name not in ("Solution Stochasticity", "Loss Margin Behaviour")]
+        # The corrected-corpus sweep omits two descriptors from E3 for compression. They still
+        # earn their place in the corpus because the retained subset does not identify every
+        # learner by itself.
+        reduced = list(EQUATION_MODEL_FEATURES)
         ambiguous = 0
         for _, rows in self.frame.group_by(DATASET_COLUMN):
             counts = rows.group_by(reduced).len()

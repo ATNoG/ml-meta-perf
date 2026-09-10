@@ -53,6 +53,15 @@ def _show(frame: pl.DataFrame) -> None:
         print(frame)
 
 
+def _configure_windows_output() -> None:
+    """Keep Polars' Unicode table borders printable under a legacy Windows code page."""
+    if sys.platform != "win32":
+        return
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if callable(reconfigure):
+        reconfigure(encoding="utf-8", errors="replace")
+
+
 def render(
     report: Report,
     phases: frozenset[str] = frozenset(PHASES),
@@ -287,6 +296,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _configure_windows_output()
     arguments = build_parser().parse_args(argv)
     phases = frozenset(PHASES) if not arguments.phase or "all" in arguments.phase else frozenset(arguments.phase)
 

@@ -151,7 +151,7 @@ class Evidence:
         """The R2 of a row of `comparison`, matched by prefix.
 
         By prefix because the labels carry their term count -- for example, "E3, dataset +
-        model (12 terms)" -- and that count moves whenever the configuration does. Matching the whole
+        model" -- and that count moves whenever the configuration does. Matching the whole
         string would make every caller here break on a change that is not about them.
         """
         matched = self.comparison.filter(pl.col("equation").str.starts_with(equation))

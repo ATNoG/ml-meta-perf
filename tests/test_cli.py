@@ -23,7 +23,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
-from ml_meta_perf.cli import arities, build_parser, configuration, main, render
+from ml_meta_perf.cli import _configure_windows_output, arities, build_parser, configuration, main, render
 from ml_meta_perf.experiment import ARITIES, DEFAULT
 from ml_meta_perf.model import Equation
 from ml_meta_perf.report import BEGIN, END
@@ -63,6 +63,14 @@ class TestFlags(unittest.TestCase):
         parser = build_parser()
         with self.assertRaises(SystemExit):
             parser.parse_args(["--terms", "12"])
+
+    def test_windows_output_is_reconfigured_for_unicode_tables(self) -> None:
+        stream = mock.Mock()
+        with mock.patch("ml_meta_perf.cli.sys.platform", "win32"), mock.patch(
+            "ml_meta_perf.cli.sys.stdout", stream
+        ):
+            _configure_windows_output()
+        stream.reconfigure.assert_called_once_with(encoding="utf-8", errors="replace")
 
 
 class CliTestCase(unittest.TestCase):

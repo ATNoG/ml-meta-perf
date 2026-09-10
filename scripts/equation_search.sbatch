@@ -11,11 +11,20 @@
 #SBATCH --partition=cpuPartition
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=62
-#SBATCH --time=24:00:00
+#SBATCH --cpus-per-task=60
+#SBATCH --time=48:00:00
 #SBATCH --mem-per-cpu=1G
 #SBATCH --output=slurm-%x-%j.out
 #SBATCH --error=slurm-%x-%j.out
+
+seff --monitor --interval 10 &
+MONITOR_PID=$!
+
+cleanup() {
+    kill "$MONITOR_PID" 2>/dev/null || true
+    wait "$MONITOR_PID" 2>/dev/null || true
+}
+trap cleanup EXIT
 
 set -euo pipefail
 cd "$SLURM_SUBMIT_DIR"

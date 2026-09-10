@@ -1,0 +1,962 @@
+=== 2026-09-10T16:23:06+00:00 node=atari job=15343 cores=60 ===
+numpy 2.5.3 polars 1.44.2 joblib 1.6.0
+sweep: 0 complete, 684 pending library points
+[Parallel(n_jobs=60)]: Using backend LokyBackend with 60 concurrent workers.
+sweep: wrote library point 0
+sweep: wrote library point 2
+sweep: wrote library point 12
+sweep: wrote library point 24
+sweep: wrote library point 36
+sweep: wrote library point 14
+sweep: wrote library point 4
+[Parallel(n_jobs=60)]: Done   8 tasks      | elapsed:  1.3min
+sweep: wrote library point 26
+sweep: wrote library point 10
+sweep: wrote library point 38
+sweep: wrote library point 48
+sweep: wrote library point 16
+sweep: wrote library point 6
+sweep: wrote library point 8
+sweep: wrote library point 20
+sweep: wrote library point 18
+sweep: wrote library point 28
+sweep: wrote library point 50
+sweep: wrote library point 32
+sweep: wrote library point 40
+sweep: wrote library point 30
+sweep: wrote library point 52
+sweep: wrote library point 34
+sweep: wrote library point 42
+[Parallel(n_jobs=60)]: Done  25 tasks      | elapsed:  1.5min
+sweep: wrote library point 46
+sweep: wrote library point 44
+sweep: wrote library point 22
+sweep: wrote library point 54
+sweep: wrote library point 56
+sweep: wrote library point 58
+sweep: wrote library point 1
+sweep: wrote library point 13
+sweep: wrote library point 25
+sweep: wrote library point 3
+sweep: wrote library point 15
+sweep: wrote library point 37
+sweep: wrote library point 49
+sweep: wrote library point 27
+sweep: wrote library point 5
+sweep: wrote library point 39
+sweep: wrote library point 9
+[Parallel(n_jobs=60)]: Done  42 tasks      | elapsed:  2.0min
+sweep: wrote library point 17
+sweep: wrote library point 7
+sweep: wrote library point 29
+sweep: wrote library point 11
+sweep: wrote library point 51
+sweep: wrote library point 19
+sweep: wrote library point 21
+sweep: wrote library point 31
+sweep: wrote library point 23
+sweep: wrote library point 33
+sweep: wrote library point 60
+sweep: wrote library point 41
+sweep: wrote library point 35
+sweep: wrote library point 43
+sweep: wrote library point 72
+sweep: wrote library point 45
+sweep: wrote library point 62
+sweep: wrote library point 53
+sweep: wrote library point 47
+[Parallel(n_jobs=60)]: Done  61 tasks      | elapsed:  2.5min
+sweep: wrote library point 55
+sweep: wrote library point 64
+sweep: wrote library point 74
+sweep: wrote library point 84
+sweep: wrote library point 76
+sweep: wrote library point 66
+sweep: wrote library point 78
+sweep: wrote library point 68
+sweep: wrote library point 57
+sweep: wrote library point 80
+sweep: wrote library point 70
+sweep: wrote library point 59
+sweep: wrote library point 82
+sweep: wrote library point 88
+sweep: wrote library point 86
+sweep: wrote library point 61
+sweep: wrote library point 90
+sweep: wrote library point 73
+sweep: wrote library point 96
+[Parallel(n_jobs=60)]: Done  80 tasks      | elapsed:  2.9min
+sweep: wrote library point 92
+sweep: wrote library point 98
+sweep: wrote library point 63
+sweep: wrote library point 94
+sweep: wrote library point 85
+sweep: wrote library point 75
+sweep: wrote library point 100
+sweep: wrote library point 108
+sweep: wrote library point 102
+sweep: wrote library point 97
+sweep: wrote library point 104
+sweep: wrote library point 87
+sweep: wrote library point 77
+sweep: wrote library point 106
+sweep: wrote library point 110
+sweep: wrote library point 65
+sweep: wrote library point 112
+sweep: wrote library point 79
+sweep: wrote library point 67
+sweep: wrote library point 120
+sweep: wrote library point 81
+[Parallel(n_jobs=60)]: Done 101 tasks      | elapsed:  3.7min
+sweep: wrote library point 109
+sweep: wrote library point 99
+sweep: wrote library point 114
+sweep: wrote library point 83
+sweep: wrote library point 69
+sweep: wrote library point 89
+sweep: wrote library point 71
+sweep: wrote library point 122
+sweep: wrote library point 118
+sweep: wrote library point 124
+sweep: wrote library point 116
+sweep: wrote library point 111
+sweep: wrote library point 126
+sweep: wrote library point 132
+sweep: wrote library point 134
+sweep: wrote library point 130
+sweep: wrote library point 128
+sweep: wrote library point 91
+sweep: wrote library point 121
+sweep: wrote library point 136
+sweep: wrote library point 113
+[Parallel(n_jobs=60)]: Done 122 tasks      | elapsed:  4.1min
+sweep: wrote library point 101
+sweep: wrote library point 93
+sweep: wrote library point 138
+sweep: wrote library point 95
+sweep: wrote library point 144
+sweep: wrote library point 103
+sweep: wrote library point 123
+sweep: wrote library point 140
+sweep: wrote library point 105
+sweep: wrote library point 107
+sweep: wrote library point 142
+sweep: wrote library point 115
+sweep: wrote library point 133
+sweep: wrote library point 117
+sweep: wrote library point 146
+sweep: wrote library point 125
+sweep: wrote library point 156
+sweep: wrote library point 148
+sweep: wrote library point 135
+sweep: wrote library point 119
+sweep: wrote library point 150
+sweep: wrote library point 145
+sweep: wrote library point 158
+[Parallel(n_jobs=60)]: Done 145 tasks      | elapsed:  4.8min
+sweep: wrote library point 152
+sweep: wrote library point 168
+sweep: wrote library point 160
+sweep: wrote library point 154
+sweep: wrote library point 127
+sweep: wrote library point 170
+sweep: wrote library point 129
+sweep: wrote library point 131
+sweep: wrote library point 162
+sweep: wrote library point 164
+sweep: wrote library point 166
+sweep: wrote library point 137
+sweep: wrote library point 147
+sweep: wrote library point 157
+sweep: wrote library point 172
+sweep: wrote library point 180
+sweep: wrote library point 139
+sweep: wrote library point 169
+sweep: wrote library point 176
+sweep: wrote library point 182
+sweep: wrote library point 159
+sweep: wrote library point 174
+sweep: wrote library point 178
+[Parallel(n_jobs=60)]: Done 168 tasks      | elapsed:  5.5min
+sweep: wrote library point 184
+sweep: wrote library point 141
+sweep: wrote library point 149
+sweep: wrote library point 192
+sweep: wrote library point 143
+sweep: wrote library point 186
+sweep: wrote library point 181
+sweep: wrote library point 161
+sweep: wrote library point 151
+sweep: wrote library point 188
+sweep: wrote library point 194
+sweep: wrote library point 171
+sweep: wrote library point 190
+sweep: wrote library point 153
+sweep: wrote library point 196
+sweep: wrote library point 163
+sweep: wrote library point 165
+sweep: wrote library point 155
+sweep: wrote library point 193
+sweep: wrote library point 183
+sweep: wrote library point 204
+sweep: wrote library point 198
+sweep: wrote library point 167
+sweep: wrote library point 206
+sweep: wrote library point 200
+[Parallel(n_jobs=60)]: Done 193 tasks      | elapsed:  6.0min
+sweep: wrote library point 202
+sweep: wrote library point 173
+sweep: wrote library point 195
+sweep: wrote library point 208
+sweep: wrote library point 185
+sweep: wrote library point 216
+sweep: wrote library point 210
+sweep: wrote library point 214
+sweep: wrote library point 212
+sweep: wrote library point 205
+sweep: wrote library point 218
+sweep: wrote library point 187
+sweep: wrote library point 197
+sweep: wrote library point 189
+sweep: wrote library point 179
+sweep: wrote library point 207
+sweep: wrote library point 177
+sweep: wrote library point 220
+sweep: wrote library point 175
+sweep: wrote library point 201
+sweep: wrote library point 191
+sweep: wrote library point 222
+sweep: wrote library point 199
+sweep: wrote library point 224
+sweep: wrote library point 203
+[Parallel(n_jobs=60)]: Done 218 tasks      | elapsed:  6.6min
+sweep: wrote library point 228
+sweep: wrote library point 217
+sweep: wrote library point 209
+sweep: wrote library point 226
+sweep: wrote library point 230
+sweep: wrote library point 232
+sweep: wrote library point 219
+sweep: wrote library point 211
+sweep: wrote library point 240
+sweep: wrote library point 213
+sweep: wrote library point 234
+sweep: wrote library point 236
+sweep: wrote library point 242
+sweep: wrote library point 238
+sweep: wrote library point 229
+sweep: wrote library point 244
+sweep: wrote library point 215
+sweep: wrote library point 252
+sweep: wrote library point 246
+sweep: wrote library point 221
+sweep: wrote library point 254
+sweep: wrote library point 241
+sweep: wrote library point 250
+sweep: wrote library point 248
+sweep: wrote library point 223
+sweep: wrote library point 256
+sweep: wrote library point 253
+[Parallel(n_jobs=60)]: Done 245 tasks      | elapsed:  7.4min
+sweep: wrote library point 258
+sweep: wrote library point 231
+sweep: wrote library point 243
+sweep: wrote library point 264
+sweep: wrote library point 260
+sweep: wrote library point 225
+sweep: wrote library point 262
+sweep: wrote library point 266
+sweep: wrote library point 268
+sweep: wrote library point 227
+sweep: wrote library point 255
+sweep: wrote library point 276
+sweep: wrote library point 270
+sweep: wrote library point 233
+sweep: wrote library point 278
+sweep: wrote library point 245
+sweep: wrote library point 272
+sweep: wrote library point 265
+sweep: wrote library point 235
+sweep: wrote library point 280
+sweep: wrote library point 274
+sweep: wrote library point 237
+sweep: wrote library point 288
+sweep: wrote library point 257
+sweep: wrote library point 247
+sweep: wrote library point 282
+sweep: wrote library point 277
+[Parallel(n_jobs=60)]: Done 272 tasks      | elapsed:  8.1min
+sweep: wrote library point 267
+sweep: wrote library point 290
+sweep: wrote library point 239
+sweep: wrote library point 286
+sweep: wrote library point 249
+sweep: wrote library point 259
+sweep: wrote library point 284
+sweep: wrote library point 251
+sweep: wrote library point 279
+sweep: wrote library point 292
+sweep: wrote library point 261
+sweep: wrote library point 289
+sweep: wrote library point 294
+sweep: wrote library point 269
+sweep: wrote library point 300
+sweep: wrote library point 263
+sweep: wrote library point 302
+sweep: wrote library point 296
+sweep: wrote library point 298
+sweep: wrote library point 291
+sweep: wrote library point 281
+sweep: wrote library point 304
+sweep: wrote library point 271
+sweep: wrote library point 283
+sweep: wrote library point 306
+sweep: wrote library point 293
+sweep: wrote library point 301
+sweep: wrote library point 308
+sweep: wrote library point 273
+[Parallel(n_jobs=60)]: Done 301 tasks      | elapsed:  8.8min
+sweep: wrote library point 312
+sweep: wrote library point 310
+sweep: wrote library point 295
+sweep: wrote library point 275
+sweep: wrote library point 314
+sweep: wrote library point 285
+sweep: wrote library point 287
+sweep: wrote library point 303
+sweep: wrote library point 316
+sweep: wrote library point 324
+sweep: wrote library point 297
+sweep: wrote library point 299
+sweep: wrote library point 318
+sweep: wrote library point 320
+sweep: wrote library point 336
+sweep: wrote library point 326
+sweep: wrote library point 305
+sweep: wrote library point 313
+sweep: wrote library point 338
+sweep: wrote library point 328
+sweep: wrote library point 322
+sweep: wrote library point 330
+sweep: wrote library point 340
+sweep: wrote library point 325
+sweep: wrote library point 332
+sweep: wrote library point 307
+sweep: wrote library point 342
+sweep: wrote library point 315
+sweep: wrote library point 334
+[Parallel(n_jobs=60)]: Done 330 tasks      | elapsed:  9.5min
+sweep: wrote library point 337
+sweep: wrote library point 309
+sweep: wrote library point 348
+sweep: wrote library point 344
+sweep: wrote library point 327
+sweep: wrote library point 346
+sweep: wrote library point 350
+sweep: wrote library point 317
+sweep: wrote library point 311
+sweep: wrote library point 360
+sweep: wrote library point 339
+sweep: wrote library point 352
+sweep: wrote library point 329
+sweep: wrote library point 354
+sweep: wrote library point 349
+sweep: wrote library point 319
+sweep: wrote library point 362
+sweep: wrote library point 341
+sweep: wrote library point 356
+sweep: wrote library point 358
+sweep: wrote library point 331
+sweep: wrote library point 372
+sweep: wrote library point 364
+sweep: wrote library point 321
+sweep: wrote library point 361
+sweep: wrote library point 351
+sweep: wrote library point 335
+sweep: wrote library point 366
+sweep: wrote library point 345
+sweep: wrote library point 323
+sweep: wrote library point 333
+[Parallel(n_jobs=60)]: Done 361 tasks      | elapsed: 10.2min
+sweep: wrote library point 368
+sweep: wrote library point 370
+sweep: wrote library point 343
+sweep: wrote library point 374
+sweep: wrote library point 347
+sweep: wrote library point 363
+sweep: wrote library point 376
+sweep: wrote library point 378
+sweep: wrote library point 384
+sweep: wrote library point 380
+sweep: wrote library point 353
+sweep: wrote library point 365
+sweep: wrote library point 373
+sweep: wrote library point 386
+sweep: wrote library point 382
+sweep: wrote library point 388
+sweep: wrote library point 355
+sweep: wrote library point 359
+sweep: wrote library point 375
+sweep: wrote library point 390
+sweep: wrote library point 396
+sweep: wrote library point 392
+sweep: wrote library point 367
+sweep: wrote library point 385
+sweep: wrote library point 369
+sweep: wrote library point 357
+sweep: wrote library point 377
+sweep: wrote library point 394
+sweep: wrote library point 398
+sweep: wrote library point 400
+sweep: wrote library point 371
+[Parallel(n_jobs=60)]: Done 392 tasks      | elapsed: 11.0min
+sweep: wrote library point 387
+sweep: wrote library point 408
+sweep: wrote library point 402
+sweep: wrote library point 379
+sweep: wrote library point 381
+sweep: wrote library point 397
+sweep: wrote library point 404
+sweep: wrote library point 406
+sweep: wrote library point 389
+sweep: wrote library point 383
+sweep: wrote library point 410
+sweep: wrote library point 420
+sweep: wrote library point 412
+sweep: wrote library point 422
+sweep: wrote library point 414
+sweep: wrote library point 399
+sweep: wrote library point 416
+sweep: wrote library point 391
+sweep: wrote library point 424
+sweep: wrote library point 418
+sweep: wrote library point 395
+sweep: wrote library point 409
+sweep: wrote library point 432
+sweep: wrote library point 393
+sweep: wrote library point 434
+sweep: wrote library point 426
+sweep: wrote library point 428
+sweep: wrote library point 421
+sweep: wrote library point 401
+sweep: wrote library point 430
+sweep: wrote library point 436
+sweep: wrote library point 438
+sweep: wrote library point 444
+[Parallel(n_jobs=60)]: Done 425 tasks      | elapsed: 11.9min
+sweep: wrote library point 411
+sweep: wrote library point 446
+sweep: wrote library point 440
+sweep: wrote library point 433
+sweep: wrote library point 423
+sweep: wrote library point 442
+sweep: wrote library point 403
+sweep: wrote library point 448
+sweep: wrote library point 405
+sweep: wrote library point 450
+sweep: wrote library point 413
+sweep: wrote library point 435
+sweep: wrote library point 456
+sweep: wrote library point 407
+sweep: wrote library point 425
+sweep: wrote library point 445
+sweep: wrote library point 458
+sweep: wrote library point 454
+sweep: wrote library point 452
+sweep: wrote library point 460
+sweep: wrote library point 417
+sweep: wrote library point 427
+sweep: wrote library point 437
+sweep: wrote library point 468
+sweep: wrote library point 462
+sweep: wrote library point 415
+sweep: wrote library point 429
+sweep: wrote library point 464
+sweep: wrote library point 447
+sweep: wrote library point 419
+sweep: wrote library point 457
+sweep: wrote library point 470
+sweep: wrote library point 466
+[Parallel(n_jobs=60)]: Done 458 tasks      | elapsed: 12.8min
+sweep: wrote library point 472
+sweep: wrote library point 431
+sweep: wrote library point 439
+sweep: wrote library point 474
+sweep: wrote library point 459
+sweep: wrote library point 441
+sweep: wrote library point 480
+sweep: wrote library point 469
+sweep: wrote library point 443
+sweep: wrote library point 476
+sweep: wrote library point 449
+sweep: wrote library point 482
+sweep: wrote library point 478
+sweep: wrote library point 461
+sweep: wrote library point 484
+sweep: wrote library point 471
+sweep: wrote library point 451
+sweep: wrote library point 488
+sweep: wrote library point 486
+sweep: wrote library point 481
+sweep: wrote library point 490
+sweep: wrote library point 492
+sweep: wrote library point 473
+sweep: wrote library point 494
+sweep: wrote library point 453
+sweep: wrote library point 463
+sweep: wrote library point 455
+sweep: wrote library point 475
+sweep: wrote library point 496
+sweep: wrote library point 465
+sweep: wrote library point 477
+sweep: wrote library point 483
+sweep: wrote library point 498
+sweep: wrote library point 504
+sweep: wrote library point 500
+[Parallel(n_jobs=60)]: Done 493 tasks      | elapsed: 13.6min
+sweep: wrote library point 502
+sweep: wrote library point 479
+sweep: wrote library point 493
+sweep: wrote library point 467
+sweep: wrote library point 516
+sweep: wrote library point 485
+sweep: wrote library point 506
+sweep: wrote library point 508
+sweep: wrote library point 518
+sweep: wrote library point 514
+sweep: wrote library point 510
+sweep: wrote library point 512
+sweep: wrote library point 520
+sweep: wrote library point 487
+sweep: wrote library point 495
+sweep: wrote library point 522
+sweep: wrote library point 505
+sweep: wrote library point 489
+sweep: wrote library point 528
+sweep: wrote library point 524
+sweep: wrote library point 491
+sweep: wrote library point 526
+sweep: wrote library point 517
+sweep: wrote library point 530
+sweep: wrote library point 507
+sweep: wrote library point 497
+sweep: wrote library point 532
+sweep: wrote library point 540
+sweep: wrote library point 519
+sweep: wrote library point 509
+sweep: wrote library point 534
+sweep: wrote library point 536
+sweep: wrote library point 499
+sweep: wrote library point 538
+sweep: wrote library point 529
+[Parallel(n_jobs=60)]: Done 528 tasks      | elapsed: 14.5min
+sweep: wrote library point 521
+sweep: wrote library point 501
+sweep: wrote library point 511
+sweep: wrote library point 552
+sweep: wrote library point 553
+sweep: wrote library point 542
+sweep: wrote library point 544
+sweep: wrote library point 513
+sweep: wrote library point 554
+sweep: wrote library point 546
+sweep: wrote library point 515
+sweep: wrote library point 548
+sweep: wrote library point 523
+sweep: wrote library point 531
+sweep: wrote library point 525
+sweep: wrote library point 541
+sweep: wrote library point 503
+sweep: wrote library point 550
+sweep: wrote library point 527
+sweep: wrote library point 556
+sweep: wrote library point 558
+sweep: wrote library point 564
+sweep: wrote library point 543
+sweep: wrote library point 560
+sweep: wrote library point 566
+sweep: wrote library point 533
+sweep: wrote library point 562
+sweep: wrote library point 555
+sweep: wrote library point 568
+sweep: wrote library point 535
+sweep: wrote library point 545
+sweep: wrote library point 570
+sweep: wrote library point 537
+sweep: wrote library point 557
+sweep: wrote library point 576
+sweep: wrote library point 572
+sweep: wrote library point 539
+[Parallel(n_jobs=60)]: Done 565 tasks      | elapsed: 15.4min
+sweep: wrote library point 547
+sweep: wrote library point 574
+sweep: wrote library point 549
+sweep: wrote library point 551
+sweep: wrote library point 565
+sweep: wrote library point 590
+sweep: wrote library point 578
+sweep: wrote library point 567
+sweep: wrote library point 588
+sweep: wrote library point 559
+sweep: wrote library point 580
+sweep: wrote library point 582
+sweep: wrote library point 561
+sweep: wrote library point 584
+sweep: wrote library point 577
+sweep: wrote library point 563
+sweep: wrote library point 600
+sweep: wrote library point 586
+sweep: wrote library point 569
+sweep: wrote library point 592
+sweep: wrote library point 602
+sweep: wrote library point 604
+sweep: wrote library point 579
+sweep: wrote library point 594
+sweep: wrote library point 596
+sweep: wrote library point 589
+sweep: wrote library point 601
+sweep: wrote library point 606
+sweep: wrote library point 598
+sweep: wrote library point 612
+sweep: wrote library point 573
+sweep: wrote library point 608
+sweep: wrote library point 571
+sweep: wrote library point 591
+sweep: wrote library point 614
+sweep: wrote library point 575
+sweep: wrote library point 610
+sweep: wrote library point 603
+sweep: wrote library point 581
+sweep: wrote library point 616
+sweep: wrote library point 593
+sweep: wrote library point 624
+sweep: wrote library point 613
+sweep: wrote library point 618
+sweep: wrote library point 583
+sweep: wrote library point 605
+sweep: wrote library point 620
+sweep: wrote library point 626
+sweep: wrote library point 622
+sweep: wrote library point 595
+sweep: wrote library point 628
+sweep: wrote library point 597
+sweep: wrote library point 587
+sweep: wrote library point 630
+sweep: wrote library point 636
+sweep: wrote library point 585
+sweep: wrote library point 625
+sweep: wrote library point 615
+sweep: wrote library point 607
+sweep: wrote library point 632
+sweep: wrote library point 634
+sweep: wrote library point 638
+sweep: wrote library point 609
+sweep: wrote library point 599
+sweep: wrote library point 640
+sweep: wrote library point 611
+sweep: wrote library point 627
+sweep: wrote library point 648
+sweep: wrote library point 637
+[Parallel(n_jobs=60)]: Done 634 out of 684 | elapsed: 17.0min remaining:  1.3min
+sweep: wrote library point 642
+sweep: wrote library point 644
+sweep: wrote library point 617
+sweep: wrote library point 650
+sweep: wrote library point 639
+sweep: wrote library point 646
+sweep: wrote library point 652
+sweep: wrote library point 629
+sweep: wrote library point 631
+sweep: wrote library point 619
+sweep: wrote library point 649
+sweep: wrote library point 661
+sweep: wrote library point 641
+sweep: wrote library point 660
+sweep: wrote library point 654
+sweep: wrote library point 662
+sweep: wrote library point 621
+sweep: wrote library point 672
+sweep: wrote library point 656
+sweep: wrote library point 633
+sweep: wrote library point 658
+sweep: wrote library point 635
+sweep: wrote library point 623
+sweep: wrote library point 664
+sweep: wrote library point 674
+sweep: wrote library point 651
+sweep: wrote library point 666
+sweep: wrote library point 678
+sweep: wrote library point 643
+sweep: wrote library point 663
+sweep: wrote library point 668
+sweep: wrote library point 647
+sweep: wrote library point 670
+sweep: wrote library point 645
+sweep: wrote library point 676
+sweep: wrote library point 680
+sweep: wrote library point 673
+sweep: wrote library point 653
+sweep: wrote library point 682
+sweep: wrote library point 655
+sweep: wrote library point 675
+sweep: wrote library point 657
+sweep: wrote library point 671
+sweep: wrote library point 667
+sweep: wrote library point 665
+sweep: wrote library point 659
+sweep: wrote library point 677
+sweep: wrote library point 669
+sweep: wrote library point 679
+sweep: wrote library point 681
+[Parallel(n_jobs=60)]: Done 684 out of 684 | elapsed: 18.0min finished
+sweep: wrote library point 683
+validate: 0 complete, 158 pending base settings
+[Parallel(n_jobs=60)]: Using backend LokyBackend with 60 concurrent workers.
+validate: wrote base setting 56
+validate: wrote base setting 18
+validate: wrote base setting 13
+validate: wrote base setting 45
+validate: wrote base setting 15
+[Parallel(n_jobs=60)]: Done   8 tasks      | elapsed:    6.2s
+validate: wrote base setting 19
+validate: wrote base setting 17
+validate: wrote base setting 25
+validate: wrote base setting 47
+[Parallel(n_jobs=60)]: Done  25 tasks      | elapsed:    6.4s
+validate: wrote base setting 38
+validate: wrote base setting 16
+validate: wrote base setting 14
+validate: wrote base setting 27
+validate: wrote base setting 39
+validate: wrote base setting 48
+validate: wrote base setting 11
+validate: wrote base setting 8
+validate: wrote base setting 12
+[Parallel(n_jobs=60)]: Done  55 out of 158 | elapsed:    6.8s remaining:   12.7s
+validate: wrote base setting 50
+validate: wrote base setting 59
+validate: wrote base setting 31
+validate: wrote base setting 51
+validate: wrote base setting 40
+validate: wrote base setting 35
+validate: wrote base setting 7
+validate: wrote base setting 34
+validate: wrote base setting 43
+validate: wrote base setting 28
+validate: wrote base setting 55
+validate: wrote base setting 10
+validate: wrote base setting 36
+validate: wrote base setting 20
+validate: wrote base setting 30
+validate: wrote base setting 4
+validate: wrote base setting 22
+validate: wrote base setting 32
+validate: wrote base setting 9
+validate: wrote base setting 46
+validate: wrote base setting 58
+validate: wrote base setting 21
+validate: wrote base setting 26
+validate: wrote base setting 41
+validate: wrote base setting 44
+validate: wrote base setting 6
+validate: wrote base setting 2
+validate: wrote base setting 33
+validate: wrote base setting 54
+validate: wrote base setting 37
+validate: wrote base setting 57
+validate: wrote base setting 0
+validate: wrote base setting 3
+validate: wrote base setting 5
+validate: wrote base setting 53
+validate: wrote base setting 29
+validate: wrote base setting 1
+validate: wrote base setting 52
+validate: wrote base setting 49
+validate: wrote base setting 24
+validate: wrote base setting 42
+validate: wrote base setting 23
+validate: wrote base setting 60
+validate: wrote base setting 61
+validate: wrote base setting 62
+validate: wrote base setting 63
+validate: wrote base setting 66
+validate: wrote base setting 64
+[Parallel(n_jobs=60)]: Done  71 out of 158 | elapsed:   12.4s remaining:   15.2s
+validate: wrote base setting 69
+validate: wrote base setting 93
+validate: wrote base setting 65
+validate: wrote base setting 76
+validate: wrote base setting 72
+validate: wrote base setting 83
+[Parallel(n_jobs=60)]: Done  87 out of 158 | elapsed:   12.8s remaining:   10.4s
+validate: wrote base setting 67
+validate: wrote base setting 73
+validate: wrote base setting 81
+validate: wrote base setting 82
+validate: wrote base setting 77
+[Parallel(n_jobs=60)]: Done 103 out of 158 | elapsed:   13.0s remaining:    6.9s
+validate: wrote base setting 71
+validate: wrote base setting 100
+validate: wrote base setting 79
+validate: wrote base setting 80
+validate: wrote base setting 75
+validate: wrote base setting 68
+validate: wrote base setting 74
+validate: wrote base setting 101
+validate: wrote base setting 70
+validate: wrote base setting 90
+validate: wrote base setting 94
+validate: wrote base setting 99
+validate: wrote base setting 96
+validate: wrote base setting 98
+validate: wrote base setting 102
+validate: wrote base setting 78
+validate: wrote base setting 89
+validate: wrote base setting 103
+validate: wrote base setting 86
+validate: wrote base setting 111
+validate: wrote base setting 109
+validate: wrote base setting 87
+validate: wrote base setting 106
+validate: wrote base setting 97
+validate: wrote base setting 85
+validate: wrote base setting 104
+validate: wrote base setting 110
+validate: wrote base setting 95
+validate: wrote base setting 88
+validate: wrote base setting 105
+validate: wrote base setting 92
+validate: wrote base setting 84
+validate: wrote base setting 107
+validate: wrote base setting 108
+validate: wrote base setting 113
+validate: wrote base setting 91
+validate: wrote base setting 115
+validate: wrote base setting 114
+validate: wrote base setting 116
+validate: wrote base setting 112
+validate: wrote base setting 119
+[Parallel(n_jobs=60)]: Done 119 out of 158 | elapsed:   13.9s remaining:    4.6s
+validate: wrote base setting 117
+validate: wrote base setting 120
+validate: wrote base setting 118
+validate: wrote base setting 121
+validate: wrote base setting 127
+validate: wrote base setting 129
+validate: wrote base setting 126
+validate: wrote base setting 130
+validate: wrote base setting 125
+validate: wrote base setting 134
+validate: wrote base setting 140
+validate: wrote base setting 153
+validate: wrote base setting 145
+validate: wrote base setting 137
+validate: wrote base setting 128
+[Parallel(n_jobs=60)]: Done 135 out of 158 | elapsed:   16.2s remaining:    2.8s
+validate: wrote base setting 123
+validate: wrote base setting 152
+validate: wrote base setting 157
+validate: wrote base setting 122
+validate: wrote base setting 144
+validate: wrote base setting 136
+validate: wrote base setting 133
+validate: wrote base setting 148
+validate: wrote base setting 143
+validate: wrote base setting 155
+validate: wrote base setting 142
+validate: wrote base setting 135
+validate: wrote base setting 124
+validate: wrote base setting 146
+validate: wrote base setting 131
+validate: wrote base setting 156
+validate: wrote base setting 132
+[Parallel(n_jobs=60)]: Done 151 out of 158 | elapsed:   17.3s remaining:    0.8s
+validate: wrote base setting 149
+validate: wrote base setting 139
+validate: wrote base setting 138
+validate: wrote base setting 141
+validate: wrote base setting 150
+validate: wrote base setting 147
+validate: wrote base setting 154
+[Parallel(n_jobs=60)]: Done 158 out of 158 | elapsed:   17.5s finished
+validate: wrote base setting 151
+{
+  "selection": "E3-MAX maximises the four-protocol R2 floor; E3-Valid shares its base settings and uses gain/paired bootstrap spread <= 1.",
+  "e3_valid": {
+    "base_id": 54,
+    "features": "[\"Fitting Regime\",\"Loss Margin Behaviour\",\"Model Capability\",\"Processing Units Number\"]",
+    "n_features": 4,
+    "penalty": 1.0,
+    "max_abs_zscore": 5.0,
+    "max_arity": 3,
+    "requested_terms": 25,
+    "n_terms": 25,
+    "complexity": 75,
+    "objective": 0.6491387259662686,
+    "in_sample_r2": 0.7193798768516936,
+    "loo_dataset_r2": 0.691108193175609,
+    "loo_model_r2": 0.6553632644390537,
+    "loo_cell_r2": 0.6553553869821371,
+    "four_protocol_floor": 0.6553553869821371,
+    "stability": 0.278,
+    "terms": "[\"[log(class_ent)] * [log(nr_class)]\", \"[log(inst_to_attr)] * [log(nr_class)]\", \"[nr_cor_attr] * [nr_norm]\", \"[log(nr_inst)] * [nr_norm]\", \"[log(Fitting Regime)] * [log(Model Capability)]\", \"[log(eq_num_attr)] * [log(Model Capability)]\", \"[log(gravity)] * [log(Loss Margin Behaviour)]\", \"[log(gravity)] * [log(Model Capability)]\", \"[nr_cor_attr] / [Fitting Regime]\", \"[nr_cor_attr] / [log(Processing Units Number)]\", \"[nr_norm] * [log(Model Capability)]\", \"([log(class_ent)] + [log(inst_to_attr)]) / [log(eq_num_attr)]\", \"([log(class_ent)] + [log(ns_ratio)]) / [Loss Margin Behaviour]\", \"([log(class_ent)] + [log(Loss Margin Behaviour)]) / [log(eq_num_attr)]\", \"([log(class_ent)] + [log(Processing Units Number)]) / [Fitting Regime]\", \"([log(class_ent)] + [log(Processing Units Number)]) / [Loss Margin Behaviour]\", \"([log(eq_num_attr)] + [log(gravity)]) / [log(nr_inst)]\", \"([log(eq_num_attr)] + [log(ns_ratio)]) / [log(nr_class)]\", \"([log(gravity)] + [log(Loss Margin Behaviour)]) / [Fitting Regime]\", \"([log(inst_to_attr)] + [log(Model Capability)]) / [log(Processing Units Number)]\", \"([log(nr_class)] + [log(Loss Margin Behaviour)]) / [Fitting Regime]\", \"([log(nr_class)] + [log(Loss Margin Behaviour)]) / [log(Processing Units Number)]\", \"([nr_cor_attr] + [log(ns_ratio)]) / [log(Processing Units Number)]\", \"([log(ns_ratio)] + [log(Fitting Regime)]) / [log(eq_num_attr)]\", \"([log(Loss Margin Behaviour)] + [log(Model Capability)]) / [Fitting Regime]\"]"
+  },
+  "e3_max": {
+    "base_id": 54,
+    "features": "[\"Fitting Regime\",\"Loss Margin Behaviour\",\"Model Capability\",\"Processing Units Number\"]",
+    "n_features": 4,
+    "penalty": 1.0,
+    "max_abs_zscore": 5.0,
+    "max_arity": 3,
+    "requested_terms": 25,
+    "n_terms": 25,
+    "complexity": 75,
+    "objective": 0.6491387259662686,
+    "in_sample_r2": 0.7193798768516936,
+    "loo_dataset_r2": 0.691108193175609,
+    "loo_model_r2": 0.6553632644390537,
+    "loo_cell_r2": 0.6553553869821371,
+    "four_protocol_floor": 0.6553553869821371,
+    "stability": 0.278,
+    "terms": "[\"[log(class_ent)] * [log(nr_class)]\", \"[log(inst_to_attr)] * [log(nr_class)]\", \"[nr_cor_attr] * [nr_norm]\", \"[log(nr_inst)] * [nr_norm]\", \"[log(Fitting Regime)] * [log(Model Capability)]\", \"[log(eq_num_attr)] * [log(Model Capability)]\", \"[log(gravity)] * [log(Loss Margin Behaviour)]\", \"[log(gravity)] * [log(Model Capability)]\", \"[nr_cor_attr] / [Fitting Regime]\", \"[nr_cor_attr] / [log(Processing Units Number)]\", \"[nr_norm] * [log(Model Capability)]\", \"([log(class_ent)] + [log(inst_to_attr)]) / [log(eq_num_attr)]\", \"([log(class_ent)] + [log(ns_ratio)]) / [Loss Margin Behaviour]\", \"([log(class_ent)] + [log(Loss Margin Behaviour)]) / [log(eq_num_attr)]\", \"([log(class_ent)] + [log(Processing Units Number)]) / [Fitting Regime]\", \"([log(class_ent)] + [log(Processing Units Number)]) / [Loss Margin Behaviour]\", \"([log(eq_num_attr)] + [log(gravity)]) / [log(nr_inst)]\", \"([log(eq_num_attr)] + [log(ns_ratio)]) / [log(nr_class)]\", \"([log(gravity)] + [log(Loss Margin Behaviour)]) / [Fitting Regime]\", \"([log(inst_to_attr)] + [log(Model Capability)]) / [log(Processing Units Number)]\", \"([log(nr_class)] + [log(Loss Margin Behaviour)]) / [Fitting Regime]\", \"([log(nr_class)] + [log(Loss Margin Behaviour)]) / [log(Processing Units Number)]\", \"([nr_cor_attr] + [log(ns_ratio)]) / [log(Processing Units Number)]\", \"([log(ns_ratio)] + [log(Fitting Regime)]) / [log(eq_num_attr)]\", \"([log(Loss Margin Behaviour)] + [log(Model Capability)]) / [Fitting Regime]\"]"
+  },
+  "independent_valid_diagnostic": {
+    "base_id": 34,
+    "features": "[\"Fitting Regime\",\"Input Distribution Modelling\",\"Model Capability\",\"Processing Units Number\"]",
+    "n_features": 4,
+    "penalty": 0.5,
+    "max_abs_zscore": 5.0,
+    "max_arity": 3,
+    "requested_terms": 21,
+    "n_terms": 21,
+    "complexity": 63,
+    "objective": 0.6580250507475315,
+    "in_sample_r2": 0.7102577824942071,
+    "loo_dataset_r2": 0.6732266144046446,
+    "loo_model_r2": 0.6600599790535662,
+    "loo_cell_r2": 0.654616891860534,
+    "four_protocol_floor": 0.654616891860534,
+    "stability": 0.37857142857142856,
+    "terms": "[\"[log(eq_num_attr)] / [log(inst_to_attr)]\", \"[log(eq_num_attr)] * [log(nr_class)]\", \"[log(gravity)] * [log(nr_class)]\", \"[log(Model Capability)] * [log(Processing Units Number)]\", \"[log(eq_num_attr)] * [log(Model Capability)]\", \"[log(eq_num_attr)] * [log(Processing Units Number)]\", \"[log(gravity)] * [log(Fitting Regime)]\", \"[log(gravity)] * [log(Model Capability)]\", \"[nr_cor_attr] / [Fitting Regime]\", \"[nr_cor_attr] / [log(Processing Units Number)]\", \"([log(class_ent)] + [log(Input Distribution Modelling)]) / [Model Capability]\", \"([log(class_ent)] + [log(Processing Units Number)]) / [Fitting Regime]\", \"([log(eq_num_attr)] + [log(nr_attr)]) / [log(nr_class)]\", \"([log(eq_num_attr)] + [log(Input Distribution Modelling)]) / [log(Processing Units Number)]\", \"([log(gravity)] + [log(ns_ratio)]) / [log(nr_attr)]\", \"([log(gravity)] + [log(ns_ratio)]) / [log(Processing Units Number)]\", \"([nr_bin] + [nr_norm]) / [Input Distribution Modelling]\", \"([log(nr_class)] + [log(Fitting Regime)]) / [log(eq_num_attr)]\", \"([log(nr_class)] + [log(Fitting Regime)]) / [log(Processing Units Number)]\", \"([log(Fitting Regime)] + [log(Model Capability)]) / [log(nr_class)]\", \"([log(Input Distribution Modelling)] + [log(Model Capability)]) / [log(eq_num_attr)]\"]"
+  },
+  "shared_grammar_margins": [
+    {
+      "max_arity": 2,
+      "requested_terms": 17,
+      "n_terms": 17,
+      "gain": 0.013667033590124677,
+      "bootstrap_scale": 0.004427055402411652,
+      "gain_to_scale": 3.0871611822792007,
+      "eligible_as_valid": false
+    },
+    {
+      "max_arity": 3,
+      "requested_terms": 25,
+      "n_terms": 25,
+      "gain": 0.0,
+      "bootstrap_scale": 0.0,
+      "gain_to_scale": 0.0,
+      "eligible_as_valid": true
+    }
+  ]
+}

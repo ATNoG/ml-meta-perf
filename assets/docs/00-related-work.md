@@ -41,8 +41,8 @@ Their central result is directly relevant and worth quoting in full:
 > guidance."
 
 **Relevance.** This is independent corroboration of the central measurement here. Our
-leave-one-dataset-out R² of 0.623 for a classification metric (MCC), against an in-sample
-0.641, is not a failure of the method — it reflects a documented property of classifier
+leave-one-dataset-out R² of 0.691 for a classification metric (MCC), against an in-sample
+0.719, is not a failure of the method — it reflects a documented property of classifier
 performance prediction. The paper also names the **"interpretability tax"**: methods
 optimising for structural sparsity pay significantly in training time. `ml-meta-perf` pays a
 different tax — accuracy — and quantifies it explicitly through the term-count curve.
@@ -249,11 +249,11 @@ random k-fold as a diagnostic for leakage rather than a result.
 | | prior work | `ml-meta-perf` |
 |---|---|---|
 | Model class | opaque regressors (RF, GBM, NN); or GP-evolved long expressions | fixed additive form, linear in the weights |
-| Reported R² | ~0.9 (opaque), >0.7 (GP) | 0.641 in-sample, 0.623 LOO-dataset |
+| Reported R² | ~0.9 (opaque), >0.7 (GP) | 0.719 in-sample, 0.691 LOO-dataset |
 | Validation | often random k-fold | leave-one-dataset-out and leave-one-model-out |
 | Extractable guidance | little | each weight reads directly in feature units |
 | Ceiling stated | rarely | additive oracle at 0.6605, rank-1 at 0.783, E1 capped at 0.354 |
-| Reachable ceiling | not distinguished | per-model level and slope raise LOO-dataset R² from 0.623 to 0.678 (+0.055) |
+| Reachable ceiling | not distinguished | per-model level and slope raise LOO-dataset R² from 0.691 to 0.738 (+0.047) |
 
 The contribution is not a higher number. It is (a) an equation that can be read, (b) an
 explicit accuracy-versus-length curve instead of a single operating point, (c) the
@@ -267,16 +267,15 @@ quantified.
   interaction at +0.122 R², and the performance-influence literature (§5) includes
   interaction terms by default. Our symmetric `sum_ratio` fix was a step in that
   direction and materially improved the wider grammar. The current equation aligns with
-  only 0.32 of the leading interaction pattern in-sample and 0.29 out of fold, while a
+  only 0.31 of the leading interaction pattern in-sample and 0.29 out of fold, while a
   per-model slope still improves transfer. The interaction basis and richer measured model
   descriptors therefore remain open questions.
-- **Ranking.** *Closed as a comparison, not as a decisive win* (§5d). Under the strict
-  held-out-cell protocol E3 reaches average precision 0.822 and top-1 regret 0.011, against
-  0.798 and 0.011 for the per-model-mean baseline. The paired intervals span zero, so the
-  readable equation is competitive with “use whatever usually works” rather than proven
-  better than it.
+- **Ranking.** *Closed as a mixed comparison* (§5d). Under the strict held-out-cell protocol
+  E3 reaches average precision 0.746 and top-1 regret 0.008, against 0.798 and 0.011 for the
+  per-model-mean baseline. The baseline has higher average precision, while E3 has lower
+  top-1 regret; the answer depends on which ranking outcome matters.
 - **More datasets.** Twenty is the binding constraint on every cross-validated number
   here; OpenML-scale meta-data would settle whether the 0.6605 additive ceiling is a
   property of this sample or of the approach.
-- **Interaction structure.** The gap between E3 (0.641) and the rank-1 oracle (0.783)
-  is entirely dataset×model interaction the current term vocabulary does not reach.
+- **Interaction structure.** E3 reaches 0.719 against 0.783 for the rank-1 oracle. The
+  remaining gap is dataset×model interaction the current fitted equation does not reach.

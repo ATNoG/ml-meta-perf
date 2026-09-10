@@ -266,9 +266,9 @@ Two things these tables cannot say, both of which bound every number in the stud
   alone. The curve should be read, never a single cell.
 - E1's cross-validated numbers rest on 20 folds and are correspondingly unstable — its
   leave-one-dataset-out R² is negative at 1–4 terms and 0.217 at 7.
-- The knee detector, the Pareto front and the "best cross-validated" rule all operate on a
-  curve whose points carry that much noise. That they agree on 12–14 terms is reassuring,
-  not conclusive.
+- The knee detector, the Pareto front and the validation rule all operate on a curve whose
+  points carry that much noise. The retained 25-term result reaches the search boundary, so it
+  is the best tested length rather than evidence that the curve has reached a plateau.
 
 Twenty-five models is more comfortable but still small for the leave-one-model-out
 protocol.

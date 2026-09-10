@@ -4,11 +4,11 @@ The three equations differ only in which features they may draw on -- E1 sees da
 meta-features, E2 sees model meta-features, E3 sees both -- so the gaps between them
 measure what each half of the meta-data is worth.
 
-The defaults below are not arbitrary. They are the configuration retained from a sweep
-over the term stability cap, the ridge penalty and the equation length, scored on
-leave-one-dataset-out rather than on fit. The processing-unit column was subsequently
-corrected from a stored log count to a raw count; the settings remain fixed so that change
-is isolated, while the equation length and grammar are re-derived on the corrected data.
+The defaults below are not arbitrary. They are the configuration selected by the
+2026-09-10 sweep run after ``Processing Units Number`` was corrected from a stored log count
+to a raw count. The broad stage used the historical composite objective to shortlist
+candidates; the final stage maximised the worst R2 over in-sample, leave-one-dataset-out,
+leave-one-model-out and doubly-held-out validation.
 
 Study chapter: [4. The equation](../../assets/docs/04-equation.md) -- the rationale, in
 prose, with the figures.
@@ -100,10 +100,10 @@ class Configuration:
 #: three tuning runs. E3 gets a pool three times E1's and a horizon three times its own
 #: published length; nothing about that difference was a finding.
 #:
-#: The shared values are E3's, because E3's are the ones a full sweep chose (Slurm job 15335,
-#: 48,576 points, 2026-09-07) and the other two were swept by hand over narrower grids. The
-#: reasoning behind each is below, unchanged; what is gone is the idea that it applies to one
-#: equation and not the others.
+#: The shared values are E3's, because E3 is the equation for which the full corrected-corpus
+#: sweep was run (Slurm job 15343, 10,944 configuration-and-arity paths and 218,880 equation
+#: lengths, 2026-09-10). The other two were not given separate tuning runs: what matters is
+#: that only the available features distinguish E1, E2 and E3.
 #:
 #: Historical measurement from 2026-09-09, before the processing-unit column was corrected
 #: from a stored log count to the raw count:
@@ -119,21 +119,17 @@ class Configuration:
 #: "E1 is done" means -- and its complexity `arity * n_terms` falls from 21 to 20: three more
 #: terms over a grammar with no triple products. See `selection.complexity`.
 
-#: The ridge penalty on standardised terms. Falls from 20 to 15 on fit alone and stays at 20:
-#: under the fixed-form protocol the ridge only shrinks weights, it no longer also scores which
-#: subset the beam chose, so heavy shrinkage stopped paying for itself -- but across the whole
-#: range 1 to 20 the difference is under 0.01 on either transfer protocol, and an essentially
-#: unregularised ridge on a 476-row design is not worth that.
-PENALTY = 20.0
+#: The ridge penalty on standardised terms. The corrected-corpus sweep evaluated sixteen
+#: values from 0.1 through 80; the shared base configuration whose four-protocol floor was
+#: highest uses 1.0. This is applied to all three equations so their differences remain
+#: attributable to their feature sets.
+PENALTY = 1.0
 
-#: The largest standard score a term may reach before it is rejected as a spike. Raised from
-#: 3.0 to 4.25 on 2026-09-05. The cap exists to stop a term being carried by a handful of
-#: extreme rows, and loosening it is safe here in a way it was not before: all six model
-#: features are positive, bounded and fully supported, with none of the low-support tail that
-#: made a loose cap dangerous when the hyperparameter columns were in the pool. No candidate
-#: significantly beats it -- the nearest, penalty 20 at z-cap 4.50 on a four-feature pool,
-#: is a tie when paired (p = 0.115).
-MAX_ABS_ZSCORE = 4.25
+#: The largest standard score a term may reach before it is rejected as a spike. The
+#: corrected-corpus sweep tested 3.0, 3.5, 4.0, 4.25, 4.5 and 5.0 and selected 5.0. The cap
+#: still excludes terms supported only by extreme rows; 5.0 is the measured setting of the
+#: winning shared base rather than a manual relaxation.
+MAX_ABS_ZSCORE = 5.0
 
 #: Terms surviving the correlation screen into the beam.
 POOL_SIZE = 600
@@ -143,53 +139,32 @@ POOL_SIZE = 600
 BEAM_WIDTH = 6
 
 #: The longest equation the search explores. **The horizon, not the published length** --
-#: `selection.floor_argmax` picks that from the curve. The current corpus selects 12 under
-#: the parsimonious grammar and 14 under the full default grammar, leaving ample room before
-#: the 25-term horizon.
+#: `selection.floor_argmax` picks that from the curve. The corrected-corpus sweep selects 17
+#: terms under arity 2 and 25 under arity 3. The latter reaches this boundary, so 25 is the
+#: best length in the evaluated range and not evidence that the curve has reached a plateau.
 MAX_TERMS = 25
 
 #: The grammars the arity search covers, and the default for ``--arity``.
 #:
-#: **Arity 4 is deliberately out on readability grounds.** On the corrected corpus its
-#: 24-term candidate reaches a floor of 0.6098, but including it still leaves arity 2 as the
-#: published grammar: its paired gain-to-spread ratio is 0.76, below the rule's bar of one.
-#: The four-feature ratio-of-sums remains reachable through the flag for reproduction, while
-#: the default set stops at terms a reader can reasonably hold in one expression. Arity 1 is
+#: **Arity 4 is deliberately out on readability grounds.** The four-feature ratio-of-sums
+#: remains reachable through the flag for exploratory runs, while the default sweep stops at
+#: terms a reader can reasonably hold in one expression. Arity 1 is
 #: admissible too and is never worth a default: a grammar with no products cannot express the
 #: conditional claims the study is about.
 ARITIES: tuple[int, ...] = (2, 3)
 
-# The sweep below predates the 2026-09-10 correction of Processing Units Number from a stored
-# log count to a raw count. Its settings are retained to isolate that data correction; the
-# full configuration sweep has not been repeated on the corrected corpus.
+# The corrected-corpus sweep uses the historical composite objective only to make a diverse
+# shortlist. The final decision is the four-protocol R2 floor, including the cell in which
+# both the dataset and model are held out. Its best shared base selects arity 3 at 25 terms.
+# The arity-2 candidate at that base peaks at 17 terms; its mean held-out error disadvantage
+# is 3.09 times the paired bootstrap spread, so it does not qualify as E3-Valid. E3-Valid and
+# E3-MAX consequently coincide under the agreed shared-base rule.
 #
-# `max_arity=2` is confirmed outright by the full sweep: the best arity-2 point scores 0.7297
-# against 0.6866 for the best arity-3 point, and every configuration in the top band is arity
-# 2. The third arity buys `(f1+f2)/f3` and it is not selected. A smaller grammar that scores
-# the same is not a trade. Arity is now *searched* rather than set -- see `ARITIES` and
-# `search_grammars` -- and `max_arity` here is only where a non-searching caller starts.
-#
-# **The sweep's top row is not the answer, and this is the case the warning was written for.**
-# It ranks a 9-term equation first (objective 0.7297 against 0.6861). Paired over the twenty
-# held-out datasets on per-dataset MAE, that equation is *significantly worse*: the incumbent
-# wins on 16 of 20, sign test p = 0.012, bootstrap CI [+0.0082, +0.0303] entirely above zero.
-# What makes the objective prefer it is `stability`, not brevity: decomposed against
-# `OBJECTIVE_WEIGHTS`, stability contributes +0.0525 of the +0.0379 net gap and brevity only
-# +0.0146, against -0.029 summed over the five accuracy components. The 9-term form reselects
-# in 88% of folds where this one reselects in 53%. That is a real tension -- a shorter form is
-# more stable and transfers worse -- but stability is weighted 0.15 against 0.40 for the three
-# R2 combined, so it should not overturn an accuracy gap this size. Treat the objective as a
-# shortlisting device and the paired test as the decision.
-#
-# The sweep also prefers a four-feature subset -- `Model Capability`, `Processing Units
-# Number`, `Fitting Regime`, `Input Distribution Modelling` -- dropping `Solution
-# Stochasticity` and `Loss Margin Behaviour` from the *equation*. **That is admissible, and it
-# is the mechanism working rather than a loss.** The two stages have different criteria: the
-# corpus is designed for *identification* and keeps all six columns, which is what makes every
-# learner distinguishable on every dataset; the equation is judged on *compression*, and an
-# equation that used every column would be one that had failed to generalise. See `data`'s
-# module docstring. What must not change is the corpus: `MODEL_FEATURES` is the schema `load`
-# validates and the set `tests/test_model_features.py` checks identification against.
+# The selected four-feature subset is `Model Capability`, `Processing Units Number`,
+# `Fitting Regime`, `Loss Margin Behaviour`. The corpus still carries all six model features
+# for identification; the equation uses the subset the recalibration selected for compression.
+# What must not change is the corpus: `MODEL_FEATURES` is the schema `load` validates and the
+# set `tests/test_model_features.py` checks identification against.
 #
 # E1 is fitted on all 476 rows like the other two. An earlier version fitted it on the 20
 # aggregated per-dataset means, on the grounds that a predictor constant inside a group can
@@ -219,15 +194,13 @@ DEFAULT = Configuration(
 #: equation that used every available column would be one that had failed to generalise.
 #: Restricting the term pool removes nothing from the corpus.
 #:
-#: The 2026-09-07 sweep chose this subset. It is retained unchanged after the processing-unit
-#: data correction so that the descriptor transformation is the only experimental change.
-#: `Solution Stochasticity` and `Loss Margin Behaviour` stay in the corpus and out of the
-#: equation.
+#: The 2026-09-10 corrected-corpus sweep chose this subset. `Solution Stochasticity` and
+#: `Input Distribution Modelling` remain in the corpus and out of the equation.
 EQUATION_MODEL_FEATURES: tuple[str, ...] = (
     "Model Capability",
     "Processing Units Number",
     "Fitting Regime",
-    "Input Distribution Modelling",
+    "Loss Margin Behaviour",
 )
 
 #: Lengths the E3 curve is reported at.
@@ -528,12 +501,17 @@ def search_grammars(
     # Named for the role the rule gave them, not for the grammar they were searched under. The
     # arity is a search detail; "E3" and "E3-capability" are what the chapters and the saved
     # equations refer to, and they must not change name because the search that found them did.
-    # `maximum` first so that a corpus where one grammar wins both leaves the published name.
-    for arity, role in ((max_arity, "E3-capability"), (valid_arity, "E3")):
-        report = reports[arity]
+    if max_arity == valid_arity:
+        report = reports[valid_arity]
         report.equation = dataclasses.replace(
-            report.equation, name=report.equation.name.replace(f"E3-arity{arity}", role)
+            report.equation, name=report.equation.name.replace(f"E3-arity{valid_arity}", "E3")
         )
+    else:
+        for arity, role in ((max_arity, "E3-capability"), (valid_arity, "E3")):
+            report = reports[arity]
+            report.equation = dataclasses.replace(
+                report.equation, name=report.equation.name.replace(f"E3-arity{arity}", role)
+            )
 
     reference = errors[max_arity][max_size]
     rows: list[dict[str, object]] = []
@@ -872,7 +850,7 @@ def comparison(
                         **score(truth, e3_capability.equation.predict(columns)).as_dict(),
                     }
                 ]
-                if e3_capability is not None
+                if e3_capability is not None and e3_capability is not e3
                 else []
             ),
             {
@@ -1223,8 +1201,8 @@ class Report:
     #: The same features under the full grammar (arity 3). Reported to show how far the
     #: additive form reaches, not as the study's recommendation. See `search_grammars`.
     #: **It is the same object as `e3` when the rule picks one grammar for both**, which is a
-    #: legitimate outcome: the bound and the equation coincide when the larger grammar earns
-    #: nothing.
+    #: legitimate outcome: the bound and the equation coincide when the wider grammar earns
+    #: its additional complexity.
     e3_capability: EquationReport
     #: One row per grammar searched, with the floor, the spread and the margin against the
     #: best -- `search_grammars` shows the rule's working.

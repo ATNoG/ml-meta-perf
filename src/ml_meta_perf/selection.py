@@ -30,12 +30,11 @@ per grammar:
   candidates that `most_capable` does not beat by more than the spread of that beating.
   `grammar_margin` is the number it compares -- the accuracy the larger grammar buys over the
   paired bootstrap spread of that same accuracy -- and the bar is a ratio of one, where signal
-  equals noise. On this corpus that ratio is 0.32, so the verdict holds at any bar from 0.5
-  to 2.
+  equals noise. On the corrected corpus that ratio is 3.09, so the extra grammar capacity is
+  retained.
 
-On this corpus it selects **arity 2 with 12 terms**, and `most_capable` -- the capability
-bound, the same floor with no complexity preference -- selects **arity 3 with 14 terms**.
-Neither number is written down anywhere; both fall out.
+On the corrected corpus both rules select **arity 3 with 25 terms**. Neither number is written
+down anywhere; both fall out of the validation curves.
 
 **It takes no row count, and that is the point of the revision.** The rule it replaced was
 the consensus discounted by adjusted R2's degrees-of-freedom factor against a complexity
@@ -57,8 +56,8 @@ is only defensible if the alternatives it beats are on the page:
   summary, needing no detector, no threshold and no smoothing;
 * the **consensus curve** itself, so that no single protocol can decide a length alone;
 * the **parsimony alternative** in `ml_meta_perf.experiment.length_comparison` -- the shortest
-  length whose paired interval against the chosen one spans zero. On this corpus that is 8
-  terms under the published arity-2 grammar. It is reported and not adopted: the accuracy it
+  length whose paired interval against the chosen one spans zero. On this corpus that is 23
+  terms under the published arity-3 grammar. It is reported and not adopted: the accuracy it
   gives up is measurable even where it is not significant.
 
 Study chapter: [3. Term generation and selection](../../assets/docs/03-term-selection.md) -- the rationale, in
@@ -193,8 +192,8 @@ def best_length(curve: pl.DataFrame, column: str = "consensus") -> int:
     **`floor_argmax` is what publishes a length**, and this is what is reported beside it.
     The two differ in what they combine: this takes the median of the three single-group
     protocols, that takes the minimum over all four including the doubly-held-out cell. On the
-    current corpus they agree -- both select 12 terms under the parsimonious grammar and 14
-    under the full one -- and they are kept apart because agreement is a result rather than a
+    current corpus they agree -- both select 25 terms under the retained arity-3 grammar --
+    and they are kept apart because agreement is a result rather than a
     guarantee, and because the chapters plot and caption this reading.
 
     Until 2026-09-09 this docstring called itself the rule and `run_equation` had already
@@ -212,7 +211,7 @@ def best_length(curve: pl.DataFrame, column: str = "consensus") -> int:
 
     `experiment.length_comparison` reports the alternative that trades accuracy for brevity:
     the shortest length whose paired interval against this one spans zero. On the current
-    corpus that is 8 terms under arity 2. It is reported rather than
+    corpus that is 23 terms under arity 3. It is reported rather than
     adopted, because the accuracy it gives up is measurable even though it is not significant.
     """
     scores = consensus_curve(curve) if column == "consensus" else curve[column].to_numpy()
@@ -266,12 +265,10 @@ def protocol_spread(curve: pl.DataFrame) -> np.ndarray:
     tell them apart: two lengths reaching the same worst protocol from a different fit are the
     same number to `floor_curve` and are not the same equation.
 
-    A small spread is the readable-equation case the study is arguing for. On this corpus the
-    published configuration has the **smallest spread anywhere on the grid** among the lengths
-    whose floor is competitive -- 0.042, against 0.054 for the arity-3 capability bound, which
-    reaches a floor 0.005 higher and drops further from its own fit to get there. That is the
-    same quantity the beam negatives are recorded in: the policy that collapsed
-    leave-one-dataset-out took its spread from 0.042 to 0.248.
+    On the corrected corpus the selected arity-3 equation has a spread of 0.0640. The arity-2
+    candidate is slightly tighter at 0.0629, but its worst-protocol R2 is lower by 0.0444.
+    This is the same quantity the beam negatives record: a policy that fits well and then
+    collapses under validation has a large spread.
 
     This is deliberately *not* folded into the selection score. Combining a level and a spread
     needs a weight between them, a weight is a free parameter, and a free parameter is what
@@ -354,9 +351,8 @@ def grammar_margin(candidate: np.ndarray, reference: np.ndarray) -> tuple[float,
     twelve-term arity-2 equations where significance rejected only six and eight.
 
     **The one in ``ratio > 1`` is where signal equals noise, not a tuned constant**, and the
-    verdict is not knife-edge on it: E3-MAX's advantage over the published equation comes out
-    at a ratio of **0.32**, so the answer is the same at 0.5, at 1 and at 2. Report the ratio
-    and a reader can apply their own bar.
+    verdict is not knife-edge on it: the arity-3 candidate's advantage over arity 2 comes out
+    at a ratio of **3.09**. Report the ratio and a reader can apply their own bar.
 
     **Where the bar sits relative to a sign test, measured, because it is not obvious.** The
     ratio is a signal-to-noise reading on the *mean*, so concentration lowers it but does not
@@ -417,8 +413,8 @@ def best_configuration(
     visited, so complexity decided alone and the statistic was decoration. `grammar_margin`
     replaces it with a ratio of two measured quantities -- the accuracy the larger grammar
     buys, over the paired spread of that same accuracy -- and a larger grammar is taken when
-    that ratio exceeds one. On this corpus the ratio is **0.32**, so the answer holds at any
-    bar from 0.5 to 2.
+    that ratio exceeds one. On the corrected corpus the ratio is **3.09**, so arity 3 is
+    retained.
 
     **What this fixes.** The rule it replaces was the consensus discounted by adjusted R2's
     degrees-of-freedom factor against a complexity budget. It gave the right answer here and

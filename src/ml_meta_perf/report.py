@@ -571,7 +571,7 @@ CEILING_ROWS = {"E1": "E1 reference: true dataset means", "E2": "E2 reference: t
 
 
 def _headline(report: Report) -> pl.DataFrame:
-    """The three equations and the capability variant, each against its own ceiling.
+    """The three equations and any distinct capability variant, each against its own ceiling.
 
     The one table the study can be summarised by. It exists because the summary page kept a
     hand-written copy of these numbers and had no way of noticing when they moved -- the same
@@ -583,7 +583,9 @@ def _headline(report: Report) -> pl.DataFrame:
     """
     ceilings = dict(zip(report.comparison["equation"].to_list(), report.comparison["r2"].to_list(), strict=True))
     rows: list[dict[str, object]] = []
-    listed = (("E1", report.e1), ("E2", report.e2), ("E3", report.e3), ("E3 capability", report.e3_capability))
+    listed = [("E1", report.e1), ("E2", report.e2), ("E3", report.e3)]
+    if report.e3_capability is not report.e3:
+        listed.append(("E3 capability", report.e3_capability))
     for name, equation in listed:
         ceiling = ceilings.get(CEILING_ROWS.get(name, ""))
         in_sample = float(equation.in_sample["r2"])
@@ -896,6 +898,12 @@ def _capability_note(report: Report) -> str:
     capability = report.e3_capability
     if not capability.equation.terms:
         return ""
+    if capability is report.e3:
+        return (
+            "E3-Valid and E3-MAX coincide on the corrected corpus: both rules select the "
+            f"arity-3, {capability.equation.n_terms}-term equation. There is therefore no "
+            "separate capability equation to report.\n"
+        )
     published = float(report.e3.in_sample["r2"])
     reached = float(capability.in_sample["r2"])
     lines = [
@@ -1207,8 +1215,8 @@ def render(
         "every cell, so there is no group-identity bound to divide by. The reference it is "
         "shown instead is the additive oracle, in the comparison table of chapter 5. That "
         "oracle bounds only an equation additive in dataset effect plus model effect; E3's "
-        "mixed terms can represent interactions beyond it, although the current fitted "
-        "equation remains below it.\n"
+        "mixed terms can represent interactions beyond it. The comparison table reports "
+        "whether the current equation reaches or exceeds that reference.\n"
     )
 
     parts.append("## 2. The equation\n")
@@ -1558,29 +1566,32 @@ def render(
     parts.append(f"**E2** ({report.e2.equation.n_terms} terms):\n")
     parts.append("```\n" + str(report.e2.equation) + "\n```\n")
 
-    parts.append("### The capability variant, in full\n")
-    parts.append(
-        "The same feature sets under the looser arity-3 grammar. It is **not** the study's "
-        "recommendation and not what the term-by-term analysis above is about; it exists so "
-        "that the published equation's accuracy can be read against what the additive *form* "
-        "can do, rather than only against oracles and baselines. It is printed here in full "
-        "because a ceiling quoted as a number and never shown is a ceiling a reader has to "
-        "take on trust -- and because the reason it is not recommended is visible only in the "
-        f"reading: {report.e3_capability.equation.n_terms} terms over three-feature "
-        "expressions is past the point where the equation can be reasoned about a term at a "
-        "time, which is the whole thing this study is trading accuracy for.\n"
-    )
-    capability_scores = report.e3_capability.cross_validated
-    parts.append(
-        f"It reaches **{float(report.e3_capability.in_sample['r2']):.4f}** in-sample against "
-        f"the published equation's {float(report.e3.in_sample['r2']):.4f}, and "
-        f"**{float(capability_scores['loo_dataset']['r2']):.4f}** leave-one-dataset-out "
-        f"against {float(report.e3.cross_validated['loo_dataset']['r2']):.4f}.\n"
-    )
-    parts.append(f"**E3 capability** ({report.e3_capability.equation.n_terms} terms):\n")
-    parts.append("```\n" + str(report.e3_capability.equation) + "\n```\n")
-    parts.append("LaTeX:\n")
-    parts.append("```latex\n" + report.e3_capability.equation.to_latex() + "\n```\n")
+    if report.e3_capability is report.e3:
+        parts.append("### E3-Valid and E3-MAX coincide\n")
+        parts.append(
+            "The configuration rule and the capability rule select the same arity-3, "
+            f"{report.e3.equation.n_terms}-term equation on the corrected corpus. The full "
+            "equation above therefore serves both roles; repeating it here would create a "
+            "duplicate result.\n"
+        )
+    else:
+        parts.append("### The capability variant, in full\n")
+        parts.append(
+            "The same feature sets under the most capable searched grammar. This variant is "
+            "reported so that the published equation's accuracy can be read against what the "
+            "wider additive form can do, rather than only against oracles and baselines.\n"
+        )
+        capability_scores = report.e3_capability.cross_validated
+        parts.append(
+            f"It reaches **{float(report.e3_capability.in_sample['r2']):.4f}** in-sample against "
+            f"the published equation's {float(report.e3.in_sample['r2']):.4f}, and "
+            f"**{float(capability_scores['loo_dataset']['r2']):.4f}** leave-one-dataset-out "
+            f"against {float(report.e3.cross_validated['loo_dataset']['r2']):.4f}.\n"
+        )
+        parts.append(f"**E3 capability** ({report.e3_capability.equation.n_terms} terms):\n")
+        parts.append("```\n" + str(report.e3_capability.equation) + "\n```\n")
+        parts.append("LaTeX:\n")
+        parts.append("```latex\n" + report.e3_capability.equation.to_latex() + "\n```\n")
 
     return "\n".join(parts)
 

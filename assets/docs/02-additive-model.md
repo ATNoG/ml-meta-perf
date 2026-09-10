@@ -90,40 +90,29 @@ study does not fix one. `experiment.search_grammars` fits E3 once per arity in
 
 | | grammar | terms | complexity `a·k` | floor over four protocols | protocol spread |
 |---|---|---|---|---|---|
-| **E3-Valid**, the equation the study publishes | arity 2 | 12 | 24 | 0.6015 | 0.0393 |
-| **E3-MAX**, the bound within the default readable grammars | arity 3 | 14 | 42 | 0.6047 | 0.0504 |
+| arity-2 candidate | arity 2 | 17 | 34 | 0.6109 | 0.0629 |
+| **E3-Valid + E3-MAX** | **arity 3** | **25** | **75** | **0.6554** | **0.0640** |
 
 The **floor** is the minimum over all four protocols — in-sample, leave-one-dataset-out,
 leave-one-model-out, and the doubly-held-out cell — so a grammar is judged by its worst
 showing rather than its best. See [chapter 5](05-evaluation.md#four-protocols) for the four.
 
-**E3-MAX has the better floor, by 0.0032, and does not win.** The rule is not a threshold to
-clear: the larger grammar has to be shown to *beat* the smaller one, paired per held-out
-dataset on mean absolute error under the strictest protocol. It gains 0.0019 there against a
-bootstrap spread of 0.0061 over the same folds — a ratio of 0.32 where the bar is 1. The
-fold-to-fold spread is more than three times the gain, so it does not buy a grammar with
-1.75× the complexity. `selection.grammar_margin` computes
-that ratio, and `tests/test_selection.py` pins the alternatives that were tried and rejected
-on the way to it.
+**Arity 3 wins the corrected-corpus comparison.** Against arity 2 it reduces the mean error
+under the strictest protocol by 0.0137, with a paired bootstrap spread of 0.0044 — a
+gain-to-spread ratio of 3.09 where the rule's bar is 1. The larger grammar therefore earns its
+extra complexity, and E3-Valid and E3-MAX become the same equation.
 
-**The search does use the third arity when it is offered, which is why the bound is worth
-reporting.** In E3-MAX the three-feature `sum_ratio` carries 7 of the 14 terms and **50% of
-the standardised weight mass**: the search did not merely tolerate the extra arity, it built
-nearly half the equation out of it. That is the honest form of the old claim in this
-chapter — which stated the same thing about the *published* equation, and stopped being true
-when the published equation became an arity-2 one. What the comparison now says is narrower
-and more useful: a grammar that expresses dataset×model interaction in one term is what the
-search reaches for, and it still cannot be shown to predict better than one that does not.
+The selected equation uses the third arity extensively: `sum_ratio` supplies 14 of its 25
+terms and 61% of the absolute standardised weight mass. The search did not merely tolerate
+three-feature expressions; it built most of the equation's weight from them.
 
-**Arity 4 is in the flag and out of the default set.** With the current corpus it reaches 24
-terms at a floor of 0.6098. Including it in the comparison still leaves arity 2 as E3-Valid:
-the paired gain-to-spread ratio is 0.76, below the rule's bar of 1. It remains outside the
-default because `(f1+f2)/(f3+f4)` is beyond the intended readability limit, not because it
-fits worse. It stays reachable through `--arity 4` so that decision remains reproducible.
+**Arity 4 remains available through the flag and outside the default search on readability
+grounds.** A `(f1+f2)/(f3+f4)` term names four features and two operations, beyond the intended
+limit for a printed equation. It was not part of the corrected-corpus calibration grid, so no
+current arity-4 performance claim is made here.
 
-Counted from the equations by `report.operation_usage`; the published equation's own table is
-in [chapter 4](04-equation.md#which-operations-the-equation-needed), where `sum_ratio` is
-marked `offered = no` because the arity cap never put it in the library.
+Operation counts come from `report.operation_usage`; the published equation's current table
+is in [chapter 4](04-equation.md#which-operations-the-equation-needed).
 
 The reason not to go past four is different and does not need a measurement. A
 `(f1+f2)/(f3+f4)` term already names four features and two operations, and the grammar
@@ -213,17 +202,16 @@ preferable to an indicator that switches on it.
 
 | configuration | `max_abs_zscore` | terms |
 |---|---|---|
-| E1 (dataset features only) | 4.25 | 133 |
-| E2 (model features only) | 4.25 | 48 |
-| **E3 default (arity 2)** | **4.25** | **206** |
-| arity-3 grammar | 4.25 | 806 |
-| arity-4 grammar (available, not default) | 4.25 | 4070 |
+| E1 (dataset features only) | 5.0 | 134 |
+| E2 (model features only) | 5.0 | 48 |
+| E3 candidate, arity 2 | 5.0 | 229 |
+| **E3 retained, arity 3** | **5.0** | **901** |
+| arity-4 grammar (available, not default) | 5.0 | 4840 |
 
 The `max_abs_zscore` cap rejects a term when a single row sits more than that many
 standard deviations from its mean. The cap is **sample-size dependent**: a lone outlier
-among $n$ rows can reach a z-score of at most about $\sqrt{n}$, so a cap of 8 constrains
-the 476-row fit but would be inert on the 20-row aggregated fit. The two configurations
-therefore do not share a value.
+among $n$ rows can reach a z-score of at most about $\sqrt{n}$. All three current equations
+are fitted on the same 476 rows and therefore share the retained value of 5.0.
 
 ## Which transforms are admitted, and why not others
 
@@ -382,8 +370,8 @@ the weights so the published equation reads in raw units:
 
 $$w^{\text{raw}}_i = \frac{w_i}{\sigma_i}, \qquad w_0^{\text{raw}} = \bar{y} - \sum_i \frac{w_i \mu_i}{\sigma_i}$$
 
-Raw term scales span four orders of magnitude here (std 1.3e-2 to 1.5e+2), so this is not
-cosmetic:
+Raw term scales span several orders of magnitude, so this is not cosmetic. A controlled
+12-term audit from the earlier configuration illustrates the effect:
 
 | | standardised | raw |
 |---|---|---|
@@ -397,7 +385,7 @@ six decimals — the correctness check. Standardisation matters for the two othe
 the pipeline does: the ridge penalty is one number applied to every weight and is only
 meaningful when terms share a scale, and selection compares candidates by correlation
 with the residual, which on raw scales is dominated by whichever term happens to be
-largest. On this data the two designs select **completely disjoint** sets of 12 terms.
+largest. In that audit the two designs selected **completely disjoint** sets of 12 terms.
 
 Both weight vectors are retained on the fitted object: the raw weights *are* the
 equation, the standardised weights ($\beta$) are how terms rank against each other.

@@ -24,10 +24,9 @@ equation a practitioner can inspect, argue with, and derive guidance from.
 
 | | in-sample | LOO-dataset | LOO-model |
 |---|---|---|---|
-| E1 — dataset features only, 10 terms | 0.351 | 0.338 | 0.308 |
-| E2 — model features only, 6 terms | 0.247 | 0.185 | 0.224 |
-| **E3 — both, 12 terms** | **0.641** | **0.623** | **0.605** |
-| *E3 under the full grammar, 14 terms* | *0.655* | *0.627* | *0.617* |
+| E1 — dataset features only, 16 terms | 0.354 | 0.349 | 0.300 |
+| E2 — model features only, 6 terms | 0.259 | 0.197 | 0.237 |
+| **E3 — both, 25 terms** | **0.719** | **0.691** | **0.655** |
 
 The three equations differ only in which features they may draw on — **E1** sees the
 dataset, **E2** sees the model, **E3** sees both. All three are fitted on the same 476 rows
@@ -37,35 +36,32 @@ four protocols, so the gaps between them measure the features and nothing else.
 **Their R² values share a scale but not a ceiling, and this is the most common way to
 misread the table.** E1 predicts one value per dataset, so 0.354 — the variance of the true
 per-dataset means — is the most it could *ever* reach, however good its terms were. E1 at
-0.351 is not "much worse than E3"; it is finished. The comparable quantity is the fraction
+0.354 is not "much worse than E3"; it is finished. The comparable quantity is the fraction
 of its own ceiling each equation attains:
 
 | | reached | its ceiling | fraction |
 |---|---|---|---|
-| E1 (dataset features) | 0.351 | 0.354 | **99%** |
-| E2 (model features) | 0.247 | 0.282 | **87%** |
-| E3 (both) | 0.641 | *see below* | — |
+| E1 (dataset features) | 0.354 | 0.354 | **100%** |
+| E2 (model features) | 0.259 | 0.282 | **92%** |
+| E3 (both) | 0.719 | *see below* | — |
 
 E3 has no ceiling of that kind, because it is not constant within either group. The two
 levels it can be read against are both reached or passed, and that is the result:
 
 | level | R² | what it bounds |
 |---|---|---|
-| all 72 single-feature terms | 0.6321 | the best a sum of per-feature functions can do |
+| all 73 single-feature terms | 0.6321 | the best a sum of per-feature functions can do |
 | additive oracle | 0.6605 | the best a per-dataset value **plus** a per-model value can do |
-| **E3, 12 terms** | **0.6408** | — |
-| **E3 under the full grammar, 14 terms** | **0.6551** | — |
+| **E3, 25 terms** | **0.7194** | — |
 
 Both reference levels describe predictors that never combine a dataset feature with a model
-one. E3 passes the per-feature level but remains below the additive oracle. Its six mixed
+one. E3 passes both references. Its sixteen mixed
 terms and their measured alignment with the leading interaction component are the evidence
 that dataset×model *interaction* is what the equation captures.
 
-**The second row is a capability measurement, not a second headline.** Same corpus, same four
-features, the same selection rule, but the full grammar (arity 3). It answers the one question
-the published equation cannot answer about itself — whether the additive form is out of room,
-or whether this equation is short of it. It is short of it by 0.014 in-sample, and what it
-buys for that is two fewer terms and a simpler grammar.
+**E3-Valid and E3-MAX now coincide.** The corrected-corpus sweep selected the same arity-3,
+25-term equation for the study's equation and for the capability bound, so there is no second
+E3 result to choose between.
 
 ![Equations against the levels they are read against](assets/figures/01_equation_comparison.png)
 
@@ -80,20 +76,20 @@ buys for that is two fewer terms and a simpler grammar.
   descriptors reached 63% of their ceiling against the dataset side's 99%. Replacing them
   with a capability ordinal over the ten learner families and four mechanism gradings —
   all *asserted*, read off published descriptions rather than observed in a training run —
-  takes the model side to 88%. What they cannot do is describe a method nobody has
+  takes the model side to 92%. What they cannot do is describe a method nobody has
   classified. [chapter 1](assets/docs/01-dataset.md).
-- **Mixed dataset×model terms carry the equation.** 6 of 12 terms use features from both
-  groups and carry **44%** of the standardised weight mass; dataset-only terms carry 53% and
-  model-only terms 3%. "Which model suits which data" is where the signal is, not "how hard
+- **Mixed dataset×model terms carry the equation.** 16 of 25 terms use features from both
+  groups and carry **61%** of the absolute standardised weight mass; dataset-only terms carry
+  34% and model-only terms 5%. "Which model suits which data" is where the signal is, not "how hard
   is this data" or "how good is this model". [Chapter 6](assets/docs/06-practices.md).
 - **No single meta-feature carries it either.** The strongest, `eq_num_attr`, reaches
   R² 0.142 alone; taking one best admissible term per feature is worth about +0.085 over the
-  admissible raw-term fit. There is no headline driver to quote, which is why the equation needs a dozen-odd
+  admissible raw-term fit. There is no headline driver to quote, which is why the equation needs many
   terms rather than two. [Chapter 4](assets/docs/04-equation.md).
 - **One interaction component is worth +0.122 R², and the equation reaches about a third of
-  it** — alignment 0.32 in-sample and 0.29 out of fold, measured by stripping the additive
+  it** — alignment 0.31 in-sample and 0.29 out of fold, measured by stripping the additive
   part from both the truth and the prediction and correlating what is left. A free per-model
-  level and slope raise leave-one-dataset-out R² from 0.623 to 0.678, locating the remaining
+  level and slope raise leave-one-dataset-out R² from 0.691 to 0.738, locating the remaining
   headroom on the model side. [Chapter 4](assets/docs/04-equation.md).
 - **Ten best practices from the literature, weighed against the corpus** — 8 supported,
   1 qualified, 1 untestable here. The strongest: tree-based families average MCC **0.927**
@@ -102,9 +98,9 @@ buys for that is two fewer terms and a simpler grammar.
 
 > **Status:** research prototype for an academic study. 476 rows is small, and every number
 > is reported both in-sample and under held-out cross-validation because at this size the two
-> differ a lot. The search settings are retained from the completed configuration sweep;
-> after correcting the processing-unit column, the equation's length and grammar are derived
-> again from the current validation curves.
+> differ a lot. The search settings were recalibrated after correcting the processing-unit
+> column; the retained parameters, descriptor subset, equation length and grammar all come
+> from that corrected-corpus sweep.
 
 ## Documentation
 
@@ -219,11 +215,11 @@ PYTHONPATH=src venv/bin/python -m ml_meta_perf --data mine.csv --output runs/min
 | `--figures` | `assets/figures` | where the figures go |
 | `--docs` | `assets/docs` | chapter directory whose generated sections are rewritten |
 | `--max-terms` | 25 | longest equation the search explores (drives the curve) |
-| `--penalty` | 20.0 | ridge penalty on standardised terms |
+| `--penalty` | 1.0 | ridge penalty on standardised terms |
 | `--arity` | 2 and 3 | raw features allowed per term; **repeatable**, and the set given is searched — see [chapter 2](assets/docs/02-additive-model.md#the-arity-is-searched-not-set) |
 | `--pool` | 600 | terms surviving screening into the beam |
 | `--beam` | 6 | beam width |
-| `--zscore` | 4.25 | largest standard score a term may reach before it is rejected as a spike |
+| `--zscore` | 5.0 | largest standard score a term may reach before it is rejected as a spike |
 | `--phase` | all | `screen`, `equations`, `validation`, `practices`, `figures`, `report`; repeatable |
 | `--no-figures`, `--no-tables`, `--no-report`, `--quiet` | off | skip an output |
 
@@ -249,7 +245,7 @@ frame = load()
 columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
 library = build_library(DATASET_FEATURES, MODEL_FEATURES, columns)
 
-equation = fit(library, target(frame), max_terms=14, penalty=20.0).best()
+equation = fit(library, target(frame), max_terms=25, penalty=1.0).best()
 
 print(equation)                    # human-readable, with standardised betas
 print(equation.to_latex())         # for the paper

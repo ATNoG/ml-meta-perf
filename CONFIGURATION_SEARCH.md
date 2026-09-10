@@ -4,6 +4,25 @@ The ordinary `ml-meta-perf` command reproduces the study with its retained confi
 does not recalibrate that configuration. The separate `ml-meta-perf-search` command performs
 the exhaustive, resumable search intended for a Slurm node.
 
+## Retained result
+
+The corrected-corpus sweep completed as Slurm job 15343 on 2026-09-10. It evaluated 10,944
+configuration-and-arity paths, covering 218,880 equation lengths, and validated 158
+shortlisted finalists. The retained shared configuration is:
+
+- model descriptors: `Model Capability`, `Processing Units Number`, `Fitting Regime`, and
+  `Loss Margin Behaviour`;
+- ridge penalty: `1.0`;
+- maximum term z-score: `5.0`;
+- arity: `3`;
+- selected length: `25` terms.
+
+E3-Valid and E3-MAX coincide at this configuration. Their R² values are 0.7194 in-sample,
+0.6911 leave-one-dataset-out, 0.6554 leave-one-model-out, and 0.6554 with both the dataset and
+model held out. The competing arity-2 grammar peaks at 17 terms with a four-protocol floor of
+0.6109. Its error disadvantage is 3.09 times its paired bootstrap spread, so it does not pass
+the grammar rule. The ordinary experiment defaults now contain this retained result.
+
 ## What is searched
 
 The default search evaluates every subset containing two to six of the six model descriptors.
@@ -114,7 +133,7 @@ squeue -u "$USER"
 tail -f slurm-e3-config-search-<job-id>.out
 ```
 
-The script requests one 62-core node, 1 GiB per core and 24 hours. Adjust only the Slurm header
+The script requests one 60-core node, 1 GiB per core and 48 hours. Adjust only the Slurm header
 if the cluster uses another partition or CPU count. The Python grid remains recorded in the
 manifest.
 
@@ -132,10 +151,10 @@ reusing an output directory; the manifest rejects a different experiment.
 The `all` stage used by Slurm is equivalent to:
 
 ```bash
-venv/bin/python -m ml_meta_perf.configuration_search sweep --jobs 62
+venv/bin/python -m ml_meta_perf.configuration_search sweep --jobs 60
 venv/bin/python -m ml_meta_perf.configuration_search merge
 venv/bin/python -m ml_meta_perf.configuration_search shortlist
-venv/bin/python -m ml_meta_perf.configuration_search validate --jobs 62
+venv/bin/python -m ml_meta_perf.configuration_search validate --jobs 60
 venv/bin/python -m ml_meta_perf.configuration_search select
 ```
 
@@ -175,6 +194,7 @@ e3_valid.json / .txt         selected readable equation
 e3_max.json / .txt           selected maximum-capability equation
 ```
 
-The cluster job never edits `experiment.py` or the paper. The selected values should be reviewed
-locally first; then the defaults, generated results, figures and documentation can be updated in
-one auditable change.
+The cluster job never edits `experiment.py` or the paper. For job 15343, the selected values
+were reviewed locally, copied into the defaults, and used to regenerate the results, figures,
+and documentation. A future recalibration should follow the same review and incorporation
+step rather than treating search output as an automatic source-code change.

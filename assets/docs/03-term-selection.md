@@ -249,9 +249,9 @@ craters when both groups are held out cannot be selected on the strength of the 
 A second reading is computed and reported beside it: `selection.consensus_curve`, the
 per-length **median** of the three single-group protocols. The median is robust in a different
 way — it discards a crater where a mean would be dragged down by it — and it is what the
-chapters plot. The two agree on the current corpus, both selecting 12 terms under the
-parsimonious grammar and 14 under the full one, and they are kept apart because agreement is a
-result rather than a guarantee. **Which length craters moves with the configuration**, so the
+chapters plot. The two agree at 25 terms under the retained arity-3 grammar. Under the rejected
+arity-2 grammar, the four-protocol floor selects 17 terms while the three-protocol median
+selects 19, which is why the readings remain separate. **Which length craters moves with the configuration**, so the
 worked example is generated rather than written here — the section below names the deepest one
 on the current curve and gives the median and the mean side by side.
 
@@ -287,8 +287,8 @@ it re-derives itself when the corpus changes rather than needing to be re-tuned 
 term against `n` and would have selected a different length on a corpus of a different size,
 which is the defect `tests/test_selection.py` now pins as a signature check.
 
-Applied under the two default grammars, it selects **12 terms** under arity 2 and **14** under
-arity 3. Neither number appears anywhere in the code.
+Applied under the two default grammars, the four-protocol rule selects **17 terms** under
+arity 2 and **25** under arity 3. Neither number appears anywhere in the code.
 
 The same floor is what decides between the two grammars, one step up: `floor_argmax` gives one
 length per grammar and `selection.best_configuration` chooses among those candidates. That
@@ -343,61 +343,61 @@ The control for the whole selection stage. If handing every candidate term to un
 
 | terms | r2_in_sample | r2_loo_dataset_clipped | r2_loo_dataset_unclipped |
 |---|---|---|---|
-| 206.0000 | 0.7556 | -0.0423 | -165.1533 |
+| 901.0000 | 0.8080 | -0.5582 | -1491.4784 |
 
-**The solver is not the hard part; the sample size is.** All 206 terms at once fit better in-sample than the published equation (0.7556 against 0.6408) and transfer at -0.0423 leave-one-dataset-out, against the published equation's 0.6234. The unclipped figure — -165.2 — is what the fit does when a held-out dataset falls outside the convex hull of the other nineteen and nothing bounds the extrapolation. A design this much wider than 20 held-out groups can support has nothing to constrain it, which is what selection is for.
+**The solver is not the hard part; the sample size is.** All 901 terms at once fit better in-sample than the published equation (0.8080 against 0.7194) and transfer at -0.5582 leave-one-dataset-out, against the published equation's 0.6911. The unclipped figure — -1491.5 — is what the fit does when a held-out dataset falls outside the convex hull of the other nineteen and nothing bounds the extrapolation. A design this much wider than 20 held-out groups can support has nothing to constrain it, which is what selection is for.
 
 ## Equation length
 
-The length is chosen by one rule with no threshold and no smoothing: **the argmax of the worst protocol at each length** (`selection.floor_argmax`), which here selects **12 terms**. Nothing about that number is written down — it falls out of the curve, and it re-derives itself if the corpus changes. The three-protocol median reading of the same curve (`selection.best_length`) is reported beside it in the table below and agrees here.
+The length is chosen by one rule with no threshold and no smoothing: **the argmax of the worst protocol at each length** (`selection.floor_argmax`), which here selects **25 terms**. Nothing about that number is written down — it falls out of the curve, and it re-derives itself if the corpus changes. The three-protocol median reading of the same curve (`selection.best_length`) is reported beside it in the table below and agrees here.
 
-**Why the consensus is a median and not a mean.** The deepest crater on this curve is at **23 terms**, where the three protocols read 0.667 / 0.399 / 0.616. The median takes 0.616 and ignores it; a mean would be dragged to 0.561. The crater is 0.173 below the neighbouring lengths and is not a property of the length at all -- it is one held-out dataset sitting outside the convex hull of the other nineteen in term space, where a linear equation extrapolates without limit and `validate._clip_to_training` pins the fold to its training floor. One fold's extrapolation should not choose the published length.
+**Why the consensus is a median and not a mean.** The deepest crater on this curve is at **3 terms**, where the three protocols read 0.456 / 0.409 / 0.438. The median takes 0.438 and ignores it; a mean would be dragged to 0.434. The crater is 0.038 below the neighbouring lengths and is not a property of the length at all -- it is one held-out dataset sitting outside the convex hull of the other nineteen in term space, where a linear equation extrapolates without limit and `validate._clip_to_training` pins the fold to its training floor. One fold's extrapolation should not choose the published length.
 
 Every alternative rule is reported beside it, because a selection rule is only defensible if what it beats is on the page:
 
 | rule | n_terms | r2_in_sample | r2_loo_dataset |
 |---|---|---|---|
-| pareto front, closest to ideal | 4 | 0.5383 | 0.5017 |
-| pareto front, furthest from nadir | 5 | 0.5724 | 0.5450 |
-| pareto front, furthest from chord | 4 | 0.5383 | 0.5017 |
-| best loo-dataset | 12 | 0.6408 | 0.6234 |
-| best consensus (median of three) | 12 | 0.6408 | 0.6234 |
-| best floor over four protocols (the rule) | 12 | 0.6408 | 0.6234 |
-| published | 12 | 0.6408 | 0.6234 |
+| pareto front, closest to ideal | 5 | 0.5831 | 0.5636 |
+| pareto front, furthest from nadir | 5 | 0.5831 | 0.5636 |
+| pareto front, furthest from chord | 5 | 0.5831 | 0.5636 |
+| best loo-dataset | 25 | 0.7194 | 0.6911 |
+| best consensus (median of three) | 25 | 0.7194 | 0.6911 |
+| best floor over four protocols (the rule) | 25 | 0.7194 | 0.6911 |
+| published | 25 | 0.7194 | 0.6911 |
 
-The geometric rules — the Pareto-front knee by its three standard forms — choose far shorter equations, and **9 of the 25 lengths searched are significantly worse** than the selected one when paired fold by fold over the held-out datasets. A knee finds where the *marginal* return per term collapses, which on a saturating curve is early; it does not ask whether the accuracy still being added is real.
+The geometric rules — the Pareto-front knee by its three standard forms — choose far shorter equations, and **23 of the 25 lengths searched are significantly worse** than the selected one when paired fold by fold over the held-out datasets. A knee finds where the *marginal* return per term collapses, which on a saturating curve is early; it does not ask whether the accuracy still being added is real.
 
-The parsimony alternative is **8 terms** — the shortest length whose paired interval against the selected one spans zero. It is reported and not adopted: the accuracy it gives up is measurable (0.5765 against 0.6234 leave-one-dataset-out) even where it is not significant.
+The parsimony alternative is **23 terms** — the shortest length whose paired interval against the selected one spans zero. It is reported and not adopted: the accuracy it gives up is measurable (0.6729 against 0.6911 leave-one-dataset-out) even where it is not significant.
 
 The full curve the rule reads, at every length under all three protocols:
 
 | n_terms | r2_in_sample | mae_in_sample | smape_in_sample | r2_loo_dataset | mae_loo_dataset | smape_loo_dataset | r2_loo_model | mae_loo_model | smape_loo_model | r2_loo_cell | mae_loo_cell | smape_loo_cell |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | 0.2423 | 0.2371 | 46.2025 | 0.1958 | 0.2441 | 47.0721 | 0.2263 | 0.2402 | 46.5716 | 0.1838 | 0.2466 | 47.3533 |
-| 2 | 0.3571 | 0.2083 | 43.4398 | 0.3101 | 0.2154 | 44.4899 | 0.3449 | 0.2104 | 43.6902 | 0.3027 | 0.2169 | 44.6473 |
-| 3 | 0.4858 | 0.1785 | 39.8702 | 0.4493 | 0.1845 | 40.7848 | 0.4627 | 0.1824 | 40.4205 | 0.4317 | 0.1874 | 41.1687 |
-| 4 | 0.5383 | 0.1661 | 38.1666 | 0.5017 | 0.1721 | 38.8508 | 0.5126 | 0.1708 | 38.9706 | 0.4821 | 0.1757 | 39.4037 |
-| 5 | 0.5724 | 0.1579 | 37.5262 | 0.5450 | 0.1630 | 37.8924 | 0.5432 | 0.1632 | 38.1978 | 0.5235 | 0.1670 | 38.2469 |
-| 6 | 0.5865 | 0.1548 | 36.7116 | 0.5580 | 0.1601 | 37.3643 | 0.5623 | 0.1596 | 37.5749 | 0.5423 | 0.1636 | 38.0115 |
-| 7 | 0.5969 | 0.1527 | 36.6371 | 0.5547 | 0.1615 | 38.5836 | 0.5726 | 0.1575 | 37.3309 | 0.5400 | 0.1643 | 38.3367 |
-| 8 | 0.6036 | 0.1505 | 36.7979 | 0.5765 | 0.1569 | 37.5898 | 0.5789 | 0.1554 | 37.5246 | 0.5625 | 0.1599 | 38.1130 |
-| 9 | 0.6149 | 0.1512 | 36.5560 | 0.5889 | 0.1568 | 37.2546 | 0.5820 | 0.1573 | 37.4302 | 0.5668 | 0.1610 | 37.8838 |
-| 10 | 0.6291 | 0.1474 | 35.9962 | 0.6073 | 0.1532 | 36.6242 | 0.5951 | 0.1538 | 36.9075 | 0.5840 | 0.1579 | 37.3619 |
-| 11 | 0.6360 | 0.1442 | 35.5896 | 0.6189 | 0.1484 | 36.0792 | 0.5985 | 0.1516 | 36.4975 | 0.5951 | 0.1533 | 36.8058 |
-| 12 | 0.6408 | 0.1432 | 35.1659 | 0.6234 | 0.1472 | 35.7265 | 0.6050 | 0.1500 | 36.1864 | 0.6015 | 0.1518 | 36.5922 |
-| 13 | 0.6430 | 0.1427 | 35.5949 | 0.6192 | 0.1487 | 36.7394 | 0.6035 | 0.1499 | 36.5929 | 0.5953 | 0.1532 | 36.9095 |
-| 14 | 0.6494 | 0.1422 | 35.1320 | 0.6156 | 0.1507 | 36.2733 | 0.6050 | 0.1510 | 35.9870 | 0.5855 | 0.1570 | 36.6919 |
-| 15 | 0.6564 | 0.1395 | 34.8749 | 0.6014 | 0.1542 | 36.6584 | 0.6148 | 0.1477 | 35.6689 | 0.5673 | 0.1601 | 37.4140 |
-| 16 | 0.6596 | 0.1381 | 34.8109 | 0.6046 | 0.1532 | 36.1879 | 0.6185 | 0.1462 | 35.5844 | 0.5708 | 0.1592 | 37.4287 |
-| 17 | 0.6613 | 0.1365 | 34.0864 | 0.6188 | 0.1490 | 35.7008 | 0.6192 | 0.1449 | 35.5663 | 0.5822 | 0.1560 | 36.9397 |
-| 18 | 0.6624 | 0.1355 | 34.1160 | 0.5948 | 0.1542 | 36.5117 | 0.6186 | 0.1442 | 35.4933 | 0.5602 | 0.1610 | 37.7257 |
-| 19 | 0.6639 | 0.1347 | 33.8155 | 0.5364 | 0.1638 | 37.7483 | 0.6178 | 0.1436 | 35.0663 | 0.4975 | 0.1706 | 38.6643 |
-| 20 | 0.6653 | 0.1343 | 33.7555 | 0.5167 | 0.1662 | 38.0195 | 0.6181 | 0.1436 | 35.0534 | 0.4771 | 0.1729 | 39.2103 |
-| 21 | 0.6658 | 0.1344 | 34.0286 | 0.5631 | 0.1603 | 36.9849 | 0.6156 | 0.1439 | 35.0772 | 0.5197 | 0.1677 | 38.4147 |
-| 22 | 0.6666 | 0.1348 | 34.1951 | 0.5603 | 0.1615 | 37.2534 | 0.6155 | 0.1447 | 35.3794 | 0.5174 | 0.1690 | 38.6903 |
-| 23 | 0.6674 | 0.1339 | 34.0108 | 0.3992 | 0.1788 | 42.2888 | 0.6163 | 0.1436 | 35.4519 | 0.3787 | 0.1818 | 43.0817 |
-| 24 | 0.6684 | 0.1343 | 34.1085 | 0.5843 | 0.1574 | 36.9098 | 0.6193 | 0.1439 | 35.5597 | 0.5473 | 0.1639 | 38.0636 |
-| 25 | 0.6687 | 0.1342 | 34.1352 | 0.5788 | 0.1542 | 36.0385 | 0.6169 | 0.1441 | 35.6082 | 0.5436 | 0.1605 | 37.1681 |
+| 1 | 0.3236 | 0.2112 | 43.6222 | 0.2884 | 0.2173 | 45.0377 | 0.3100 | 0.2135 | 43.9877 | 0.2785 | 0.2190 | 44.5788 |
+| 2 | 0.4074 | 0.1955 | 41.7340 | 0.3726 | 0.2022 | 42.9325 | 0.3952 | 0.1977 | 42.0634 | 0.3648 | 0.2036 | 43.1092 |
+| 3 | 0.4563 | 0.1858 | 40.7592 | 0.4091 | 0.1946 | 42.3107 | 0.4377 | 0.1890 | 41.2251 | 0.3962 | 0.1970 | 42.6226 |
+| 4 | 0.5510 | 0.1633 | 37.8881 | 0.5208 | 0.1692 | 38.8035 | 0.5256 | 0.1677 | 38.5687 | 0.5022 | 0.1723 | 39.2456 |
+| 5 | 0.5831 | 0.1526 | 36.1027 | 0.5636 | 0.1571 | 37.0633 | 0.5605 | 0.1570 | 36.9517 | 0.5495 | 0.1601 | 37.5502 |
+| 6 | 0.5974 | 0.1465 | 36.2564 | 0.5728 | 0.1514 | 36.6320 | 0.5713 | 0.1515 | 37.0675 | 0.5555 | 0.1550 | 37.5101 |
+| 7 | 0.6059 | 0.1462 | 36.1093 | 0.5743 | 0.1523 | 36.6504 | 0.5783 | 0.1521 | 36.8637 | 0.5569 | 0.1566 | 37.5712 |
+| 8 | 0.6296 | 0.1400 | 34.2213 | 0.5933 | 0.1509 | 39.1762 | 0.5975 | 0.1459 | 35.1298 | 0.5716 | 0.1545 | 39.5514 |
+| 9 | 0.6334 | 0.1390 | 34.1653 | 0.5926 | 0.1511 | 39.7821 | 0.5992 | 0.1451 | 35.1759 | 0.5706 | 0.1547 | 39.9051 |
+| 10 | 0.6405 | 0.1377 | 33.7930 | 0.6075 | 0.1462 | 36.5566 | 0.6051 | 0.1441 | 34.7956 | 0.5844 | 0.1502 | 36.3636 |
+| 11 | 0.6437 | 0.1374 | 34.0481 | 0.6180 | 0.1448 | 36.7953 | 0.6072 | 0.1441 | 35.0436 | 0.5960 | 0.1491 | 37.1660 |
+| 12 | 0.6482 | 0.1356 | 34.1204 | 0.6238 | 0.1410 | 35.5046 | 0.6132 | 0.1425 | 35.1143 | 0.6049 | 0.1450 | 35.6973 |
+| 13 | 0.6529 | 0.1340 | 33.4882 | 0.6253 | 0.1407 | 35.7682 | 0.6162 | 0.1416 | 34.8633 | 0.6062 | 0.1449 | 36.2753 |
+| 14 | 0.6592 | 0.1317 | 33.3312 | 0.6291 | 0.1371 | 34.6015 | 0.6194 | 0.1390 | 34.4887 | 0.6090 | 0.1417 | 35.7710 |
+| 15 | 0.6632 | 0.1310 | 33.2720 | 0.6285 | 0.1363 | 34.4321 | 0.6198 | 0.1391 | 34.6495 | 0.6070 | 0.1414 | 35.8366 |
+| 16 | 0.6697 | 0.1290 | 33.5386 | 0.6321 | 0.1365 | 35.0390 | 0.6194 | 0.1381 | 35.1852 | 0.6014 | 0.1427 | 36.8961 |
+| 17 | 0.6729 | 0.1280 | 33.5598 | 0.6307 | 0.1359 | 35.5790 | 0.6206 | 0.1375 | 34.8850 | 0.5999 | 0.1425 | 37.2675 |
+| 18 | 0.6766 | 0.1275 | 33.6476 | 0.6312 | 0.1367 | 35.6108 | 0.6233 | 0.1370 | 34.9672 | 0.6008 | 0.1425 | 37.2564 |
+| 19 | 0.6822 | 0.1264 | 33.3590 | 0.6330 | 0.1371 | 37.1092 | 0.6292 | 0.1366 | 34.7440 | 0.5991 | 0.1432 | 38.1021 |
+| 20 | 0.6865 | 0.1257 | 32.8666 | 0.6410 | 0.1362 | 36.6852 | 0.6328 | 0.1357 | 34.4644 | 0.6092 | 0.1418 | 37.4837 |
+| 21 | 0.6890 | 0.1259 | 33.6182 | 0.6260 | 0.1416 | 38.0107 | 0.6277 | 0.1367 | 35.2025 | 0.5890 | 0.1482 | 39.7591 |
+| 22 | 0.7052 | 0.1218 | 33.2901 | 0.6648 | 0.1327 | 36.7837 | 0.6433 | 0.1325 | 34.2909 | 0.6259 | 0.1387 | 37.1073 |
+| 23 | 0.7099 | 0.1195 | 32.3709 | 0.6729 | 0.1284 | 34.1936 | 0.6491 | 0.1304 | 33.8556 | 0.6332 | 0.1355 | 35.3868 |
+| 24 | 0.7114 | 0.1188 | 32.4690 | 0.6684 | 0.1325 | 36.5710 | 0.6471 | 0.1300 | 34.0374 | 0.6274 | 0.1387 | 36.5651 |
+| 25 | 0.7194 | 0.1161 | 30.9675 | 0.6911 | 0.1231 | 32.0835 | 0.6554 | 0.1272 | 33.0012 | 0.6554 | 0.1290 | 32.9661 |
 
 <!-- end generated -->
 

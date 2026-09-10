@@ -237,7 +237,7 @@ class TestWhatTheCorpusSays(unittest.TestCase):
 
 
 class TestOnlyTheValidEquationIsEvaluated(unittest.TestCase):
-    """C3: four equations are fitted and exactly one of them is evaluated as a predictor.
+    """C3: only the equation selected as E3-Valid is evaluated as a predictor.
 
     E3-MAX bounds how far the additive form reaches. It is reported, and it must never appear
     as a candidate in a comparison -- a bound that competes is being put forward as the
@@ -256,7 +256,7 @@ class TestOnlyTheValidEquationIsEvaluated(unittest.TestCase):
 
     def _row(self, role: str) -> dict[str, object]:
         """The grammars row carrying a role. Matched by substring because one grammar can hold
-        both -- `role` reads "E3-Valid + E3-MAX" when the larger grammar earns nothing, which
+        both -- `role` reads "E3-Valid + E3-MAX" when the wider grammar earns its complexity, which
         is a legitimate outcome and the case `Report.e3_capability` documents."""
         rows = [row for row in self.report.grammars.to_dicts() if role in str(row["role"])]
         self.assertEqual(len(rows), 1, f"exactly one grammar should hold {role}")
@@ -271,6 +271,11 @@ class TestOnlyTheValidEquationIsEvaluated(unittest.TestCase):
         chosen = self._row("E3-MAX")
         self.assertEqual(self.report.e3_capability.arity, chosen["arity"])
         self.assertEqual(self.report.e3_capability.n_terms, chosen["n_terms"])
+
+    def test_one_equation_keeps_the_published_name_when_both_roles_coincide(self) -> None:
+        if self.report.e3 is self.report.e3_capability:
+            self.assertTrue(self.report.e3.equation.name.startswith("E3_k"))
+            self.assertNotIn("capability", self.report.e3.equation.name)
 
     def test_every_refit_uses_the_grammar_that_was_published(self) -> None:
         """The C3 defect, pinned. Several tables rebuild the library from a `Configuration`

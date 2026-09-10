@@ -304,15 +304,15 @@ def make_shortlist(table: pl.DataFrame, settings: SearchSettings, output: Path) 
                 "Model Capability",
                 "Processing Units Number",
                 "Fitting Regime",
-                "Input Distribution Modelling",
+                "Loss Margin Behaviour",
             )
         )
     )
     for row in rows:
         if (
             _decode_features(str(row["features"])) == current
-            and float(row["penalty"]) == 20.0
-            and float(row["max_abs_zscore"]) == 4.25
+            and float(row["penalty"]) == 1.0
+            and float(row["max_abs_zscore"]) == 5.0
         ):
             add(row, "current-published-base")
             break

@@ -82,13 +82,12 @@ The one table the study is summarised by, so that the summary cannot drift from 
 
 | equation | features | terms | in-sample R2 | LOO-dataset R2 | LOO-model R2 | own ceiling | reached |
 |---|---|---|---|---|---|---|---|
-| E1 | dataset | 10 | 0.3506 | 0.3383 | 0.3077 | 0.3539 | 0.9906 |
-| E2 | model | 6 | 0.2467 | 0.1848 | 0.2242 | 0.2821 | 0.8745 |
-| E3 | both | 12 | 0.6408 | 0.6234 | 0.6050 |  |  |
-| E3 capability | both | 14 | 0.6551 | 0.6266 | 0.6171 |  |  |
+| E1 | dataset | 16 | 0.3538 | 0.3487 | 0.2996 | 0.3539 | 0.9998 |
+| E2 | model | 6 | 0.2588 | 0.1972 | 0.2367 | 0.2821 | 0.9173 |
+| E3 | both | 25 | 0.7194 | 0.6911 | 0.6554 |  |  |
 
 **Do not read these R² values as achievements against each other.** They share a scale but not a ceiling: E1 sees only dataset features, every row of a dataset shares one feature vector, and so E1 can predict nothing but a per-dataset constant. Its structural maximum is the `true dataset means` row, and reaching it means E1 is *done* rather than weak. The comparable quantity is the fraction of each equation's own ceiling, which the last column gives.
 
-**E3's ceiling cells are blank because it has no structural one.** Nothing in the feature set stops an equation over both halves of the meta-data from predicting every cell, so there is no group-identity bound to divide by. The reference shown instead is the additive oracle, in the comparison table of chapter 5. That oracle bounds only an equation additive in dataset effect plus model effect; E3's mixed terms can represent interactions beyond it, although the current fitted equation remains below it.
+**E3's ceiling cells are blank because it has no structural one.** Nothing in the feature set stops an equation over both halves of the meta-data from predicting every cell, so there is no group-identity bound to divide by. The reference it is shown instead is the additive oracle, in the comparison table of chapter 5. That oracle bounds only an equation additive in dataset effect plus model effect; E3's mixed terms can represent interactions beyond it. The comparison table reports whether the current equation reaches or exceeds that reference.
 
 <!-- end generated -->
