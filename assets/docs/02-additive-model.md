@@ -1,4 +1,4 @@
-# 2. Equation form and term vocabulary
+# 2. The additive model
 
 *Implemented in `ml_meta_perf.terms` and `ml_meta_perf.model`.*
 
@@ -48,7 +48,7 @@ consistently, keeps composite terms on a comparable scale.
 
 ## How many raw features may one term combine?
 
-A design choice with a measured justification, and one that was wrong for most of this
+A design choice with a measured justification, and one that is easy to get wrong for most of this
 project's life.
 
 | operation | raw features | terms (arity 3 library) |
@@ -68,7 +68,7 @@ the exact structure the oracle ladder says is missing.
 
 Generating it over all features instead takes mixed terms in the library from **19 to 126**
 and is worth, on its own, most of the improvement reported in
-[chapter 6](06-results.md).
+[chapter 4](04-equation.md).
 
 ### Is three enough? — the design point, measured properly
 
@@ -113,16 +113,53 @@ Three conclusions, and the first two were invisible at fixed penalty:
    but arity 4's best transfer needs both the heaviest shrinkage *and* the shortest
    equation, k=16, which is the signature of a grammar the sample cannot support).
 
-So `max_arity = 3` is the default because it is the only setting that is not dominated:
-arity 2 is beaten outright, arity 4 wins one axis at a ruinous price on the other.
+What survives from this table is the *method* — sweep the penalty inside each arity, or the
+ridge gets credited with the arity's effect — and the arity-4 result, a fit-only option at
+roughly six units of transfer per unit of fit. Its conclusion about arity 3 does not survive,
+and the rest of this section is what replaced it.
 
-**The fitted equation confirms it directly.** In the published 20-term E3 the three-feature
-`sum_ratio` accounts for 7 terms and **37% of the standardised weight mass** — the search
-did not merely tolerate the extra arity, it built better than a third of the equation out
-of it. A
-two-feature grammar would have had to express that half some other way, and the 0.6222
-ceiling above is what happens when it tries. Counted from the equation by
-`report.operation_usage`; see [chapter 7](07-practices.md#3-which-operations-the-equation-needed).
+### The arity is searched, not set
+
+The table above answers "which single arity should the study fix?", and since 2026-09-09 the
+study does not fix one. `experiment.search_grammars` fits E3 once per arity in
+`experiment.ARITIES` — `(2, 3)` by default, and `--arity` is repeatable — and
+`selection.best_configuration` decides between the results. Both are reported:
+
+| | grammar | terms | complexity `a·k` | floor over four protocols | protocol spread |
+|---|---|---|---|---|---|
+| **E3-Valid**, the equation the study publishes | arity 2 | 15 | 30 | 0.6162 | 0.0416 |
+| **E3-MAX**, the bound on how far the additive form reaches | arity 3 | 23 | 69 | 0.6213 | 0.0539 |
+
+The **floor** is the minimum over all four protocols — in-sample, leave-one-dataset-out,
+leave-one-model-out, and the doubly-held-out cell — so a grammar is judged by its worst
+showing rather than its best. See [chapter 5](05-evaluation.md#four-protocols) for the four.
+
+**E3-MAX has the better floor, by 0.0051, and does not win.** The rule is not a threshold to
+clear: the larger grammar has to be shown to *beat* the smaller one, paired per held-out
+dataset on mean absolute error under the strictest protocol. It gains 0.0008 there against a
+bootstrap spread of 0.0049 over the same folds — a ratio of 0.17 where the bar is 1. Half a
+percent of R², carried by folds that disagree with each other five times as loudly as the
+gain, does not buy a grammar with 2.3× the complexity. `selection.grammar_margin` computes
+that ratio and `TODO.md` records the alternatives that were tried and rejected.
+
+**The search does use the third arity when it is offered, which is why the bound is worth
+reporting.** In E3-MAX the three-feature `sum_ratio` carries 10 of the 23 terms and **44% of
+the standardised weight mass**: the search did not merely tolerate the extra arity, it built
+nearly half the equation out of it. That is the honest form of the old claim in this
+chapter — which stated the same thing about the *published* equation, and stopped being true
+when the published equation became an arity-2 one. What the comparison now says is narrower
+and more useful: a grammar that expresses dataset×model interaction in one term is what the
+search reaches for, and it still cannot be shown to predict better than one that does not.
+
+**Arity 4 is in the flag and out of the default set.** Its candidate is 15 terms at floor
+0.6071 — worse than arity 2 on all four protocols at twice the complexity — which agrees with
+the sweep above and costs about 6.6 s a run to re-derive. It stays reachable through `--arity
+4` because a recorded negative a reader may want to reproduce should be reproducible, and
+because a search that cannot be widened is not a search.
+
+Counted from the equations by `report.operation_usage`; the published equation's own table is
+in [chapter 4](04-equation.md#which-operations-the-equation-needed), where `sum_ratio` is
+marked `offered = no` because the arity cap never put it in the library.
 
 The reason not to go past four is different and does not need a measurement. A
 `(f1+f2)/(f3+f4)` term already names four features and two operations, and the grammar
@@ -284,38 +321,6 @@ a straight line misses it because a few large values dominate. That is a request
 direction for every feature in this meta-dataset, which is why it is absent rather than
 merely untested.
 
-## Negative result: a richer vocabulary does not help
-
-Adding `f^3` and `1/sqrt(f)` to the unary transforms was tested and **made things worse**:
-
-| | in-sample (k=20) | LOO-dataset (k=14) |
-|---|---|---|
-| base vocabulary | 0.6469 | +0.4429 |
-| with `f^3`, `1/sqrt(f)` | 0.6303 | +0.4196 |
-
-The additional transforms are high-variance, score well under screening, and displace
-better terms. The vocabulary is not under-powered; [chapter 5](05-oracles.md) locates the
-real limit.
-
-**Two of the five transforms already on offer are never used either.** Counting from the
-published equation rather than from a sweep:
-
-| transform | terms using it | share of weight mass |
-|---|---|---|
-| `log` | 13 of 16 | 90.1% |
-| `id` | 6 of 16 | 30.1% |
-| `sqrt` | **0** | **0%** |
-| `1/f` | 2 of 16 | 7.2% |
-| `f^2` | **0** | **0%** |
-
-`log` is the workhorse by a wide margin, inversion survives on two terms, and square
-roots and squaring earn nothing in the current equation despite being offered.
-Transform shares overlap when a term uses more than one transform. The search had these
-shapes available, screened them, and declined them in this fit; that does not establish
-that trimming them would have no cost under another configuration. They are retained
-because a vocabulary chosen to fit one meta-dataset's outcome is a worse default than
-one chosen on principle.
-
 ## Why the raw features are not scaled first
 
 An obvious alternative to log-compressing operands and capping term stability is to scale
@@ -431,3 +436,11 @@ largest. On this data the two designs select **completely disjoint** sets of 12 
 
 Both weight vectors are retained on the fitted object: the raw weights *are* the
 equation, the standardised weights ($\beta$) are how terms rank against each other.
+
+## Limitations of the form
+
+### The additive form
+
+The equation is additive in its terms. [Chapter 4](04-equation.md) quantifies what that
+costs: a rank-1 interaction component is worth +0.122 R² and the equation captures
+essentially none of it. This is a limitation of the model family, not of the fitting.

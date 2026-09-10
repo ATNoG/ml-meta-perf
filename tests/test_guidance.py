@@ -5,6 +5,7 @@ what the study found and the verdict has to change with it.
 """
 
 import unittest
+from types import SimpleNamespace
 
 import numpy as np
 import polars as pl
@@ -22,6 +23,7 @@ from ml_meta_perf.guidance import (
     gather,
     render,
 )
+from tests import corpus
 
 
 def frame() -> pl.DataFrame:
@@ -37,9 +39,7 @@ def frame() -> pl.DataFrame:
     )
 
 
-def ranking_table(
-    ap: float, mrr: float, hit_at_1: float, regret: float, spearman: float = 0.5
-) -> pl.DataFrame:
+def ranking_table(ap: float, mrr: float, hit_at_1: float, regret: float, spearman: float = 0.5) -> pl.DataFrame:
     """One ranking row per dataset of the real corpus, all identical.
 
     Per-group rather than a single mean, because `_beat_the_trivial_baseline` pairs the
@@ -79,7 +79,11 @@ class _Report:
             "comparison",
             pl.DataFrame(
                 {
-                    "equation": ["E1 (dataset only)", "E2 (model only)", "E3 (dataset + model)"],
+                    "equation": [
+                        "E1, dataset only (7 terms)",
+                        "E2, model only (6 terms)",
+                        "E3, dataset + model (15 terms)",
+                    ],
                     "r2": [0.337, 0.166, 0.600],
                 }
             ),
@@ -197,9 +201,7 @@ class TestVerdicts(unittest.TestCase):
         baseline = evidence.baseline_ranking
         # Equal on two metrics and a hair ahead on two: no interval can exclude zero.
         narrow = _Report(
-            selection=ranking_table(
-                baseline["ap"], baseline["mrr"], baseline["hit_at_1"], baseline["regret"] - 1e-6
-            )
+            selection=ranking_table(baseline["ap"], baseline["mrr"], baseline["hit_at_1"], baseline["regret"] - 1e-6)
         )
         self.assertEqual(
             check(gather(self.frame, narrow)).verdict,  # pyright: ignore[reportArgumentType]
@@ -276,6 +278,146 @@ class TestRendering(unittest.TestCase):
     def test_empty_input_is_handled(self) -> None:
         self.assertEqual(as_table([]).height, 0)
         self.assertIn("No practices", render([]))
+
+
+class TestEquationEvidence(unittest.TestCase):
+    """Practices paired with the terms that carry them.
+
+    The unit is the **term**, not the raw feature, and that is the whole point: a feature
+    enters several terms in different positions, and collapsing them into one direction throws
+    away the reading that makes a readable equation worth having.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        from ml_meta_perf.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays
+        from ml_meta_perf.guidance import equation_coverage, equation_evidence
+
+        # Every assertion here is about the *pairing* -- that a term is listed against a
+        # feature it contains, that a weak correlation is reported as undirected, that the
+        # counts match the rows -- and holds of any fitted equation. Two that did not, both
+        # about the published fifteen-term equation carrying capacity in a numerator and a
+        # denominator, are claims about the study and moved to its own class below, fitting only the published E3.
+        cls.report = corpus.report()
+        cls.columns = columns_as_arrays(corpus.sample(), DATASET_FEATURES + MODEL_FEATURES)
+        cls.evidence = equation_evidence(cls.report, cls.columns)
+        cls.counts = equation_coverage(cls.report, cls.columns)
+
+    def test_only_practices_making_a_feature_claim_appear(self) -> None:
+        from ml_meta_perf.guidance import CATALOGUE
+
+        claiming = {practice.id for practice in CATALOGUE if practice.expectations}
+        self.assertEqual(set(self.evidence["practice"].to_list()), claiming)
+
+    def test_every_named_term_is_in_the_published_equation(self) -> None:
+        """A pairing against a term the equation does not contain would be fabricated."""
+        published = {term.name for term in self.report.e3.equation.terms}
+        for name in self.evidence["term"].to_list():
+            if name:
+                self.assertIn(name, published)
+
+    def test_a_term_is_paired_only_with_a_feature_it_contains(self) -> None:
+        by_name = {term.name: set(term.features) for term in self.report.e3.equation.terms}
+        for row in self.evidence.to_dicts():
+            if row["term"]:
+                with self.subTest(term=row["term"]):
+                    self.assertIn(row["feature"], by_name[row["term"]])
+
+    def test_every_carrying_term_of_a_claimed_feature_is_listed(self) -> None:
+        """One row per (practice, term) pair, so a practice carried by five terms gets five
+        rows. Reporting only the strongest would hide exactly the disagreement worth seeing."""
+        from ml_meta_perf.guidance import CATALOGUE
+
+        for practice in CATALOGUE:
+            for feature, _ in practice.expectations:
+                expected = sum(1 for term in self.report.e3.equation.terms if feature in set(term.features))
+                listed = self.evidence.filter(
+                    (pl.col("practice") == practice.id) & (pl.col("feature") == feature) & (pl.col("term") != "")
+                ).height
+                with self.subTest(practice=practice.id, feature=feature):
+                    self.assertEqual(listed, expected)
+
+    def test_a_feature_the_search_never_took_is_marked_rather_than_dropped(self) -> None:
+        """Silence and support are different claims, and a missing row would read as neither."""
+        unselected = self.evidence.filter(pl.col("agrees") == "not selected")
+        for row in unselected.to_dicts():
+            with self.subTest(feature=row["feature"]):
+                self.assertEqual(row["term"], "")
+                self.assertNotIn(row["feature"], {f for term in self.report.e3.equation.terms for f in term.features})
+
+    def test_agreement_is_the_measured_direction_against_the_expected_one(self) -> None:
+        for row in self.evidence.to_dicts():
+            if row["agrees"] in ("yes", "no"):
+                with self.subTest(term=row["term"]):
+                    self.assertEqual(row["agrees"], "yes" if row["direction"] == row["expected"] else "no")
+
+    def test_every_weak_pairing_is_reported_as_undirected(self) -> None:
+        """A rank correlation of 0.05 between a feature and a term's contribution is the other
+        features in that term moving. Giving it a sign reads as a disagreement."""
+        from ml_meta_perf.guidance import MIN_TERM_DIRECTION
+
+        for row in self.evidence.to_dicts():
+            if row["term"] and abs(row["rho"]) < MIN_TERM_DIRECTION:
+                with self.subTest(term=row["term"]):
+                    self.assertEqual(row["agrees"], "no direction")
+                    self.assertEqual(row["direction"], "")
+
+    def test_position_is_one_of_the_three_slots(self) -> None:
+        slots = {row["position"] for row in self.evidence.to_dicts() if row["term"]}
+        self.assertTrue(slots <= {"numerator", "denominator", "factor"}, slots)
+
+    def test_coverage_counts_pairs_and_matches_the_table(self) -> None:
+        verdicts = self.evidence["agrees"].to_list()
+        self.assertEqual(self.counts["agree"], verdicts.count("yes"))
+        self.assertEqual(self.counts["disagree"], verdicts.count("no"))
+        self.assertEqual(self.counts["pairs"], verdicts.count("yes") + verdicts.count("no"))
+        self.assertEqual(self.counts["terms"], len(self.report.e3.equation.terms))
+
+    def test_carrying_terms_never_exceed_the_equation(self) -> None:
+        self.assertLessEqual(self.counts["carrying_terms"], self.counts["terms"])
+
+
+class TestTheCapacityReading(unittest.TestCase):
+    """The two pairings the chapter's reading of the capacity practice rests on.
+
+    Unlike everything in `TestEquationEvidence`, these are claims about the **published**
+    fifteen-term equation rather than about the pairing code, so they fit the real corpus
+    under `DEFAULT`. That is one fit and no protocols -- `equation_evidence` reads
+    `report.e3` and nothing else -- which is why this does not need a whole `run`.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        from ml_meta_perf.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays
+        from ml_meta_perf.experiment import DEFAULT, run_e3
+        from ml_meta_perf.guidance import equation_evidence
+
+        frame = load()
+        columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+        e3 = run_e3(frame, DEFAULT)
+        cls.evidence = equation_evidence(SimpleNamespace(e3=e3), columns)  # pyright: ignore[reportArgumentType]
+
+    def test_the_same_feature_can_disagree_with_itself_across_terms(self) -> None:
+        """The finding the term-level view exists to surface: `Processing Units Number` carries
+        one sign where it is a numerator and the opposite where it is a denominator, which is
+        the equation saying the *ratio* matters rather than the quantity. A per-feature check
+        cannot represent this at all."""
+        capacity = self.evidence.filter((pl.col("feature") == "Processing Units Number") & (pl.col("direction") != ""))
+        self.assertGreater(capacity.height, 1)
+        self.assertGreater(len(set(capacity["direction"].to_list())), 1)
+
+    def test_a_denominator_and_a_numerator_of_the_same_feature_differ(self) -> None:
+        """Arithmetic, not conflict: a negatively-weighted ratio contributes more as its
+        denominator grows. If this ever stopped holding, either the weights changed sign or
+        `feature_position` is reporting the wrong slot -- and the chapter's whole reading of
+        the capacity practice rests on it."""
+        capacity = self.evidence.filter(
+            (pl.col("feature") == "Processing Units Number") & (pl.col("direction") != "")
+        ).to_dicts()
+        below = {row["direction"] for row in capacity if row["position"] == "denominator"}
+        above = {row["direction"] for row in capacity if row["position"] == "numerator"}
+        self.assertTrue(below and above, "expected the feature in both slots")
+        self.assertEqual(below & above, set(), "a denominator and a numerator agreed")
 
 
 if __name__ == "__main__":

@@ -37,8 +37,13 @@ repos:
   - repo: local
     hooks:
       - id: ruff
-        name: ruff (src)
-        entry: venv/bin/ruff check src
+        name: ruff
+        # `src tests`, matching `tool.ruff.src` in pyproject.toml. Checking only
+        # `src` left the test suite outside the one tool that had it in scope --
+        # basedpyright and vulture both read `tests` from pyproject.toml, ruff
+        # was told a narrower path on the command line, and three lint errors
+        # accumulated there that nothing was looking at.
+        entry: venv/bin/ruff check src tests
         language: system
         files: '(\.py$|^pyproject\.toml$)'
         pass_filenames: false

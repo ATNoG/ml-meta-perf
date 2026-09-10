@@ -1,4 +1,4 @@
-# Related work and positioning
+# 0. Related work and positioning
 
 Notes gathered while building `ml-meta-perf`, organised around the question the project
 actually faces: *why choose a short additive equation over an accurate opaque regressor,
@@ -18,7 +18,8 @@ performance metric. The features in the shipped corpus (`class_ent`, `gravity`,
   Machine Learning and Data Mining* (2nd ed., 2022) — the reference text for the
   meta-feature → performance framing.
 - Rice, "The Algorithm Selection Problem", *Advances in Computers* 15 (1976).
-- Vanschoren, "Meta-Learning: A Survey", arXiv:1810.03548 (2018).
+- Vanschoren, "Meta-Learning", in Hutter, Kotthoff & Vanschoren (eds), *Automated Machine
+  Learning: Methods, Systems, Challenges*, Springer (2019), ch. 2.
 
 **Relevance.** This project sits squarely in that tradition but inverts the usual
 priority: the deliverable is the *mapping itself*, in readable form, rather than its
@@ -28,7 +29,8 @@ accuracy.
 
 > Billa, Orlandi, Guidetti, Mandreoli, **"Interpretable ML Under the Microscope:
 > Performance, Meta-Features, and the Regression-Classification Predictability Gap"**,
-> arXiv:2601.00428 (2026). Sixteen interpretable methods across 216 tabular datasets.
+> arXiv:2601.00428 (2026). Preprint. Sixteen interpretable methods across 216 tabular
+> datasets.
 
 Their central result is directly relevant and worth quoting in full:
 
@@ -40,7 +42,7 @@ Their central result is directly relevant and worth quoting in full:
 
 **Relevance.** This is independent corroboration of the central measurement here. Our
 leave-one-dataset-out R² of ~0.47 for a classification metric (MCC), against an in-sample
-0.665, is not a failure of the method — it reflects a documented property of classifier
+0.658, is not a failure of the method — it reflects a documented property of classifier
 performance prediction. The paper also names the **"interpretability tax"**: methods
 optimising for structural sparsity pay significantly in training time. `ml-meta-perf` pays a
 different tax — accuracy — and quantifies it explicitly through the term-count curve.
@@ -57,11 +59,12 @@ functions** — the same machinery as SINDy, applied to meta-learning rather tha
   identification of nonlinear dynamical systems", *PNAS* 113(15) (2016). The original
   library-plus-sparse-regression formulation.
 - Schmelzer, Dwight, Cinnella, **"Discovery of Algebraic Reynolds-Stress Models Using
-  Sparse Symbolic Regression"** (SpaRTA), arXiv:1905.07510 (2019). Deterministic sparse
-  regression over a candidate library, chosen explicitly over genetic programming for
-  the interpretability of the result. The closest methodological ancestor of this work.
-- Kaptanoglu et al., "Scalable Sparse Regression for Model Discovery", arXiv:2405.09579
-  (2024).
+  Sparse Symbolic Regression"** (SpaRTA), *Flow, Turbulence and Combustion* 104, 579-603
+  (2020). Deterministic sparse regression over a candidate library, chosen explicitly over
+  genetic programming for the interpretability of the result. The closest methodological
+  ancestor of this work.
+- Golden, "Scalable Sparse Regression for Model Discovery: The Fast Lane to Insight",
+  arXiv:2405.09579 (2024). Preprint.
 
 **Relevance.** These justify the deterministic-library approach against the GP
 alternative. SpaRTA's motivation — that GP produces expressions too unwieldy to interpret
@@ -76,17 +79,18 @@ long to interpret. That is a known and named failure mode.
   best-studied pathology in GP. Parsimony pressure and multi-objective (accuracy vs size)
   formulations are the standard mitigations.
 - de França, "Alleviating Overfitting in Transformation-Interaction-Rational Symbolic
-  Regression with Multi-Objective Optimization", arXiv:2501.01905 (2025). The
-  **Transformation-Interaction-Rational (TIR)** representation constrains SR to a ratio
-  of two nonlinear functions, each a linear regression over transformed variables —
-  a deliberate restriction of the search space to bias toward simpler expressions.
-- Cranmer, "Interpretable Machine Learning for Science with PySR", arXiv:2305.01582
-  (2023).
+  Regression with Multi-Objective Optimization", *Genetic Programming and Evolvable
+  Machines* 24(2) (2023). The **Transformation-Interaction-Rational (TIR)** representation
+  constrains SR to a ratio of two nonlinear functions, each a linear regression over
+  transformed variables — a deliberate restriction of the search space to bias toward
+  simpler expressions.
+- Cranmer, "Interpretable Machine Learning for Science with PySR and SymbolicRegression.jl",
+  arXiv:2305.01582 (2023). Preprint.
 - de França et al., "Call for Action: towards the next generation of symbolic regression
-  benchmark" (SRBench update), arXiv:2505.03977 (2025).
-- Virgolin et al., "Coefficient Mutation in GP-GOMEA for Symbolic Regression",
-  arXiv:2204.12159 (2022) — GP struggles to optimise real-valued coefficients, which
-  linear-in-the-weights methods get exactly and for free.
+  benchmark" (SRBench update), *GECCO 2025 Companion*.
+- Virgolin & Bosman, "Coefficient Mutation in the Gene-pool Optimal Mixing Evolutionary
+  Algorithm for Symbolic Regression", *GECCO 2022 Companion* — GP struggles to optimise
+  real-valued coefficients, which linear-in-the-weights methods get exactly and for free.
 
 **Relevance.** TIR is the strongest argument for our design: restricting the *form* up
 front (additive, linear in the weights, over a curated term vocabulary) is an established
@@ -119,13 +123,13 @@ structurally identical problem.
   fitted by stepwise forward/backward selection. That is `ml-meta-perf`'s model class and
   `ml-meta-perf`'s search strategy, arrived at independently for a different domain.
 - Velez et al., "White-Box Analysis over Machine Learning: Modeling Performance of
-  Configurable Systems", arXiv:2101.05362 (2021).
+  Configurable Systems", *ICSE 2021*, 1072-1084.
 - Velez et al., "ConfigCrusher: Towards White-Box Performance Analysis for Configurable
-  Systems", arXiv:1905.02066 (2019).
-- Jamshidi et al., "Transfer Learning for Performance Modeling of Configurable Systems",
-  arXiv:1709.02280 (2017).
+  Systems", *Automated Software Engineering* 27 (2020).
+- Jamshidi et al., "Transfer Learning for Performance Modeling of Configurable Systems:
+  An Exploratory Analysis", *ASE 2017*, 497-508.
 - Lesoil et al., "The Interaction between Inputs and Configurations fed to Software
-  Systems", arXiv:2112.07279 (2021).
+  Systems: an Empirical Study", arXiv:2112.07279 (2021). Preprint.
 
 **Why the analogy is tight.** Their configuration options map to our features, their
 software system to our classifier, and their *workload* to our dataset. Lesoil et al. study
@@ -146,7 +150,7 @@ and explains part of the gap between their reported accuracies and ours.
 
 ## 5b. Two-way tables with covariates on one side — the model behind the ceiling
 
-Chapter 9 measures a ceiling by adding, to the fitted equation, a table of one level and
+Chapter 7 measures a ceiling by adding, to the fitted equation, a table of one level and
 one slope per classifier. That construction is not new; it is the standard model for a
 two-way table where one margin can be described by covariates and the other cannot. It is
 **not published as a model here** — it is how the study puts a number on what better model
@@ -167,7 +171,7 @@ descriptors would be worth.
 - Hastie & Tibshirani, *Generalized Additive Models* (1990) — backfitting, the alternative
   fitting scheme, which was measured here and is worse.
 
-**Relevance.** The agronomy literature already cited for AMMI ([chapter 5](05-oracles.md))
+**Relevance.** The agronomy literature already cited for AMMI ([chapter 4](04-equation.md))
 answers the question AMMI raises. AMMI's latents are free on both margins, so it explains a
 grid and predicts nothing outside it; factorial regression with covariates on one margin is
 the predictive version, and it is exactly what leave-one-dataset-out permits — the datasets
@@ -186,13 +190,13 @@ in AutoML.
   meta-features used to place a *new* instance — the cold-start case, which is our
   leave-one-dataset-out protocol.
 - Fusi, Sheth, Elibol, "Probabilistic Matrix Factorization for Automated Machine Learning",
-  arXiv:1705.05355 (NeurIPS 2018).
-- Yang, Akimoto, Kim, Udell, "OBOE: Collaborative Filtering for AutoML Model Selection",
-  arXiv:1808.03233 (KDD 2019).
+  *NeurIPS 2018*, 3352-3361.
+- Yang, Akimoto, Kim, Udell, "Oboe: Collaborative Filtering for AutoML Model Selection",
+  *KDD 2019*.
 
 **Relevance.** These establish that latent-factor models over a pipeline-by-dataset matrix
 are standard practice for algorithm recommendation, and they are why the +0.106 measured in
-[chapter 9](09-model-effects.md) is unsurprising in size. They are also what
+[chapter 1](01-dataset.md) is unsurprising in size. They are also what
 this study deliberately does *not* deliver: a latent factor per model is an uninterpreted
 coordinate, and a table of them supports no term analysis and no transferable practice.
 Reporting the number as a ceiling states the trade honestly — this is what an interpretable
@@ -211,7 +215,7 @@ additive equation gives up against a factorised recommender on this corpus, and 
   — the within (fixed-effects) transform, which is what makes a pairwise-ranking least
   squares objective closed-form.
 
-**Relevance.** The obvious response to "the per-model mean out-ranks E3" is to optimise the
+**Relevance.** The obvious response to "the equation does not out-rank the per-model centre" is to optimise the
 ranking directly, and the within transform makes that a one-line change rather than a new
 optimiser. It was implemented and it **ranks worse** (Spearman 0.532 against 0.625). The
 result is worth reporting precisely because the literature makes it look like free money:
@@ -222,7 +226,7 @@ the binding constraint here is the thinness of the model descriptors, not the lo
 - Chicco & Jurman, "The advantages of the Matthews correlation coefficient (MCC) over F1
   score and accuracy in binary classification evaluation", *BMC Genomics* 21 (2020).
 - Itaya et al., "Statistical Inference of the Matthews Correlation Coefficient for
-  Multiclass Classification", arXiv:2503.06450 (2025).
+  Multiclass Classification", arXiv:2503.06450 (2025). Preprint.
 
 **Relevance.** Justifies MCC as the target for imbalanced security/IoT datasets. It also
 raises a modelling caveat we handle explicitly: MCC is bounded in [-1, 1] and this
@@ -235,8 +239,8 @@ so predictions are clipped. A logit/`atanh` transform of the target was tried an
 The grouped-split requirement is standard practice wherever records share a group
 identity, and is the same concern as subject-wise splitting in clinical ML.
 
-- Walsh et al., "DOME: Recommendations for supervised machine learning validation in
-  biology", arXiv:2006.16189 (2020) — community standards on how validation should be
+- Walsh et al., "DOME: recommendations for supervised machine learning validation in
+  biology", *Nature Methods* 18, 1122-1127 (2021) — community standards on how validation should be
   reported, including the leakage traps.
 
 **Relevance.** Supports reporting leave-one-dataset-out as the headline and treating
@@ -247,7 +251,7 @@ random k-fold as a diagnostic for leakage rather than a result.
 | | prior work | `ml-meta-perf` |
 |---|---|---|
 | Model class | opaque regressors (RF, GBM, NN); or GP-evolved long expressions | fixed additive form, linear in the weights |
-| Reported R² | ~0.9 (opaque), >0.7 (GP) | 0.665 in-sample, 0.627 LOO-dataset |
+| Reported R² | ~0.9 (opaque), >0.7 (GP) | 0.658 in-sample, 0.638 LOO-dataset |
 | Validation | often random k-fold | leave-one-dataset-out and leave-one-model-out |
 | Extractable guidance | little | each weight reads directly in feature units |
 | Ceiling stated | rarely | additive oracle at 0.6605, rank-1 at 0.783, E1 capped at 0.354 |
@@ -278,5 +282,5 @@ quantified.
 - **More datasets.** Twenty is the binding constraint on every cross-validated number
   here; OpenML-scale meta-data would settle whether the 0.6605 additive ceiling is a
   property of this sample or of the approach.
-- **Interaction structure.** The gap between E3 (0.665) and the rank-1 oracle (0.783)
+- **Interaction structure.** The gap between E3 (0.658) and the rank-1 oracle (0.783)
   is entirely dataset×model interaction the current term vocabulary does not reach.

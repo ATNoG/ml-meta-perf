@@ -14,7 +14,7 @@ from ml_meta_perf.attribution import (
     term_effects,
     variance_decomposition,
 )
-from ml_meta_perf.model import Equation, LOWERS, RAISES
+from ml_meta_perf.model import LOWERS, RAISES, Equation
 from ml_meta_perf.terms import Atom, Term
 
 DATASET = ("d1", "d2")

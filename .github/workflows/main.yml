@@ -13,6 +13,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      # Both versions always run. Fail-fast cancels 3.12 the moment 3.14 fails,
+      # which hid whether 3.12 was healthy behind a 3.14-only import error.
+      fail-fast: false
       matrix:
         python-version: ["3.12", "3.14"]
 
@@ -32,10 +35,12 @@ jobs:
           # release that enables new rules by default fails a PR that changed
           # none of the code it flags -- which is what happened at ruff 0.16.
           pip install ruff==0.16.1 basedpyright==1.39.8 vulture==2.16
+          # No extras: there are none. joblib is a base dependency because `opaque` runs on
+          # it, so a plain install type-checks and runs the whole study.
           pip install .
 
       - name: Lint with Ruff
-        run: ruff check src
+        run: ruff check src tests
 
       - name: Type-check with basedpyright
         # --pythonpath, because pyproject.toml deliberately pins no venv: without it
@@ -52,5 +57,12 @@ jobs:
         # The tests cover the parts; this covers the whole, which is what a
         # reader cloning the repository actually runs. It also fails loudly if
         # the shipped meta-dataset and the code disagree about the schema.
+        #
+        # There is no `--report` flag and there never was: this step passed one and
+        # exited 2 on argparse, every time, unnoticed because nothing has ever run
+        # on a runner. The generated chapter sections are written by default, into
+        # the checked-out `assets/docs`, which is what a reader gets and is
+        # disposable here -- `--output` and `--figures` are redirected only so the
+        # run does not overwrite the tracked results and figures.
         run: python -m ml_meta_perf --quiet --output "${RUNNER_TEMP}/results"
-          --report "${RUNNER_TEMP}/report.md" --figures "${RUNNER_TEMP}/figures"
+          --figures "${RUNNER_TEMP}/figures"

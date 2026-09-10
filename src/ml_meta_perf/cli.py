@@ -9,10 +9,7 @@ than by rerunning a notebook in the right order.
 Every knob that was tuned during the study is exposed as a flag. Defaults are the tuned
 values, so a bare ``python -m ml_meta_perf`` reproduces the reported numbers.
 
-A full configuration sweep under the latest grammar constraint remains pending;
-the current defaults reproduce the reported study (see ``TODO.md``).
-
-Study chapter: [6. Results](../../assets/docs/06-results.md) -- the rationale, in
+Study chapter: [4. The equation](../../assets/docs/04-equation.md) -- the rationale, in
 prose, with the figures.
 """
 
@@ -29,17 +26,19 @@ import polars as pl
 
 from ml_meta_perf.data import DATASET_FEATURES, DEFAULT_PATH, MODEL_FEATURES, columns_as_arrays, load, target
 from ml_meta_perf.experiment import (
-    DEFAULT_E1,
-    DEFAULT_E3,
-    QUICK_E1,
-    QUICK_E3,
+    ARITIES,
+    BEAM_WIDTH,
+    DEFAULT,
+    MAX_ABS_ZSCORE,
+    MAX_TERMS,
+    PENALTY,
+    POOL_SIZE,
     Configuration,
     Report,
     run,
 )
 from ml_meta_perf.practices import render as render_practices
-from ml_meta_perf.report import term_importance
-from ml_meta_perf.report import write as write_report
+from ml_meta_perf.report import term_importance, write_into_chapters
 
 #: What ``--phase`` accepts. ``all`` is the default and is what the study runs.
 PHASES = ("screen", "equations", "validation", "practices", "figures", "report")
@@ -147,56 +146,48 @@ def render(
         )
 
 
-def configurations(
-    arguments: argparse.Namespace,
-) -> tuple[Configuration, Configuration]:
-    """Fold the command line onto the tuned configurations.
+def configuration(arguments: argparse.Namespace) -> Configuration:
+    """The configuration the run fits every equation under.
 
-    Only flags the caller actually passed are applied, so an unmentioned knob keeps its
-    tuned value rather than being reset to an argparse default. Knobs that mean the same
-    thing everywhere -- the penalty, the pool, the beam, the stability cap -- are applied
-    to E1 as well; the ones that describe the published E3 specifically are not.
+    **One, not three.** Until 2026-09-09 this returned a pair and E2 got a third object no
+    flag reached, so `--penalty 3` moved two of the three equations and the comparison between
+    them stopped being like-for-like. `experiment.DEFAULT` is now the single tuned
+    configuration and the argparse defaults *are* the constants behind it, which is also what
+    makes `--help` state the real values rather than `None`.
+
+    `max_arity` is not read from here. E3's is chosen by `experiment.search_grammars` over
+    ``--arity``, and E1 and E2 -- which are fitted once rather than searched -- take the most
+    parsimonious grammar in that set.
     """
-    base_e1 = QUICK_E1 if arguments.quick else DEFAULT_E1
-    base_e3 = QUICK_E3 if arguments.quick else DEFAULT_E3
-
-    shared: dict[str, object] = {}
-    if arguments.penalty is not None:
-        shared["penalty"] = arguments.penalty
-    if arguments.pool is not None:
-        shared["pool_size"] = arguments.pool
-    if arguments.beam is not None:
-        shared["beam_width"] = arguments.beam
-    if arguments.zscore is not None:
-        shared["max_abs_zscore"] = arguments.zscore
-
-    e3_only: dict[str, object] = dict(shared)
-    if arguments.arity is not None:
-        e3_only["max_arity"] = arguments.arity
-    if arguments.max_terms is not None:
-        e3_only["max_terms"] = arguments.max_terms
-    if arguments.terms is not None:
-        e3_only["headline_terms"] = arguments.terms
-        # A headline longer than the search would be silently truncated to whatever the
-        # search produced, so raise the search to meet it unless it was set explicitly.
-        if arguments.max_terms is None and arguments.terms > base_e3.max_terms:
-            e3_only["max_terms"] = arguments.terms
-
-    return (
-        dataclasses.replace(base_e1, **shared),  # pyright: ignore[reportArgumentType]
-        dataclasses.replace(base_e3, **e3_only),  # pyright: ignore[reportArgumentType]
+    return dataclasses.replace(
+        DEFAULT,
+        max_abs_zscore=arguments.zscore,
+        penalty=arguments.penalty,
+        pool_size=arguments.pool,
+        beam_width=arguments.beam,
+        max_terms=arguments.max_terms,
+        max_arity=min(arities(arguments)),
     )
+
+
+def arities(arguments: argparse.Namespace) -> tuple[int, ...]:
+    """The grammars to search, de-duplicated in the order the flags gave them."""
+    return tuple(dict.fromkeys(arguments.arity)) if arguments.arity else ARITIES
 
 
 def _save_tables(report: Report, folder: Path) -> list[Path]:
     """Every table the study produced, as CSV, for a paper's tables and plots."""
     tables: dict[str, pl.DataFrame] = {
         "correlations": report.correlations,
+        "reach": report.reach,
+        "ceiling": report.ceiling,
         "curve_e1": report.e1.curve,
         "curve_e2": report.e2.curve,
         "curve_e3": report.e3.curve,
         "comparison": report.comparison,
         "baselines": report.baselines,
+        "ranking_baselines": report.ranking_baselines,
+        "decision_baselines": report.decision_baselines,
         "leakage": report.leakage,
         "oracles": report.oracles,
         "interaction": report.interaction,
@@ -207,7 +198,9 @@ def _save_tables(report: Report, folder: Path) -> list[Path]:
         "term_effects": report.effects,
         "practices": report.practices,
         "term_choice": report.term_choice,
+        "length_choice": report.length_choice,
         "pareto": report.pareto,
+        "grammars": report.grammars,
     }
     if report.e3.stability is not None:
         tables["stability"] = report.e3.stability
@@ -240,30 +233,46 @@ def build_parser() -> argparse.ArgumentParser:
         default="assets/figures",
         help="directory for the generated figures",
     )
-    # The report is documentation rather than a working artefact, so it defaults into the
-    # chapter tree alongside the hand-written ones and is tracked; --output holds the
-    # equations and the CSV tables, which are regenerated on every run and are not.
+    # The generated results go *into* the chapters that discuss them, between markers, rather
+    # than into a report of their own: the study has six chapters and a reader should not have
+    # to hold a chapter and a separate report at once. Everything outside the markers is
+    # hand-written and never touched; everything inside is rewritten on every run, so a
+    # chapter cannot carry a stale table. `--output` holds the equations and the CSV tables,
+    # which are regenerated every run and are not tracked.
     data.add_argument(
-        "--report",
-        default="assets/docs/10-report.md",
-        help="path for the generated markdown report",
+        "--docs",
+        default="assets/docs",
+        help="chapter directory whose generated sections are rewritten",
     )
     data.add_argument("--no-figures", action="store_true", help="skip figure generation")
-    data.add_argument("--no-report", action="store_true", help="skip the markdown report")
+    data.add_argument("--no-report", action="store_true", help="skip rewriting the generated chapter sections")
     data.add_argument("--no-tables", action="store_true", help="skip the CSV tables")
     data.add_argument("--quiet", action="store_true", help="write files without printing the study")
 
     search = parser.add_argument_group("equation and search")
-    search.add_argument("--terms", type=int, default=None, help="terms in the published E3 equation")
-    search.add_argument("--max-terms", type=int, default=None, help="longest equation the search explores")
-    search.add_argument("--penalty", type=float, default=None, help="ridge penalty on standardised terms")
-    search.add_argument("--arity", type=int, choices=(1, 2, 3, 4), default=None, help="raw features per term")
-    search.add_argument("--pool", type=int, default=None, help="terms surviving screening into the beam")
-    search.add_argument("--beam", type=int, default=None, help="beam width")
+    # `--terms` was removed on 2026-09-09 with `Configuration.headline_terms`. It set the
+    # published length by hand, and the published length is now derived from the equation's own
+    # curve by `selection.floor_argmax`. `--max-terms` is a different thing and stays: the
+    # search *horizon*, which is a cost control and the range the reported curve covers.
+    search.add_argument("--max-terms", type=int, default=MAX_TERMS, help="longest equation the search explores")
+    search.add_argument("--penalty", type=float, default=PENALTY, help="ridge penalty on standardised terms")
+    # Repeatable, because the arity is searched rather than fixed: `--arity 2 --arity 3` is the
+    # default set and `--arity 4` narrows the search to the grammar the negatives were measured
+    # under. One value is a search over one grammar, which is what fixing the arity now means.
+    search.add_argument(
+        "--arity",
+        type=int,
+        choices=(1, 2, 3, 4),
+        action="append",
+        default=None,
+        help=f"raw features per term; repeat to search several grammars; unset searches {ARITIES}",
+    )
+    search.add_argument("--pool", type=int, default=POOL_SIZE, help="terms surviving screening into the beam")
+    search.add_argument("--beam", type=int, default=BEAM_WIDTH, help="beam width")
     search.add_argument(
         "--zscore",
         type=float,
-        default=None,
+        default=MAX_ABS_ZSCORE,
         help="largest standard score a term may reach before it is rejected as a spike",
     )
 
@@ -274,11 +283,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="run a subset of the phases; repeatable (default: all)",
     )
-    parser.add_argument(
-        "--quick",
-        action="store_true",
-        help="a reduced configuration that checks the wiring in seconds; not the reported study",
-    )
     return parser
 
 
@@ -286,13 +290,14 @@ def main(argv: list[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
     phases = frozenset(PHASES) if not arguments.phase or "all" in arguments.phase else frozenset(arguments.phase)
 
-    config_e1, config_e3 = configurations(arguments)
+    config = configuration(arguments)
     started = time.perf_counter()
     report = run(
         arguments.data,
-        quick=arguments.quick,
-        config_e1=config_e1,
-        config_e3=config_e3,
+        config_e1=config,
+        config_e2=config,
+        config_e3=config,
+        arities=arities(arguments),
     )
     elapsed = time.perf_counter() - started
 
@@ -315,19 +320,19 @@ def main(argv: list[str] | None = None) -> int:
             written = _save_tables(report, destination)
             print(f"{len(written)} tables written to {destination}")
 
-    if arguments.report and not arguments.no_report and "report" in phases:
-        path = write_report(
+    if arguments.docs and not arguments.no_report and "report" in phases:
+        pages = write_into_chapters(
             report,
             columns,
             target(frame),
             DATASET_FEATURES,
             MODEL_FEATURES,
-            arguments.report,
+            arguments.docs,
             frame=frame,
-            config=config_e3,
+            config=config,
             source=source,
         )
-        print(f"report written to {path}")
+        print(f"{len(pages)} chapters regenerated in {arguments.docs}")
 
     if arguments.figures and not arguments.no_figures and "figures" in phases:
         from ml_meta_perf.figures import generate

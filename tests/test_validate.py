@@ -6,12 +6,14 @@ import unittest
 import numpy as np
 import polars as pl
 
-from ml_meta_perf.analysis import redundancy_groups, screen
-from ml_meta_perf.fit import fit
+from ml_meta_perf.analysis import feature_reach, grammar_ceiling, redundancy_groups, saturated_fit, screen
+from ml_meta_perf.search import search
+from ml_meta_perf.stats import mae, r2_score
 from ml_meta_perf.terms import build_library
 from ml_meta_perf.validate import (
     CrossValidation,
     additive_oracle,
+    baseline_group_centre,
     baseline_group_mean,
     cross_validate_fixed_form,
     decision_report,
@@ -26,6 +28,7 @@ from ml_meta_perf.validate import (
     sign_test,
     term_stability,
 )
+from tests import corpus
 
 
 def grid(n_groups: int = 6, per_group: int = 5, seed: int = 4):
@@ -88,7 +91,7 @@ class TestCrossValidation(unittest.TestCase):
     def setUp(self) -> None:
         self.columns, self.target, self.outer, self.inner = grid()
         self.library = build_library(("f1", "f2"), ("g1", "g2"), self.columns)
-        result = fit(self.library, self.target, max_terms=4, penalty=1.0, pool_size=30)
+        result = search(self.library, self.target, max_terms=4, penalty=1.0, pool_size=30)
         self.equations = result.equations
 
     def path(self, penalty: float = 1.0) -> dict[int, CrossValidation]:
@@ -385,3 +388,143 @@ class TestSignTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestGroupCentreBaselines(unittest.TestCase):
+    """Both centres, because the metrics disagree about which baseline is honest."""
+
+    def setUp(self) -> None:
+        rng = np.random.default_rng(11)
+        self.outer = np.repeat([f"d{i}" for i in range(6)], 8)
+        self.inner = np.tile([f"m{i}" for i in range(8)], 6)
+        self.truth = rng.uniform(0.0, 1.0, size=48)
+
+    def test_median_beats_mean_on_absolute_error(self) -> None:
+        """The reason the median rows exist: MAE is minimised by the median.
+
+        A skewed target makes the gap visible. Reporting the equation's MAE only against a
+        mean baseline compares it with a predictor not minimising the metric being reported.
+        """
+        skewed = np.concatenate([np.full(40, 0.9), np.linspace(0.0, 0.2, 8)])
+        mean = baseline_group_centre(skewed, self.outer, self.inner, centre="mean")
+        median = baseline_group_centre(skewed, self.outer, self.inner, centre="median")
+        self.assertLess(mae(skewed, median), mae(skewed, mean))
+
+    def test_mean_beats_median_on_squared_error(self) -> None:
+        """And the converse, which is why both are kept rather than one replacing the other."""
+        mean = baseline_group_centre(self.truth, self.outer, centre="mean")
+        median = baseline_group_centre(self.truth, self.outer, centre="median")
+        self.assertGreater(r2_score(self.truth, mean), r2_score(self.truth, median))
+
+    def test_the_mean_wrapper_is_the_centre_at_mean(self) -> None:
+        np.testing.assert_allclose(
+            baseline_group_mean(self.truth, self.outer, self.inner),
+            baseline_group_centre(self.truth, self.outer, self.inner, centre="mean"),
+        )
+
+    def test_no_row_sees_its_own_value(self) -> None:
+        """The leave-one-group-out loop is what keeps the baseline honest."""
+        for centre in ("mean", "median"):
+            prediction = baseline_group_centre(self.truth, self.outer, centre=centre)
+            for label in np.unique(self.outer):
+                mask = self.outer == label
+                expected = np.mean if centre == "mean" else np.median
+                self.assertAlmostEqual(float(prediction[mask][0]), float(expected(self.truth[~mask])))
+
+
+class TestGrammarReach(unittest.TestCase):
+    """The heuristic ceiling the vocabulary implies, before any search runs."""
+
+    def setUp(self) -> None:
+        from ml_meta_perf.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays, load
+        from ml_meta_perf.data import target as load_target
+        from ml_meta_perf.experiment import DEFAULT
+
+        frame = load()
+        self.features = DATASET_FEATURES + MODEL_FEATURES
+        columns = columns_as_arrays(frame, self.features)
+        self.truth = load_target(frame)
+        self.library = build_library(
+            DATASET_FEATURES,
+            MODEL_FEATURES,
+            columns,
+            max_arity=DEFAULT.max_arity,
+            max_abs_zscore=DEFAULT.max_abs_zscore,
+        )
+
+    def test_a_feature_is_never_worse_after_the_grammar_than_before(self) -> None:
+        """`gain` measures what the transforms unlock, so it cannot be negative.
+
+        The raw column is itself an admissible term, so the best single-feature term is at
+        worst the raw one.
+        """
+        table = feature_reach(self.library, self.truth, self.features)
+        self.assertTrue((table["gain"].to_numpy() >= -1e-12).all())
+        self.assertTrue((table["r2_best"].to_numpy() >= table["r2_raw"].to_numpy() - 1e-12).all())
+
+    def test_only_single_feature_terms_are_credited(self) -> None:
+        """A product would otherwise be counted twice, once under each of its features."""
+        table = feature_reach(self.library, self.truth, self.features)
+        by_name = {term.name: term for term in self.library.terms}
+        for row in table.to_dicts():
+            if row["best_term"]:
+                self.assertEqual(set(by_name[row["best_term"]].features), {row["feature"]})
+
+    def test_the_ladder_is_monotone(self) -> None:
+        """Each rung is a superset of the one before it, so R2 cannot fall."""
+        ladder = grammar_ceiling(self.library, self.truth, self.features)
+        self.assertLessEqual(ladder["r2_raw_additive"], ladder["r2_best_per_feature"] + 1e-9)
+        self.assertLessEqual(ladder["r2_best_per_feature"], ladder["r2_all_single_feature"] + 1e-9)
+
+    def test_it_is_a_heuristic_and_not_a_bound(self) -> None:
+        """The published equation passes it, which is the reading the report gives.
+
+        `r2_all_single_feature` bounds a sum of per-feature functions. E3's cross-feature
+        terms are not that, so exceeding it is expected -- and is the independent route to
+        the same conclusion the additive oracle reaches.
+        """
+        ladder = grammar_ceiling(self.library, self.truth, self.features)
+        fitted = float(corpus.published().in_sample["r2"])
+        self.assertGreater(fitted, ladder["r2_all_single_feature"])
+
+
+class TestSaturatedFit(unittest.TestCase):
+    """The control for the selection stage: what every term at once actually does.
+
+    Chapter 3 opens on this comparison, and it opened on a stale copy of it for months. The
+    tests pin the two properties the argument rests on rather than the values themselves.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        from ml_meta_perf.data import DATASET_COLUMN, DATASET_FEATURES, columns_as_arrays, groups, load
+        from ml_meta_perf.data import target as load_target
+        from ml_meta_perf.experiment import DEFAULT, EQUATION_MODEL_FEATURES
+
+        frame = load()
+        columns = columns_as_arrays(frame, DATASET_FEATURES + EQUATION_MODEL_FEATURES)
+        cls.library = build_library(
+            DATASET_FEATURES,
+            EQUATION_MODEL_FEATURES,
+            columns,
+            max_arity=DEFAULT.max_arity,
+            max_abs_zscore=DEFAULT.max_abs_zscore,
+        )
+        cls.result = saturated_fit(cls.library, load_target(frame), groups(frame, DATASET_COLUMN))
+
+    def test_counts_the_whole_library(self) -> None:
+        self.assertEqual(int(self.result["terms"]), len(self.library))
+
+    def test_it_fits_better_than_it_transfers(self) -> None:
+        """The finding: an unconstrained fit over a design this wide describes and does not
+        generalise. If this ever inverted, the selection stage would need justifying again."""
+        self.assertGreater(self.result["r2_in_sample"], 0.5)
+        self.assertLess(self.result["r2_loo_dataset_clipped"], 0.0)
+
+    def test_the_clip_is_what_stops_it_running_away(self) -> None:
+        """Both bounds are reported because the gap between them is the point."""
+        self.assertLess(self.result["r2_loo_dataset_unclipped"], self.result["r2_loo_dataset_clipped"])
+
+    def test_it_transfers_worse_than_the_published_equation(self) -> None:
+        published = float(corpus.published().cross_validated["loo_dataset"]["r2"])
+        self.assertGreater(published, self.result["r2_loo_dataset_clipped"])

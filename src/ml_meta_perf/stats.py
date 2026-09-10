@@ -3,7 +3,7 @@
 scipy would supply all of this, but it is a large dependency for four short functions,
 and the rank machinery here has to be exercised by the test suite regardless.
 
-Study chapter: [4. Evaluation methodology](../../assets/docs/04-evaluation.md) -- the rationale, in
+Study chapter: [5. Evaluation](../../assets/docs/05-evaluation.md) -- the rationale, in
 prose, with the figures.
 """
 
@@ -32,7 +32,7 @@ def rankdata(values: np.ndarray) -> np.ndarray:
 def rank_columns(matrix: np.ndarray) -> np.ndarray:
     """`rankdata` applied down every column at once, with the same tie handling.
 
-    `ml_meta_perf.fit.guided_screen` needs the ranks of every candidate term in the library, in
+    `ml_meta_perf.search.guided_screen` needs the ranks of every candidate term in the library, in
     every fold. Doing that a column at a time cost 32k calls and a tenth of the study's
     runtime; the work is identical but the Python loop is not. ``test_stats`` asserts the
     two agree column by column, so `rankdata` stays the definition and this stays a
@@ -68,6 +68,22 @@ def pearson(first: np.ndarray, second: np.ndarray) -> float:
     b = second - second.mean()
     scale = float(np.sqrt(float(a @ a) * float(b @ b)))
     return float(a @ b / scale) if scale > 1e-15 else 0.0
+
+
+def pearson_columns(matrix: np.ndarray, target: np.ndarray) -> np.ndarray:
+    """`pearson` between every column of ``matrix`` and ``target``, in one pass.
+
+    `ml_meta_perf.search.guided_screen` needs this correlation for every candidate term, twice
+    over -- once raw and once on ranks -- in every fold, which is tens of thousands of calls
+    to `pearson` for arithmetic that is a single matrix-vector product. Constant columns
+    return 0.0 here exactly as they do there. ``test_stats`` asserts the two agree column by
+    column, so `pearson` stays the definition and this stays a restatement of it.
+    """
+    centred = matrix - matrix.mean(axis=0)
+    other = target - target.mean()
+    norms = np.sqrt(np.einsum("ij,ij->j", centred, centred) * float(other @ other))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.where(norms > 1e-15, (centred.T @ other) / np.where(norms > 1e-15, norms, 1.0), 0.0)
 
 
 def spearman(first: np.ndarray, second: np.ndarray) -> float:

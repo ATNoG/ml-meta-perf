@@ -15,7 +15,7 @@ on both sides of the fold and the equation can memorise dataset identity; measur
 this data that inflates R2 from 0.28 to 0.50 without changing the model at all.
 ``random_kfold_groups`` exists so that the README can show that gap, not to score with.
 
-Study chapter: [4. Evaluation methodology](../../assets/docs/04-evaluation.md) -- the rationale, in
+Study chapter: [5. Evaluation](../../assets/docs/05-evaluation.md) -- the rationale, in
 prose, with the figures.
 """
 
@@ -28,10 +28,16 @@ from math import comb
 import numpy as np
 import polars as pl
 
-from ml_meta_perf.fit import Selector, Standardizer, guided_screen
+from ml_meta_perf.fit import Standardizer
 from ml_meta_perf.model import MCC_LOWER, MCC_UPPER, Equation
+from ml_meta_perf.search import Selector, guided_screen
 from ml_meta_perf.stats import mae, pearson, r2_score, rmse, smape, spearman
 from ml_meta_perf.terms import Library
+
+#: A fold scoring a negative R2 while its MAE stays under this is a near-constant target, not
+#: a bad prediction. Set at a third of the corpus's own MCC standard deviation: below that,
+#: an error is small in absolute terms and any negative R2 is the denominator, not the fit.
+LOW_VARIANCE_MAE = 0.10
 
 
 def leave_one_group_out(groups: np.ndarray) -> Iterator[tuple[str, np.ndarray, np.ndarray]]:
@@ -90,32 +96,67 @@ class CrossValidation:
     #: correction fitted on a fold's training rows -- `ml_meta_perf.identity` fits one -- can
     #: reuse the search this path already paid for instead of repeating it.
     equations: dict[str, Equation] = field(default_factory=dict)
+    #: How many out-of-fold predictions `_clip_to_training` moved. Not a diagnostic detail:
+    #: on this corpus it is 50 to 78 of 476 at *every* equation length, so a tenth to a sixth
+    #: of the reported leave-one-dataset-out predictions are decided by the bound rather than
+    #: by the equation. A study that clips has to say how often the clip fired.
+    clipped: int = 0
 
     def scores(self, truth: np.ndarray) -> Scores:
         return score(truth, self.predictions)
 
     def dispersion(self) -> dict[str, float]:
-        """How the per-fold R2 is spread, next to the pooled number.
+        """How the per-fold error is spread, next to the pooled number.
 
         `scores` pools every out-of-fold prediction and scores it against the *global* mean.
         On this corpus most of the variance is between datasets, which the dataset features
         capture almost for free, so pooled R2 flatters a leave-one-dataset-out split: a set
         reaching a pooled 0.53 was explaining 0.29 of the variance *within* the average
-        dataset. Pooling also hides that a single fold can dominate -- one held-out dataset
-        has reached 89% of the total squared error, taking the pooled figure negative while
-        eighteen folds were fine.
+        dataset. Pooling also hides that a single fold can dominate.
 
-        So every reported leave-one-group-out R2 needs these beside it. ``worst`` is the one
-        that catches the failure the pooled number hides.
+        **Read the MAE columns, not ``worst_fold_r2``.** A per-fold R2 divides by the variance
+        of that fold's own target, and three datasets here have almost none: every one of
+        `5G_Slicing`'s 25 models scores about 0.986, a standard deviation of 0.052, and `NSR`
+        and `DeepSlice` are the same. Dividing an ordinary error by a variance that small
+        returns a large negative number for a nearly perfect prediction -- `5G_Slicing` reads
+        -10.6 while its predictions are all within 0.05 of the truth. Those three are the only
+        strongly negative folds, and the number is an artefact of the metric rather than a
+        failure of the equation.
+
+        MAE has no such denominator, so ``worst_fold_mae`` is the column that actually catches
+        a bad fold. ``worst_fold_r2`` is kept because it is what a reader expects to see, and
+        ``low_variance_folds`` counts the groups on which it cannot be trusted.
         """
-        values = [fold.r2 for fold in self.per_fold.values()]
-        if not values:
-            return {"median_fold_r2": float("nan"), "worst_fold_r2": float("nan"), "folds": 0.0}
+        if not self.per_fold:
+            return {
+                "median_fold_r2": float("nan"),
+                "worst_fold_r2": float("nan"),
+                "median_fold_mae": float("nan"),
+                "worst_fold_mae": float("nan"),
+                "low_variance_folds": 0.0,
+                "clipped_predictions": float(self.clipped),
+                "folds": 0.0,
+            }
+        r2_values = [fold.r2 for fold in self.per_fold.values()]
+        mae_values = [fold.mae for fold in self.per_fold.values()]
         return {
-            "median_fold_r2": float(np.median(values)),
-            "worst_fold_r2": float(min(values)),
-            "folds": float(len(values)),
+            "median_fold_r2": float(np.median(r2_values)),
+            "worst_fold_r2": float(min(r2_values)),
+            "median_fold_mae": float(np.median(mae_values)),
+            "worst_fold_mae": float(max(mae_values)),
+            "low_variance_folds": float(self._low_variance_folds()),
+            "clipped_predictions": float(self.clipped),
+            "folds": float(len(r2_values)),
         }
+
+    def _low_variance_folds(self) -> int:
+        """Folds whose per-fold R2 is not worth reading, inferred from the scores themselves.
+
+        A fold with a large negative R2 and a small MAE has a near-constant target, not a bad
+        prediction: R2 is dividing by nothing. The pair of conditions identifies that without
+        the class needing a copy of the target.
+        """
+        return sum(1 for fold in self.per_fold.values() if fold.r2 < 0.0 and fold.mae < LOW_VARIANCE_MAE)
 
     def stability(self) -> pl.DataFrame:
         """How often each term was selected across folds.
@@ -239,7 +280,9 @@ def cross_validate_fixed_form(
             offset = float(target[train].mean())
             weights = np.linalg.solve(gram, design.T @ (target[train] - offset))
             held = standardizer.apply(matrix[test]) @ weights + offset
-            outcome.predictions[test] = _clip_to_training(held, target[train])
+            bounded = _clip_to_training(held, target[train])
+            outcome.clipped += int(np.count_nonzero(bounded != held))
+            outcome.predictions[test] = bounded
             outcome.per_fold[label] = score(target[test], outcome.predictions[test])
             outcome.selected.append([term.name for term in equation.terms])
             # The same terms every fold, carrying that fold's weights, with the standardisation
@@ -254,6 +297,70 @@ def cross_validate_fixed_form(
                 standardized_weights=tuple(float(value) for value in weights),
                 name=f"fold_{label}",
             )
+        results[size] = outcome
+    return results
+
+
+def cross_validate_doubly_held_out(
+    library: Library,
+    columns: dict[str, np.ndarray],
+    target: np.ndarray,
+    first: np.ndarray,
+    second: np.ndarray,
+    equations: dict[int, Equation],
+    *,
+    penalty: float,
+) -> dict[int, CrossValidation]:
+    """Refit each equation with **both** groups of a cell removed, and predict that cell.
+
+    This is the protocol for the question the study is actually for: *what MCC will this
+    model reach on this dataset*, when neither has been run. Neither single-group protocol
+    answers it. Leave-one-dataset-out holds the dataset out and keeps the model -- it has
+    seen that learner on nineteen other problems. Leave-one-model-out does the reverse. For a
+    cell to be genuinely unseen, the whole dataset row-block *and* the whole model
+    column-block have to leave the training set, which is what this does.
+
+    **It is also the only protocol under which the comparison with the trivial baselines is
+    fair, and under it they do not exist.** A per-model mean or median answers "how well does
+    this model usually do", and a model held out of every fold has no rows to average. So a
+    baseline that beats the equation on ranking under leave-one-dataset-out is a baseline
+    being handed the model identity the equation is denied; here it cannot be computed at
+    all, while the equation still predicts from features.
+
+    Costlier than the single-group protocols -- one solve per observed cell rather than per
+    group -- but each solve is a small ridge on a fixed design, so it is seconds, not minutes.
+    """
+    index = {name: position for position, name in enumerate(library.names)}
+    results: dict[int, CrossValidation] = {}
+    for size, equation in equations.items():
+        positions = [index[term.name] for term in equation.terms]
+        if not positions:
+            continue
+        matrix = library.matrix[:, positions]
+        outcome = CrossValidation(predictions=np.zeros_like(target))
+        for row_label in np.unique(first):
+            for column_label in np.unique(second):
+                test = (first == row_label) & (second == column_label)
+                if not test.any():
+                    continue
+                train = (first != row_label) & (second != column_label)
+                if not train.any():
+                    continue
+                standardizer = Standardizer.fit(matrix[train])
+                design = standardizer.apply(matrix[train])
+                gram = design.T @ design + penalty * np.eye(len(positions))
+                offset = float(target[train].mean())
+                weights = np.linalg.solve(gram, design.T @ (target[train] - offset))
+                held = standardizer.apply(matrix[test]) @ weights + offset
+                bounded = _clip_to_training(held, target[train])
+                outcome.clipped += int(np.count_nonzero(bounded != held))
+                outcome.predictions[test] = bounded
+        # Scored per held-out *dataset* rather than per cell: a cell is one to a few rows and
+        # a per-cell R2 has no variance to divide by. The dataset grouping is what the
+        # dispersion columns and the paired tests use everywhere else.
+        for label, _, test in leave_one_group_out(first):
+            outcome.per_fold[label] = score(target[test], outcome.predictions[test])
+            outcome.selected.append([term.name for term in equation.terms])
         results[size] = outcome
     return results
 
@@ -287,28 +394,52 @@ def _view(library: Library, mask: np.ndarray) -> Library:
     return clone
 
 
-def baseline_group_mean(
+def baseline_group_centre(
     target: np.ndarray,
     outer: np.ndarray,
     inner: np.ndarray | None = None,
+    *,
+    centre: str = "mean",
 ) -> np.ndarray:
-    """Predict the training mean, optionally conditioned on a second grouping.
+    """Predict a training-fold centre, optionally conditioned on a second grouping.
 
     With ``inner`` set to the model column under a leave-one-dataset-out split, this is
     "what does this model usually score", the baseline any meta-model has to beat to be
     worth writing down.
+
+    ``centre`` picks the summary. **Which one is the fair comparison depends on the metric
+    being reported, and using the mean for all of them understates the baseline.** The mean
+    minimises squared error, so it is the right opponent for R2 and RMSE. The *median*
+    minimises absolute error, so an MAE quoted against a mean baseline is quoted against a
+    baseline that is not even trying -- and SMAPE, being an absolute-error ratio, behaves the
+    same way. Both are reported so each metric is read against the baseline that is hardest
+    to beat on it.
+
+    The leave-one-group-out loop is not decoration: with 17-25 rows per group, including the
+    row being predicted inflates the per-model mean's R2 by 0.082. A naive group centre
+    computed over all rows is not this function.
     """
+    summarise = np.median if centre == "median" else np.mean
     predictions = np.zeros_like(target)
     for _, train, test in leave_one_group_out(outer):
-        fallback = float(target[train].mean())
+        fallback = float(summarise(target[train]))
         if inner is None:
             predictions[test] = fallback
             continue
         for label in np.unique(inner[test]):
             selected = test & (inner == label)
             source = train & (inner == label)
-            predictions[selected] = float(target[source].mean()) if source.any() else fallback
+            predictions[selected] = float(summarise(target[source])) if source.any() else fallback
     return np.clip(predictions, MCC_LOWER, MCC_UPPER)
+
+
+def baseline_group_mean(
+    target: np.ndarray,
+    outer: np.ndarray,
+    inner: np.ndarray | None = None,
+) -> np.ndarray:
+    """`baseline_group_centre` at the mean. Kept as the name the rest of the study uses."""
+    return baseline_group_centre(target, outer, inner, centre="mean")
 
 
 def additive_oracle(target: np.ndarray, first: np.ndarray, second: np.ndarray) -> np.ndarray:

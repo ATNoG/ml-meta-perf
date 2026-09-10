@@ -20,7 +20,6 @@ from __future__ import annotations
 import unittest
 
 import numpy as np
-
 import polars as pl
 
 from ml_meta_perf.data import (
@@ -31,6 +30,7 @@ from ml_meta_perf.data import (
     MODEL_ORDINALS,
     load,
 )
+from tests import corpus
 
 
 class TestModelFeatures(unittest.TestCase):
@@ -115,12 +115,13 @@ class TestPublishedEquationsAreReadable(unittest.TestCase):
         return [names for names in seen.values() if len(names) > 1]
 
     def test_no_equation_repeats_a_feature_combination(self) -> None:
-        from ml_meta_perf.experiment import run_e1, run_e2, run_e3
+        from ml_meta_perf.experiment import run_e1, run_e2
 
         frame = load()
-        for label, run in (("E1", run_e1), ("E2", run_e2), ("E3", run_e3)):
+        published = (("E1", run_e1(frame)), ("E2", run_e2(frame)), ("E3", corpus.published()))
+        for label, report in published:
             with self.subTest(label):
-                self.assertEqual(self.repeated(run(frame).equation), [])
+                self.assertEqual(self.repeated(report.equation), [])
 
 
 class TestIdentification(unittest.TestCase):
@@ -162,11 +163,7 @@ class TestIdentification(unittest.TestCase):
     def test_dropping_the_identification_only_columns_costs_identification(self) -> None:
         # `Solution Stochasticity` and `Loss Margin Behaviour` earn their place here rather
         # than in the fit. Without them the corpus stops naming its own learners.
-        reduced = [
-            name
-            for name in MODEL_FEATURES
-            if name not in ("Solution Stochasticity", "Loss Margin Behaviour")
-        ]
+        reduced = [name for name in MODEL_FEATURES if name not in ("Solution Stochasticity", "Loss Margin Behaviour")]
         ambiguous = 0
         for _, rows in self.frame.group_by(DATASET_COLUMN):
             counts = rows.group_by(reduced).len()
@@ -184,9 +181,8 @@ class TestCompression(unittest.TestCase):
     """
 
     def test_the_equation_uses_fewer_features_than_the_corpus_carries(self) -> None:
-        from ml_meta_perf.experiment import run_e3
 
-        equation = run_e3(load()).equation
+        equation = corpus.published().equation
         used = {feature for term in equation.terms for feature in term.features}
         available = set(DATASET_FEATURES) | set(MODEL_FEATURES)
         self.assertTrue(used <= available)
@@ -208,19 +204,19 @@ class TestReportedProtocol(unittest.TestCase):
 
     def test_run_equation_reports_the_fixed_form(self) -> None:
         from ml_meta_perf.data import DATASET_FEATURES, columns_as_arrays, groups, target
-        from ml_meta_perf.experiment import DEFAULT_E3, run_e3
+        from ml_meta_perf.experiment import DEFAULT
         from ml_meta_perf.terms import build_library
         from ml_meta_perf.validate import cross_validate_fixed_form
 
         frame = load()
-        report = run_e3(frame)
+        report = corpus.published()
         columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
         library = build_library(
             DATASET_FEATURES,
             MODEL_FEATURES,
             columns,
-            max_arity=DEFAULT_E3.max_arity,
-            max_abs_zscore=DEFAULT_E3.max_abs_zscore,
+            max_arity=DEFAULT.max_arity,
+            max_abs_zscore=DEFAULT.max_abs_zscore,
         )
         size = len(report.equation.terms)
         direct = cross_validate_fixed_form(
@@ -229,7 +225,7 @@ class TestReportedProtocol(unittest.TestCase):
             target(frame),
             groups(frame, "Dataset"),
             {size: report.equation},
-            penalty=DEFAULT_E3.penalty,
+            penalty=DEFAULT.penalty,
         )
         self.assertAlmostEqual(
             report.cross_validated["loo_dataset"]["r2"],

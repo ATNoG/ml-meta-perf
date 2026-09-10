@@ -29,7 +29,7 @@ That last verdict matters. A study that reports only the practices it happens to
 is not evidence about practice, so a practice the study merely assumes is marked as such
 rather than counted as a win.
 
-Study chapter: [7. From equation to practice](../../assets/docs/07-practices.md) -- the rationale, in
+Study chapter: [6. Best practices against the equation](../../assets/docs/06-practices.md) -- the rationale, in
 prose, with the figures.
 """
 
@@ -41,6 +41,7 @@ from dataclasses import dataclass
 import numpy as np
 import polars as pl
 
+from ml_meta_perf.attribution import contributions as attribution_contributions
 from ml_meta_perf.data import (
     DATASET_COLUMN,
     DATASET_FEATURES,
@@ -52,12 +53,18 @@ from ml_meta_perf.data import (
     TREE_FAMILIES,
 )
 from ml_meta_perf.experiment import Report
+from ml_meta_perf.stats import spearman
+from ml_meta_perf.terms import Term
 from ml_meta_perf.validate import paired_comparison
 
 SUPPORTED = "supported"
 QUALIFIED = "qualified"
 CHALLENGED = "challenged"
 NOT_TESTED = "not tested"
+
+
+#: What a practice predicts a feature does to MCC as that feature rises.
+RAISES, LOWERS = "raises", "lowers"
 
 
 @dataclass(frozen=True)
@@ -70,6 +77,17 @@ class Practice:
     #: Why the field believes it, in one line -- so a reader can judge whether this
     #: corpus is even the right place to test it.
     rationale: str
+    #: Raw features the practice makes a claim about, each with the direction it predicts
+    #: MCC moves as that feature rises. **This is what lets a practice be checked against
+    #: the published equation rather than only against corpus averages.** A verdict drawn
+    #: from family means says the advice holds on this data; a term-level agreement says the
+    #: *equation* encodes it, which is a stronger and more falsifiable claim -- and the one
+    #: an interpretability-first study is actually in a position to make.
+    #:
+    #: Empty for a practice that makes no claim about a single feature. Most do not: a
+    #: family-level recommendation is a claim about *rows*, not about a coefficient, and
+    #: `group_claims` is how those are checked.
+    expectations: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -130,7 +148,13 @@ class Evidence:
         return float(np.average(matched["mcc"].to_numpy(), weights=weights))
 
     def scored(self, equation: str) -> float:
-        matched = self.comparison.filter(pl.col("equation") == equation)
+        """The R2 of a row of `comparison`, matched by prefix.
+
+        By prefix because the labels carry their term count -- "E3, dataset + model (15
+        terms)" -- and that count moves whenever the configuration does. Matching the whole
+        string would make every caller here break on a change that is not about them.
+        """
+        matched = self.comparison.filter(pl.col("equation").str.starts_with(equation))
         return float(matched["r2"][0]) if matched.height else float("nan")
 
     def protocol(self, name: str) -> float:
@@ -156,9 +180,7 @@ RANKING_METRICS: tuple[str, ...] = ("ap", "mrr", "hit_at_1", "regret")
 def _mean_ranking(table: pl.DataFrame) -> dict[str, float]:
     """Mean of each ranking metric over the held-out groups."""
     return {
-        name: float(np.mean(table[name].to_numpy()))
-        for name in (*RANKING_METRICS, "spearman")
-        if name in table.columns
+        name: float(np.mean(table[name].to_numpy())) for name in (*RANKING_METRICS, "spearman") if name in table.columns
     }
 
 
@@ -252,11 +274,14 @@ CATALOGUE: tuple[Practice, ...] = (
             "Characterise the dataset before choosing a model. What the data is like bounds "
             "what any model can reach, and that bound is usually the larger effect."
         ),
-        source="Zha et al., 'Data-centric AI: A Survey', arXiv:2303.10158 (2023)",
+        source="Zha et al., 'Data-centric Artificial Intelligence: A Survey', ACM Computing Surveys 57(5) (2025)",
         rationale=(
             "The data-centric position holds that returns from improving data exceed returns "
             "from swapping architectures. It is an argument about where to spend effort."
         ),
+        # No single feature: the claim is that the *dataset half* of the meta-data matters
+        # more than the model half, which is a claim about the two blocks of the equation
+        # rather than about any one column. `group_shares` is where it is read.
     ),
     Practice(
         id="tree-ensembles-first",
@@ -265,8 +290,9 @@ CATALOGUE: tuple[Practice, ...] = (
             "when a tree ensemble has been tried and found wanting."
         ),
         source=(
-            "Grinsztajn et al., arXiv:2207.08815 (2022); "
-            "Shwartz-Ziv & Armon, 'Deep Learning is Not All You Need', arXiv:2106.03253 (2021)"
+            "Grinsztajn, Oyallon & Varoquaux, NeurIPS 2022 Datasets and Benchmarks Track; "
+            "Shwartz-Ziv & Armon, 'Tabular Data: Deep Learning is Not All You Need', "
+            "Information Fusion 81, 84-90 (2022)"
         ),
         rationale=(
             "Trees handle irregular, non-smooth target functions and uninformative features, "
@@ -279,7 +305,11 @@ CATALOGUE: tuple[Practice, ...] = (
             "Include a pretrained tabular model (TabPFN, TabICL) in the first round of "
             "candidates: it costs one fit and is frequently competitive with a tuned ensemble."
         ),
-        source="Hollmann et al., TabPFN, arXiv:2207.01848 (2022); TabICL, arXiv:2502.05564 (2025)",
+        source=(
+            "Hollmann et al., 'Accurate predictions on small data with a tabular foundation "
+            "model' (TabPFN), Nature 637, 319-326 (2025); "
+            "Qu, Holzmuller, Varoquaux & Le Morvan, 'TabICL', ICML 2025"
+        ),
         rationale=(
             "In-context learning on tabular data removes the tuning budget that usually "
             "separates a quick baseline from a competitive one."
@@ -303,11 +333,15 @@ CATALOGUE: tuple[Practice, ...] = (
             "Spend the first effort on reducing noise in the data, not on a larger model. "
             "Noise sets a ceiling that capacity cannot lift."
         ),
-        source="Zha et al., 'Data-centric AI: Perspectives and Challenges', arXiv:2301.04819 (2023)",
+        source=(
+            "Zha et al., 'Data-centric AI: Perspectives and Challenges', "
+            "SIAM International Conference on Data Mining (SDM) 2023, 945-948"
+        ),
         rationale=(
             "Irreducible error from noisy features or labels bounds every model on that data, "
             "so capacity spent against it buys nothing."
         ),
+        expectations=(("ns_ratio", LOWERS),),
     ),
     Practice(
         id="prefer-outlier-robust-learners",
@@ -315,11 +349,18 @@ CATALOGUE: tuple[Practice, ...] = (
             "On real-world data that has not been carefully curated, prefer a learner with "
             "built-in robustness to outliers."
         ),
-        source="Grinsztajn et al., arXiv:2207.08815 (2022), on non-smooth targets and outliers",
+        source=(
+            "Grinsztajn, Oyallon & Varoquaux, NeurIPS 2022 Datasets and Benchmarks Track, "
+            "on non-smooth targets and outliers"
+        ),
         rationale=(
             "Real tabular data carries outliers that a squared-error learner chases and a "
             "split-based or margin-based one largely ignores."
         ),
+        # `nr_outliers` counts outliers in the *data*; the practice is about resistance to
+        # them in the *learner*. The expectation is on the data side only, and the verdict
+        # says why that does not settle the practice.
+        expectations=(("nr_outliers", LOWERS),),
     ),
     Practice(
         id="capacity-is-not-free",
@@ -327,11 +368,16 @@ CATALOGUE: tuple[Practice, ...] = (
             "Match capacity to the problem. A larger, more expensive model is not a safer "
             "default; on small tabular problems it is usually a worse one."
         ),
-        source="Shwartz-Ziv & Armon, arXiv:2106.03253 (2021)",
+        source="Shwartz-Ziv & Armon, Information Fusion 81, 84-90 (2022)",
         rationale=(
             "Capacity beyond what the sample supports fits noise, and the cost is paid twice: "
             "in accuracy and in the tuning budget needed to recover it."
         ),
+        # The practice says more capacity is not safer, so it predicts that raising
+        # `Processing Units Number` does not raise MCC. `Model Capability` is the opposite
+        # claim in the same sentence -- capability *matched* to the problem does help -- and
+        # both are in the equation, so both are checkable.
+        expectations=(("Processing Units Number", LOWERS), ("Model Capability", RAISES)),
     ),
     Practice(
         id="beat-the-trivial-baseline",
@@ -378,8 +424,8 @@ def _profile_the_data_first(evidence: Evidence) -> Verdict:
         row["knowing only"]: float(row["variance_explained"]) for row in evidence.decomposition.iter_rows(named=True)
     }
     dataset, model = rows.get("dataset identity", float("nan")), rows.get("model identity", float("nan"))
-    captured_dataset = evidence.scored("E1 (dataset only)") / dataset if dataset else float("nan")
-    captured_model = evidence.scored("E2 (model only)") / model if model else float("nan")
+    captured_dataset = evidence.scored("E1, dataset only") / dataset if dataset else float("nan")
+    captured_model = evidence.scored("E2, model only") / model if model else float("nan")
     gap = dataset - model
     return Verdict(
         practice=_BY_ID["profile-the-data-first"],
@@ -669,6 +715,176 @@ def assess(frame: pl.DataFrame, report: Report) -> list[Verdict]:
     """Weigh every catalogued practice against this study, in catalogue order."""
     evidence = gather(frame, report)
     return [CHECKS[practice.id](evidence) for practice in CATALOGUE]
+
+
+#: Below this rank correlation a (term, feature) pair has no direction worth stating. The same
+#: floor `practices.MIN_DIRECTION` applies to the per-feature statements, and for the same
+#: reason: a correlation of 0.05 between a feature and a term's contribution is the other
+#: features that term contains moving, not the feature being asked about. Without it the table
+#: reports a sign for a pairing that has none, which reads as a disagreement.
+MIN_TERM_DIRECTION = 0.15
+
+
+def feature_position(term: Term, feature: str) -> str:
+    """Where a feature sits inside a term: ``numerator``, ``denominator``, or ``factor``.
+
+    **This is what makes a sign readable**, and without it the table looks self-contradictory.
+    A feature in a denominator enters the term inverted, so a negatively-weighted ratio
+    contributes *more* as that feature rises -- which is arithmetic, not a disagreement with
+    whatever the practice claims. Printing the position next to the direction is what lets a
+    reader see that ``eq_num_attr / PUN`` and ``PUN / nr_class`` carrying opposite signs is one
+    coherent statement about a ratio rather than two conflicting ones about a quantity.
+    """
+    match term.operation:
+        case "ratio":
+            below = 1
+        case "sum_ratio":
+            below = 2
+        case "ratio_of_sums":
+            below = 2
+        case _:
+            return "factor"
+    for index, operand in enumerate(term.operands):
+        if feature in set(operand.features if isinstance(operand, Term) else (operand.feature,)):
+            return "denominator" if index >= below else "numerator"
+    return "factor"
+
+
+def equation_evidence(report: Report, columns: dict[str, np.ndarray]) -> pl.DataFrame:
+    """Each practice paired with the **terms** of the published equation that carry it.
+
+    **The equation is a sum of terms, so a term is the unit a practice has to be checked
+    against.** A raw feature is not: `Processing Units Number` appears in five of the fifteen
+    terms, in numerators and denominators and under different transforms, and collapsing that
+    into one per-feature direction throws away exactly what a reader wants -- which part of
+    the equation encodes the advice, how strongly, and with what sign.
+
+    One row per (practice, term) pair. A term is paired with a practice when it contains a
+    feature the practice makes a claim about.
+
+    ``beta`` is the **strength**: the standardised weight, already in MCC units because the
+    target is centred but never scaled, so it is comparable across terms whose raw units have
+    nothing to do with each other. ``effect`` is what the term is worth on this data -- the
+    swing in its contribution across the middle 80% of its range -- because a large weight on
+    a term that barely varies is not important.
+
+    ``direction`` is the **sign**, and it is *measured* rather than derived. Reading it off the
+    weight would be wrong as soon as the feature sits in a denominator or under a reciprocal,
+    which several of these do: the rank correlation between the feature and the contribution
+    that term actually makes is the only thing that answers "as this rises, what does this
+    term do to predicted MCC". ``agrees`` compares that with what the practice predicts.
+
+    A practice can therefore be **encoded by several terms that disagree with each other**,
+    and that is a finding rather than a defect: it means the equation says the effect is
+    conditional on which other quantity the feature is measured against.
+    """
+    equation = report.e3.equation
+    # `EquationReport.stability` is optional, and an absent one means "the folds were never
+    # re-run" rather than "no term was ever reselected". The column comes back as NaN in that
+    # case, which reads as unknown; a zero would read as a term the folds rejected.
+    fold_choices = report.e3.stability
+    stability = (
+        {row["term"]: float(row["frequency"]) for row in fold_choices.to_dicts()}
+        if fold_choices is not None and fold_choices.height
+        else {}
+    )
+    contributions = attribution_contributions(equation, columns)
+    betas = dict(zip((term.name for term in equation.terms), equation.standardized_weights, strict=True))
+
+    rows: list[dict[str, object]] = []
+    for practice in CATALOGUE:
+        for feature, expected in practice.expectations:
+            carrying = [(index, term) for index, term in enumerate(equation.terms) if feature in set(term.features)]
+            if not carrying:
+                rows.append(
+                    {
+                        "practice": practice.id,
+                        "feature": feature,
+                        "expected": expected,
+                        "term": "",
+                        "position": "",
+                        "beta": float("nan"),
+                        "effect": float("nan"),
+                        "stability": float("nan"),
+                        "rho": float("nan"),
+                        "direction": "",
+                        "agrees": "not selected",
+                    }
+                )
+                continue
+            for index, term in carrying:
+                share = contributions[:, index]
+                low, high = np.percentile(share, [10.0, 90.0])
+                slope = spearman(columns[feature], share)
+                weak = abs(slope) < MIN_TERM_DIRECTION
+                observed = "" if weak else (RAISES if slope > 0.0 else LOWERS)
+                rows.append(
+                    {
+                        "practice": practice.id,
+                        "feature": feature,
+                        "expected": expected,
+                        "term": term.name,
+                        "position": feature_position(term, feature),
+                        "beta": float(betas[term.name]),
+                        "effect": float(high - low),
+                        "stability": stability.get(term.name, float("nan")),
+                        "rho": float(slope),
+                        "direction": observed,
+                        "agrees": "no direction" if weak else ("yes" if observed == expected else "no"),
+                    }
+                )
+    return pl.DataFrame(
+        rows,
+        schema={
+            "practice": pl.String,
+            "feature": pl.String,
+            "expected": pl.String,
+            "term": pl.String,
+            "position": pl.String,
+            "beta": pl.Float64,
+            "effect": pl.Float64,
+            "stability": pl.Float64,
+            "rho": pl.Float64,
+            "direction": pl.String,
+            "agrees": pl.String,
+        },
+    )
+
+
+def equation_coverage(report: Report, columns: dict[str, np.ndarray]) -> dict[str, int]:
+    """How much of the catalogue the equation's *terms* can be held against, and what they say.
+
+    Kept separate from the verdict tally, and the distinction is the point. A verdict is drawn
+    from corpus statistics -- family means, variance shares, paired tests -- so "5 supported"
+    says the advice holds on these twenty datasets, which any study with this corpus could
+    establish and which the fitted equation plays no part in. This counts the narrower and
+    harder thing: how many of the fifteen terms carry a practice at all, and how many of those
+    pairings come out the way the practice predicts.
+
+    Counted over (practice, term) pairs rather than over practices, because a practice carried
+    by five terms that disagree with each other is not one verdict -- it is five readings, and
+    collapsing them would hide the disagreement that makes the equation worth reading.
+    """
+    evidence = equation_evidence(report, columns)
+    verdicts = evidence["agrees"].to_list()
+    return {
+        "practices": len(CATALOGUE),
+        "with_feature_claims": sum(1 for practice in CATALOGUE if practice.expectations),
+        "pairs": sum(1 for verdict in verdicts if verdict in ("yes", "no")),
+        "agree": verdicts.count("yes"),
+        "disagree": verdicts.count("no"),
+        "undirected": verdicts.count("no direction"),
+        "unselected": verdicts.count("not selected"),
+        # How many of the disagreements are the same feature entering as a denominator. If
+        # every one of them is, the "disagreement" is arithmetic rather than a conflict: a
+        # negatively-weighted ratio contributes more as its denominator grows, so a marginal
+        # expectation about the feature can never match a term that only speaks about a ratio.
+        "disagree_in_denominator": sum(
+            1 for row in evidence.to_dicts() if row["agrees"] == "no" and row["position"] == "denominator"
+        ),
+        "terms": len(report.e3.equation.terms),
+        "carrying_terms": len({term for term in evidence["term"].to_list() if term}),
+    }
 
 
 def as_table(verdicts: list[Verdict]) -> pl.DataFrame:

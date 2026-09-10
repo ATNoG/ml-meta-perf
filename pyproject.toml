@@ -22,17 +22,19 @@ dependencies = [
     "polars>=1.20.0",
     "numpy>=2.0.0",
     "matplotlib>=3.8.0",
-    "kneeliverse>=1.2.0",
-]
-
-[project.optional-dependencies]
-# Tooling for `ml-meta-perf-search`, which is how the published equation's features,
-# length and configuration were chosen. Not needed to fit or evaluate the shipped
-# equations -- `pip install ml-meta-perf` reproduces the whole study without it -- so it
-# is an extra rather than a base dependency.
-search = [
-    # `equation_search_cli` parallelises the grid over it. Declared explicitly rather than
-    # relied on transitively, so a change in someone else's dependency chain cannot break it.
+    # The opaque-regressor comparison, and the strongest ranking and threshold baselines.
+    # It brings scipy with it, which this project refused for a long time on size grounds --
+    # `ml_meta_perf.stats` exists because four statistics were not worth the dependency, and
+    # that reasoning still holds for those four. What changed the answer is that the
+    # comparison the chapters lean on hardest ("a forest reaches R2 0.9 in-sample and
+    # transfers at 0.067") was measured once during exploration and could not be reproduced
+    # by anyone reading the study. An unreproducible headline is a worse cost than a large
+    # wheel, so it is a base dependency rather than an extra: an extra would leave the same
+    # numbers unreproducible for anyone who did not know to ask for it.
+    "scikit-learn>=1.5.0",
+    # `opaque` threads the leave-one-cell protocol's 476 estimator refits over it. It used to
+    # arrive with the `search` extra, which meant a base-only install type-checked with an
+    # unresolved import; it is a base dependency now because the study itself runs it.
     "joblib>=1.3.0",
 ]
 
@@ -40,10 +42,6 @@ search = [
 # The pipeline entry point. `ml-meta-perf --help` documents every input; the study is
 # the default with no arguments.
 ml-meta-perf = "ml_meta_perf.cli:main"
-# Searches the AI-proposed descriptor pool down to a MODEL_FEATURES recommendation.
-# Separate from `ml-meta-perf` since it needs the `search` extra and reads the candidate
-# CSV (`assets/meta_dataset_all_descriptors.csv`), not the shipped corpus.
-ml-meta-perf-search = "ml_meta_perf.equation_search_cli:main"
 
 [project.urls]
 Repository = "https://github.com/mariolpantunes/ml-meta-perf"

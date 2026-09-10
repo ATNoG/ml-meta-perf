@@ -24,7 +24,7 @@ it contributes a level to every row, while inside a product it zeroes the term e
 the rows where it is off, which is a per-group slope rather than a relationship. Prefer a
 continuous descriptor that grades the same distinction.
 
-Study chapter: [2. Equation form and term vocabulary](../../assets/docs/02-equation-form.md) -- the rationale, in
+Study chapter: [2. The additive model](../../assets/docs/02-additive-model.md) -- the rationale, in
 prose, with the figures.
 """
 
@@ -192,7 +192,7 @@ def simplify(term: Term) -> Term:
 
     Only exact identities are applied -- cancellation of a matching factor against a
     matching divisor, and division of a term by itself. Nothing is dropped on numerical
-    grounds here; that is ``fit.prune``'s job, and keeping the two separate means this
+    grounds here; that is ``search.prune``'s job, and keeping the two separate means this
     function never changes what a term computes.
     """
     operands = tuple(simplify(operand) if isinstance(operand, Term) else operand for operand in term.operands)
@@ -470,7 +470,7 @@ class Library:
 
     Keeping both members of a pair is wasteful rather than dangerous, and the distinction
     is worth being precise about. The beam search already refuses a candidate whose
-    correlation with a selected term exceeds ``ml_meta_perf.fit.COLLINEARITY_LIMIT`` (0.95), so
+    correlation with a selected term exceeds ``ml_meta_perf.search.COLLINEARITY_LIMIT`` (0.95), so
     a duplicate pair cannot both be selected on that path and no singular system arises
     there. What the duplicates cost is candidate-pool slots, search time, and a place in
     the reported term rankings, where they appear as two independent findings. The check
@@ -491,8 +491,13 @@ class Library:
     ) -> None:
         kept: list[Term] = []
         vectors: list[np.ndarray] = []
-        units: list[np.ndarray] = []
         seen: set[str] = set()
+        # The survivors' unit vectors as one growing array rather than a list, so the
+        # duplicate test is a single matrix-vector product against everything kept so far
+        # instead of a Python loop of dot products over it. Identical arithmetic and
+        # identical order -- the first term of a pair still wins -- but the loop form ran
+        # 590k times per study and `search.guided_screen` already does it this way.
+        accepted: np.ndarray | None = None
         for term in terms:
             if term.name in seen:
                 continue
@@ -501,12 +506,14 @@ class Library:
             if not is_admissible(values, max_abs_zscore):
                 continue
             unit = _unit(values)
-            if any(abs(float(other @ unit)) > COLLINEARITY_TOLERANCE for other in units):
+            if accepted is None:
+                accepted = np.empty((len(terms), values.shape[0]))
+            elif float(np.abs(accepted[: len(kept)] @ unit).max()) > COLLINEARITY_TOLERANCE:
                 continue
+            accepted[len(kept)] = unit
             seen.add(term.name)
             kept.append(term)
             vectors.append(values)
-            units.append(unit)
         if not kept:
             raise ValueError("term library is empty after filtering")
         self.terms: list[Term] = kept
@@ -525,11 +532,11 @@ class Library:
         arrange it: ``[log(a)] / [log(b)]`` and ``[log(b)] / [log(a)]`` are one group, and
         so are ``[a] * [log(b)]`` and ``[a] / [log(b)]``.
 
-        `ml_meta_perf.fit.Selector` refuses to place two terms of one group in the same
+        `ml_meta_perf.search.Selector` refuses to place two terms of one group in the same
         equation. That is a **readability** rule, not a numerical one, and the distinction
         matters because the numerical guard already passes: the two mirrored pairs this
         removed from the previous 16-term equation correlated at 0.891 and 0.786, both
-        under ``fit.COLLINEARITY_LIMIT``, in a design conditioned at 7.8. Nothing was
+        under ``search.COLLINEARITY_LIMIT``, in a design conditioned at 7.8. Nothing was
         ill-posed. What was wrong is that the equation spent two of its sixteen slots
         writing one relationship both ways up -- ``log(PUN)/log(nr_class)`` beside
         ``log(nr_class)/log(PUN)``, *both* carrying negative weight -- and the term table
