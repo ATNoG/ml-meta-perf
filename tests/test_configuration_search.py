@@ -1,0 +1,102 @@
+"""The cluster recalibration has a stable grid, identity and end-to-end contract."""
+
+from __future__ import annotations
+
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+from corpus import sample_path
+from ml_meta_perf.configuration_search import (
+    SearchSettings,
+    feature_subsets,
+    grid_table,
+    historical_objective,
+    initialise,
+    main,
+)
+from ml_meta_perf.model import Equation
+
+
+class ConfigurationSearchTests(unittest.TestCase):
+    def test_default_grid_contains_every_nontrivial_descriptor_subset(self) -> None:
+        settings = SearchSettings()
+        subsets = feature_subsets(settings)
+
+        self.assertEqual(len(subsets), 57)
+        self.assertIn(("Loss Margin Behaviour", "Solution Stochasticity"), subsets)
+        self.assertEqual(grid_table(settings).height, 10_944)
+
+    def test_historical_objective_preserves_weights_and_clamps_negative_r2(self) -> None:
+        perfect = {
+            "in_sample_r2": 1.0,
+            "loo_dataset_r2": 1.0,
+            "loo_model_r2": 1.0,
+            "binary": 1.0,
+            "ranking": 1.0,
+            "stability": 1.0,
+            "brevity": 1.0,
+        }
+        negative = perfect | {
+            "in_sample_r2": -2.0,
+            "loo_dataset_r2": -3.0,
+            "loo_model_r2": -4.0,
+        }
+
+        self.assertAlmostEqual(historical_objective(perfect), 1.0)
+        self.assertAlmostEqual(historical_objective(negative), 0.5)
+
+    def test_manifest_refuses_to_mix_different_searches(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            initialise(output, sample_path(), SearchSettings(penalties=(20.0,)))
+
+            with self.assertRaisesRegex(RuntimeError, "different search"):
+                initialise(output, sample_path(), SearchSettings(penalties=(10.0,)))
+
+    def test_small_search_runs_every_stage_and_writes_reloadable_equations(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            code = main(
+                [
+                    "all",
+                    "--data",
+                    str(sample_path()),
+                    "--output",
+                    str(output),
+                    "--jobs",
+                    "1",
+                    "--penalty",
+                    "20",
+                    "--zscore",
+                    "3",
+                    "--arity",
+                    "2",
+                    "--feature-set",
+                    "Model Capability,Processing Units Number",
+                    "--min-terms",
+                    "2",
+                    "--max-terms",
+                    "3",
+                    "--pool",
+                    "40",
+                    "--beam",
+                    "2",
+                    "--shortlist-top",
+                    "1",
+                ]
+            )
+
+            self.assertEqual(code, 0)
+            self.assertEqual(Equation.load(output / "e3_valid.json").n_terms, 3)
+            self.assertEqual(Equation.load(output / "e3_max.json").n_terms, 3)
+            self.assertTrue((output / "equation_search.csv").is_file())
+            self.assertTrue((output / "finalists.csv").is_file())
+            summary = json.loads((output / "run_summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["stage"], "all")
+            self.assertGreaterEqual(summary["elapsed_seconds"], 0.0)
+
+
+if __name__ == "__main__":
+    unittest.main()

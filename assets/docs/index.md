@@ -8,7 +8,7 @@ states. Figures are produced by `python -m ml_meta_perf`.
 **Six chapters, each self-contained**, plus the related-work chapter that positions them.
 Every chapter ends with its own limitations, so a reader never has to hold two places at once.
 
-This page, and chapters 1, 4, 5 and 6, each carry a **generated section**, rewritten by
+This page, and chapters 1, 3, 4, 5 and 6, each carry a **generated section**, rewritten by
 `ml_meta_perf.report` on every run and marked as such in the source. Everything above that
 marker is hand-written prose describing the method, which does not change between runs;
 everything below it is the result, computed from the fitted equation. A chapter therefore
@@ -62,10 +62,10 @@ the generated table below.
 
 **The result.** E3 explains roughly two thirds of MCC, and loses very little of that when a
 whole dataset or a whole model is held out — the three columns of the generated table below.
-The same features under the looser arity-3 grammar do better still, which is how far the
-additive form goes at all. E3 meets the additive oracle and passes the
-all-single-feature-terms ceiling, both of which it can only do by representing dataset×model
-interaction — which is what its mixed terms are for.
+The same features under the looser arity-3 grammar do better still, which shows how far the
+additive form goes under the study's readable grammars. E3 passes the
+all-single-feature-terms ceiling but remains below the additive oracle. The first result shows
+that cross-feature terms add information; the second leaves measurable interaction headroom.
 
 **The point.** Accuracy is what the equation is scored on; explainability is what it is
 *for*. An opaque regressor reaches R² ≈ 0.9 in-sample on this meta-data and transfers at
@@ -83,12 +83,12 @@ The one table the study is summarised by, so that the summary cannot drift from 
 | equation | features | terms | in-sample R2 | LOO-dataset R2 | LOO-model R2 | own ceiling | reached |
 |---|---|---|---|---|---|---|---|
 | E1 | dataset | 10 | 0.3506 | 0.3383 | 0.3077 | 0.3539 | 0.9906 |
-| E2 | model | 6 | 0.2515 | 0.1931 | 0.2310 | 0.2821 | 0.8915 |
-| E3 | both | 15 | 0.6578 | 0.6381 | 0.6218 |  |  |
-| E3 capability | both | 23 | 0.6751 | 0.6439 | 0.6327 |  |  |
+| E2 | model | 6 | 0.2467 | 0.1848 | 0.2242 | 0.2821 | 0.8745 |
+| E3 | both | 12 | 0.6408 | 0.6234 | 0.6050 |  |  |
+| E3 capability | both | 14 | 0.6551 | 0.6266 | 0.6171 |  |  |
 
 **Do not read these R² values as achievements against each other.** They share a scale but not a ceiling: E1 sees only dataset features, every row of a dataset shares one feature vector, and so E1 can predict nothing but a per-dataset constant. Its structural maximum is the `true dataset means` row, and reaching it means E1 is *done* rather than weak. The comparable quantity is the fraction of each equation's own ceiling, which the last column gives.
 
-**E3's ceiling cells are blank because it has no structural one.** Nothing in the feature set stops an equation over both halves of the meta-data from predicting every cell, so there is no group-identity bound to divide by. The reference it is read against instead is the additive oracle, in the comparison table of chapter 5 -- and E3 is *expected* to pass that, because the oracle bounds only an equation additive in dataset effect plus model effect, which E3's mixed terms are not.
+**E3's ceiling cells are blank because it has no structural one.** Nothing in the feature set stops an equation over both halves of the meta-data from predicting every cell, so there is no group-identity bound to divide by. The reference shown instead is the additive oracle, in the comparison table of chapter 5. That oracle bounds only an equation additive in dataset effect plus model effect; E3's mixed terms can represent interactions beyond it, although the current fitted equation remains below it.
 
 <!-- end generated -->

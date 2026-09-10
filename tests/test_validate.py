@@ -455,12 +455,14 @@ class TestGrammarReach(unittest.TestCase):
     def test_a_feature_is_never_worse_after_the_grammar_than_before(self) -> None:
         """`gain` measures what the transforms unlock, so it cannot be negative.
 
-        The raw column is itself an admissible term, so the best single-feature term is at
-        worst the raw one.
+        When the raw column is admissible, the best single-feature term is at worst the raw
+        one. A raw column rejected by the grammar's z-score guard has an undefined raw score
+        and is compared only through its admissible transforms.
         """
         table = feature_reach(self.library, self.truth, self.features)
         self.assertTrue((table["gain"].to_numpy() >= -1e-12).all())
-        self.assertTrue((table["r2_best"].to_numpy() >= table["r2_raw"].to_numpy() - 1e-12).all())
+        finite_raw = table.filter(pl.col("r2_raw").is_finite())
+        self.assertTrue((finite_raw["r2_best"].to_numpy() >= finite_raw["r2_raw"].to_numpy() - 1e-12).all())
 
     def test_only_single_feature_terms_are_credited(self) -> None:
         """A product would otherwise be counted twice, once under each of its features."""

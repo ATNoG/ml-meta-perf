@@ -99,7 +99,8 @@ def feature_reach(
 
     * **How much of MCC does this feature carry at all?** ``r2_raw`` is the squared
       correlation of the untransformed column with the target -- what a straight line through
-      that one feature would explain.
+      that one feature would explain. It is NaN when the grammar's outlier guard rejects the
+      raw column while retaining a compressed transform.
     * **How much of that does the grammar unlock?** ``r2_best`` is the same quantity for the
       best *single-feature* term the vocabulary can build over it -- ``log(f)``, ``1/f``,
       ``f^2`` and the rest. ``gain`` is the difference, and it is the only place the value of
@@ -152,10 +153,10 @@ def grammar_ceiling(
 
     Three levels, each a least-squares fit, each computable from the library alone:
 
-    * ``r2_raw_additive`` -- every raw feature entered untransformed. The linear model
-      someone would write down without this vocabulary at all.
-    * ``r2_best_per_feature`` -- the best single-feature term per feature, one each. What the
-      transforms buy over that straight-line model, with no interactions yet.
+    * ``r2_raw_additive`` -- every untransformed feature term admitted by the grammar's
+      outlier guard. This is the raw-term rung of the vocabulary, not an external model.
+    * ``r2_best_per_feature`` -- the best admissible single-feature term per feature, one
+      each. What the vocabulary adds over its raw-term rung, with no interactions yet.
     * ``r2_all_single_feature`` -- *every* single-feature term at once. The most an equation
       with no cross-feature terms could explain, and therefore the level above which an
       equation's accuracy has to be coming from interactions.

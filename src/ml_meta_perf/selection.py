@@ -30,18 +30,18 @@ per grammar:
   candidates that `most_capable` does not beat by more than the spread of that beating.
   `grammar_margin` is the number it compares -- the accuracy the larger grammar buys over the
   paired bootstrap spread of that same accuracy -- and the bar is a ratio of one, where signal
-  equals noise. On this corpus that ratio is 0.17, so the verdict holds at any bar from 0.5
+  equals noise. On this corpus that ratio is 0.32, so the verdict holds at any bar from 0.5
   to 2.
 
-On this corpus it selects **arity 2 with 15 terms**, and `most_capable` -- the capability
-bound, the same floor with no complexity preference -- selects **arity 3 with 23 terms**.
+On this corpus it selects **arity 2 with 12 terms**, and `most_capable` -- the capability
+bound, the same floor with no complexity preference -- selects **arity 3 with 14 terms**.
 Neither number is written down anywhere; both fall out.
 
 **It takes no row count, and that is the point of the revision.** The rule it replaced was
 the consensus discounted by adjusted R2's degrees-of-freedom factor against a complexity
 budget, which priced a feature slot by the corpus size: holding the curve and the folds fixed
-and changing only the row count from 476 to 5,000 flipped its answer from (2, 15) to (3, 23)
-while the plateau it was supposed to be reading never moved. There is now nothing for a
+and changing only the row count could flip its answer while the plateau it was supposed to
+be reading never moved. There is now nothing for a
 corpus size to enter through. What decides an extra term is whether the accuracy it adds
 survives being paired over the held-out groups, which is a property of the data rather than
 of how much of it there is. The full account is in `best_configuration`, including what is
@@ -57,8 +57,8 @@ is only defensible if the alternatives it beats are on the page:
   summary, needing no detector, no threshold and no smoothing;
 * the **consensus curve** itself, so that no single protocol can decide a length alone;
 * the **parsimony alternative** in `ml_meta_perf.experiment.length_comparison` -- the shortest
-  length whose paired interval against the chosen one spans zero. On this corpus that is 10
-  terms under arity 2 and 13 under arity 3. It is reported and not adopted: the accuracy it
+  length whose paired interval against the chosen one spans zero. On this corpus that is 8
+  terms under the published arity-2 grammar. It is reported and not adopted: the accuracy it
   gives up is measurable even where it is not significant.
 
 Study chapter: [3. Term generation and selection](../../assets/docs/03-term-selection.md) -- the rationale, in
@@ -99,7 +99,7 @@ def consensus_curve(curve: pl.DataFrame, how: str = "median") -> np.ndarray:
 
     ``median`` is the default and is what makes this robust: a crater in one protocol moves the
     median to the middle value rather than dragging an average down with it. At the length
-    above the three protocols read 0.659 / 0.393 / 0.616 and the median is 0.616 -- the crater
+    above the three protocols read 0.667 / 0.399 / 0.616 and the median is 0.616 -- the crater
     is ignored, which is correct, because one fold's extrapolation is a property of that fold
     and not of the length.
 
@@ -193,7 +193,7 @@ def best_length(curve: pl.DataFrame, column: str = "consensus") -> int:
     **`floor_argmax` is what publishes a length**, and this is what is reported beside it.
     The two differ in what they combine: this takes the median of the three single-group
     protocols, that takes the minimum over all four including the doubly-held-out cell. On the
-    current corpus they agree -- both select 15 terms under the parsimonious grammar and 23
+    current corpus they agree -- both select 12 terms under the parsimonious grammar and 14
     under the full one -- and they are kept apart because agreement is a result rather than a
     guarantee, and because the chapters plot and caption this reading.
 
@@ -212,7 +212,7 @@ def best_length(curve: pl.DataFrame, column: str = "consensus") -> int:
 
     `experiment.length_comparison` reports the alternative that trades accuracy for brevity:
     the shortest length whose paired interval against this one spans zero. On the current
-    corpus that is 10 terms under arity 2 and 13 under arity 3. It is reported rather than
+    corpus that is 8 terms under arity 2. It is reported rather than
     adopted, because the accuracy it gives up is measurable even though it is not significant.
     """
     scores = consensus_curve(curve) if column == "consensus" else curve[column].to_numpy()
@@ -223,8 +223,8 @@ def complexity(arity: int, n_terms: int) -> int:
     """Feature slots an equation spends: a term of arity ``a`` names ``a`` raw features.
 
     **Not a count of fitted coefficients** -- those number ``n_terms + 1``. This charges for how
-    much of the *grammar* an equation uses, which is what lets it tell fifteen terms at arity 2
-    apart from fifteen at arity 3. A coefficient count cannot: both fit sixteen numbers.
+    much of the *grammar* an equation uses, which is what lets it tell the same term count at
+    arity 2 apart from arity 3. A coefficient count cannot make that distinction.
     """
     return arity * n_terms
 
@@ -355,7 +355,7 @@ def grammar_margin(candidate: np.ndarray, reference: np.ndarray) -> tuple[float,
 
     **The one in ``ratio > 1`` is where signal equals noise, not a tuned constant**, and the
     verdict is not knife-edge on it: E3-MAX's advantage over the published equation comes out
-    at a ratio of **0.17**, so the answer is the same at 0.5, at 1 and at 2. Report the ratio
+    at a ratio of **0.32**, so the answer is the same at 0.5, at 1 and at 2. Report the ratio
     and a reader can apply their own bar.
 
     **Where the bar sits relative to a sign test, measured, because it is not obvious.** The
@@ -417,14 +417,14 @@ def best_configuration(
     visited, so complexity decided alone and the statistic was decoration. `grammar_margin`
     replaces it with a ratio of two measured quantities -- the accuracy the larger grammar
     buys, over the paired spread of that same accuracy -- and a larger grammar is taken when
-    that ratio exceeds one. On this corpus the ratio is **0.17**, so the answer holds at any
+    that ratio exceeds one. On this corpus the ratio is **0.32**, so the answer holds at any
     bar from 0.5 to 2.
 
     **What this fixes.** The rule it replaces was the consensus discounted by adjusted R2's
     degrees-of-freedom factor against a complexity budget. It gave the right answer here and
     it was not a rule about the curve at all: it charged a price per feature slot, and the
     price is set by the number of rows. Holding the curve, the folds and the plateau fixed and
-    changing only the corpus size from 476 to 5,000, its answer moved from (2, 15) to (3, 23),
+    changing only the corpus size could move its answer even though the curve did not change,
     because slots get cheaper as the corpus grows until the penalty vanishes and the rule
     converges on its own unpenalised argmax. This corpus is going to grow, so that was a
     verdict scheduled to change with nothing about the equations changing.
@@ -438,8 +438,8 @@ def best_configuration(
 
     **What the complexity tie-break is standing in for**, and `protocol_spread` measures it:
     the candidate this returns does not merely cost fewer feature slots than `most_capable`'s,
-    it also *falls less far from its own fit*. On this corpus (2, 15) drops 0.042 from
-    in-sample to its worst protocol and (3, 23) drops 0.054, for a floor 0.005 higher. The
+    it also *falls less far from its own fit*. On this corpus (2, 12) drops 0.039 from
+    in-sample to its worst protocol and (3, 14) drops 0.050, for a floor 0.003 higher. The
     larger grammar buys a level inside the fold-to-fold spread and pays for it in consistency.
     That is reported beside the decision rather than folded into it: combining a level and a
     spread needs a weight, and a weight is the free parameter this revision removed.

@@ -6,8 +6,8 @@ practices, writes the figures and generates the written report -- in one command
 one set of parameters, so a result can be reproduced by repeating the command line rather
 than by rerunning a notebook in the right order.
 
-Every knob that was tuned during the study is exposed as a flag. Defaults are the tuned
-values, so a bare ``python -m ml_meta_perf`` reproduces the reported numbers.
+Every search knob is exposed as a flag. Defaults retain the sweep's settings, so a bare
+``python -m ml_meta_perf`` reproduces the reported corrected-data run.
 
 Study chapter: [4. The equation](../../assets/docs/04-equation.md) -- the rationale, in
 prose, with the figures.
@@ -151,7 +151,7 @@ def configuration(arguments: argparse.Namespace) -> Configuration:
 
     **One, not three.** Until 2026-09-09 this returned a pair and E2 got a third object no
     flag reached, so `--penalty 3` moved two of the three equations and the comparison between
-    them stopped being like-for-like. `experiment.DEFAULT` is now the single tuned
+    them stopped being like-for-like. `experiment.DEFAULT` is now the single retained
     configuration and the argparse defaults *are* the constants behind it, which is also what
     makes `--help` state the real values rather than `None`.
 

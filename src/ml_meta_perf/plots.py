@@ -12,8 +12,8 @@ axis labels, tick labels, and legends identifying the series. Anything a reader 
 otherwise have to be *told* is instead drawn -- a reference level becomes a line with a
 legend entry, not a sentence.
 
-Each figure is one axes with one message, so each gets its own caption. Panels sharing a
-figure would need panel titles to be distinguishable, which is the thing being avoided.
+Each figure carries one message and gets its own caption. The ranking-quality figure uses two
+aligned axes because its unitless ranking scores and MCC regret must not share a scale.
 
 The palette is colour-blind safe and every series is distinguished by marker or line
 style as well as colour, so the figures survive being printed in greyscale.
@@ -48,7 +48,7 @@ FIGURE_DPI = 150
 VECTOR_SUFFIX = ".pdf"
 
 
-def _finish(figure: Figure, destination: str | Path) -> Path:
+def _finish(figure: Figure, destination: str | Path, *, tight_layout: bool = True) -> Path:
     """Write the figure as PNG and PDF, both on a transparent background.
 
     Transparent rather than white so a figure sits on whatever the page behind it is,
@@ -62,7 +62,8 @@ def _finish(figure: Figure, destination: str | Path) -> Path:
     """
     path = Path(destination)
     path.parent.mkdir(parents=True, exist_ok=True)
-    figure.tight_layout()
+    if tight_layout:
+        figure.tight_layout()
     figure.savefig(path, dpi=FIGURE_DPI, bbox_inches="tight", transparent=True)
     # `CreationDate: None` because matplotlib otherwise stamps the PDF with the wall clock,
     # so every run rewrote seven tracked figures with byte-different, visually identical
@@ -80,7 +81,7 @@ def _finish(figure: Figure, destination: str | Path) -> Path:
 
 
 #: Model features abbreviated in rendered term labels. The full names are five syllables long
-#: and a figure of fifteen terms cannot carry them; the glossary in chapter 1 expands them.
+#: and a full equation figure cannot carry them; the glossary in chapter 1 expands them.
 TERM_ABBREVIATIONS: dict[str, str] = {
     "Processing Units Number": "PUN",
     "Model Capability": "MC",
@@ -158,7 +159,7 @@ def term_to_math(name: str) -> str:
     """A term name as a mathtext expression, set on one line at one size.
 
     Term names are written for a CSV -- ``[log(gravity)] / [log(Processing Units Number)]`` --
-    and a figure of fifteen of those is a wall of brackets. Rendered as mathematics the same
+    and a figure full of those is a wall of brackets. Rendered as mathematics the same
     term is one expression, which is how it would appear in the paper the equation is for.
 
     Three conventions, all chosen for a figure whose labels have to be read at a glance
@@ -229,13 +230,12 @@ def term_count_curve(
     climbing and assumes more terms would keep paying, when the whole approach is bounded
     well below 1. It is drawn as a labelled line rather than described in text.
 
-    **It is labelled "additive oracle", not "additive ceiling", and E3 is expected to cross
-    it.** `validate.additive_oracle` is the best score reachable by a model that is additive
+    **It is labelled "additive oracle", not "additive ceiling".**
+    `validate.additive_oracle` is the best score reachable by a model that is additive
     in *dataset effect plus model effect* -- perfect group means and nothing else. E3 carries
     mixed terms, each multiplying a dataset feature by a model one, so it represents
-    interactions the oracle cannot and rises above it at 16 terms. Calling that line a
-    ceiling while a curve sits above it invited the reader to find an error where the
-    headline result is: the crossing is what the mixed terms buy.
+    interactions the oracle cannot and can cross the reference at longer lengths. Calling
+    that line a ceiling would therefore misstate what it bounds.
     """
     figure, axes = plt.subplots(figsize=(7.0, 4.4))
     sizes = curve["n_terms"].to_numpy()
@@ -353,8 +353,8 @@ def equation_comparison(comparison: pl.DataFrame, destination: str | Path) -> Pa
     bar next to it.** The E1 and E2 references are genuine ceilings -- true per-group means
     are the most a predictor constant within that group can achieve. The additive oracle is
     a ceiling only for an equation additive in dataset *and* model effects, and E3 is not
-    one: its mixed terms carry interactions, and it scores above the oracle. A legend
-    calling every hatched bar a ceiling made the study's headline look like a bug.
+    one: its mixed terms carry interactions that the oracle cannot represent. The current
+    E3 remains below that reference, but a mixed equation is not structurally bounded by it.
     """
     table = comparison.filter(~pl.col("equation").str.contains("capability"))
     labels = table["equation"].to_list()
@@ -385,13 +385,11 @@ def equation_comparison(comparison: pl.DataFrame, destination: str | Path) -> Pa
 def term_effects(effects: pl.DataFrame, destination: str | Path, *, top: int | None = None) -> Path:
     """Per-term effect sizes in MCC units, signed, strongest at the top.
 
-    ``top`` defaults to every term in the equation. It used to default to 12, which silently
-    dropped four of the published sixteen -- and the dropped ones were the small-effect terms
-    a reader most needs to see, since a term that survived selection while moving the
-    prediction barely at all is exactly what the brevity argument is about.
+    ``top`` defaults to every term in the equation so the small-effect terms remain visible;
+    those are the terms a reader most needs to see when judging the brevity argument.
 
     Terms are rendered as mathematics rather than as their CSV names -- a ratio becomes a
-    fraction, a product a centre dot -- because a figure of fifteen bracketed strings is a
+    fraction, a product a centre dot -- because a figure full of bracketed strings is a
     wall of punctuation, and the equation is written for a paper. `term_to_math` does it and
     `TERM_ABBREVIATIONS` shortens the five-syllable model features; chapter 1 expands them.
     """
@@ -600,4 +598,8 @@ def ranking_quality(selection: pl.DataFrame, destination: str | Path) -> Path:
     cost.set_xlabel("MCC given up by taking\nthe top-ranked model")
     cost.grid(alpha=0.25, linewidth=0.6, axis="x")
     cost.tick_params(labelleft=False)
-    return _finish(figure, destination)
+    # ``tight_layout`` warns on this shared-y pair in Matplotlib even though the axes are
+    # placed correctly. Set the margins explicitly and retain ``bbox_inches='tight'`` in
+    # `_finish`, which still expands the saved canvas around labels and the legend.
+    figure.subplots_adjust(left=0.22, right=0.98, bottom=0.13, top=0.99, wspace=0.10)
+    return _finish(figure, destination, tight_layout=False)

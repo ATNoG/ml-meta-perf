@@ -1,17 +1,17 @@
 """Model identity: the part of a classifier the meta-features do not describe.
 
-Chapter 6 measures a gap. Dataset identity explains 0.354 of MCC variance and the twelve
-dataset meta-features recover 98% of that; model identity explains 0.282 and the six model
+Chapter 4 measures a gap. Dataset identity explains 0.354 of MCC variance and the twelve
+dataset meta-features recover 99% of that; model identity explains 0.282 and the six model
 meta-features recover 88%. The residual 12% is capability this corpus records nowhere --
 the difference between *what a model costs*, which the features state, and *what a model
 is good at*, which they do not.
 
 **That gap was 42% when this module was written, and closing it is what shrank this
 module's claim.** The four asserted ordinals merged on 2026-09-05 took the model side from
-58% to the high eighties, so the headroom a per-model table can still recover is small.
+63% to the high eighties, so the headroom a per-model table can still recover is small.
 The module is kept because it measures the ceiling that bounds every model-side proposal,
 not because the correction it computes is worth publishing -- see the standing objections
-below and in chapter 9.
+in chapter 4.
 
 This module writes that difference down. Under leave-one-dataset-out every one of the 25
 models appears in every training fold, so the residual of the fitted equation can be
@@ -42,7 +42,7 @@ MCC; the table then explains only what is left.
 The construction is a **factorial regression** in the sense used for genotype-by-
 environment trials: a two-way table modelled with covariates on one side and free
 coefficients on the other, one of which multiplies an environmental covariate (Denis,
-1988; van Eeuwijk, Denis & Kang, 1996). Where the AMMI oracle of chapter 5 estimates
+1988; van Eeuwijk, Denis & Kang, 1996). Where the AMMI oracle of chapter 4 estimates
 both sides freely and therefore predicts nothing, this estimates the dataset side from
 meta-features and keeps the model side free -- which is what makes it usable on a
 dataset nobody has run. In machine-learning terms it is the collaborative half of a
@@ -51,8 +51,8 @@ per-item effect learned from the observed grid, and algorithm selection has been
 as collaborative filtering before (Misir & Sebag, 2017; Fusi et al., 2018; Yang et al.,
 2019).
 
-Study chapter: [7. Limitations](../../assets/docs/07-limitations.md) -- the rationale, in
-prose, with the figures.
+Study chapter: [4. The equation](../../assets/docs/04-equation.md#limitations-of-the-equation)
+-- the rationale, in prose, with the figures.
 """
 
 from __future__ import annotations

@@ -565,8 +565,8 @@ def single_prediction(
 
 
 #: How each equation's own ceiling is labelled in `Report.comparison`. E1 and E2 are bounded
-#: by what their group identity can explain at all; E3 is bounded by the additive oracle only
-#: in the sense that passing it demonstrates interaction, so it is not given a ratio.
+#: by what their group identity can explain at all. The additive oracle is a reference for E3,
+#: not a structural bound, so E3 is not given a ratio.
 CEILING_ROWS = {"E1": "E1 reference: true dataset means", "E2": "E2 reference: true model means"}
 
 
@@ -577,7 +577,7 @@ def _headline(report: Report) -> pl.DataFrame:
     hand-written copy of these numbers and had no way of noticing when they moved -- the same
     failure the generated chapter sections were introduced to remove, reappearing one level
     up. **The ``reached`` column is the point of the table**, not the R2 column: E1's
-    structural maximum is a per-dataset constant, so its 0.35 and E3's 0.66 are not
+    structural maximum is a per-dataset constant, so its score and E3's score are not
     comparable as achievements, and printing the fraction of each equation's own ceiling
     beside them is what stops a reader making that comparison anyway.
     """
@@ -809,7 +809,7 @@ def _opaque_note(report: Report) -> str:
     The columns are ordered by how much the estimator was allowed to see, and reading them
     left to right is the argument. The last one is the comparison that matters: under
     leave-one-cell-out neither side has the dataset or the model, so it is the only protocol on
-    which an opaque regressor and a fifteen-term equation are denied the same things.
+    which an opaque regressor and the published equation are denied the same things.
     """
     if report.opaque.height == 0 or "r2_loo_cell" not in report.opaque.columns:
         return ""
@@ -936,6 +936,7 @@ def _reach_note(report: Report) -> str:
     single = float(ladder["r2_all_single_feature"])
     fitted = float(report.e3.in_sample["r2"])
     n_single = int(float(ladder["n_single_feature_terms"]))
+    n_raw = int(report.reach.filter(pl.col("r2_raw").is_finite()).height)
     n_terms = len(report.e3.equation.terms)
 
     strongest = report.reach.head(1).to_dicts()[0] if report.reach.height else None
@@ -946,7 +947,7 @@ def _reach_note(report: Report) -> str:
         "above: that one bounds a per-dataset value plus a per-model value.\n",
         "| level | terms | R² |",
         "|---|---|---|",
-        f"| every raw feature, untransformed | {len(ALL_FEATURES)} | {raw:.4f} |",
+        f"| every raw term admitted by the grammar | {n_raw} | {raw:.4f} |",
         f"| the best single-feature term per feature | {len(ALL_FEATURES)} | {best:.4f} |",
         f"| every single-feature term at once | {n_single} | {single:.4f} |",
         f"| **the fitted equation (E3)** | **{n_terms}** | **{fitted:.4f}** |",
@@ -956,8 +957,8 @@ def _reach_note(report: Report) -> str:
         lines.append(
             f"No individual feature carries much: the strongest is `{strongest['feature']}` at "
             f"R² {float(strongest['r2_best']):.3f}, so any accuracy beyond that is combination "
-            "rather than a single dominant driver. Transforming the features is worth "
-            f"{best - raw:+.3f} over entering them raw.\n"
+            "rather than a single dominant driver. Taking one best admissible term per "
+            f"feature is worth {best - raw:+.3f} over the admissible raw-term fit.\n"
         )
     verdict = (
         f"E3 reaches {fitted:.4f} with {n_terms} terms, **above** the {single:.4f} that all "
@@ -1204,9 +1205,10 @@ def render(
         "**E3's ceiling cells are blank because it has no structural one.** Nothing in the "
         "feature set stops an equation over both halves of the meta-data from predicting "
         "every cell, so there is no group-identity bound to divide by. The reference it is "
-        "read against instead is the additive oracle, in the comparison table of chapter 5 -- "
-        "and E3 is *expected* to pass that, because the oracle bounds only an equation "
-        "additive in dataset effect plus model effect, which E3's mixed terms are not.\n"
+        "shown instead is the additive oracle, in the comparison table of chapter 5. That "
+        "oracle bounds only an equation additive in dataset effect plus model effect; E3's "
+        "mixed terms can represent interactions beyond it, although the current fitted "
+        "equation remains below it.\n"
     )
 
     parts.append("## 2. The equation\n")
@@ -1421,7 +1423,7 @@ def render(
         "The verdicts above are drawn from corpus averages -- family means, variance shares, "
         "paired tests -- which any study with this corpus could compute. This table asks the "
         "stronger question, and the one an interpretability-first study is uniquely able to "
-        "ask: **which of the fifteen terms carries this practice, with what strength and "
+        "ask: **which of the equation's terms carries this practice, with what strength and "
         "which sign?**\n"
     )
     if frame is not None:
@@ -1703,7 +1705,11 @@ def write_into_chapters(
                 heading = title.split(". ", 1)[-1]
                 blocks.append(f"## {heading}\n\n{_demote(body)}")
         if blocks:
-            page.write_text(splice(page.read_text(), "\n\n".join(blocks)))
+            content = page.read_text(encoding="utf-8")
+            page.write_text(
+                splice(content, "\n\n".join(blocks)),
+                encoding="utf-8",
+            )
             written.append(page)
     return written
 

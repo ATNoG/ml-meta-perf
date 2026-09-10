@@ -134,7 +134,7 @@ over them may be read.
 
 | feature | what it measures | source |
 |---|---|---|
-| `Processing Units Number` | log count of the units a learner fits — nodes, trees, parameters | measured per run |
+| `Processing Units Number` | count of the units a learner fits — nodes, trees, parameters | measured per run |
 | `Model Capability` | the learner family's rung on a ten-step capability ladder | asserted, from the literature |
 | `Solution Stochasticity` | how much randomness the fitting procedure introduces | asserted, 1–5 |
 | `Loss Margin Behaviour` | how hard the loss penalises points far from the boundary | asserted, 1–5 |
@@ -143,20 +143,18 @@ over them may be read.
 
 **Only one of the six is a measurement, and none of them describes what a model is *good
 at*.** `Processing Units Number` is a cost proxy and the other five are taxonomy. That is the
-study's central limitation rather than an incidental one: [chapter 1](01-dataset.md)
+study's central limitation rather than an incidental one: [chapter 4](04-equation.md#the-ceiling-on-model-descriptors)
 measures the headroom a perfect model descriptor would buy, and records the five separate
 attempts to recover it by re-encoding what the corpus already has, all of which failed.
 
-`Processing Units Number` is the measured one. It is a count of the units a learner fits —
-nodes, trees, parameters — and the corpus stores its natural log. That log is a modelling
-claim rather than a formatting choice: capacity has bounded returns, so twice the units is
-not twice the accuracy. Note that a term printed as `log(Processing Units Number)` therefore
-applies a *second* log. It is also the one model feature that varies with the dataset as well
-as the learner, since capacity scales with the data's shape — the model features are not
-purely model-level.
+`Processing Units Number` is the measured one. It is the raw count of the units a learner
+fits — nodes, trees or parameters. Composite terms apply the grammar's natural logarithm
+once, so `log(Processing Units Number)` means exactly one log of that count. It is also the
+one model feature that varies with the dataset as well as the learner, since capacity scales
+with the data's shape — the model features are not purely model-level.
 
 `Model Capability` places a learner's family on a ten-rung ladder taken from the tabular-ML
-literature. Chapter 7 records what it is worth and what it is not; the short version is that
+literature. [Chapter 4](04-equation.md#model-descriptors-are-thin-and-one-of-them-is-asserted) records what it is worth and what it is not; the short version is that
 it is a bijection with the ten families, so anything read off it is a claim about *family*.
 
 The remaining four grade a mechanism, low to high, and are asserted from published

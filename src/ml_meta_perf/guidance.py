@@ -150,8 +150,8 @@ class Evidence:
     def scored(self, equation: str) -> float:
         """The R2 of a row of `comparison`, matched by prefix.
 
-        By prefix because the labels carry their term count -- "E3, dataset + model (15
-        terms)" -- and that count moves whenever the configuration does. Matching the whole
+        By prefix because the labels carry their term count -- for example, "E3, dataset +
+        model (12 terms)" -- and that count moves whenever the configuration does. Matching the whole
         string would make every caller here break on a change that is not about them.
         """
         matched = self.comparison.filter(pl.col("equation").str.starts_with(equation))
@@ -755,8 +755,8 @@ def equation_evidence(report: Report, columns: dict[str, np.ndarray]) -> pl.Data
     """Each practice paired with the **terms** of the published equation that carry it.
 
     **The equation is a sum of terms, so a term is the unit a practice has to be checked
-    against.** A raw feature is not: `Processing Units Number` appears in five of the fifteen
-    terms, in numerators and denominators and under different transforms, and collapsing that
+    against.** A raw feature is not: `Processing Units Number` can appear in several terms,
+    in numerators and denominators and under different transforms, and collapsing that
     into one per-feature direction throws away exactly what a reader wants -- which part of
     the equation encodes the advice, how strongly, and with what sign.
 
@@ -859,7 +859,7 @@ def equation_coverage(report: Report, columns: dict[str, np.ndarray]) -> dict[st
     from corpus statistics -- family means, variance shares, paired tests -- so "5 supported"
     says the advice holds on these twenty datasets, which any study with this corpus could
     establish and which the fitted equation plays no part in. This counts the narrower and
-    harder thing: how many of the fifteen terms carry a practice at all, and how many of those
+    harder thing: how many of the equation's terms carry a practice at all, and how many of those
     pairings come out the way the practice predicts.
 
     Counted over (practice, term) pairs rather than over practices, because a practice carried

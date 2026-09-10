@@ -124,8 +124,9 @@ def captions(report: Report, data: str | Path | None = None) -> dict[str, str]:
             "Each fitted equation against the level it is read against, all scored on the "
             f"same {frame.height} rows. Dataset-only and model-only equations are bounded by what "
             "their group identity can explain. The additive oracle bounds only an equation "
-            "additive in dataset and model effects, which E3 is not: its mixed terms carry "
-            "interactions, and it scores above the oracle. All bars are in-sample."
+            "additive in dataset and model effects, which E3 is not: its mixed terms can "
+            "carry interactions beyond that reference, although the current E3 remains "
+            "below it. All bars are in-sample."
         ),
         figure_name("term_count_curve"): (
             "Accuracy against equation length for E3, in-sample and under every "

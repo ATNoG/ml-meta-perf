@@ -25,9 +25,9 @@ equation a practitioner can inspect, argue with, and derive guidance from.
 | | in-sample | LOO-dataset | LOO-model |
 |---|---|---|---|
 | E1 — dataset features only, 10 terms | 0.351 | 0.338 | 0.308 |
-| E2 — model features only, 6 terms | 0.252 | 0.193 | 0.231 |
-| **E3 — both, 15 terms** | **0.658** | **0.638** | **0.622** |
-| *E3 under the full grammar, 23 terms* | *0.675* | *0.644* | *0.633* |
+| E2 — model features only, 6 terms | 0.247 | 0.185 | 0.224 |
+| **E3 — both, 12 terms** | **0.641** | **0.623** | **0.605** |
+| *E3 under the full grammar, 14 terms* | *0.655* | *0.627* | *0.617* |
 
 The three equations differ only in which features they may draw on — **E1** sees the
 dataset, **E2** sees the model, **E3** sees both. All three are fitted on the same 476 rows
@@ -43,28 +43,29 @@ of its own ceiling each equation attains:
 | | reached | its ceiling | fraction |
 |---|---|---|---|
 | E1 (dataset features) | 0.351 | 0.354 | **99%** |
-| E2 (model features) | 0.252 | 0.282 | **89%** |
-| E3 (both) | 0.658 | *see below* | — |
+| E2 (model features) | 0.247 | 0.282 | **87%** |
+| E3 (both) | 0.641 | *see below* | — |
 
 E3 has no ceiling of that kind, because it is not constant within either group. The two
 levels it can be read against are both reached or passed, and that is the result:
 
 | level | R² | what it bounds |
 |---|---|---|
-| all 75 single-feature terms | 0.6437 | the best a sum of per-feature functions can do |
+| all 72 single-feature terms | 0.6321 | the best a sum of per-feature functions can do |
 | additive oracle | 0.6605 | the best a per-dataset value **plus** a per-model value can do |
-| **E3, 15 terms** | **0.6578** | — |
-| **E3 under the full grammar, 23 terms** | **0.6751** | — |
+| **E3, 12 terms** | **0.6408** | — |
+| **E3 under the full grammar, 14 terms** | **0.6551** | — |
 
-Both bounds describe predictors that never combine a dataset feature with a model one. E3
-does — 7 of its 15 terms are mixed — and clearing them by two independent routes is the
-evidence that dataset×model *interaction* is what the equation is capturing.
+Both reference levels describe predictors that never combine a dataset feature with a model
+one. E3 passes the per-feature level but remains below the additive oracle. Its six mixed
+terms and their measured alignment with the leading interaction component are the evidence
+that dataset×model *interaction* is what the equation captures.
 
 **The second row is a capability measurement, not a second headline.** Same corpus, same four
 features, the same selection rule, but the full grammar (arity 3). It answers the one question
 the published equation cannot answer about itself — whether the additive form is out of room,
-or whether this equation is short of it. It is short of it by 0.049 in-sample, and what it
-buys for that is eight fewer terms and a far more stable form.
+or whether this equation is short of it. It is short of it by 0.014 in-sample, and what it
+buys for that is two fewer terms and a simpler grammar.
 
 ![Equations against the levels they are read against](assets/figures/01_equation_comparison.png)
 
@@ -81,19 +82,19 @@ buys for that is eight fewer terms and a far more stable form.
   all *asserted*, read off published descriptions rather than observed in a training run —
   takes the model side to 88%. What they cannot do is describe a method nobody has
   classified. [chapter 1](assets/docs/01-dataset.md).
-- **Mixed dataset×model terms carry the equation.** 7 of 15 terms use features from both
-  groups and drive **60%** of the output variance; dataset-only terms drive 37% and
+- **Mixed dataset×model terms carry the equation.** 6 of 12 terms use features from both
+  groups and carry **44%** of the standardised weight mass; dataset-only terms carry 53% and
   model-only terms 3%. "Which model suits which data" is where the signal is, not "how hard
   is this data" or "how good is this model". [Chapter 6](assets/docs/06-practices.md).
 - **No single meta-feature carries it either.** The strongest, `eq_num_attr`, reaches
-  R² 0.142 alone; the transforms in the grammar are worth about +0.068 over entering the raw
-  columns. There is no headline driver to quote, which is why the equation needs a dozen-odd
+  R² 0.142 alone; taking one best admissible term per feature is worth about +0.085 over the
+  admissible raw-term fit. There is no headline driver to quote, which is why the equation needs a dozen-odd
   terms rather than two. [Chapter 4](assets/docs/04-equation.md).
 - **One interaction component is worth +0.122 R², and the equation reaches about a third of
-  it** — alignment 0.31 in-sample and 0.27 out of fold, measured by stripping the additive
-  part from both the truth and the prediction and correlating what is left. Only about
-  **+0.018** of the +0.122 is reachable from meta-features on both sides, and the bottleneck
-  is the model side. [Chapter 4](assets/docs/04-equation.md).
+  it** — alignment 0.32 in-sample and 0.29 out of fold, measured by stripping the additive
+  part from both the truth and the prediction and correlating what is left. A free per-model
+  level and slope raise leave-one-dataset-out R² from 0.623 to 0.678, locating the remaining
+  headroom on the model side. [Chapter 4](assets/docs/04-equation.md).
 - **Ten best practices from the literature, weighed against the corpus** — 8 supported,
   1 qualified, 1 untestable here. The strongest: tree-based families average MCC **0.927**
   against **0.660** for neural ones on the datasets where every model ran, with plain MLPs
@@ -101,8 +102,9 @@ buys for that is eight fewer terms and a far more stable form.
 
 > **Status:** research prototype for an academic study. 476 rows is small, and every number
 > is reported both in-sample and under held-out cross-validation because at this size the two
-> differ a lot. The full configuration sweep is done and the equation's length and grammar are
-> both derived from its result rather than asserted.
+> differ a lot. The search settings are retained from the completed configuration sweep;
+> after correcting the processing-unit column, the equation's length and grammar are derived
+> again from the current validation curves.
 
 ## Documentation
 
@@ -133,7 +135,7 @@ covering it.
 
 Python 3.12+. Runtime dependencies are **polars**, **numpy**, **matplotlib** and
 **scikit-learn**. `kneeliverse` was dropped on 2026-09-07 with the knee detectors that used
-it ([chapter 3](assets/docs/03-term-selection.md#stage-3--choosing-the-number-of-terms)).
+it ([chapter 3](assets/docs/03-term-selection.md#stage-3-choosing-the-number-of-terms)).
 
 scikit-learn is there for one thing: the opaque-regressor comparison in
 [chapter 5](assets/docs/05-evaluation.md), which prices the other side of the trade this
@@ -190,6 +192,12 @@ of three flags that already exist, and it quietly reached two things they did no
 how it came to advertise "seconds" while still paying for the full opaque comparison. The
 wiring check is `python -m unittest discover -s tests`, which is 44 seconds and checks more.
 
+The retained E3 settings can be recalibrated with a separate, resumable Slurm search. It
+reuses the historical composite objective for the broad sweep, applies the expensive
+leave-one-cell-out protocol only to a diverse shortlist, and produces a shared-base
+E3-Valid/E3-MAX pair for review. See [the configuration-search guide](CONFIGURATION_SEARCH.md)
+for the complete grid, selection rule and cluster instructions.
+
 **One note on threading.** The inner loop is ~87k solves of matrices no larger than 32×32,
 far below the size where BLAS parallelism pays: threading buys no wall time and burns 3.5×
 the CPU spinning. Setting `OPENBLAS_NUM_THREADS=1` costs nothing and saves the CPU; it is
@@ -197,8 +205,8 @@ left to the caller rather than forced from inside a library.
 
 ### Parameters
 
-Every knob that was tuned during the study is a flag, and the defaults are the tuned
-values, so a bare run is the reported study.
+Every knob that was tuned during the study is a flag. The defaults retain the sweep's
+settings, while a bare run derives the reported equation from the corrected corpus.
 
 ```bash
 PYTHONPATH=src venv/bin/python -m ml_meta_perf --data mine.csv --output runs/mine
@@ -286,12 +294,6 @@ src/ml_meta_perf/
     model.py        the Equation object: predict, render, serialise
     validate.py     leave-one-group-out protocols, baselines, oracles
     selection.py    knee detection and Pareto fronts over equation length
-    equation_search.py     the configuration sweep scored on seven components
-    equation_search_cli.py `ml-meta-perf-search`, needs the `search` extra
-    beam.py         selectable beam policies: pruning, diversity, seeding
-    seeding.py      space-filling starting terms for the beam (ESS/TORANN)
-    beam_compare.py the paired decision between two beam policies
-    beam_search_cli.py     `ml-meta-perf-beam`, the beam comparison job
     attribution.py  per-term effects, group shares, variance decomposition
     practices.py    per-feature associations measured from a fitted equation
     guidance.py     literature best practices, weighed against what the study measured
@@ -299,14 +301,13 @@ src/ml_meta_perf/
     figures.py      the figure set and suggested LaTeX captions
     report.py       the generated report: term importance and written analysis
     identity.py     per-model effects, measuring the ceiling on model descriptors
-    experiment.py   the end-to-end study and its tuned configurations
+    experiment.py   the end-to-end study and its retained search configuration
     cli.py          the argparse pipeline: `ml-meta-perf`, `python -m ml_meta_perf`
     meta_dataset.csv  the corpus, shipped with the package
 assets/docs/        the study chapters, hand-written with generated sections spliced in
 assets/figures/     generated figures
 results/            generated equations and tables
 tests/              unittest suite
-scripts/            Slurm batch scripts: the configuration sweep and the beam comparison
 .github/workflows/  CI on 3.12 and 3.14, and the published API reference
 ```
 
@@ -323,7 +324,7 @@ venv/bin/pre-commit install
 venv/bin/pre-commit run --all-files   # ruff, basedpyright, vulture, unittest
 ```
 
-`requirements.txt` installs the project editable with the `search` extra and pins the four
+`requirements.txt` installs the project editable and pins the four
 dev tools to exactly the versions CI installs, so a commit that passes the local hook passes
 CI for the same reason. `pyproject.toml` remains the only source of the *project's*
 dependencies — polars, numpy and matplotlib, plus joblib under the `search` extra.

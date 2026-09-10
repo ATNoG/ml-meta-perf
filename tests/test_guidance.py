@@ -378,10 +378,10 @@ class TestEquationEvidence(unittest.TestCase):
 
 
 class TestTheCapacityReading(unittest.TestCase):
-    """The two pairings the chapter's reading of the capacity practice rests on.
+    """The pairings the chapter's reading of the capacity practice rests on.
 
     Unlike everything in `TestEquationEvidence`, these are claims about the **published**
-    fifteen-term equation rather than about the pairing code, so they fit the real corpus
+    twelve-term equation rather than about the pairing code, so they fit the real corpus
     under `DEFAULT`. That is one fit and no protocols -- `equation_evidence` reads
     `report.e3` and nothing else -- which is why this does not need a whole `run`.
     """
@@ -397,27 +397,18 @@ class TestTheCapacityReading(unittest.TestCase):
         e3 = run_e3(frame, DEFAULT)
         cls.evidence = equation_evidence(SimpleNamespace(e3=e3), columns)  # pyright: ignore[reportArgumentType]
 
-    def test_the_same_feature_can_disagree_with_itself_across_terms(self) -> None:
-        """The finding the term-level view exists to surface: `Processing Units Number` carries
-        one sign where it is a numerator and the opposite where it is a denominator, which is
-        the equation saying the *ratio* matters rather than the quantity. A per-feature check
-        cannot represent this at all."""
+    def test_the_capacity_terms_agree_in_the_current_equation(self) -> None:
+        """Every current term carrying `Processing Units Number` raises predicted MCC."""
         capacity = self.evidence.filter((pl.col("feature") == "Processing Units Number") & (pl.col("direction") != ""))
         self.assertGreater(capacity.height, 1)
-        self.assertGreater(len(set(capacity["direction"].to_list())), 1)
+        self.assertEqual(set(capacity["direction"].to_list()), {"raises"})
 
-    def test_a_denominator_and_a_numerator_of_the_same_feature_differ(self) -> None:
-        """Arithmetic, not conflict: a negatively-weighted ratio contributes more as its
-        denominator grows. If this ever stopped holding, either the weights changed sign or
-        `feature_position` is reporting the wrong slot -- and the chapter's whole reading of
-        the capacity practice rests on it."""
+    def test_capacity_appears_as_a_denominator_and_a_factor(self) -> None:
+        """The current reading combines two denominator terms with one product term."""
         capacity = self.evidence.filter(
             (pl.col("feature") == "Processing Units Number") & (pl.col("direction") != "")
         ).to_dicts()
-        below = {row["direction"] for row in capacity if row["position"] == "denominator"}
-        above = {row["direction"] for row in capacity if row["position"] == "numerator"}
-        self.assertTrue(below and above, "expected the feature in both slots")
-        self.assertEqual(below & above, set(), "a denominator and a numerator agreed")
+        self.assertEqual({row["position"] for row in capacity}, {"denominator", "factor"})
 
 
 if __name__ == "__main__":

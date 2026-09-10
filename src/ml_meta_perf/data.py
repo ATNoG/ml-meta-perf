@@ -14,7 +14,7 @@ and they behave very differently, which is why they are named separately here:
 That asymmetry is the whole point of the two-equation comparison, so the split is
 part of the public API rather than something each caller re-derives.
 
-**Why there are eighteen features when the equation uses thirteen.**
+**Why there are eighteen features when the equation uses twelve.**
 
 The two numbers answer different questions, asked at different stages, and reading the
 second as a criticism of the first is the most natural mistake to make about this study.
@@ -43,7 +43,7 @@ redundancy: ``nr_attr`` and ``nr_outliers`` correlate at 0.9995, and
 *Fitting the equation* comes second, and its criterion is not coverage but **compression**.
 An equation is a statement about families of datasets and families of learners, not about
 individuals, so it is expected to need fewer features as it gets better -- and the
-redundancy above is part of what it is compressing away. E3 uses thirteen of the eighteen.
+redundancy above is part of what it is compressing away. E3 uses twelve of the eighteen.
 That is the mechanism working, not a shortfall in the corpus, and an equation that used all
 eighteen would be one that had failed to generalise.
 
@@ -51,11 +51,9 @@ So a column may earn its place at either stage. ``Solution Stochasticity`` and
 ``Loss Margin Behaviour`` are kept for identification: they are what
 separate ``DT`` from ``ExtraTree``, ``LR`` from ``LinearSVC`` and ``LightGBM_RF`` from
 ``LightGBM_ExtraTrees``, and without them 134 of the 476 rows stop being identifiable.
-**Do not read absence from the equation as evidence against a feature**, and do not read
-it as robust either: it is a property of one equation length and configuration. Measured
-across the published grammar's whole curve, ``Loss Margin Behaviour`` is absent up to 15
-terms and present at every length from 16 to 25; ``Solution Stochasticity`` appears only at
-25. The published equation is 15 terms, so neither is in it -- one term either way.
+**Do not read absence from the equation as evidence against a feature.** The published
+equation deliberately searches a four-feature model-side subset, so these two descriptors
+remain part of the corpus for identification without entering E3's candidate library.
 
 **``nr_inst`` describes the source dataset, not the training set.** Every model was
 trained on a stratified sample capped at 100,000 rows, and ten of the twenty datasets are
@@ -159,10 +157,10 @@ MODEL_CAPABILITY: dict[str, int] = {
 #: Each is defined for all twenty-five learners, so none carries a "this learner has no such
 #: thing" sentinel, and every rung is occupied and positive, so the whole grammar is defined
 #: on all of them. That is what distinguishes them from the sixty-one hyperparameter
-#: descriptors measured and rejected in chapter 11: a hyperparameter a learner does not have
+#: descriptors measured and rejected during corpus design: a hyperparameter a learner does not have
 #: has no value, and encoding that absence as zero collapses applicability into magnitude.
 #:
-#: **They are asserted, not measured**, and carry chapter 8's caveat in full: a term over one
+#: **They are asserted, not measured**, and carry chapter 4's caveat in full: a term over one
 #: of them is evidence about the ordering claimed here, not about a quantity anyone observed.
 
 #: How deep randomisation reaches into the fitted solution, low to high.
@@ -212,7 +210,7 @@ SOLUTION_STOCHASTICITY: dict[str, int] = {
 #:
 #: The standard robustness ordering over losses. This is the weakest claim of the four --
 #: placing the perceptron criterion above hinge is a choice rather than a consensus -- and
-#: chapter 8's caveat about ``Model Capability`` applies here with more force.
+#: chapter 4's caveat about ``Model Capability`` applies here with more force.
 LOSS_MARGIN_BEHAVIOUR: dict[str, int] = {
     "Bagging": 1,
     "DT": 1,
@@ -383,7 +381,7 @@ FEATURE_GLOSSARY: dict[str, str] = {
     "nr_norm": "number of normally distributed attributes",
     "nr_outliers": "number of attributes containing outliers",
     "ns_ratio": "noise-to-signal ratio",
-    "Processing Units Number": "model capacity (log processing units)",
+    "Processing Units Number": "model capacity (number of fitted processing units)",
     "Model Capability": "learner family's capability rank in the tabular-ML literature (1-10)",
     "Solution Stochasticity": "how deep randomisation reaches into the fit (1-5)",
     "Loss Margin Behaviour": "how hard the loss penalises points far from the boundary (1-5)",

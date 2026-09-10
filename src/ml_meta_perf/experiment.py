@@ -4,10 +4,11 @@ The three equations differ only in which features they may draw on -- E1 sees da
 meta-features, E2 sees model meta-features, E3 sees both -- so the gaps between them
 measure what each half of the meta-data is worth.
 
-The defaults below are not arbitrary. They are the configuration that survived a sweep
+The defaults below are not arbitrary. They are the configuration retained from a sweep
 over the term stability cap, the ridge penalty and the equation length, scored on
-leave-one-dataset-out rather than on fit. The sweep is reproducible through
-``sweep_configurations``; ``DEFAULT`` is simply where it landed.
+leave-one-dataset-out rather than on fit. The processing-unit column was subsequently
+corrected from a stored log count to a raw count; the settings remain fixed so that change
+is isolated, while the equation length and grammar are re-derived on the corrected data.
 
 Study chapter: [4. The equation](../../assets/docs/04-equation.md) -- the rationale, in
 prose, with the figures.
@@ -75,7 +76,7 @@ from ml_meta_perf.validate import (
 
 @dataclass(frozen=True)
 class Configuration:
-    """The knobs that were actually tuned, and the values that won."""
+    """The search knobs retained from the configuration sweep."""
 
     max_abs_zscore: float
     penalty: float
@@ -104,7 +105,8 @@ class Configuration:
 #: reasoning behind each is below, unchanged; what is gone is the idea that it applies to one
 #: equation and not the others.
 #:
-#: Measured, 2026-09-09, the whole study re-run against these:
+#: Historical measurement from 2026-09-09, before the processing-unit column was corrected
+#: from a stored log count to the raw count:
 #:
 #: | equation | before | after |
 #: |---|---|---|
@@ -141,24 +143,25 @@ POOL_SIZE = 600
 BEAM_WIDTH = 6
 
 #: The longest equation the search explores. **The horizon, not the published length** --
-#: `selection.floor_argmax` picks that from the curve. Cut from 32 to 25 on 2026-09-08: the
-#: rule picks 15 under the parsimonious grammar and 23 under the full one, so 26 to 32 were
-#: only ever cost, and they were the worst-behaved part of the curve (leave-one-dataset-out
-#: craters to 0.480, 0.517, 0.537 and 0.420 at 28, 29, 30 and 32 -- extrapolations that
-#: nothing selects). Verified not to move either published length.
+#: `selection.floor_argmax` picks that from the curve. The current corpus selects 12 under
+#: the parsimonious grammar and 14 under the full default grammar, leaving ample room before
+#: the 25-term horizon.
 MAX_TERMS = 25
 
 #: The grammars the arity search covers, and the default for ``--arity``.
 #:
-#: **Arity 4 is deliberately out.** Its candidate is (4, 15) at floor 0.6071 -- worse than
-#: arity 2's on all four protocols, twice the complexity, never selected, and about 6.6 s a
-#: run to compute. It stays reachable through the flag because ``max_arity = 4`` is a recorded
-#: negative a reader may want to reproduce, and because a search that cannot be widened is not
-#: a search. Arity 1 is admissible too and is never worth a default: a grammar with no products
-#: cannot express the conditional claims the whole study is about.
+#: **Arity 4 is deliberately out on readability grounds.** On the corrected corpus its
+#: 24-term candidate reaches a floor of 0.6098, but including it still leaves arity 2 as the
+#: published grammar: its paired gain-to-spread ratio is 0.76, below the rule's bar of one.
+#: The four-feature ratio-of-sums remains reachable through the flag for reproduction, while
+#: the default set stops at terms a reader can reasonably hold in one expression. Arity 1 is
+#: admissible too and is never worth a default: a grammar with no products cannot express the
+#: conditional claims the study is about.
 ARITIES: tuple[int, ...] = (2, 3)
 
-# The measured case for these values, kept because it is the evidence and not the setting.
+# The sweep below predates the 2026-09-10 correction of Processing Units Number from a stored
+# log count to a raw count. Its settings are retained to isolate that data correction; the
+# full configuration sweep has not been repeated on the corrected corpus.
 #
 # `max_arity=2` is confirmed outright by the full sweep: the best arity-2 point scores 0.7297
 # against 0.6866 for the best arity-3 point, and every configuration in the top band is arity
@@ -216,10 +219,10 @@ DEFAULT = Configuration(
 #: equation that used every available column would be one that had failed to generalise.
 #: Restricting the term pool removes nothing from the corpus.
 #:
-#: The 2026-09-07 sweep chose this subset, and it dominates the full six on every axis:
-#: objective 0.7297 against 0.7222, leave-one-dataset-out 0.6855 against 0.6716,
-#: leave-one-model-out 0.6543 against 0.6404. `Solution Stochasticity` and
-#: `Loss Margin Behaviour` stay in the corpus and out of the equation.
+#: The 2026-09-07 sweep chose this subset. It is retained unchanged after the processing-unit
+#: data correction so that the descriptor transformation is the only experimental change.
+#: `Solution Stochasticity` and `Loss Margin Behaviour` stay in the corpus and out of the
+#: equation.
 EQUATION_MODEL_FEATURES: tuple[str, ...] = (
     "Model Capability",
     "Processing Units Number",
@@ -678,9 +681,8 @@ def leakage_demonstration(
 
     ``known`` supplies grouped paths that `run_e3` has already computed. They are the same
     folds over the same library at the same settings, and beam search records its best
-    subset at every size as it goes, so a path built to 32 terms contains the 24-term
-    entry this table wants -- recomputing it produced identical numbers and was a third of
-    the study's runtime.
+    subset at every size as it goes, so a path built to ``max_terms`` contains the shorter
+    entry this table needs and does not have to be recomputed.
     """
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
     truth = target(frame)
@@ -811,9 +813,9 @@ def comparison(
     is not correcting a denominator -- an earlier version of E1 was fitted on 20 aggregated
     dataset means and it was. What it adds is the two *ceilings* beside the equations: the
     true per-dataset and per-model means, which are the most any equation restricted to
-    that half of the meta-data could reach. Without them a reader compares E1's 0.349 with
-    E3's 0.665 and concludes the dataset side is weak, when 0.349 against a ceiling of
-    0.354 means E1 is finished.
+    that half of the meta-data could reach. Without them a reader can compare the raw E1 and
+    E3 scores and conclude the dataset side is weak, even when E1 is already close to its
+    own structural ceiling.
     """
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
     truth = target(frame)
@@ -1280,7 +1282,7 @@ def run(
 ) -> Report:
     """Run the whole study.
 
-    The three configurations default to the tuned ones. Passing them explicitly is how the
+    The three configurations default to the retained sweep settings. Passing them explicitly is how the
     command line exposes the knobs: a caller who overrides ``config_e3`` gets a study that is
     internally consistent, since every table that mentions E3 is computed from the same
     configuration object.

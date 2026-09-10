@@ -41,8 +41,8 @@ Their central result is directly relevant and worth quoting in full:
 > guidance."
 
 **Relevance.** This is independent corroboration of the central measurement here. Our
-leave-one-dataset-out R² of ~0.47 for a classification metric (MCC), against an in-sample
-0.658, is not a failure of the method — it reflects a documented property of classifier
+leave-one-dataset-out R² of 0.623 for a classification metric (MCC), against an in-sample
+0.641, is not a failure of the method — it reflects a documented property of classifier
 performance prediction. The paper also names the **"interpretability tax"**: methods
 optimising for structural sparsity pay significantly in training time. `ml-meta-perf` pays a
 different tax — accuracy — and quantifies it explicitly through the term-count curve.
@@ -150,7 +150,7 @@ and explains part of the gap between their reported accuracies and ours.
 
 ## 5b. Two-way tables with covariates on one side — the model behind the ceiling
 
-Chapter 7 measures a ceiling by adding, to the fitted equation, a table of one level and
+[Chapter 4](04-equation.md#the-ceiling-on-model-descriptors) measures a ceiling by adding, to the fitted equation, a table of one level and
 one slope per classifier. That construction is not new; it is the standard model for a
 two-way table where one margin can be described by covariates and the other cannot. It is
 **not published as a model here** — it is how the study puts a number on what better model
@@ -195,13 +195,12 @@ in AutoML.
   *KDD 2019*.
 
 **Relevance.** These establish that latent-factor models over a pipeline-by-dataset matrix
-are standard practice for algorithm recommendation, and they are why the +0.106 measured in
-[chapter 1](01-dataset.md) is unsurprising in size. They are also what
+are standard practice for algorithm recommendation, and they are why the +0.055 leave-one-dataset-out
+R² headroom measured in [chapter 4](04-equation.md#the-ceiling-on-model-descriptors) is unsurprising in size. They are also what
 this study deliberately does *not* deliver: a latent factor per model is an uninterpreted
 coordinate, and a table of them supports no term analysis and no transferable practice.
 Reporting the number as a ceiling states the trade honestly — this is what an interpretable
-additive equation gives up against a factorised recommender on this corpus, and it is
-0.106 of R², not the order of magnitude a reader might assume.
+additive equation gives up against a factorised recommender on this corpus.
 
 ## 5d. Ranking objectives
 
@@ -215,11 +214,10 @@ additive equation gives up against a factorised recommender on this corpus, and 
   — the within (fixed-effects) transform, which is what makes a pairwise-ranking least
   squares objective closed-form.
 
-**Relevance.** The obvious response to "the equation does not out-rank the per-model centre" is to optimise the
-ranking directly, and the within transform makes that a one-line change rather than a new
-optimiser. It was implemented and it **ranks worse** (Spearman 0.532 against 0.625). The
-result is worth reporting precisely because the literature makes it look like free money:
-the binding constraint here is the thinness of the model descriptors, not the loss.
+**Relevance.** This study evaluates the MCC equation as a model selector with AP, MRR,
+Hit@1, regret and Spearman correlation in [chapter 5](05-evaluation.md). The equation is
+still fitted by squared error; a separate pairwise ranking objective is not part of the
+current implementation.
 
 ## 6. The target metric
 
@@ -251,11 +249,11 @@ random k-fold as a diagnostic for leakage rather than a result.
 | | prior work | `ml-meta-perf` |
 |---|---|---|
 | Model class | opaque regressors (RF, GBM, NN); or GP-evolved long expressions | fixed additive form, linear in the weights |
-| Reported R² | ~0.9 (opaque), >0.7 (GP) | 0.658 in-sample, 0.638 LOO-dataset |
+| Reported R² | ~0.9 (opaque), >0.7 (GP) | 0.641 in-sample, 0.623 LOO-dataset |
 | Validation | often random k-fold | leave-one-dataset-out and leave-one-model-out |
 | Extractable guidance | little | each weight reads directly in feature units |
 | Ceiling stated | rarely | additive oracle at 0.6605, rank-1 at 0.783, E1 capped at 0.354 |
-| Reachable ceiling | not distinguished | +0.018 of the rank-1 rung from covariates; +0.106 is what perfect model descriptors would still buy |
+| Reachable ceiling | not distinguished | per-model level and slope raise LOO-dataset R² from 0.623 to 0.678 (+0.055) |
 
 The contribution is not a higher number. It is (a) an equation that can be read, (b) an
 explicit accuracy-versus-length curve instead of a single operating point, (c) the
@@ -268,19 +266,17 @@ quantified.
 - **Interaction-aware but interpretable terms.** The oracle ladder puts a rank-1
   interaction at +0.122 R², and the performance-influence literature (§5) includes
   interaction terms by default. Our symmetric `sum_ratio` fix was a step in that
-  direction and was worth most of the 0.558 → 0.603 improvement. **Mostly closed as a
-  question** (§5b): only +0.018 of that rung is reachable with covariates on both margins,
-  so what remains open is not the interaction basis but the model descriptors.
-- **Ranking.** *Closed, but not by the obvious route* (§5d). A pairwise-ranking objective
-  ranked worse than squared error (Spearman 0.532 against 0.625), leaving the per-model
-  mean ahead at 0.703. What closed the gap was a better model descriptor, not a better
-  loss: with `Model Capability` in the model side E3 reaches 0.706 with top-1 regret 0.008
-  against the baseline's 0.011. The margin on rank correlation is a tie; the regret figure
-  is the real gain. This is the diagnosis confirming itself — the baseline out-ranked the
-  equation because it knew which models are generally good, and the remedy was to tell the
-  equation.
+  direction and materially improved the wider grammar. The current equation aligns with
+  only 0.32 of the leading interaction pattern in-sample and 0.29 out of fold, while a
+  per-model slope still improves transfer. The interaction basis and richer measured model
+  descriptors therefore remain open questions.
+- **Ranking.** *Closed as a comparison, not as a decisive win* (§5d). Under the strict
+  held-out-cell protocol E3 reaches average precision 0.822 and top-1 regret 0.011, against
+  0.798 and 0.011 for the per-model-mean baseline. The paired intervals span zero, so the
+  readable equation is competitive with “use whatever usually works” rather than proven
+  better than it.
 - **More datasets.** Twenty is the binding constraint on every cross-validated number
   here; OpenML-scale meta-data would settle whether the 0.6605 additive ceiling is a
   property of this sample or of the approach.
-- **Interaction structure.** The gap between E3 (0.658) and the rank-1 oracle (0.783)
+- **Interaction structure.** The gap between E3 (0.641) and the rank-1 oracle (0.783)
   is entirely dataset×model interaction the current term vocabulary does not reach.

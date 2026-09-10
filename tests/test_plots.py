@@ -293,7 +293,7 @@ class TestFigureNaming(unittest.TestCase):
         if not docs.is_dir():
             self.skipTest("chapters are not installed beside the package")
         for page in docs.glob("*.md"):
-            for referenced in re.findall(r"figures/([\w.]+\.png)", page.read_text()):
+            for referenced in re.findall(r"figures/([\w.]+\.png)", page.read_text(encoding="utf-8")):
                 self.assertIn(referenced, published, f"{page.name} references {referenced}")
 
 

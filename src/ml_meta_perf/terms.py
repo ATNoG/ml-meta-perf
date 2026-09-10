@@ -464,7 +464,7 @@ class Library:
     That last check cannot be done on names. ``inst_to_attr`` is ``nr_inst / nr_attr`` in
     this meta-dataset, so ``[log(inst_to_attr)] + [log(nr_attr)]`` **is**
     ``log(nr_inst)``, exactly, and the grammar generates both. Three such pairs exist in
-    the published 281-term library. A binary feature produces them too and more bluntly:
+    the published 206-term library. A binary feature produces them too and more bluntly:
     ``log``, ``sqrt`` and ``1/f`` are all undefined at zero, leaving only ``f`` and
     ``f^2``, which for a 0/1 column are the same numbers under two names.
 

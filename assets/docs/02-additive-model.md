@@ -53,9 +53,9 @@ project's life.
 
 | operation | raw features | terms (arity 3 library) |
 |---|---|---|
-| `atom` | 1 | 30 |
-| `ratio`, `product` | 2 | 75 |
-| `sum_ratio` — `(f1+f2)/f3` | 3 | 211 |
+| `atom` | 1 | 62 |
+| `ratio`, `product` | 2 | 144 |
+| `sum_ratio` — `(f1+f2)/f3` | 3 | 600 |
 | `ratio_of_sums` — `(f1+f2)/(f3+f4)` | 4 | *available, not default* |
 
 ### The asymmetry that was there, and is now fixed
@@ -66,57 +66,20 @@ not. That made the richest part of the grammar the only part unable to express a
 dataset×model interaction — the exact combination carrying E3's entire lift over E1, and
 the exact structure the oracle ladder says is missing.
 
-Generating it over all features instead takes mixed terms in the library from **19 to 126**
+Generating it over all features instead takes mixed terms in the library from **50 to 392**
 and is worth, on its own, most of the improvement reported in
 [chapter 4](04-equation.md).
 
-### Is three enough? — the design point, measured properly
+### Comparing arities without changing the experiment
 
-`max_arity` exists so this is answered rather than assumed, and answering it correctly
-requires **retuning the ridge penalty inside each arity**. A wider grammar needs more
-shrinkage; comparing arities at a fixed penalty measures the penalty as much as the arity.
+`max_arity` exists so the grammar width is measured rather than assumed. Every candidate
+arity is now fitted with the same ridge penalty, stability cap, candidate pool, beam width
+and search horizon. Keeping those settings fixed is essential: otherwise a difference
+between two arities would also be a difference between two tuning runs.
 
-The fixed-penalty comparison (λ = 20 throughout, 32 terms) suggests arity 2 is best for
-transfer:
-
-| max arity | library | in-sample | LOO-dataset |
-|---|---|---|---|
-| 2 | 92 | 0.5687 | +0.458 |
-| 3 | 281 | 0.5758 | +0.375 |
-| 4 | 1599 | 0.6186 | +0.321 |
-
-**That reading is an artefact.** λ = 20 was tuned for the narrow grammar, so the wider ones
-are being shown under-shrunk. Sweeping λ ∈ {1, 5, 20, 50} and k ∈ {12 … 32} *within* each
-arity and reporting each one's best gives a different picture:
-
-| max arity | library | best in-sample | best LOO-dataset |
-|---|---|---|---|
-| 2 | 92 | 0.6222 (λ=1, k=32) | +0.4629 (λ=20, k=24) |
-| **3** | **281** | **0.6361** (λ=1, k=32) | **+0.4658** (λ=5, k=24) |
-| 4 | 1599 | **0.6714** (λ=1, k=32) | +0.2628 (λ=50, k=16) |
-
-<sub>Measured over the five model descriptors the corpus ships, before `Model Capability`
-joined them; the library sizes and R² values in this table are that configuration's. The
-*decision* — arity 3 — was re-checked against the enlarged feature set and is unchanged,
-which is why the sweep has not been re-run to refresh four numbers that support a
-conclusion they still support.</sub>
-
-Three conclusions, and the first two were invisible at fixed penalty:
-
-1. **Arity 3 dominates arity 2 on both axes.** Better fit (0.6361 vs 0.6222) *and* better
-   transfer (+0.4658 vs +0.4629). There is no reason to prefer two-feature terms; the
-   apparent transfer advantage of arity 2 was the fixed penalty.
-2. **Arity 4 is a fit-only option, and an expensive one.** It buys +0.035 in-sample over
-   arity 3 and gives up **0.203** of transfer — roughly six units of transfer per unit of
-   fit. That is the trade, stated properly.
-3. **The optimal penalty falls as arity rises** for transfer (20 → 5 → 50 is not monotone,
-   but arity 4's best transfer needs both the heaviest shrinkage *and* the shortest
-   equation, k=16, which is the signature of a grammar the sample cannot support).
-
-What survives from this table is the *method* — sweep the penalty inside each arity, or the
-ridge gets credited with the arity's effect — and the arity-4 result, a fit-only option at
-roughly six units of transfer per unit of fit. Its conclusion about arity 3 does not survive,
-and the rest of this section is what replaced it.
+Arity 2 offers atoms, ratios and products. Arity 3 adds `sum_ratio`; the search then derives
+an equation length independently for each grammar and compares their worst result across
+the four validation protocols. The current comparison follows immediately below.
 
 ### The arity is searched, not set
 
@@ -127,24 +90,24 @@ study does not fix one. `experiment.search_grammars` fits E3 once per arity in
 
 | | grammar | terms | complexity `a·k` | floor over four protocols | protocol spread |
 |---|---|---|---|---|---|
-| **E3-Valid**, the equation the study publishes | arity 2 | 15 | 30 | 0.6162 | 0.0416 |
-| **E3-MAX**, the bound on how far the additive form reaches | arity 3 | 23 | 69 | 0.6213 | 0.0539 |
+| **E3-Valid**, the equation the study publishes | arity 2 | 12 | 24 | 0.6015 | 0.0393 |
+| **E3-MAX**, the bound within the default readable grammars | arity 3 | 14 | 42 | 0.6047 | 0.0504 |
 
 The **floor** is the minimum over all four protocols — in-sample, leave-one-dataset-out,
 leave-one-model-out, and the doubly-held-out cell — so a grammar is judged by its worst
 showing rather than its best. See [chapter 5](05-evaluation.md#four-protocols) for the four.
 
-**E3-MAX has the better floor, by 0.0051, and does not win.** The rule is not a threshold to
+**E3-MAX has the better floor, by 0.0032, and does not win.** The rule is not a threshold to
 clear: the larger grammar has to be shown to *beat* the smaller one, paired per held-out
-dataset on mean absolute error under the strictest protocol. It gains 0.0008 there against a
-bootstrap spread of 0.0049 over the same folds — a ratio of 0.17 where the bar is 1. Half a
-percent of R², carried by folds that disagree with each other five times as loudly as the
-gain, does not buy a grammar with 2.3× the complexity. `selection.grammar_margin` computes
+dataset on mean absolute error under the strictest protocol. It gains 0.0019 there against a
+bootstrap spread of 0.0061 over the same folds — a ratio of 0.32 where the bar is 1. The
+fold-to-fold spread is more than three times the gain, so it does not buy a grammar with
+1.75× the complexity. `selection.grammar_margin` computes
 that ratio, and `tests/test_selection.py` pins the alternatives that were tried and rejected
 on the way to it.
 
 **The search does use the third arity when it is offered, which is why the bound is worth
-reporting.** In E3-MAX the three-feature `sum_ratio` carries 10 of the 23 terms and **44% of
+reporting.** In E3-MAX the three-feature `sum_ratio` carries 7 of the 14 terms and **50% of
 the standardised weight mass**: the search did not merely tolerate the extra arity, it built
 nearly half the equation out of it. That is the honest form of the old claim in this
 chapter — which stated the same thing about the *published* equation, and stopped being true
@@ -152,11 +115,11 @@ when the published equation became an arity-2 one. What the comparison now says 
 and more useful: a grammar that expresses dataset×model interaction in one term is what the
 search reaches for, and it still cannot be shown to predict better than one that does not.
 
-**Arity 4 is in the flag and out of the default set.** Its candidate is 15 terms at floor
-0.6071 — worse than arity 2 on all four protocols at twice the complexity — which agrees with
-the sweep above and costs about 6.6 s a run to re-derive. It stays reachable through `--arity
-4` because a recorded negative a reader may want to reproduce should be reproducible, and
-because a search that cannot be widened is not a search.
+**Arity 4 is in the flag and out of the default set.** With the current corpus it reaches 24
+terms at a floor of 0.6098. Including it in the comparison still leaves arity 2 as E3-Valid:
+the paired gain-to-spread ratio is 0.76, below the rule's bar of 1. It remains outside the
+default because `(f1+f2)/(f3+f4)` is beyond the intended readability limit, not because it
+fits worse. It stays reachable through `--arity 4` so that decision remains reproducible.
 
 Counted from the equations by `report.operation_usage`; the published equation's own table is
 in [chapter 4](04-equation.md#which-operations-the-equation-needed), where `sum_ratio` is
@@ -212,7 +175,7 @@ $n_{\text{inst}} / n_{\text{attr}}$, so
 
 $$\log(\texttt{inst\_to\_attr}) + \log(\texttt{nr\_attr}) \;=\; \log(\texttt{nr\_inst})$$
 
-exactly — and the grammar generates both sides. Three such pairs existed in the 281-term
+exactly — and the grammar generates both sides. Three such pairs exist in the 206-term
 library. The beam search would not have put both members in one equation — it refuses a
 candidate correlating above 0.95 with a selected term — so nothing published was ever at
 risk. What the duplicates cost is candidate-pool slots, search time, and a place in the
@@ -250,10 +213,11 @@ preferable to an indicator that switches on it.
 
 | configuration | `max_abs_zscore` | terms |
 |---|---|---|
-| E1 (dataset features only) | 3.0 | 137 |
-| E2 (model features only) | 3.0 | 30 |
-| **E3 default** | **3.0** | **316** |
-| arity-4 grammar (measured, not published) | 4.0 | 5224 |
+| E1 (dataset features only) | 4.25 | 133 |
+| E2 (model features only) | 4.25 | 48 |
+| **E3 default (arity 2)** | **4.25** | **206** |
+| arity-3 grammar | 4.25 | 806 |
+| arity-4 grammar (available, not default) | 4.25 | 4070 |
 
 The `max_abs_zscore` cap rejects a term when a single row sits more than that many
 standard deviations from its mean. The cap is **sample-size dependent**: a lone outlier
