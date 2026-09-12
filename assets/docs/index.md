@@ -52,20 +52,21 @@ Pearson and Spearman correlation, and select a subset by beam search with an exa
 solve at every step. One term per combination of raw features, so no relationship is stated
 twice.
 
-**The contrast.** Three equations differ *only* in which features they may use — E1 dataset,
-E2 model, E3 both — fitted by one function, from one configuration, on the same rows, and
+**The contrast.** Three primary equations differ *only* in which features they may use — E1 dataset,
+E2 model, E3-Valid both — fitted by one function, from one configuration, on the same rows, and
 scored on the same rows under all four protocols. The gaps between them are the evidence about what each half of the
 meta-data is worth. They share a scale but **not a ceiling**: E1 can only predict a
 per-dataset constant, so its structural maximum is well below E3's, and the comparable
 quantity is the fraction of its own ceiling each equation attains — the `reached` column of
 the generated table below.
 
-**The result.** E3 explains roughly two thirds of MCC, and loses very little of that when a
+**The result.** E3-Valid explains roughly two thirds of MCC, and loses little of that when a
 whole dataset or a whole model is held out — the three columns of the generated table below.
 The same features under the looser arity-3 grammar do better still, which shows how far the
-additive form goes under the study's readable grammars. E3 passes the
-all-single-feature-terms ceiling but remains below the additive oracle. The first result shows
-that cross-feature terms add information; the second leaves measurable interaction headroom.
+additive form goes under the study's readable grammars. E3-Valid passes both the
+all-single-feature-terms ceiling and the additive oracle. Cross-feature mixed terms therefore
+add information beyond independent feature effects and recover part of the measurable
+dataset×model interaction.
 
 **The point.** Accuracy is what the equation is scored on; explainability is what it is
 *for*. An opaque regressor reaches R² ≈ 0.9 in-sample on this meta-data and transfers at
@@ -78,16 +79,17 @@ check no forest of the same accuracy admits.
 
 ## The headline
 
-The one table the study is summarised by, so that the summary cannot drift from the chapters. Every row is scored on the same 476 rows under the same protocols; the equations differ **only** in which features they may draw on.
+The one table the study is summarised by, so that the summary cannot drift from the chapters. Every row is scored on the same 476 rows under the same protocols. E1, E2, and E3-Valid share the retained base configuration; E3-MAX uses the wider retained grammar as a capability bound.
 
 | equation | features | terms | in-sample R2 | LOO-dataset R2 | LOO-model R2 | own ceiling | reached |
 |---|---|---|---|---|---|---|---|
 | E1 | dataset | 16 | 0.3538 | 0.3487 | 0.2996 | 0.3539 | 0.9998 |
 | E2 | model | 6 | 0.2588 | 0.1972 | 0.2367 | 0.2821 | 0.9173 |
-| E3 | both | 25 | 0.7194 | 0.6911 | 0.6554 |  |  |
+| E3-Valid | both | 18 | 0.6787 | 0.6517 | 0.6149 |  |  |
+| E3-MAX | both | 25 | 0.7194 | 0.6911 | 0.6554 |  |  |
 
 **Do not read these R² values as achievements against each other.** They share a scale but not a ceiling: E1 sees only dataset features, every row of a dataset shares one feature vector, and so E1 can predict nothing but a per-dataset constant. Its structural maximum is the `true dataset means` row, and reaching it means E1 is *done* rather than weak. The comparable quantity is the fraction of each equation's own ceiling, which the last column gives.
 
-**E3's ceiling cells are blank because it has no structural one.** Nothing in the feature set stops an equation over both halves of the meta-data from predicting every cell, so there is no group-identity bound to divide by. The reference it is shown instead is the additive oracle, in the comparison table of chapter 5. That oracle bounds only an equation additive in dataset effect plus model effect; E3's mixed terms can represent interactions beyond it. The comparison table reports whether the current equation reaches or exceeds that reference.
+**E3-Valid and E3-MAX have blank ceiling cells because neither has a structural group-identity ceiling.** Nothing in the feature set stops an equation over both halves of the meta-data from predicting every cell, so there is no group-identity bound to divide by. The reference shown instead is the additive oracle, in the comparison table of chapter 5. That oracle bounds only an equation additive in dataset effect plus model effect; E3-Valid's mixed terms can represent interactions beyond it. The comparison table reports whether the current equation reaches or exceeds that reference.
 
 <!-- end generated -->

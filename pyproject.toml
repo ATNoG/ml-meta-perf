@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=77.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -10,18 +10,18 @@ authors = [
 ]
 description = "Interpretable linear meta-models that predict the MCC of a classifier from dataset and model meta-features"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
     "polars>=1.20.0",
     "numpy>=2.0.0",
-    "matplotlib>=3.8.0",
+    "matplotlib>=3.9.0",
     # The opaque-regressor comparison, and the strongest ranking and threshold baselines.
     # It brings scipy with it, which this project refused for a long time on size grounds --
     # `ml_meta_perf.stats` exists because four statistics were not worth the dependency, and
@@ -35,7 +35,7 @@ dependencies = [
     # `opaque` threads the leave-one-cell protocol's 476 estimator refits over it. It used to
     # arrive with the `search` extra, which meant a base-only install type-checked with an
     # unresolved import; it is a base dependency now because the study itself runs it.
-    "joblib>=1.3.0",
+    "joblib>=1.4.0",
 ]
 
 [project.scripts]
@@ -61,14 +61,14 @@ ml_meta_perf = ["meta_dataset.csv"]
 
 [tool.ruff]
 line-length = 120
-src = ["src", "tests"]
+src = ["src", "tests", "scripts"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.basedpyright]
 typeCheckingMode = "standard"
-include = ["src/ml_meta_perf", "tests"]
+include = ["src/ml_meta_perf", "tests", "scripts"]
 # No `venvPath`/`venv` here. basedpyright exits 3 when the configured venv is absent, which
 # is every CI runner, and without it the tool does not infer one from the interpreter that
 # launched it. Both call sites pass `--pythonpath` instead, which says the same thing
@@ -76,7 +76,7 @@ include = ["src/ml_meta_perf", "tests"]
 reportImportCycles = "none"
 
 [tool.vulture]
-paths = ["src/ml_meta_perf", "tests"]
+paths = ["src/ml_meta_perf", "tests", "scripts"]
 min_confidence = 80
 
 [tool.coverage.run]

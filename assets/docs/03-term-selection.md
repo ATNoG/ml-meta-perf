@@ -81,11 +81,12 @@ identity against the literal definition across penalties and subset sizes.
 Every candidate refit is a $k \times k$ solve against a precomputed Gram matrix rather
 than a least-squares call against the full design. Everything this study fits — the term
 sweeps, four equations across two grammars, and all four protocols including the
-doubly-held-out cell — runs in **24 seconds**, and every optimisation that got it there was
-verified to leave every output file byte-identical.
+doubly-held-out cell — runs in tens of seconds on the reference environment, and every
+optimisation that got it there was verified to leave the outputs unchanged.
 
-A full `python -m ml_meta_perf` takes about four minutes, and the other 215 seconds are the
-opaque comparison in [chapter 5](05-evaluation.md#what-an-opaque-model-reaches-and-does-not):
+A full `python -m ml_meta_perf` takes about six minutes on the reference Windows environment;
+most of that time is the opaque comparison in
+[chapter 5](05-evaluation.md#what-an-opaque-model-reaches-and-does-not):
 three scikit-learn regressors refitted once per observed cell, 476 times each. That the
 priced *alternative* to a readable equation costs an order of magnitude more than the
 equation is not the point of this section, but it is not nothing either.
@@ -100,7 +101,7 @@ equation is not the point of this section, but it is not nothing either.
 | **stacked solves** | a beam step's candidates go to LAPACK as one `(n, k, k)` array | **1.16M solve calls → 87k** |
 | **target ranked once per screen** | Spearman's expensive half hoisted out of the candidate loop | 52k rank calls → 29k |
 
-The last two are the current ones. At $k \le 32$ numpy's per-call wrapper — dtype
+The last two are the current ones. At $k \le 32$ NumPy's per-call wrapper — dtype
 promotion, array coercion, the errstate context manager — costs several times the LAPACK
 call it guards, so batching the candidates of one beam step into a single stacked solve is
 worth 2–10× depending on $k$ while running the identical routine per slice. What remains
@@ -109,11 +110,11 @@ solves, in that order. There is no Python-level hotspot left above 20%.
 
 ### One BLAS thread, deliberately
 
-The solver underneath is whatever LAPACK numpy was built against — for the wheels used
-here, the OpenBLAS build that numpy vendors (`numpy.libs/libscipy_openblas64_*.so`, built
-`MAX_THREADS=64`). **That is a bundled shared library, not the scipy package**, which this
-project does not depend on ([chapter 5](05-evaluation.md) covers the statistics written out
-by hand for the same reason).
+The solver underneath is whatever LAPACK NumPy was built against — for the wheels used
+here, the OpenBLAS build that NumPy vendors (`numpy.libs/libscipy_openblas64_*.so`, built
+`MAX_THREADS=64`). **That is a bundled shared library, not the installed SciPy package.**
+The project receives SciPy transitively through scikit-learn, while its small internal
+statistics remain implemented in `ml_meta_perf.stats`.
 
 OpenBLAS threads by default, and on this workload the threads do nothing but spin:
 
@@ -128,7 +129,7 @@ A 32×32 solve is far below the size where BLAS parallelism pays, so eight threa
 wall time and burn 3.5× the CPU, so `OPENBLAS_NUM_THREADS=1` is worth setting in the environment before a run. It is left to the caller: a library that silently pins a global thread count is a library that surprises whoever imports it.
 
 It has to be pinned on the command line rather than inside the package: `python -m ml_meta_perf`
-imports `ml-meta-perf`, and therefore numpy, and therefore OpenBLAS, *before* `__main__` runs,
+imports `ml-meta-perf`, and therefore NumPy, and therefore OpenBLAS, *before* `__main__` runs,
 and OpenBLAS reads the variable when it loads. Anyone timing this study by calling
 `python -m ml_meta_perf` directly will see the same 25 seconds against five times the CPU.
 
@@ -136,7 +137,7 @@ and OpenBLAS reads the variable when it loads. Anyone timing this study by calli
 
 `pip install numpy` installs a wheel that **vendors its own OpenBLAS** — a 25 MB
 `numpy.libs/libscipy_openblas64_*.so`, built ILP64 with prefixed symbols. It is linked at
-build time and there is no runtime switch, so a different BLAS means rebuilding numpy:
+build time and there is no runtime switch, so a different BLAS means rebuilding NumPy:
 
 ```bash
 venv/bin/pip install --no-binary numpy --force-reinstall numpy \
@@ -147,7 +148,7 @@ That needs the BLAS development files (an `openblas.pc` for pkg-config, plus the
 a C compiler and `ninja`. It takes about two minutes the first time on 16 cores; pip caches
 the built wheel, so recreating the venv afterwards reuses it and costs seconds.
 `venv/bin/pip install --force-reinstall numpy` goes back to the wheel. **Any later
-`pip install` that resolves numpy will silently replace a source build with the wheel
+`pip install` that resolves NumPy will silently replace a source build with the wheel
 again**, since `pyproject.toml` asks only for `numpy>=2.0.0`. The rebuild is deliberately
 optional: requiring a compiler and BLAS headers is a heavier ask than the rest of this
 project makes, and it changes speed rather than results.
@@ -162,7 +163,7 @@ is not measurable:
 | vendored OpenBLAS (Haswell kernel) | 24.4 s | 27.9 s | — |
 | system OpenBLAS (Zen kernel) | 24.6 s | 28.0 s | **byte-identical** |
 
-Every one of the study's twenty output tables is unchanged across the swap, which is the
+Every output table produced in that benchmark was unchanged across the swap, which is the
 check that matters more than the timing: a different BLAS can round differently, and
 different rounding could in principle change which term the beam selects. It does not here.
 
@@ -216,23 +217,14 @@ the extra configuration surface, and one global penalty is retained.
 
 ## Stage 3 — choosing the number of terms
 
-More terms fit better and read worse. Picking the bend of that curve by eye is the kind of
-judgement this project exists to remove from its results, so the length comes from a stated
-rule with no threshold, no smoothing window and no sensitivity parameter — making the chosen
-length a property of the curve rather than of a parameter picked to produce a preferred
-answer, and one that re-derives itself when the corpus changes.
+More terms fit better and read worse. E3-Valid chooses the equation length with a stated,
+reproducible sustained-plateau rule. The rule follows the best-so-far Combined R² curve and
+uses a forward window of three evaluated lengths with a tolerance of 0.001.
 
-Two decisions have to be made before the detector is run, and both were previously made
-badly enough to invalidate the answer.
+### Which evidence the rule combines
 
-### Which curve the detector runs on
-
-**Not in-sample R², which is what `knee_terms` used to default to.** In-sample is monotone in
-the number of terms — adding a term cannot reduce the fit — so it can only ever say "more".
-A length chosen on it is chosen on the one curve that cannot express the trade the choice is
-about.
-
-**And not one cross-validated curve either.** On twenty groups they wander, and
+In-sample R² is monotone in the number of terms, so it cannot express the trade between fit
+and equation length by itself. A single cross-validated curve is also insufficient. On twenty groups they wander, and
 leave-one-dataset-out on this corpus has genuine craters — lengths where the held-out number
 collapses by a fifth of the scale while its two neighbours are untouched. That is not noise,
 and it is not a property of the length either: at such a length one held-out dataset sits
@@ -241,100 +233,55 @@ extrapolates without limit and `validate._clip_to_training` pins the fold to its
 floor. `ASNM-CDX-2009` is the fold this happens to. One fold's extrapolation should not
 choose the published length.
 
-So the rule reads **every protocol at once**, and it takes the **minimum** —
-`selection.floor_curve`, the worst of the four at each length, including the doubly-held-out
-cell. A length is judged by its weakest showing, so a length that is strong in-sample and
-craters when both groups are held out cannot be selected on the strength of the first.
-
-A second reading is computed and reported beside it: `selection.consensus_curve`, the
-per-length **median** of the three single-group protocols. The median is robust in a different
-way — it discards a crater where a mean would be dragged down by it — and it is what the
-chapters plot. The two agree at 25 terms under the retained arity-3 grammar. Under the rejected
-arity-2 grammar, the four-protocol floor selects 17 terms while the three-protocol median
-selects 19, which is why the readings remain separate. **Which length craters moves with the configuration**, so the
-worked example is generated rather than written here — the section below names the deepest one
-on the current curve and gives the median and the mean side by side.
+The rule therefore uses `selection.consensus_curve`: the per-length **median** of in-sample,
+leave-one-dataset-out, and leave-one-model-out R². The median keeps one unstable validation
+protocol from determining the equation length. Which length contains the deepest crater moves
+with the configuration, so the generated section below identifies it from the current curve
+and reports the median and mean side by side.
 
 ### Which lengths the curve is reported at
 
 **Every length from 1 to `max_terms`**, on a uniform grid, and this matters more than it
-sounds. A non-uniform grid — `(2, 4, 8, 12, 16, 20, 24, 26, 28, 32)`, say — skips 13, 15, 17
-and 31, which are exactly the four lengths where the transfer curve craters. Any rule reading
-such a curve is partly reading the grid: the same detector returns 4 terms on that grid and 6
-on the dense one. Reporting every length costs nothing, because the beam search already builds
-the whole path.
+sounds. A non-uniform grid — `(2, 4, 8, 12, 16, 20, 24)`, say — can skip the beginning or end
+of a plateau and change the selected point. The current curve's deepest transfer crater is at
+eight terms. Any rule reading a sparse curve is partly reading the grid. Reporting every
+length costs nothing, because the beam search already builds the whole path.
 
 ![Accuracy versus equation length](../figures/02_term_count_curve.png)
 
 The craters are visible in that figure. They are a real property of leave-one-dataset-out on
 twenty groups and they belong on the plot.
 
-### The rule, and everything it beats
+### The retained E3-Valid rule
 
-**The rule is the argmax of the worst protocol at each length**, implemented as
-`selection.floor_argmax`. Stated in full, so that nothing about it has to be taken on trust:
+E3-Valid is selected from the complete curves for both arities. For every evaluated term
+count, the implementation retains the arity with the highest **Combined R²**:
 
-1. Fit the equation at every length from 1 to `max_terms`, and score each length under all
-   four protocols — in-sample, leave-one-dataset-out, leave-one-model-out, and the
-   doubly-held-out cell ([chapter 5](05-evaluation.md#four-protocols)).
-2. For each length, take the **minimum** of those four R² values. That is the floor curve.
-3. Publish the length where the floor is highest.
+$$
+R^2_{\mathrm{combined}} = \operatorname{median}\left(
+R^2_{\mathrm{in\text{-}sample}},
+R^2_{\mathrm{LODO}},
+R^2_{\mathrm{LOMO}}
+\right).
+$$
 
-It has no threshold, no smoothing window and no sensitivity parameter, so the chosen length
-is a property of the curve rather than of a value picked to produce a preferred answer, and
-it re-derives itself when the corpus changes rather than needing to be re-tuned by hand.
-**Nothing in the rule mentions how many rows the corpus has** — an earlier version priced a
-term against `n` and would have selected a different length on a corpus of a different size,
-which is the defect `tests/test_selection.py` now pins as a signature check.
+It then follows the best Combined R² observed so far and selects the equation immediately
+before the first sustained plateau. A plateau is reached when the best-so-far gain over the
+next three evaluated term counts is at most 0.001. The two retained values are explicit
+constants and configuration-search arguments: `plateau_window = 3` and
+`plateau_tolerance = 0.001`.
 
-Applied under the two default grammars, the four-protocol rule selects **17 terms** under
-arity 2 and **25** under arity 3. Neither number appears anywhere in the code.
+On the corrected corpus and the retained 1-to-25-term search, this rule selects **18 terms at
+arity 2**. The selection is derived from the curve by `selection.plateau_configuration`; the
+chosen term count and arity are not separately hard-coded.
 
-The same floor is what decides between the two grammars, one step up: `floor_argmax` gives one
-length per grammar and `selection.best_configuration` chooses among those candidates. That
-comparison is in [chapter 2](02-additive-model.md#the-arity-is-searched-not-set).
+E3-MAX answers a separate capability question. It chooses the arity and length that maximise
+the minimum R² over all four protocols, including doubly held-out evaluation. It selects
+**25 terms at arity 3**. E3-MAX is reported as a bound and is not used for the downstream
+prediction and model-ranking results.
 
-Every alternative that was computed is reported beside it, because a selection rule is only
-defensible if what it beats is on the page. The table is generated, in the section below;
-`selection.recommend` builds it and it carries one row per stated rule, the two readings of
-the curve among them.
-
-**The geometric rules and the paired test disagree, and the disagreement is the finding.**
-Every geometric reading of this curve — three knee detectors on four curves, raw and
-gRDP-smoothed at seven tolerances, plus the Pareto-front knee by all three standard forms —
-lands between 4 and 8 terms. Every one of those lengths is **significantly worse** than the
-selected one when the two are paired fold by fold over the twenty held-out datasets, and the
-generated section counts how many of the searched lengths are. A knee finds where the
-*marginal* return per term collapses, which on a saturating curve is early. It does not ask
-whether the accuracy still being added is real, and here it is, for several terms past the
-bend.
-
-**Knee detection has therefore been removed rather than reported.** It was tried properly
-first — the gRDP simplification works exactly as intended, taking three detectors that split
-6/8/4 on the raw curve to unanimous agreement at 8 — and `kneeliverse` left the dependency
-list with it. What replaced it is not a different detector but a different question.
-
-**The parsimony alternative is reported and not adopted.** Eight terms is the shortest length
-whose paired interval against 12 spans zero, and it is the right answer for a reader whose
-readability budget is tighter than this study's. It gives up 0.047 of leave-one-dataset-out
-R², which is measurable even where it is not significant, so the study takes the accuracy;
-`results/length_choice.csv` carries the whole table so that choice can be remade.
-
-Both **Pareto fronts** are reported, in `results/pareto.csv`. The two behave differently and
-the difference is the point.
-
-Over (length, in-sample R²) **almost every length is on the front**, because a longer equation
-contains a longer search and fit does not fall as terms are added — so nothing is dominated
-and the front says nothing. That is precisely why the in-sample curve cannot choose a length
-by itself. *Almost*: one length is off it, and only because the beam is a heuristic rather
-than an exhaustive search, so its best-at-24 can be a hair below its best-at-23. A front that
-is nearly everything is not a selection device either way.
-
-Over (length, LOO-dataset R²) the front is much shorter — it runs out well before the search
-horizon does, which is the transfer curve flattening and then wandering. The membership moves
-with the configuration, so it is in the file rather than written here; **this paragraph used
-to list it, and listed a front from a configuration two changes ago.**
-
+The paired per-dataset table in the generated section compares other lengths with E3-Valid as
+a sensitivity analysis. It does not define additional E3-Valid equations.
 <!-- generated: do not edit below -->
 
 ## Why a subset rather than every term
@@ -343,61 +290,75 @@ The control for the whole selection stage. If handing every candidate term to un
 
 | terms | r2_in_sample | r2_loo_dataset_clipped | r2_loo_dataset_unclipped |
 |---|---|---|---|
-| 901.0000 | 0.8080 | -0.5582 | -1491.4784 |
+| 229.0000 | 0.7805 | -0.0972 | -1281.2773 |
 
-**The solver is not the hard part; the sample size is.** All 901 terms at once fit better in-sample than the published equation (0.8080 against 0.7194) and transfer at -0.5582 leave-one-dataset-out, against the published equation's 0.6911. The unclipped figure — -1491.5 — is what the fit does when a held-out dataset falls outside the convex hull of the other nineteen and nothing bounds the extrapolation. A design this much wider than 20 held-out groups can support has nothing to constrain it, which is what selection is for.
+**The solver is not the hard part; the sample size is.** All 229 terms at once fit better in-sample than the published equation (0.7805 against 0.6787) and transfer at -0.0972 leave-one-dataset-out, against the published equation's 0.6517. The unclipped figure — -1281.3 — is what the fit does when a held-out dataset falls outside the convex hull of the other nineteen and nothing bounds the extrapolation. A design this much wider than 20 held-out groups can support has nothing to constrain it, which is what selection is for.
 
 ## Equation length
 
-The length is chosen by one rule with no threshold and no smoothing: **the argmax of the worst protocol at each length** (`selection.floor_argmax`), which here selects **25 terms**. Nothing about that number is written down — it falls out of the curve, and it re-derives itself if the corpus changes. The three-protocol median reading of the same curve (`selection.best_length`) is reported beside it in the table below and agrees here.
+E3-Valid selects **18 terms** immediately before the first sustained plateau in Combined R², the median of in-sample, leave-one-dataset-out, and leave-one-model-out R². The retained rule uses a forward window of three evaluated lengths and a maximum best-so-far gain of 0.001. It compares both searched arities before selecting the equation.
 
-**Why the consensus is a median and not a mean.** The deepest crater on this curve is at **3 terms**, where the three protocols read 0.456 / 0.409 / 0.438. The median takes 0.438 and ignores it; a mean would be dragged to 0.434. The crater is 0.038 below the neighbouring lengths and is not a property of the length at all -- it is one held-out dataset sitting outside the convex hull of the other nineteen in term space, where a linear equation extrapolates without limit and `validate._clip_to_training` pins the fold to its training floor. One fold's extrapolation should not choose the published length.
+**Why the consensus is a median and not a mean.** The deepest crater on this curve is at **8 terms**, where the three protocols read 0.611 / 0.463 / 0.581. The median takes 0.581 and ignores it; a mean would be dragged to 0.552. The crater is 0.117 below the neighbouring lengths and is not a property of the length at all -- it is one held-out dataset sitting outside the convex hull of the other nineteen in term space, where a linear equation extrapolates without limit and `validate._clip_to_training` pins the fold to its training floor. One fold's extrapolation should not choose the published length.
 
-Every alternative rule is reported beside it, because a selection rule is only defensible if what it beats is on the page:
+The following paired analysis compares every length on the selected arity against E3-Valid; it is a sensitivity analysis rather than an additional selector:
 
-| rule | n_terms | r2_in_sample | r2_loo_dataset |
-|---|---|---|---|
-| pareto front, closest to ideal | 5 | 0.5831 | 0.5636 |
-| pareto front, furthest from nadir | 5 | 0.5831 | 0.5636 |
-| pareto front, furthest from chord | 5 | 0.5831 | 0.5636 |
-| best loo-dataset | 25 | 0.7194 | 0.6911 |
-| best consensus (median of three) | 25 | 0.7194 | 0.6911 |
-| best floor over four protocols (the rule) | 25 | 0.7194 | 0.6911 |
-| published | 25 | 0.7194 | 0.6911 |
-
-The geometric rules — the Pareto-front knee by its three standard forms — choose far shorter equations, and **23 of the 25 lengths searched are significantly worse** than the selected one when paired fold by fold over the held-out datasets. A knee finds where the *marginal* return per term collapses, which on a saturating curve is early; it does not ask whether the accuracy still being added is real.
-
-The parsimony alternative is **23 terms** — the shortest length whose paired interval against the selected one spans zero. It is reported and not adopted: the accuracy it gives up is measurable (0.6729 against 0.6911 leave-one-dataset-out) even where it is not significant.
+| n_terms | r2_loo_dataset | mae_loo_dataset | mean_difference | p_value | ci_low | ci_high | verdict |
+|---|---|---|---|---|---|---|---|
+| 1 | 0.1952 | 0.2393 | 0.1026 | 0.0000 | 0.0758 | 0.1302 | worse |
+| 2 | 0.3112 | 0.2120 | 0.0754 | 0.0004 | 0.0493 | 0.1015 | worse |
+| 3 | 0.4557 | 0.1826 | 0.0459 | 0.0118 | 0.0229 | 0.0707 | worse |
+| 4 | 0.5035 | 0.1688 | 0.0322 | 0.1153 | 0.0140 | 0.0515 | worse |
+| 5 | 0.5499 | 0.1601 | 0.0234 | 0.2632 | 0.0077 | 0.0408 | worse |
+| 6 | 0.5547 | 0.1592 | 0.0225 | 0.1153 | 0.0081 | 0.0386 | worse |
+| 7 | 0.5513 | 0.1594 | 0.0228 | 0.2632 | 0.0080 | 0.0400 | worse |
+| 8 | 0.4632 | 0.1669 | 0.0302 | 0.5034 | 0.0053 | 0.0678 | worse |
+| 9 | 0.6090 | 0.1436 | 0.0070 | 0.1153 | -0.0015 | 0.0152 | tie |
+| 10 | 0.6078 | 0.1456 | 0.0090 | 0.1153 | -0.0001 | 0.0189 | tie |
+| 11 | 0.6130 | 0.1434 | 0.0067 | 0.2632 | -0.0015 | 0.0158 | tie |
+| 12 | 0.6194 | 0.1404 | 0.0038 | 0.5034 | -0.0030 | 0.0114 | tie |
+| 13 | 0.6288 | 0.1428 | 0.0062 | 0.0414 | -0.0004 | 0.0132 | tie |
+| 14 | 0.6364 | 0.1392 | 0.0026 | 0.1153 | -0.0034 | 0.0082 | tie |
+| 15 | 0.6425 | 0.1383 | 0.0017 | 0.2632 | -0.0038 | 0.0067 | tie |
+| 16 | 0.6394 | 0.1401 | 0.0035 | 0.1153 | -0.0015 | 0.0080 | tie |
+| 17 | 0.6391 | 0.1389 | 0.0023 | 0.0414 | -0.0022 | 0.0064 | tie |
+| 18 | 0.6517 | 0.1366 | 0.0000 | 1.0000 | 0.0000 | 0.0000 | selected |
+| 19 | 0.6526 | 0.1343 | -0.0024 | 0.5034 | -0.0049 | -0.0005 | better |
+| 20 | 0.6422 | 0.1380 | 0.0014 | 1.0000 | -0.0018 | 0.0048 | tie |
+| 21 | 0.6435 | 0.1357 | -0.0009 | 0.5034 | -0.0047 | 0.0031 | tie |
+| 22 | 0.6446 | 0.1388 | 0.0022 | 0.5034 | -0.0035 | 0.0081 | tie |
+| 23 | 0.6451 | 0.1372 | 0.0006 | 0.8238 | -0.0061 | 0.0088 | tie |
+| 24 | 0.6422 | 0.1368 | 0.0002 | 0.5034 | -0.0073 | 0.0091 | tie |
+| 25 | 0.6445 | 0.1367 | 0.0001 | 0.8238 | -0.0078 | 0.0091 | tie |
 
 The full curve the rule reads, at every length under all three protocols:
 
 | n_terms | r2_in_sample | mae_in_sample | smape_in_sample | r2_loo_dataset | mae_loo_dataset | smape_loo_dataset | r2_loo_model | mae_loo_model | smape_loo_model | r2_loo_cell | mae_loo_cell | smape_loo_cell |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | 0.3236 | 0.2112 | 43.6222 | 0.2884 | 0.2173 | 45.0377 | 0.3100 | 0.2135 | 43.9877 | 0.2785 | 0.2190 | 44.5788 |
-| 2 | 0.4074 | 0.1955 | 41.7340 | 0.3726 | 0.2022 | 42.9325 | 0.3952 | 0.1977 | 42.0634 | 0.3648 | 0.2036 | 43.1092 |
-| 3 | 0.4563 | 0.1858 | 40.7592 | 0.4091 | 0.1946 | 42.3107 | 0.4377 | 0.1890 | 41.2251 | 0.3962 | 0.1970 | 42.6226 |
-| 4 | 0.5510 | 0.1633 | 37.8881 | 0.5208 | 0.1692 | 38.8035 | 0.5256 | 0.1677 | 38.5687 | 0.5022 | 0.1723 | 39.2456 |
-| 5 | 0.5831 | 0.1526 | 36.1027 | 0.5636 | 0.1571 | 37.0633 | 0.5605 | 0.1570 | 36.9517 | 0.5495 | 0.1601 | 37.5502 |
-| 6 | 0.5974 | 0.1465 | 36.2564 | 0.5728 | 0.1514 | 36.6320 | 0.5713 | 0.1515 | 37.0675 | 0.5555 | 0.1550 | 37.5101 |
-| 7 | 0.6059 | 0.1462 | 36.1093 | 0.5743 | 0.1523 | 36.6504 | 0.5783 | 0.1521 | 36.8637 | 0.5569 | 0.1566 | 37.5712 |
-| 8 | 0.6296 | 0.1400 | 34.2213 | 0.5933 | 0.1509 | 39.1762 | 0.5975 | 0.1459 | 35.1298 | 0.5716 | 0.1545 | 39.5514 |
-| 9 | 0.6334 | 0.1390 | 34.1653 | 0.5926 | 0.1511 | 39.7821 | 0.5992 | 0.1451 | 35.1759 | 0.5706 | 0.1547 | 39.9051 |
-| 10 | 0.6405 | 0.1377 | 33.7930 | 0.6075 | 0.1462 | 36.5566 | 0.6051 | 0.1441 | 34.7956 | 0.5844 | 0.1502 | 36.3636 |
-| 11 | 0.6437 | 0.1374 | 34.0481 | 0.6180 | 0.1448 | 36.7953 | 0.6072 | 0.1441 | 35.0436 | 0.5960 | 0.1491 | 37.1660 |
-| 12 | 0.6482 | 0.1356 | 34.1204 | 0.6238 | 0.1410 | 35.5046 | 0.6132 | 0.1425 | 35.1143 | 0.6049 | 0.1450 | 35.6973 |
-| 13 | 0.6529 | 0.1340 | 33.4882 | 0.6253 | 0.1407 | 35.7682 | 0.6162 | 0.1416 | 34.8633 | 0.6062 | 0.1449 | 36.2753 |
-| 14 | 0.6592 | 0.1317 | 33.3312 | 0.6291 | 0.1371 | 34.6015 | 0.6194 | 0.1390 | 34.4887 | 0.6090 | 0.1417 | 35.7710 |
-| 15 | 0.6632 | 0.1310 | 33.2720 | 0.6285 | 0.1363 | 34.4321 | 0.6198 | 0.1391 | 34.6495 | 0.6070 | 0.1414 | 35.8366 |
-| 16 | 0.6697 | 0.1290 | 33.5386 | 0.6321 | 0.1365 | 35.0390 | 0.6194 | 0.1381 | 35.1852 | 0.6014 | 0.1427 | 36.8961 |
-| 17 | 0.6729 | 0.1280 | 33.5598 | 0.6307 | 0.1359 | 35.5790 | 0.6206 | 0.1375 | 34.8850 | 0.5999 | 0.1425 | 37.2675 |
-| 18 | 0.6766 | 0.1275 | 33.6476 | 0.6312 | 0.1367 | 35.6108 | 0.6233 | 0.1370 | 34.9672 | 0.6008 | 0.1425 | 37.2564 |
-| 19 | 0.6822 | 0.1264 | 33.3590 | 0.6330 | 0.1371 | 37.1092 | 0.6292 | 0.1366 | 34.7440 | 0.5991 | 0.1432 | 38.1021 |
-| 20 | 0.6865 | 0.1257 | 32.8666 | 0.6410 | 0.1362 | 36.6852 | 0.6328 | 0.1357 | 34.4644 | 0.6092 | 0.1418 | 37.4837 |
-| 21 | 0.6890 | 0.1259 | 33.6182 | 0.6260 | 0.1416 | 38.0107 | 0.6277 | 0.1367 | 35.2025 | 0.5890 | 0.1482 | 39.7591 |
-| 22 | 0.7052 | 0.1218 | 33.2901 | 0.6648 | 0.1327 | 36.7837 | 0.6433 | 0.1325 | 34.2909 | 0.6259 | 0.1387 | 37.1073 |
-| 23 | 0.7099 | 0.1195 | 32.3709 | 0.6729 | 0.1284 | 34.1936 | 0.6491 | 0.1304 | 33.8556 | 0.6332 | 0.1355 | 35.3868 |
-| 24 | 0.7114 | 0.1188 | 32.4690 | 0.6684 | 0.1325 | 36.5710 | 0.6471 | 0.1300 | 34.0374 | 0.6274 | 0.1387 | 36.5651 |
-| 25 | 0.7194 | 0.1161 | 30.9675 | 0.6911 | 0.1231 | 32.0835 | 0.6554 | 0.1272 | 33.0012 | 0.6554 | 0.1290 | 32.9661 |
+| 1 | 0.2427 | 0.2358 | 46.1034 | 0.1952 | 0.2432 | 47.0548 | 0.2268 | 0.2388 | 46.4802 | 0.1834 | 0.2455 | 47.3340 |
+| 2 | 0.3591 | 0.2062 | 43.2745 | 0.3112 | 0.2135 | 44.3767 | 0.3466 | 0.2084 | 43.5564 | 0.3037 | 0.2150 | 44.5448 |
+| 3 | 0.4911 | 0.1755 | 39.6329 | 0.4557 | 0.1808 | 40.4928 | 0.4678 | 0.1794 | 40.2263 | 0.4381 | 0.1839 | 40.9501 |
+| 4 | 0.5436 | 0.1626 | 37.8369 | 0.5035 | 0.1691 | 38.4502 | 0.5171 | 0.1674 | 38.4511 | 0.4834 | 0.1726 | 38.9836 |
+| 5 | 0.5784 | 0.1544 | 37.0102 | 0.5499 | 0.1594 | 37.5614 | 0.5493 | 0.1597 | 37.7126 | 0.5288 | 0.1633 | 37.7581 |
+| 6 | 0.5890 | 0.1524 | 36.9959 | 0.5547 | 0.1587 | 37.4046 | 0.5591 | 0.1579 | 37.7374 | 0.5348 | 0.1628 | 38.1913 |
+| 7 | 0.5963 | 0.1495 | 36.4107 | 0.5513 | 0.1576 | 37.6541 | 0.5637 | 0.1556 | 37.2876 | 0.5295 | 0.1616 | 38.1192 |
+| 8 | 0.6107 | 0.1440 | 34.8157 | 0.4632 | 0.1678 | 42.1530 | 0.5808 | 0.1498 | 35.4811 | 0.4404 | 0.1705 | 42.2555 |
+| 9 | 0.6298 | 0.1385 | 35.5275 | 0.6090 | 0.1427 | 36.0247 | 0.5903 | 0.1459 | 36.6082 | 0.5825 | 0.1480 | 36.8934 |
+| 10 | 0.6339 | 0.1393 | 35.6382 | 0.6078 | 0.1442 | 36.7001 | 0.5921 | 0.1468 | 36.6733 | 0.5828 | 0.1491 | 37.3524 |
+| 11 | 0.6414 | 0.1353 | 34.5140 | 0.6130 | 0.1421 | 36.0180 | 0.6007 | 0.1428 | 35.7904 | 0.5864 | 0.1471 | 36.4225 |
+| 12 | 0.6467 | 0.1344 | 33.9501 | 0.6194 | 0.1399 | 34.8157 | 0.5978 | 0.1427 | 35.4014 | 0.5848 | 0.1460 | 36.0287 |
+| 13 | 0.6562 | 0.1348 | 34.5278 | 0.6288 | 0.1421 | 35.7506 | 0.6099 | 0.1433 | 35.8003 | 0.5972 | 0.1479 | 36.3182 |
+| 14 | 0.6646 | 0.1314 | 33.7281 | 0.6364 | 0.1385 | 36.1097 | 0.6193 | 0.1398 | 35.2132 | 0.6084 | 0.1437 | 36.1943 |
+| 15 | 0.6702 | 0.1307 | 33.7804 | 0.6425 | 0.1379 | 35.5392 | 0.6197 | 0.1396 | 35.2327 | 0.6101 | 0.1435 | 36.2617 |
+| 16 | 0.6723 | 0.1305 | 33.9821 | 0.6394 | 0.1392 | 36.0971 | 0.6223 | 0.1391 | 35.1184 | 0.6096 | 0.1439 | 36.2481 |
+| 17 | 0.6738 | 0.1299 | 34.5275 | 0.6391 | 0.1386 | 36.7567 | 0.6219 | 0.1391 | 35.9445 | 0.6109 | 0.1432 | 36.8801 |
+| 18 | 0.6787 | 0.1286 | 34.3920 | 0.6517 | 0.1361 | 35.8120 | 0.6149 | 0.1398 | 36.1522 | 0.6103 | 0.1431 | 36.8174 |
+| 19 | 0.6791 | 0.1277 | 34.0798 | 0.6526 | 0.1340 | 35.4156 | 0.6110 | 0.1398 | 35.8391 | 0.6070 | 0.1421 | 36.6903 |
+| 20 | 0.6823 | 0.1277 | 34.4118 | 0.6422 | 0.1371 | 36.3848 | 0.6136 | 0.1396 | 36.0928 | 0.6006 | 0.1438 | 37.1948 |
+| 21 | 0.6838 | 0.1271 | 34.4413 | 0.6435 | 0.1352 | 35.6291 | 0.6155 | 0.1390 | 36.2435 | 0.6031 | 0.1418 | 36.9931 |
+| 22 | 0.6887 | 0.1272 | 34.7688 | 0.6446 | 0.1380 | 36.6454 | 0.6184 | 0.1396 | 36.5316 | 0.6036 | 0.1449 | 37.8717 |
+| 23 | 0.6896 | 0.1268 | 34.8228 | 0.6451 | 0.1366 | 36.5903 | 0.6175 | 0.1394 | 36.6506 | 0.6041 | 0.1434 | 37.8209 |
+| 24 | 0.6928 | 0.1259 | 34.6242 | 0.6422 | 0.1363 | 36.1953 | 0.6198 | 0.1390 | 36.4145 | 0.6026 | 0.1435 | 37.7329 |
+| 25 | 0.6957 | 0.1254 | 34.6698 | 0.6445 | 0.1361 | 36.2106 | 0.6231 | 0.1385 | 36.5239 | 0.6060 | 0.1431 | 37.6736 |
 
 <!-- end generated -->
 

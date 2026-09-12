@@ -6,8 +6,10 @@ What gets published, though, must be evaluable as written, so the weights are fo
 back into raw units before they are stored. Both sets are kept: the raw weights are the
 equation, the standardised weights are how the terms rank against each other.
 
-Study chapter: [2. The additive model](../../assets/docs/02-additive-model.md) -- the rationale, in
+Study chapter: [2. The additive model][study-chapter] -- the rationale, in
 prose, with the figures.
+
+[study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/02-additive-model.md
 """
 
 from __future__ import annotations

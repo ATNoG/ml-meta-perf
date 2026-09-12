@@ -1,23 +1,12 @@
-# The CI gate, moved to commit time.
+# The commit gate mirrors the four checks in `.github/workflows/main.yml`.
 #
-# Every Python hook below is `language: system`, not a pinned mirror. A mirror
-# would fetch its own copy of ruff or basedpyright and run it against a config
-# that pre-commit chose, which is how a repository ends up with hooks that pass
-# and CI that fails. These call the tools already installed in the environment
-# and let them read `pyproject.toml`, so `git commit` and `.github/workflows`
-# are running the same check with the same settings by construction.
+# The local hooks use one pre-commit-managed Python environment rather than repository-local
+# `venv/bin/...` paths. That makes the installed Git hook portable across Linux and Windows.
+# Each hook receives the same pinned tools and runtime dependencies; the launcher adds the
+# working tree's `src/` directory so tests exercise current code rather than an installed copy.
 #
-# `pass_filenames: false` on the whole-project tools is deliberate. basedpyright
-# and vulture both need to see every file to be correct -- vulture calls a
-# function dead when nothing references it, and handing it only the staged files
-# means everything they reference looks unreferenced. Type-checking one file in
-# isolation fails the same way.
-#
-# `files` rather than `types: [python]` on the project-wide hooks: they are
-# driven by pyproject.toml (ruff rules, basedpyright mode, vulture paths), so a
-# commit that changes only that file must still run them. Filtering on file
-# *type* skipped them all at exactly the moment the configuration governing them
-# was being edited.
+# `pass_filenames: false` is deliberate. Ruff, BasedPyright, and Vulture need the complete
+# configured source tree, and the unit-test command always runs the full suite.
 #
 # Install with: pre-commit install
 # Run over everything once: pre-commit run --all-files
@@ -38,38 +27,40 @@ repos:
     hooks:
       - id: ruff
         name: ruff
-        # `src tests`, matching `tool.ruff.src` in pyproject.toml. Checking only
-        # `src` left the test suite outside the one tool that had it in scope --
-        # basedpyright and vulture both read `tests` from pyproject.toml, ruff
-        # was told a narrower path on the command line, and three lint errors
-        # accumulated there that nothing was looking at.
-        entry: venv/bin/ruff check src tests
-        language: system
+        entry: python scripts/precommit_gate.py ruff
+        language: python
+        additional_dependencies: &gate_dependencies
+          - ruff==0.16.1
+          - basedpyright==1.39.8
+          - vulture==2.16
+          - numpy==2.5.3
+          - polars==1.44.1
+          - matplotlib==3.11.1
+          - scikit-learn==1.9.0
+          - joblib==1.6.0
         files: '(\.py$|^pyproject\.toml$)'
         pass_filenames: false
 
       - id: basedpyright
         name: basedpyright
-        entry: venv/bin/basedpyright --pythonpath venv/bin/python
-        language: system
+        entry: python scripts/precommit_gate.py basedpyright
+        language: python
+        additional_dependencies: *gate_dependencies
         files: '(\.py$|^pyproject\.toml$)'
         pass_filenames: false
 
       - id: vulture
         name: vulture
-        entry: venv/bin/vulture
-        language: system
+        entry: python scripts/precommit_gate.py vulture
+        language: python
+        additional_dependencies: *gate_dependencies
         files: '(\.py$|^pyproject\.toml$)'
         pass_filenames: false
 
       - id: unittest
         name: unittest
-        # PYTHONPATH=src and venv/bin/python, not a bare `python`: CI runs
-        # `pip install .` first, but a commit hook has no such step and the
-        # interpreter on PATH is /usr/bin/python, which lacks this project's
-        # dependencies. Testing the working tree is also the more useful thing
-        # to check before a commit.
-        entry: env PYTHONPATH=src venv/bin/python -m unittest discover -s tests
-        language: system
+        entry: python scripts/precommit_gate.py unittest
+        language: python
+        additional_dependencies: *gate_dependencies
         files: '(\.py$|^pyproject\.toml$)'
         pass_filenames: false

@@ -51,8 +51,10 @@ per-item effect learned from the observed grid, and algorithm selection has been
 as collaborative filtering before (Misir & Sebag, 2017; Fusi et al., 2018; Yang et al.,
 2019).
 
-Study chapter: [4. The equation](../../assets/docs/04-equation.md#limitations-of-the-equation)
+Study chapter: [4. The equation][study-chapter]
 -- the rationale, in prose, with the figures.
+
+[study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/04-equation.md#limitations-of-the-equation
 """
 
 from __future__ import annotations

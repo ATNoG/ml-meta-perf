@@ -7,8 +7,10 @@ correlating, so a term is credited only for variance that group identity does no
 already explain. A dataset feature scored within-model, or a model feature scored
 within-dataset, has to earn its correlation the hard way.
 
-Study chapter: [3. Term generation and selection](../../assets/docs/03-term-selection.md) -- the rationale, in
+Study chapter: [3. Term generation and selection][study-chapter] -- the rationale, in
 prose, with the figures.
+
+[study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/03-term-selection.md
 """
 
 from __future__ import annotations

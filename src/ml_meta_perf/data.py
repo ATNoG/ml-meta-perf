@@ -48,12 +48,11 @@ That is the mechanism working, not a shortfall in the corpus, and an equation th
 eighteen would be one that had failed to generalise.
 
 So a column may earn its place at either stage. ``Solution Stochasticity`` and
-``Loss Margin Behaviour`` are kept for identification: they are what
-separate ``DT`` from ``ExtraTree``, ``LR`` from ``LinearSVC`` and ``LightGBM_RF`` from
-``LightGBM_ExtraTrees``, and without them 134 of the 476 rows stop being identifiable.
-**Do not read absence from the equation as evidence against a feature.** The published
-equation deliberately searches a four-feature model-side subset, so these two descriptors
-remain part of the corpus for identification without entering E3's candidate library.
+``Input Distribution Modelling`` remain in the six-column corpus because the complete
+descriptor tuple is used for learner identification. **Do not read absence from the equation
+as evidence against a feature.** The corrected-corpus sweep selected a four-feature
+model-side subset for E3, while the full schema remains available for identification and
+future analyses.
 
 **``nr_inst`` describes the source dataset, not the training set.** Every model was
 trained on a stratified sample capped at 100,000 rows, and ten of the twenty datasets are
@@ -62,8 +61,10 @@ because it is the same cap for every dataset above it. So ``nr_inst`` and
 ``inst_to_attr`` are properties of the corpus a dataset was drawn from, and no statement
 about "more training data" can be tested against them.
 
-Study chapter: [1. The dataset](../../assets/docs/01-dataset.md) -- the rationale, in
+Study chapter: [1. The dataset][study-chapter] -- the rationale, in
 prose, with the figures.
+
+[study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/01-dataset.md
 """
 
 from __future__ import annotations
@@ -482,7 +483,7 @@ def corpus_summary(frame: pl.DataFrame) -> pl.DataFrame:
             {"quantity": "rows", "count": frame.height},
             {"quantity": "datasets", "count": datasets},
             {"quantity": "models", "count": models},
-            {"quantity": "cells absent of datasets x models", "count": datasets * models - frame.height},
+            {"quantity": "cells absent from the dataset-by-model grid", "count": datasets * models - frame.height},
             {"quantity": "dataset features", "count": len(DATASET_FEATURES)},
             {"quantity": "model features", "count": len(MODEL_FEATURES)},
         ],
@@ -495,19 +496,20 @@ def target_summary(frame: pl.DataFrame) -> pl.DataFrame:
 
     The counts at exactly 0 and exactly 1 are here because they are the reason MAE and not
     SMAPE is the reported error, and a reader checking that argument should be able to see
-    the counts it rests on. They are a third of the corpus.
+    the counts it rests on. Together they are one fifth of the corpus; the single negative
+    row is reported separately.
 
-    Not included, because it cannot be: the spread across the three seeds each row is the
-    best of. That lives upstream, in the corpus builder, and chapter 1 cites it as an
-    external audit rather than pretending this file can recompute it.
+    Not included, because it cannot be: the variation across the five seeds from which each
+    row's maximum was selected. That lives upstream, in the corpus builder, and chapter 1
+    cites it as an external audit rather than pretending this file can recompute it.
     """
     values = target(frame)
     pinned = [("at exactly 1", values == 1.0), ("at exactly 0", values == 0.0), ("below 0", values < 0.0)]
     rows: list[dict[str, object]] = [
         {"quantity": "mean", "MCC": float(values.mean()), "rows": frame.height},
         {"quantity": "standard deviation", "MCC": float(values.std()), "rows": frame.height},
-        {"quantity": "minimum", "MCC": float(values.min()), "rows": 1},
-        {"quantity": "maximum", "MCC": float(values.max()), "rows": 1},
+        {"quantity": "minimum", "MCC": float(values.min()), "rows": int((values == values.min()).sum())},
+        {"quantity": "maximum", "MCC": float(values.max()), "rows": int((values == values.max()).sum())},
     ]
     rows += [{"quantity": label, "MCC": float("nan"), "rows": int(mask.sum())} for label, mask in pinned]
     return pl.DataFrame(rows, schema={"quantity": pl.String, "MCC": pl.Float64, "rows": pl.Int64})

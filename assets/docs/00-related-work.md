@@ -41,8 +41,9 @@ Their central result is directly relevant and worth quoting in full:
 > guidance."
 
 **Relevance.** This is independent corroboration of the central measurement here. Our
-leave-one-dataset-out R² of 0.691 for a classification metric (MCC), against an in-sample
-0.719, is not a failure of the method — it reflects a documented property of classifier
+published equation reaches leave-one-dataset-out R² of 0.652 for a classification metric
+(MCC), against 0.679 in-sample; the less constrained E3-MAX capability bound reaches 0.691
+and 0.719. These modest transfer figures reflect a documented property of classifier
 performance prediction. The paper also names the **"interpretability tax"**: methods
 optimising for structural sparsity pay significantly in training time. `ml-meta-perf` pays a
 different tax — accuracy — and quantifies it explicitly through the term-count curve.
@@ -98,16 +99,15 @@ route to interpretable SR, not a naive simplification. And because `ml-meta-perf
 its weights, the coefficients are solved exactly by ridge regression — sidestepping the
 coefficient-optimisation weakness that GP has to work around.
 
-**A caution on the R² > 0.7 figure.** Our measurements suggest it is unlikely to survive a
-grouped split. The identical equation scores far higher under random 10-fold than under
-leave-one-dataset-out here. Since dataset meta-features are constant across a dataset's
-rows, a random split lets any model memorise dataset identity. Additionally, the
-**additive oracle sits at 0.6605**: with exact per-dataset and per-model effects, a
-*two-way additive* model cannot exceed that. Our equation does pass it, because half its
-terms are mixed dataset×model products which express interaction the two-way form cannot —
-but only at lengths where cross-validated accuracy has already collapsed. A reported 0.7
-therefore implies either genuine interaction structure or a leaky split, and the two are
-distinguishable by the protocol.
+**A caution on the R² > 0.7 figure.** Dataset meta-features are constant across a dataset's
+rows, so random row splits permit identity leakage and grouped validation remains necessary.
+The current fixed-form equation itself scores almost identically under random 10-fold
+(0.651) and leave-one-dataset-out (0.652), while the opaque comparison shows how strongly a
+flexible model can exploit that identity. The **additive oracle sits at 0.6605**: exact
+per-dataset plus per-model effects cannot exceed it, while the published equation reaches
+0.679 through 10 mixed dataset×model terms. A reported value above the additive oracle can
+therefore represent genuine interaction, leakage, or both; grouped protocols distinguish
+those explanations.
 
 ## 5. Performance-influence models — the closest methodological sibling
 
@@ -195,7 +195,7 @@ in AutoML.
   *KDD 2019*.
 
 **Relevance.** These establish that latent-factor models over a pipeline-by-dataset matrix
-are standard practice for algorithm recommendation, and they are why the +0.055 leave-one-dataset-out
+are standard practice for algorithm recommendation, and they are why the +0.056 leave-one-dataset-out
 R² headroom measured in [chapter 4](04-equation.md#the-ceiling-on-model-descriptors) is unsurprising in size. They are also what
 this study deliberately does *not* deliver: a latent factor per model is an uninterpreted
 coordinate, and a table of them supports no term analysis and no transferable practice.
@@ -249,11 +249,11 @@ random k-fold as a diagnostic for leakage rather than a result.
 | | prior work | `ml-meta-perf` |
 |---|---|---|
 | Model class | opaque regressors (RF, GBM, NN); or GP-evolved long expressions | fixed additive form, linear in the weights |
-| Reported R² | ~0.9 (opaque), >0.7 (GP) | 0.719 in-sample, 0.691 LOO-dataset |
+| Reported R² | ~0.9 (opaque), >0.7 (GP) | 0.679 in-sample, 0.652 LOO-dataset; E3-MAX reaches 0.719 / 0.691 |
 | Validation | often random k-fold | leave-one-dataset-out and leave-one-model-out |
 | Extractable guidance | little | each weight reads directly in feature units |
 | Ceiling stated | rarely | additive oracle at 0.6605, rank-1 at 0.783, E1 capped at 0.354 |
-| Reachable ceiling | not distinguished | per-model level and slope raise LOO-dataset R² from 0.691 to 0.738 (+0.047) |
+| Reachable ceiling | not distinguished | per-model level and slope raise LOO-dataset R² from 0.652 to 0.707 (+0.056) |
 
 The contribution is not a higher number. It is (a) an equation that can be read, (b) an
 explicit accuracy-versus-length curve instead of a single operating point, (c) the
@@ -267,15 +267,15 @@ quantified.
   interaction at +0.122 R², and the performance-influence literature (§5) includes
   interaction terms by default. Our symmetric `sum_ratio` fix was a step in that
   direction and materially improved the wider grammar. The current equation aligns with
-  only 0.31 of the leading interaction pattern in-sample and 0.29 out of fold, while a
+  only 0.37 of the leading interaction pattern in-sample and 0.33 out of fold, while a
   per-model slope still improves transfer. The interaction basis and richer measured model
   descriptors therefore remain open questions.
-- **Ranking.** *Closed as a mixed comparison* (§5d). Under the strict held-out-cell protocol
-  E3 reaches average precision 0.746 and top-1 regret 0.008, against 0.798 and 0.011 for the
-  per-model-mean baseline. The baseline has higher average precision, while E3 has lower
-  top-1 regret; the answer depends on which ranking outcome matters.
+- **Ranking.** Under the strict held-out-cell protocol E3-Valid reaches average precision 0.724
+  and top-1 regret 0.015, against 0.798 and 0.011 for the per-model-mean baseline evaluated
+  under leave-one-dataset-out. The baseline leads on both summaries and its average-precision
+  advantage is significant, while it cannot operate when the model itself is unseen.
 - **More datasets.** Twenty is the binding constraint on every cross-validated number
   here; OpenML-scale meta-data would settle whether the 0.6605 additive ceiling is a
   property of this sample or of the approach.
-- **Interaction structure.** E3 reaches 0.719 against 0.783 for the rank-1 oracle. The
+- **Interaction structure.** E3-Valid reaches 0.679 against 0.783 for the rank-1 oracle. The
   remaining gap is dataset×model interaction the current fitted equation does not reach.

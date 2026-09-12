@@ -57,9 +57,7 @@ class TestFlags(unittest.TestCase):
         self.assertEqual(arities(parser.parse_args([])), ARITIES)
 
     def test_the_published_length_is_not_a_flag(self) -> None:
-        """`--terms` was removed with `Configuration.headline_terms` on 2026-09-09. The length
-        is derived from the equation's own curve, and a flag that set it by hand would be the
-        assertion C1 exists to delete -- reachable again through the command line."""
+        """The selected length is derived from the curve rather than set by a flag."""
         parser = build_parser()
         with self.assertRaises(SystemExit):
             parser.parse_args(["--terms", "12"])

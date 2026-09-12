@@ -60,17 +60,7 @@ def _oracle(report: Report) -> float | None:
 
 
 def _published_length(report: Report) -> int | None:
-    """How many terms the equation being reported actually has.
-
-    This figure used to mark `term_choice`'s in-sample knee instead, which on the current
-    configuration is 4 while the published equation has 16 -- so the line labelled "knee"
-    stood four fifths of the way from the equation it was drawn beside. Marking the length
-    the rest of the report is about cannot go out of step with it.
-
-    The knee itself is still reported, in `term_choice`, beside the rule that publishes the
-    length. It is not what marks this figure, and `selection.recommend` is where the two are
-    read against each other.
-    """
+    """How many terms the reported E3-Valid equation actually has."""
     return len(report.e3.equation.terms) or None
 
 
@@ -125,14 +115,13 @@ def captions(report: Report, data: str | Path | None = None) -> dict[str, str]:
             f"same {frame.height} rows. Dataset-only and model-only equations are bounded by what "
             "their group identity can explain. The additive oracle bounds only an equation "
             "additive in dataset and model effects, which E3 is not: its mixed terms can "
-            "carry interactions beyond that reference, although the current E3 remains "
-            "below it. All bars are in-sample."
+            "carry interactions beyond that reference, and the current E3 passes it. "
+            "All bars are in-sample."
         ),
         figure_name("term_count_curve"): (
             "Accuracy against equation length for E3, in-sample and under every "
             "cross-validation protocol. The vertical line is the published length, chosen by "
-            "`selection.floor_argmax`: the argmax of the worst of the four protocols at each "
-            "length. "
+            "the retained Combined-R2 plateau rule across the searched arities. "
             "The additive oracle is the best score reachable by an equation additive in "
             "dataset and model effects; an equation passes it only by representing the "
             "dataset-by-model interaction the oracle cannot."

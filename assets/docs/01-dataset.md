@@ -40,39 +40,39 @@ Three properties of this target shape every downstream decision:
 `src/ml_meta_perf/meta_dataset.csv` — one row per (dataset, model) pair, no missing values.
 Its shape, and which pairs are absent, are in the generated section below.
 
-### Each row is the best of three seeds, not their mean
+### Each row is the best of five seeds, not their mean
 
 Audited against the corpus that produced it
-([meta2perf-symbolic-regression](https://github.com/mariolpantunes/meta2perf-symbolic-regression),
-`exp_stage_create_meta_dataset.py`). Every (dataset, model) pair was trained under three
+([meta2perf-symbolic-regression](https://github.com/FloderCC/meta2perf-symbolic-regression),
+`exp_stage_create_meta_dataset.py`). Every (dataset, model) pair was trained under five
 random seeds, and the row kept here is the one with the **highest** MCC
-(`groupby(["Dataset","Model"]).MCC.idxmax()`). Measured over the 348 pairs whose per-seed
-records are published:
+(`groupby(["Dataset","Model"]).MCC.idxmax()`). All 476 pairs have five published seed
+records. Measured over those records:
 
 | | MCC |
 |---|---|
-| mean of (max − mean) across seeds | **0.0206** |
-| mean of (max − min) across seeds | 0.0512 |
-| 90th percentile of (max − min) | 0.1020 |
-| pairs whose seeds spread more than 0.05 | 64 of 340 |
-| mean within-run cross-validation fold std | 0.0267 |
+| mean of (max − mean) across seeds | **0.0264** |
+| mean of (max − min) across seeds | 0.0743 |
+| 90th percentile of (max − min) | 0.2141 |
+| pairs whose seeds spread more than 0.05 | 127 of 476 |
+| mean within-run cross-validation fold std | 0.0266 |
 
-Two consequences, and only the first is a caveat.
+Two consequences follow.
 
-**The target is optimistic by about 0.02 MCC.** Every absolute statement in this study —
-"tree families average 0.927", the go/no-go thresholds — describes the best of three runs
-rather than a typical one. The bias is roughly constant across rows, so comparisons
-between models and the fitted weights are barely affected; the level is.
+**The target is optimistic by about 0.03 MCC.** Every absolute statement in this study —
+"tree families average 0.927", the go/no-go thresholds — describes the best of five runs
+rather than a typical one. The uplift is uneven: max-minus-mean has a median of 0.0031, a
+90th percentile of 0.0859, and a maximum of 0.4008. Absolute levels and comparisons between
+models can therefore both be affected.
 
-**It sets a noise floor.** A quantity that moves by 0.05 between seeds of the *same*
-configuration cannot be predicted more precisely than that by anything. The study's
-leave-one-dataset-out MAE — reported in [chapter 5](05-evaluation.md), where it is
-generated — sits well above the floor, so the sample rather than the target's own noise is
-what binds. The floor is still where an error curve would stop, and it is worth knowing that
-it sits around 0.03–0.05.
+**It introduces target uncertainty.** The same configuration has a mean across-seed span of
+0.074, while the mean within-run fold deviation is 0.027. These quantities are not a strict
+lower bound on prediction error, but they show how imprecisely one selected maximum estimates
+repeatable performance. The study models best-observed performance and does not estimate this
+uncertainty separately.
 
-The 80 rows at exactly 1.0 are not an artefact of the selection: of the 54 saturated pairs
-with published seed records, 52 average above 0.99 across all three.
+The 80 rows at exactly 1.0 are not merely isolated lucky seeds: 69 of those pairs average
+above 0.99 across all five runs.
 
 | | count | constant within |
 |---|---|---|
@@ -84,7 +84,7 @@ Twenty-one CSV columns minus `Dataset`, `Model` and `MCC` leaves 18 features.
 
 ### Dataset features
 
-Twelve, all constant across a dataset's 25 rows — which is the single most consequential
+Twelve, all constant across a dataset's observed rows — which is the single most consequential
 property of this corpus, and [chapter 5](05-evaluation.md) is built around it. They are
 standard dataset meta-features in the sense of the pymfe/OpenML vocabulary.
 
@@ -108,7 +108,7 @@ Three of them carry warnings that matter downstream.
 **`nr_inst` is the source size, not the training size.** Every model was trained on a
 stratified sample capped at 100,000 rows and ten of the twenty datasets exceed that cap, so
 above it `nr_inst` describes a dataset nobody trained on. **No question about the effect of
-more training data is testable here** — see [chapter 1](01-dataset.md).
+more training data is testable here** — see [Training-set size is not a variable here](#training-set-size-is-not-a-variable-here).
 
 **The set is deliberately redundant, and two of the redundancies are exact.** `nr_attr` and
 `nr_outliers` correlate at 0.9995. And `inst_to_attr` is defined as `nr_inst / nr_attr`, so
@@ -154,7 +154,7 @@ one model feature that varies with the dataset as well as the learner, since cap
 with the data's shape — the model features are not purely model-level.
 
 `Model Capability` places a learner's family on a ten-rung ladder taken from the tabular-ML
-literature. [Chapter 4](04-equation.md#model-descriptors-are-thin-and-one-of-them-is-asserted) records what it is worth and what it is not; the short version is that
+literature. [Chapter 4](04-equation.md#model-descriptors-are-thin-and-five-of-them-are-asserted) records what it is worth and what it is not; the short version is that
 it is a bijection with the ten families, so anything read off it is a claim about *family*.
 
 The remaining four grade a mechanism, low to high, and are asserted from published
@@ -193,14 +193,14 @@ is not a statement about sample size.
 they are not missing at random: eight models are absent from the same three datasets, which
 are the three smallest in the corpus (165, 389 and 400 instances). The meta-dataset is
 therefore a sample of *completed* runs, and every prediction is conditional on training
-succeeding ([chapter 1](01-dataset.md)).
+succeeding ([Every prediction is conditional on training succeeding](#every-prediction-is-conditional-on-training-succeeding)).
 
 ## Two facts that drive the whole design
 
-**Dataset features are constant across a dataset's 25 rows.** Everything follows from
+**Dataset features are constant across a dataset's observed rows.** Everything follows from
 this. It means a dataset-only equation can predict nothing but a per-dataset constant
 (chapter 4), and it means a random train/test split puts the same dataset on both sides
-of the fold and inflates every score (chapter 5).
+of the fold rather than testing transfer to an unseen dataset (chapter 5).
 
 **The features span wildly different magnitudes.** `gravity` runs from 1.6 to 1.0e16;
 `nr_inst` from 165 to 7.1 million. Composite terms are therefore built over
@@ -226,7 +226,7 @@ What the meta-dataset is, computed from the file the run was fitted on rather th
 | rows | 476 |
 | datasets | 20 |
 | models | 25 |
-| cells absent of datasets x models | 24 |
+| cells absent from the dataset-by-model grid | 24 |
 | dataset features | 12 |
 | model features | 6 |
 
@@ -245,14 +245,14 @@ And how MCC is distributed over those rows:
 | mean | 0.7305 | 476 |
 | standard deviation | 0.3432 | 476 |
 | minimum | -0.2898 | 1 |
-| maximum | 1.0000 | 1 |
+| maximum | 1.0000 | 80 |
 | at exactly 1 |  | 80 |
 | at exactly 0 |  | 15 |
 | below 0 |  | 1 |
 
-**A third of the corpus is pinned at one end of the range or the other.** That is what makes MAE rather than SMAPE the reported error: SMAPE divides by `|truth| + |prediction|`, so every row at exactly zero contributes the full 200% unless the prediction is exactly zero too, and the metric ends up dominated by the rows the equation is already known to handle worst.
+**One fifth of the corpus is exactly 0 or 1, and only one additional row is below zero.** That is what makes MAE rather than SMAPE the reported error: SMAPE divides by `|truth| + |prediction|`, so every row at exactly zero contributes the full 200% unless the prediction is exactly zero too, and the metric ends up dominated by the rows the equation is already known to handle worst.
 
-Two things these tables cannot say, both of which bound every number in the study. Each row is the **best of three seeds**, not their mean, so the target is optimistic and has a noise floor no predictor can go below; and every model was trained on a stratified sample **capped at 100,000 rows**, so `nr_inst` is the source dataset's size rather than the training set's. Both are properties of the corpus builder upstream, and are audited against it in the prose above.
+Two things these tables cannot say, both of which bound every number in the study. Each row is the **best of five seeds**, not their mean, so the target is optimistic and subject to seed variation that is not modelled separately; and every model was trained on a stratified sample **capped at 100,000 rows**, so `nr_inst` is the source dataset's size rather than the training set's. Both are properties of the corpus builder upstream, and are audited against it in the prose above.
 
 <!-- end generated -->
 
@@ -262,22 +262,23 @@ Two things these tables cannot say, both of which bound every number in the stud
 
 **Twenty datasets is the binding constraint on every cross-validated number here.**
 
-- Leave-one-dataset-out R² varies by ±0.07 between adjacent term counts from fold noise
-  alone. The curve should be read, never a single cell.
-- E1's cross-validated numbers rest on 20 folds and are correspondingly unstable — its
-  leave-one-dataset-out R² is negative at 1–4 terms and 0.217 at 7.
-- The knee detector, the Pareto front and the validation rule all operate on a curve whose
-  points carry that much noise. The retained 25-term result reaches the search boundary, so it
-  is the best tested length rather than evidence that the curve has reached a plateau.
+- Leave-one-dataset-out R² can move by about 0.10 between adjacent term counts. The curve
+  should be read, never a single cell.
+- E1's cross-validated result rests on only 20 folds; its per-fold errors and dispersion must
+  be read alongside the pooled R².
+- E3-Valid operates on a curve whose points carry that much noise. Its sustained-plateau rule
+  therefore reads a forward window of term counts rather than reacting to one adjacent point.
 
 Twenty-five models is more comfortable but still small for the leave-one-model-out
 protocol.
 
 ### Domain
 
-All twenty datasets are networking, IoT and security tabular benchmarks. Nothing here
-should be assumed to transfer to images, text, or tabular data from other domains. The
-extracted practices in particular are statements about this corpus.
+The corpus is concentrated in networking, IoT, telecommunications, and security tabular
+benchmarks, with a small number of general tabular datasets such as `Social Network Ads`.
+Nothing here should be assumed to transfer to images, text, or a representative sample of
+tabular problems from other domains. The extracted practices in particular are statements
+about this corpus.
 
 ### Training-set size is not a variable here
 
@@ -318,8 +319,8 @@ Two consequences, and they point in different directions:
   It has never seen a failure and cannot warn about one.
 
 The 15 rows at exactly MCC = 0 are *not* the failures. They are classifiers that converged
-and learned nothing useful — the majority-class predictor and its relatives. Predictions
-never fall below 0.17, so those rows sit above the diagonal, but that is shrinkage toward
+and learned nothing useful — the majority-class predictor and its relatives. The equation
+generally predicts positive MCC for those rows, but that is shrinkage toward
 the middle of the observed range rather than an inability to recognise a failure mode the
 data does not contain.
 

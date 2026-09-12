@@ -18,8 +18,10 @@ sweep inside 20 cross-validation folds tractable. `ridge_solve` states that arit
 place; `search.Selector` indexes submatrices out of a Gram it holds, for speed, and
 `tests/test_search.py` checks the two agree.
 
-Study chapter: [3. Term generation and selection](../../assets/docs/03-term-selection.md) -- the rationale, in
+Study chapter: [3. Term generation and selection][study-chapter] -- the rationale, in
 prose, with the figures.
+
+[study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/03-term-selection.md
 """
 
 from __future__ import annotations

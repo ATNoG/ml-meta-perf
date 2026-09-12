@@ -1,7 +1,7 @@
 """The one entry point that runs every phase of the study: ``python -m ml_meta_perf``.
 
-Given a meta-dataset it screens the term library, fits E1, E3 and the two controls,
-cross-validates all of them under both leave-one-group-out protocols, extracts the
+Given a meta-dataset it screens the term library, fits E1, E2, E3-Valid and E3-MAX,
+cross-validates them under the retained grouped protocols, extracts the
 practices, writes the figures and generates the written report -- in one command, from
 one set of parameters, so a result can be reproduced by repeating the command line rather
 than by rerunning a notebook in the right order.
@@ -9,8 +9,10 @@ than by rerunning a notebook in the right order.
 Every search knob is exposed as a flag. Defaults retain the sweep's settings, so a bare
 ``python -m ml_meta_perf`` reproduces the reported corrected-data run.
 
-Study chapter: [4. The equation](../../assets/docs/04-equation.md) -- the rationale, in
+Study chapter: [4. The equation][study-chapter] -- the rationale, in
 prose, with the figures.
+
+[study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/04-equation.md
 """
 
 from __future__ import annotations
@@ -125,10 +127,8 @@ def render(
         _show(report.effects)
 
     if "validation" in phases:
-        _section("How many terms? (knee detection and Pareto fronts)")
-        _show(report.term_choice)
-        print("\nper-length Pareto membership, in-sample and cross-validated:")
-        _show(report.pareto)
+        _section("E3-Valid and E3-MAX selection")
+        _show(report.grammars)
 
         _section("E1 vs E2 vs E3 on the common scale (all rows)")
         _show(report.comparison)
@@ -158,11 +158,9 @@ def render(
 def configuration(arguments: argparse.Namespace) -> Configuration:
     """The configuration the run fits every equation under.
 
-    **One, not three.** Until 2026-09-09 this returned a pair and E2 got a third object no
-    flag reached, so `--penalty 3` moved two of the three equations and the comparison between
-    them stopped being like-for-like. `experiment.DEFAULT` is now the single retained
-    configuration and the argparse defaults *are* the constants behind it, which is also what
-    makes `--help` state the real values rather than `None`.
+    `experiment.DEFAULT` is the single retained configuration. The argparse defaults are the
+    constants behind it, so command-line overrides affect every equation consistently and
+    `--help` states the effective values.
 
     `max_arity` is not read from here. E3's is chosen by `experiment.search_grammars` over
     ``--arity``, and E1 and E2 -- which are fitted once rather than searched -- take the most
@@ -206,9 +204,7 @@ def _save_tables(report: Report, folder: Path) -> list[Path]:
         "shares": report.shares,
         "term_effects": report.effects,
         "practices": report.practices,
-        "term_choice": report.term_choice,
         "length_choice": report.length_choice,
-        "pareto": report.pareto,
         "grammars": report.grammars,
     }
     if report.e3.stability is not None:
@@ -259,10 +255,8 @@ def build_parser() -> argparse.ArgumentParser:
     data.add_argument("--quiet", action="store_true", help="write files without printing the study")
 
     search = parser.add_argument_group("equation and search")
-    # `--terms` was removed on 2026-09-09 with `Configuration.headline_terms`. It set the
-    # published length by hand, and the published length is now derived from the equation's own
-    # curve by `selection.floor_argmax`. `--max-terms` is a different thing and stays: the
-    # search *horizon*, which is a cost control and the range the reported curve covers.
+    # `--max-terms` sets the search horizon and therefore the range covered by the reported
+    # curve. It does not set the selected equation length.
     search.add_argument("--max-terms", type=int, default=MAX_TERMS, help="longest equation the search explores")
     search.add_argument("--penalty", type=float, default=PENALTY, help="ridge penalty on standardised terms")
     # Repeatable, because the arity is searched rather than fixed: `--arity 2 --arity 3` is the

@@ -8,8 +8,10 @@ Note for anyone tempted to pin BLAS threading here: it does not work. ``python -
 ml-meta-perf`` imports the `ml-meta-perf` package -- and therefore numpy, and therefore OpenBLAS --
 *before* this module runs, and OpenBLAS reads its thread count when it loads. It has to be
 set in the environment by the caller, which is a decision left to them rather than forced
-from inside a library; [chapter 3](../../assets/docs/03-term-selection.md) measures what
+from inside a library; [chapter 3][study-chapter] measures what
 it is worth.
+
+[study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/03-term-selection.md
 """
 
 import sys

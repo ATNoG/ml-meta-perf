@@ -29,8 +29,10 @@ That last verdict matters. A study that reports only the practices it happens to
 is not evidence about practice, so a practice the study merely assumes is marked as such
 rather than counted as a win.
 
-Study chapter: [6. Best practices against the equation](../../assets/docs/06-practices.md) -- the rationale, in
+Study chapter: [6. Best practices against the equation][study-chapter] -- the rationale, in
 prose, with the figures.
+
+[study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/06-practices.md
 """
 
 from __future__ import annotations
@@ -108,7 +110,6 @@ class Evidence:
     frame: pl.DataFrame
     family_means: pl.DataFrame
     complete_family_means: pl.DataFrame
-    model_means: pl.DataFrame
     complete_model_means: pl.DataFrame
     n_complete_datasets: int
     ranking_agreement: float
@@ -243,7 +244,6 @@ def gather(frame: pl.DataFrame, report: Report) -> Evidence:
         frame=frame,
         family_means=_family_means(frame),
         complete_family_means=_family_means(subset),
-        model_means=_model_means(frame),
         complete_model_means=_model_means(subset),
         n_complete_datasets=len(complete),
         ranking_agreement=agreement,

@@ -161,7 +161,7 @@ class TestCorpusSummary(unittest.TestCase):
         self.assertEqual(self.summary["model features"], len(MODEL_FEATURES))
 
     def test_absent_cells_are_the_difference_from_a_full_grid(self) -> None:
-        self.assertEqual(self.summary["cells absent of datasets x models"], 20 * 25 - self.frame.height)
+        self.assertEqual(self.summary["cells absent from the dataset-by-model grid"], 20 * 25 - self.frame.height)
 
     def test_counts_are_integers_not_floats(self) -> None:
         """A count rendered as `476.0000` in a chapter table is a formatting bug with a
@@ -181,10 +181,11 @@ class TestTargetSummary(unittest.TestCase):
         self.assertEqual(self.rows["at exactly 0"], int((values == 0.0).sum()))
         self.assertEqual(self.rows["below 0"], int((values < 0.0).sum()))
 
-    def test_the_pinned_rows_are_a_third_of_the_corpus(self) -> None:
+    def test_the_pinned_rows_are_one_fifth_of_the_corpus(self) -> None:
         """The claim the generated section makes in prose beside this table."""
         pinned = self.rows["at exactly 1"] + self.rows["at exactly 0"] + self.rows["below 0"]
-        self.assertGreater(pinned / self.frame.height, 0.15)
+        self.assertGreater(pinned / self.frame.height, 0.19)
+        self.assertLess(pinned / self.frame.height, 0.21)
 
     def test_extremes_match_the_column(self) -> None:
         values = target(self.frame)
@@ -192,6 +193,11 @@ class TestTargetSummary(unittest.TestCase):
         self.assertAlmostEqual(stats["minimum"], float(values.min()))
         self.assertAlmostEqual(stats["maximum"], float(values.max()))
         self.assertAlmostEqual(stats["mean"], float(values.mean()))
+
+    def test_extreme_counts_include_ties(self) -> None:
+        values = target(self.frame)
+        self.assertEqual(self.rows["minimum"], int((values == values.min()).sum()))
+        self.assertEqual(self.rows["maximum"], int((values == values.max()).sum()))
 
 
 class TestMissingCells(unittest.TestCase):

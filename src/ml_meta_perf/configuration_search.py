@@ -8,10 +8,9 @@ grid point.
 The run has two stages.  ``sweep`` evaluates the historical composite objective over
 in-sample, leave-one-dataset-out and leave-one-model-out predictions.  One beam traversal is
 reused for every requested equation length.  ``validate`` then computes leave-one-cell-out
-only for a defensible shortlist.  ``select`` reports a shared-configuration E3-Valid/E3-MAX
-pair: E3-MAX is the best four-protocol floor found, while E3-Valid is the simplest grammar at
-the same feature subset, ridge penalty and z-score whose loss is no larger than its paired
-bootstrap spread.
+only for a defensible shortlist. ``select`` reports E3-MAX as the best four-protocol floor and
+E3-Valid as the equation immediately before a sustained plateau in combined R2, among
+candidates sharing E3-MAX's feature subset, ridge penalty and z-score.
 
 Every intermediate result is a shard written by the parent process.  Re-running the command
 skips complete shards, so a Slurm timeout does not discard completed work.  A manifest records
@@ -53,7 +52,7 @@ from ml_meta_perf.data import (
 from ml_meta_perf.fit import Standardizer
 from ml_meta_perf.model import Equation
 from ml_meta_perf.search import Selector, guided_screen, prune, search
-from ml_meta_perf.selection import complexity, grammar_margin
+from ml_meta_perf.selection import PLATEAU_TOLERANCE, PLATEAU_WINDOW, complexity, plateau_index
 from ml_meta_perf.stats import r2_score
 from ml_meta_perf.terms import Library, build_library
 from ml_meta_perf.validate import cross_validate_doubly_held_out, cross_validate_fixed_form, leave_one_group_out
@@ -64,11 +63,13 @@ DEFAULT_ZSCORES = (3.0, 3.5, 4.0, 4.25, 4.5, 5.0)
 DEFAULT_ARITIES = (2, 3)
 DEFAULT_MIN_FEATURES = 2
 DEFAULT_MAX_FEATURES = len(MODEL_FEATURES)
-DEFAULT_MIN_TERMS = 6
+DEFAULT_MIN_TERMS = 1
 DEFAULT_MAX_TERMS = 25
 DEFAULT_POOL_SIZE = 600
 DEFAULT_BEAM_WIDTH = 6
 DEFAULT_SHORTLIST_TOP = 25
+DEFAULT_PLATEAU_TOLERANCE = PLATEAU_TOLERANCE
+DEFAULT_PLATEAU_WINDOW = PLATEAU_WINDOW
 
 # The historical objective.  These values are intentionally constants rather than CLI flags:
 # changing them changes the experiment rather than merely changing its execution.
@@ -81,6 +82,8 @@ OBJECTIVE_WEIGHTS: dict[str, float] = {
     "stability": 0.15,
     "brevity": 0.05,
 }
+# Preserve the historical J scale: equations with one through six terms all receive the
+# maximum brevity component, while the search still records every length for curve methods.
 OBJECTIVE_MIN_TERMS = 6
 OBJECTIVE_MAX_TERMS = 30
 THRESHOLDS = (0.5, 0.6, 0.7, 0.8, 0.9)
@@ -203,7 +206,7 @@ def grid_table(settings: SearchSettings) -> pl.DataFrame:
 
 
 def historical_objective(row: dict[str, float | int]) -> float:
-    """The exact scalar used by the deleted 2026-09-07 configuration search."""
+    """Composite scalar retained for broad, inexpensive candidate screening."""
     parts = {
         "in_sample_r2": max(float(row["in_sample_r2"]), 0.0),
         "loo_dataset_r2": max(float(row["loo_dataset_r2"]), 0.0),
@@ -394,28 +397,46 @@ def merge_finalists(
         fold_rows.extend(payload["fold_errors"])
     cell = pl.DataFrame(cell_rows)
     keys = ["features", "penalty", "max_abs_zscore", "max_arity", "requested_terms"]
-    finalists = sweep_table.join(cell, on=keys, how="inner").with_columns(
-        pl.min_horizontal("in_sample_r2", "loo_dataset_r2", "loo_model_r2", "loo_cell_r2").alias(
-            "four_protocol_floor"
+    finalists = _with_combined_r2(
+        sweep_table.join(cell, on=keys, how="inner").with_columns(
+            pl.min_horizontal("in_sample_r2", "loo_dataset_r2", "loo_model_r2", "loo_cell_r2").alias(
+                "four_protocol_floor"
+            )
         )
     )
-    finalists = finalists.sort(
-        ["four_protocol_floor", "objective", "complexity"], descending=[True, True, False]
-    )
+    finalists = finalists.sort(["four_protocol_floor", "objective", "complexity"], descending=[True, True, False])
     errors = pl.DataFrame(fold_rows).sort(["base_id", "max_arity", "requested_terms", "dataset"])
     _write_csv_atomic(output / "finalists.csv", finalists)
     _write_csv_atomic(output / "finalist_fold_errors.csv", errors)
     return finalists, errors
 
 
+def _with_combined_r2(table: pl.DataFrame) -> pl.DataFrame:
+    """Add the historical three-protocol median used as combined R2."""
+    if "combined_r2" in table.columns:
+        return table
+    columns = ("in_sample_r2", "loo_dataset_r2", "loo_model_r2")
+    missing = set(columns) - set(table.columns)
+    if missing:
+        raise ValueError(f"finalist table is missing combined-R2 columns: {sorted(missing)}")
+    return table.with_columns(pl.concat_list(*columns).list.median().alias("combined_r2"))
+
+
 def select_equations(
     finalists: pl.DataFrame,
-    fold_errors: pl.DataFrame,
     output: Path,
+    *,
+    plateau_tolerance: float = DEFAULT_PLATEAU_TOLERANCE,
+    plateau_window: int = DEFAULT_PLATEAU_WINDOW,
 ) -> dict[str, object]:
-    """Select E3-MAX globally, then E3-Valid under exactly its shared base settings."""
+    """Select E3-MAX and the reproducible plateau-based E3-Valid equation."""
     if finalists.is_empty():
         raise ValueError("no finalists are available for selection")
+    if plateau_tolerance < 0.0:
+        raise ValueError("plateau tolerance must be non-negative")
+    if plateau_window < 1:
+        raise ValueError("plateau window must be positive")
+    finalists = _with_combined_r2(finalists)
     ranked = finalists.sort(
         ["four_protocol_floor", "complexity", "n_features", "requested_terms"],
         descending=[True, False, False, False],
@@ -426,61 +447,112 @@ def select_equations(
         & (pl.col("penalty") == maximum["penalty"])
         & (pl.col("max_abs_zscore") == maximum["max_abs_zscore"])
     )
-    candidates: list[dict[str, Any]] = []
-    for arity in sorted(set(int(value) for value in shared["max_arity"].to_list())):
-        per_arity = shared.filter(pl.col("max_arity") == arity).sort(
-            ["four_protocol_floor", "complexity", "requested_terms"], descending=[True, False, False]
-        )
-        candidates.append(per_arity.row(0, named=True))
 
-    reference_errors = _candidate_errors(fold_errors, maximum)
-    valid: dict[str, Any] | None = None
-    margin_rows: list[dict[str, object]] = []
-    for candidate in sorted(
-        candidates,
-        key=lambda row: (complexity(int(row["max_arity"]), int(row["n_terms"])), int(row["n_terms"])),
-    ):
-        gain, scale, ratio = grammar_margin(_candidate_errors(fold_errors, candidate), reference_errors)
-        margin_rows.append(
-            {
-                "max_arity": int(candidate["max_arity"]),
-                "requested_terms": int(candidate["requested_terms"]),
-                "n_terms": int(candidate["n_terms"]),
-                "gain": gain,
-                "bootstrap_scale": scale,
-                "gain_to_scale": ratio,
-                "eligible_as_valid": ratio <= 1.0,
-            }
-        )
-        if ratio <= 1.0 and valid is None:
-            valid = candidate
-    if valid is None:
-        valid = maximum
-
-    independent_valid = _simplest_eligible(finalists, fold_errors, maximum)
+    valid, diagnostics = _select_plateau_valid(
+        shared,
+        tolerance=plateau_tolerance,
+        window=plateau_window,
+    )
     payload: dict[str, object] = {
         "selection": (
-            "E3-MAX maximises the four-protocol R2 floor; E3-Valid shares its base settings "
-            "and uses gain/paired bootstrap spread <= 1."
+            "E3-MAX maximises the four-protocol R2 floor. E3-Valid is the highest "
+            "best-so-far combined R2 before a sustained plateau, among candidates sharing "
+            "E3-MAX's feature subset, ridge penalty and z-score."
         ),
+        "combined_r2": "median of in-sample, LODO and LOMO R2",
+        "selection_source_sha256": _file_hash(Path(__file__)),
+        "e3_valid_diagnostics": diagnostics,
         "e3_valid": _public_candidate(valid),
         "e3_max": _public_candidate(maximum),
-        "independent_valid_diagnostic": _public_candidate(independent_valid),
-        "shared_grammar_margins": margin_rows,
     }
     _write_json_atomic(output / "selected_configurations.json", payload)
-    _write_csv_atomic(output / "shared_grammar_margins.csv", pl.DataFrame(margin_rows))
 
     shards = output / "shards" / "finalists"
-    for label, row in (("e3_valid", valid), ("e3_max", maximum)):
-        equation = _load_candidate_equation(shards, row)
-        equation.save(output / f"{label}.json")
-        (output / f"{label}.txt").write_text(str(equation) + "\n", encoding="utf-8")
+    _write_equation_outputs(shards, output, "e3_valid", valid)
+    _write_equation_outputs(shards, output, "e3_max", maximum)
     return payload
 
 
-def initialise(output: Path, data_path: Path, settings: SearchSettings) -> dict[str, object]:
-    """Write or verify the immutable manifest and the expanded configuration grid."""
+def _best_per_term_count(shared: pl.DataFrame) -> list[dict[str, Any]]:
+    """The best attainable combined R2 at each actual equation length."""
+    selected: dict[int, dict[str, Any]] = {}
+    for row in shared.to_dicts():
+        length = int(row["n_terms"])
+        incumbent = selected.get(length)
+        if incumbent is None or _candidate_rank(row) < _candidate_rank(incumbent):
+            selected[length] = row
+    return [selected[length] for length in sorted(selected)]
+
+
+def _candidate_rank(candidate: dict[str, Any]) -> tuple[float, int, int, int]:
+    """Performance first, then deterministic simplicity tie-breaks."""
+    return (
+        -float(candidate["combined_r2"]),
+        int(candidate["complexity"]),
+        int(candidate["max_arity"]),
+        int(candidate["requested_terms"]),
+    )
+
+
+def _select_plateau_valid(
+    shared: pl.DataFrame,
+    *,
+    tolerance: float,
+    window: int,
+) -> tuple[dict[str, Any], dict[str, object]]:
+    """Highest combined R2 before a sustained, explicitly parameterised plateau."""
+    rows = _best_per_term_count(shared)
+    if not rows:
+        raise ValueError("the E3-MAX base has no candidates")
+    envelope: list[dict[str, Any]] = []
+    best = rows[0]
+    for row in rows:
+        if _candidate_rank(row) < _candidate_rank(best):
+            best = row
+        envelope.append(best)
+    scores = np.asarray([float(row["combined_r2"]) for row in rows], dtype=np.float64)
+    index = plateau_index(scores, tolerance=tolerance, window=window)
+    detected = index + window < len(rows)
+    diagnostics: dict[str, object] = {
+        "implementation": "best-so-far gain over a forward window",
+        "tolerance": tolerance,
+        "window": window,
+        "plateau_detected": detected,
+    }
+    if detected:
+        diagnostics["plateau_starts_at_terms"] = int(rows[index]["n_terms"])
+        diagnostics["window_gain"] = float(
+            envelope[index + window]["combined_r2"] - envelope[index]["combined_r2"]
+        )
+    else:
+        diagnostics["fallback"] = "maximum combined R2"
+    return envelope[index], diagnostics
+
+
+def _write_equation_outputs(
+    shards: Path,
+    output: Path,
+    label: str,
+    candidate: dict[str, Any],
+) -> None:
+    equation = _load_candidate_equation(shards, candidate)
+    equation.save(output / f"{label}.json")
+    (output / f"{label}.txt").write_text(str(equation) + "\n", encoding="utf-8")
+
+
+def initialise(
+    output: Path,
+    data_path: Path,
+    settings: SearchSettings,
+    *,
+    allow_selection_code_change: bool = False,
+) -> dict[str, object]:
+    """Write or verify the immutable manifest and the expanded configuration grid.
+
+    A selection-only rerun may use newer post-processing code over immutable fitted shards.
+    Its scientific sweep identity must still match in every field other than the package
+    source hash, and the new selector provenance is written into ``selected_configurations``.
+    """
     settings.validate()
     output.mkdir(parents=True, exist_ok=True)
     digest = _file_hash(data_path)
@@ -497,9 +569,14 @@ def initialise(output: Path, data_path: Path, settings: SearchSettings) -> dict[
     if manifest_path.is_file():
         existing = json.loads(manifest_path.read_text(encoding="utf-8"))
         if existing.get("search_id") != search_id:
-            raise RuntimeError(
-                "output directory belongs to a different search; choose another directory or remove it explicitly"
+            comparable = tuple(name for name in identity if name != "source_sha256")
+            selection_compatible = allow_selection_code_change and all(
+                existing.get(name) == identity[name] for name in comparable
             )
+            if not selection_compatible:
+                raise RuntimeError(
+                    "output directory belongs to a different search; choose another directory or remove it explicitly"
+                )
         return existing
 
     git_status = _git_value("status", "--porcelain")
@@ -510,7 +587,10 @@ def initialise(output: Path, data_path: Path, settings: SearchSettings) -> dict[
         "git_dirty": None if git_status == "unavailable" else bool(git_status),
         "python": sys.version,
         "platform": platform.platform(),
-        "packages": {name: _package_version(name) for name in ("ml-meta-perf", "numpy", "polars", "joblib")},
+        "packages": {
+            name: _package_version(name)
+            for name in ("ml-meta-perf", "numpy", "polars", "joblib")
+        },
         "created_unix": time.time(),
     }
     _write_json_atomic(manifest_path, manifest)
@@ -567,6 +647,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--pool", type=int, default=DEFAULT_POOL_SIZE)
     parser.add_argument("--beam", type=int, default=DEFAULT_BEAM_WIDTH)
     parser.add_argument("--shortlist-top", type=int, default=DEFAULT_SHORTLIST_TOP)
+    parser.add_argument(
+        "--plateau-tolerance",
+        type=float,
+        default=DEFAULT_PLATEAU_TOLERANCE,
+        help="maximum best-so-far combined-R2 gain over the plateau window",
+    )
+    parser.add_argument(
+        "--plateau-window",
+        type=int,
+        default=DEFAULT_PLATEAU_WINDOW,
+        help="number of subsequent evaluated lengths used to identify a plateau",
+    )
     return parser
 
 
@@ -577,9 +669,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     settings = settings_from_arguments(arguments)
     data_path = Path(arguments.data).resolve()
     output = Path(arguments.output).resolve()
-    manifest = initialise(output, data_path, settings)
+    manifest = initialise(
+        output,
+        data_path,
+        settings,
+        allow_selection_code_change=arguments.stage == "select",
+    )
     if arguments.stage == "plan":
         print(f"planned {grid_table(settings).height} configurations in {output}")
+        _write_run_summary(output, arguments.stage, manifest, started_unix, started)
+        return 0
+    saved_finalists = (output / "finalists.csv").is_file()
+    selection_code_changed = manifest.get("source_sha256") != _source_hash()
+    if arguments.stage == "select" and selection_code_changed and not saved_finalists:
+        raise RuntimeError("selection code changed and the immutable merged finalist tables are unavailable")
+    if arguments.stage == "select" and selection_code_changed:
+        finalists = pl.read_csv(output / "finalists.csv")
+        selected = select_equations(
+            finalists,
+            output,
+            plateau_tolerance=arguments.plateau_tolerance,
+            plateau_window=arguments.plateau_window,
+        )
+        print(json.dumps(selected, indent=2), flush=True)
         _write_run_summary(output, arguments.stage, manifest, started_unix, started)
         return 0
     frame: pl.DataFrame | None = None
@@ -600,8 +712,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         validate_finalists(frame, shortlist, settings, output, jobs=arguments.jobs)
     if arguments.stage in {"select", "all"}:
         assert sweep_table is not None and shortlist is not None
-        finalists, fold_errors = merge_finalists(sweep_table, shortlist, output)
-        selected = select_equations(finalists, fold_errors, output)
+        finalists, _ = merge_finalists(sweep_table, shortlist, output)
+        selected = select_equations(
+            finalists,
+            output,
+            plateau_tolerance=arguments.plateau_tolerance,
+            plateau_window=arguments.plateau_window,
+        )
         print(json.dumps(selected, indent=2), flush=True)
     _write_run_summary(output, arguments.stage, manifest, started_unix, started)
     return 0
@@ -872,9 +989,7 @@ def _stability(equation: Equation, selections: list[set[str]]) -> float:
     if not equation.terms or not selections:
         return 0.0
     return float(
-        np.mean(
-            [sum(term.name in selected for selected in selections) / len(selections) for term in equation.terms]
-        )
+        np.mean([sum(term.name in selected for selected in selections) / len(selections) for term in equation.terms])
     )
 
 
@@ -941,32 +1056,6 @@ def _average_precision(labels: np.ndarray, scores: np.ndarray) -> float:
     return float((precision * labels[order]).sum() / labels.sum())
 
 
-def _candidate_errors(table: pl.DataFrame, candidate: dict[str, Any]) -> np.ndarray:
-    selected = table.filter(
-        (pl.col("base_id") == int(candidate["base_id"]))
-        & (pl.col("max_arity") == int(candidate["max_arity"]))
-        & (pl.col("requested_terms") == int(candidate["requested_terms"]))
-    ).sort("dataset")
-    if selected.is_empty():
-        raise ValueError("candidate has no per-dataset cell errors")
-    return selected["mae"].to_numpy()
-
-
-def _simplest_eligible(
-    finalists: pl.DataFrame,
-    fold_errors: pl.DataFrame,
-    maximum: dict[str, Any],
-) -> dict[str, Any]:
-    reference = _candidate_errors(fold_errors, maximum)
-    rows = finalists.sort(["complexity", "n_features", "n_terms"]).to_dicts()
-    for row in rows:
-        errors = _candidate_errors(fold_errors, row)
-        _, _, ratio = grammar_margin(errors, reference)
-        if ratio <= 1.0:
-            return row
-    return maximum
-
-
 def _public_candidate(candidate: dict[str, Any]) -> dict[str, object]:
     names = (
         "base_id",
@@ -983,6 +1072,7 @@ def _public_candidate(candidate: dict[str, Any]) -> dict[str, object]:
         "loo_dataset_r2",
         "loo_model_r2",
         "loo_cell_r2",
+        "combined_r2",
         "four_protocol_floor",
         "stability",
         "terms",

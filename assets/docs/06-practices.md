@@ -34,8 +34,8 @@ bought for.
 The unit there is the **term**, not the raw feature, and that matters. A feature can enter
 several terms, in numerators and denominators and under different transforms, so a single
 per-feature direction throws away the thing worth reading. `Processing Units Number` is the
-case in point: it carries one sign in the term where it is a numerator and the opposite in the
-two where it is a denominator. That is not the equation contradicting itself — it is the
+case in point: it appears as a factor, as a numerator, and in two denominators, with different
+conditional directions. That is not the equation contradicting itself — it is the
 equation saying that what predicts MCC is **capacity measured against a property of the data**
 rather than capacity on its own, which is the conditional form of the practice that recommends
 matching capacity to the problem.
@@ -88,7 +88,7 @@ accepts the method can read the verdicts and stop.
 
 A best practice is general, transferable advice that already circulates in the field — not a property of this equation. So the practices below are taken from the literature and this study is used to *weigh* them: each verdict, and the numbers inside it, are computed from this run by `ml_meta_perf.guidance`, against a stated threshold, so other data can overturn any of them.
 
-10 practices assessed: 2 not tested, 2 qualified, 6 supported.
+10 practices assessed: 3 not tested, 1 qualified, 6 supported.
 
 #### 1. Characterise the dataset before choosing a model. What the data is like bounds what any model can reach, and that bound is usually the larger effect.
 
@@ -110,13 +110,13 @@ A best practice is general, transferable advice that already circulates in the f
 
 #### 4. When rows share a group -- a subject, a site, a dataset -- validate by holding out whole groups. A random split reports a number that will not survive deployment.
 
-**Verdict: qualified.** The same equation scores R² 0.684 under a random 10-fold split and 0.691 when whole datasets are held out -- -0.007 of pure protocol. Dataset meta-features are constant within a dataset, so a random fold shows the equation rows from a dataset it is being scored on.
+**Verdict: qualified.** The same equation scores R² 0.651 under a random 10-fold split and 0.652 when whole datasets are held out -- -0.001 of pure protocol. Dataset meta-features are constant within a dataset, so a random fold shows the equation rows from a dataset it is being scored on.
 
 *Practice from:* Walsh et al., 'Machine learning reporting standards', Nature Methods 18 (2021). Any feature constant within a group lets the model recognise the group rather than generalise to it, and a random split puts the group on both sides.
 
 #### 5. Spend the first effort on reducing noise in the data, not on a larger model. Noise sets a ceiling that capacity cannot lift.
 
-**Verdict: supported.** Noise-to-signal ratio moves predicted MCC by -0.95 between its lowest and highest decile, and it is one of only two features whose direction inside the equation agrees with its own correlation against MCC -- so it is not an artefact of conditioning. Nothing on the model side of the equation offsets it.
+**Verdict: not tested.** No noise-to-signal practice survived the extraction filters in this run.
 
 *Practice from:* Zha et al., 'Data-centric AI: Perspectives and Challenges', SIAM International Conference on Data Mining (SDM) 2023, 945-948. Irreducible error from noisy features or labels bounds every model on that data, so capacity spent against it buys nothing.
 
@@ -128,13 +128,13 @@ A best practice is general, transferable advice that already circulates in the f
 
 #### 7. Match capacity to the problem. A larger, more expensive model is not a safer default; on small tabular problems it is usually a worse one.
 
-**Verdict: supported.** The highest-capacity family here is also the worst: generic neural networks average MCC 0.454 against 0.927 for tree ensembles. Capacity does not survive into the equation's terms in this run, so the family means are the whole of the evidence here.
+**Verdict: supported.** The highest-capacity family here is also the worst: generic neural networks average MCC 0.454 against 0.927 for tree ensembles. The equation says it conditionally rather than flatly: `Processing Units Number` carries 4 of its terms, mostly against a dataset property, so what raises MCC is capacity *matched to* the problem rather than capacity itself.
 
 *Practice from:* Shwartz-Ziv & Armon, Information Fusion 81, 84-90 (2022). Capacity beyond what the sample supports fits noise, and the cost is paid twice: in accuracy and in the tuning budget needed to recover it.
 
 #### 8. Before adopting a meta-learner to choose models, check it against 'use whatever usually works'. Ranking is an easier problem than prediction and often needs less.
 
-**Verdict: qualified.** Tested against this study's own equation and the two cannot be separated -- which is the practice being right, since it claims the trivial baseline is competitive rather than that it wins. Ranking models within a held-out dataset, against the per-model-mean baseline -- ap 0.746 against 0.798, equation better on 5 of 18 datasets that differ, 95% CI [-0.107, +0.012]; mrr 0.825 against 0.835, equation better on 1 of 4 datasets that differ, 95% CI [-0.083, +0.065]; hit_at_1 0.750 against 0.750, equation better on 1 of 2 datasets that differ, 95% CI [-0.150, +0.150]; regret 0.008 against 0.011, equation better on 13 of 15 datasets that differ, 95% CI [-0.001, +0.008]. Every interval is a paired bootstrap over the twenty held-out datasets, because a difference of two means over twenty folds is not yet a measurement.
+**Verdict: supported.** Tested against this study's own equation and the equation loses on a margin this corpus can actually resolve. Ranking models within a held-out dataset, against the per-model-mean baseline -- ap 0.724 against 0.798, equation better on 2 of 19 datasets that differ, 95% CI [-0.118, -0.029]; mrr 0.753 against 0.835, equation better on 2 of 9 datasets that differ, 95% CI [-0.190, +0.022]; hit_at_1 0.600 against 0.750, equation better on 1 of 5 datasets that differ, 95% CI [-0.350, +0.050]; regret 0.015 against 0.011, equation better on 9 of 15 datasets that differ, 95% CI [-0.014, +0.004]. Every interval is a paired bootstrap over the twenty held-out datasets, because a difference of two means over twenty folds is not yet a measurement.
 
 *Practice from:* Rice, 'The Algorithm Selection Problem' (1976); standard meta-learning practice. A per-model mean over previous datasets carries most of the ranking signal at zero modelling cost, and is the baseline any selection method has to clear.
 
@@ -158,11 +158,11 @@ At a glance:
 | Characterise the dataset before choosing a model. What the data is like bounds what any model can reach, and that bound is usually the larger effect. | supported | 0.0718 |
 | On tabular data, start from tree ensembles. Reach for a neural architecture only when a tree ensemble has been tried and found wanting. | supported | 0.2675 |
 | Include a pretrained tabular model (TabPFN, TabICL) in the first round of candidates: it costs one fit and is frequently competitive with a tuned ensemble. | supported | 0.0028 |
-| When rows share a group -- a subject, a site, a dataset -- validate by holding out whole groups. A random split reports a number that will not survive deployment. | qualified | -0.0074 |
-| Spend the first effort on reducing noise in the data, not on a larger model. Noise sets a ceiling that capacity cannot lift. | supported | -0.9515 |
+| When rows share a group -- a subject, a site, a dataset -- validate by holding out whole groups. A random split reports a number that will not survive deployment. | qualified | -0.0008 |
+| Spend the first effort on reducing noise in the data, not on a larger model. Noise sets a ceiling that capacity cannot lift. | not tested |  |
 | On real-world data that has not been carefully curated, prefer a learner with built-in robustness to outliers. | not tested |  |
 | Match capacity to the problem. A larger, more expensive model is not a safer default; on small tabular problems it is usually a worse one. | supported | -0.4727 |
-| Before adopting a meta-learner to choose models, check it against 'use whatever usually works'. Ranking is an easier problem than prediction and often needs less. | qualified | -0.0516 |
+| Before adopting a meta-learner to choose models, check it against 'use whatever usually works'. Ranking is an easier problem than prediction and often needs less. | supported | -0.0737 |
 | Report which (dataset, model) runs were excluded and why. Aggregate comparisons over an incomplete grid compare different models on different problems. | supported | 0.0480 |
 | Score imbalanced classification with a metric that accounts for all four confusion-matrix cells -- MCC rather than accuracy or F1. | not tested | 0.0315 |
 
@@ -172,27 +172,22 @@ The verdicts above are drawn from corpus averages -- family means, variance shar
 
 | practice | feature | expected | term | position | beta | effect | stability | rho | direction | agrees |
 |---|---|---|---|---|---|---|---|---|---|---|
-| clean-noise-before-adding-capacity | ns_ratio | lowers | ([log(class_ent)] + [log(ns_ratio)]) / [Loss Margin Behaviour] | numerator | -0.0803 | 0.1922 |  | -0.5813 | lowers | yes |
-| clean-noise-before-adding-capacity | ns_ratio | lowers | ([log(eq_num_attr)] + [log(ns_ratio)]) / [log(nr_class)] | numerator | -0.2483 | 0.7178 |  | -0.8500 | lowers | yes |
-| clean-noise-before-adding-capacity | ns_ratio | lowers | ([nr_cor_attr] + [log(ns_ratio)]) / [log(Processing Units Number)] | numerator | -0.0849 | 0.2139 | 0.0500 | -0.7668 | lowers | yes |
-| clean-noise-before-adding-capacity | ns_ratio | lowers | ([log(ns_ratio)] + [log(Fitting Regime)]) / [log(eq_num_attr)] | numerator | 0.2064 | 0.3068 | 0.2000 | 0.5513 | raises | no |
+| clean-noise-before-adding-capacity | ns_ratio | lowers | 1/ns_ratio | factor | -0.0348 | 0.0934 | 0.0500 | 1.0000 | raises | no |
+| clean-noise-before-adding-capacity | ns_ratio | lowers | [log(ns_ratio)] / [log(Processing Units Number)] | numerator | -0.0655 | 0.1689 | 0.7000 | -0.7745 | lowers | yes |
 | prefer-outlier-robust-learners | nr_outliers | lowers |  |  |  |  |  |  |  | not selected |
-| capacity-is-not-free | Processing Units Number | lowers | [nr_cor_attr] / [log(Processing Units Number)] | denominator | -0.1315 | 0.3220 | 1.0000 | 0.5330 | raises | no |
-| capacity-is-not-free | Processing Units Number | lowers | ([log(class_ent)] + [log(Processing Units Number)]) / [Fitting Regime] | numerator | -0.2809 | 0.7071 | 0.5000 | -0.6505 | lowers | yes |
-| capacity-is-not-free | Processing Units Number | lowers | ([log(class_ent)] + [log(Processing Units Number)]) / [Loss Margin Behaviour] | numerator | 0.1763 | 0.4155 | 0.2000 | 0.8008 | raises | no |
-| capacity-is-not-free | Processing Units Number | lowers | ([log(inst_to_attr)] + [log(Model Capability)]) / [log(Processing Units Number)] | denominator | 0.0598 | 0.1507 | 0.0500 | -0.8001 | lowers | yes |
-| capacity-is-not-free | Processing Units Number | lowers | ([log(nr_class)] + [log(Loss Margin Behaviour)]) / [log(Processing Units Number)] | denominator | -0.1994 | 0.5036 | 0.2000 | 0.7936 | raises | no |
-| capacity-is-not-free | Processing Units Number | lowers | ([nr_cor_attr] + [log(ns_ratio)]) / [log(Processing Units Number)] | denominator | -0.0849 | 0.2139 | 0.0500 | 0.4982 | raises | no |
-| capacity-is-not-free | Model Capability | raises | [log(Fitting Regime)] * [log(Model Capability)] | factor | -0.1733 | 0.3729 | 0.1500 | -0.7794 | lowers | no |
-| capacity-is-not-free | Model Capability | raises | [log(eq_num_attr)] * [log(Model Capability)] | factor | 0.0990 | 0.2527 | 0.8500 | 0.6720 | raises | yes |
-| capacity-is-not-free | Model Capability | raises | [log(gravity)] * [log(Model Capability)] | factor | 0.2682 | 0.6886 | 1.0000 | 0.5408 | raises | yes |
-| capacity-is-not-free | Model Capability | raises | [nr_norm] * [log(Model Capability)] | factor | 0.0474 | 0.0921 | 0.3500 | 0.3220 | raises | yes |
-| capacity-is-not-free | Model Capability | raises | ([log(inst_to_attr)] + [log(Model Capability)]) / [log(Processing Units Number)] | numerator | 0.0598 | 0.1507 | 0.0500 | -0.3045 | lowers | no |
-| capacity-is-not-free | Model Capability | raises | ([log(Loss Margin Behaviour)] + [log(Model Capability)]) / [Fitting Regime] | numerator | -0.0351 | 0.0941 |  | -0.3664 | lowers | no |
+| capacity-is-not-free | Processing Units Number | lowers | [log(Fitting Regime)] * [log(Processing Units Number)] | factor | 0.2060 | 0.3177 | 0.9000 | 0.6259 | raises | no |
+| capacity-is-not-free | Processing Units Number | lowers | [log(gravity)] / [log(Processing Units Number)] | denominator | -0.0892 | 0.2251 | 0.6000 | 0.4128 | raises | no |
+| capacity-is-not-free | Processing Units Number | lowers | [log(Processing Units Number)] / [log(nr_class)] | numerator | -0.1596 | 0.3624 | 0.6500 | -0.7080 | lowers | yes |
+| capacity-is-not-free | Processing Units Number | lowers | [log(ns_ratio)] / [log(Processing Units Number)] | denominator | -0.0655 | 0.1689 | 0.7000 | 0.4847 | raises | no |
+| capacity-is-not-free | Model Capability | raises | [log(Fitting Regime)] * [log(Model Capability)] | factor | -0.1982 | 0.4266 | 0.6000 | -0.7794 | lowers | no |
+| capacity-is-not-free | Model Capability | raises | [log(eq_num_attr)] * [log(Model Capability)] | factor | 0.1214 | 0.3098 | 0.9000 | 0.6720 | raises | yes |
+| capacity-is-not-free | Model Capability | raises | [log(gravity)] * [log(Model Capability)] | factor | 0.2476 | 0.6358 | 0.9000 | 0.5408 | raises | yes |
+| capacity-is-not-free | Model Capability | raises | [log(Model Capability)] / [log(nr_class)] | numerator | 0.0919 | 0.2573 | 0.4500 | 0.7200 | raises | yes |
+| capacity-is-not-free | Model Capability | raises | [log(nr_inst)] / [Model Capability] | denominator | 0.1070 | 0.1833 | 0.1000 | -0.9149 | lowers | no |
 
 **One row per (practice, term) pair**, because the equation is a sum of terms and a term is the unit a practice can be held against. `expected` is what the practice predicts as the feature rises; `direction` is what *that term's own contribution* does, measured on the data rather than read off the weight sign -- which would be wrong the moment the feature sits in a denominator, and several here do. `not selected` marks a claim resting on a feature the search never took, so the equation is silent on it rather than supporting it.
 
-**Read this against the verdict tally above, not as part of it.** Of the 10 practices, 3 make a claim about a quantity the equation contains; the rest are about a protocol, a metric, or a family of learners, and pairing one of those with a coefficient would be inventing a connection. Those are carried by **14 of the equation's 25 terms**, giving 16 directed (practice, term) pairings: **8 come out the way the practice predicts and 8 do not**, with 0 pairing too weak to state a direction for and 1 claim resting on a feature the search never took.
+**Read this against the verdict tally above, not as part of it.** Of the 10 practices, 3 make a claim about a quantity the equation contains; the rest are about a protocol, a metric, or a family of learners, and pairing one of those with a coefficient would be inventing a connection. Those are carried by **10 of the equation's 18 terms**, giving 11 directed (practice, term) pairings: **5 come out the way the practice predicts and 6 do not**, with 0 pairing too weak to state a direction for and 1 claim resting on a feature the search never took.
 
 
 **Read the `position` column before calling a row a disagreement.** A feature in a denominator enters the term inverted, so a negatively-weighted ratio contributes more as that feature rises. The same feature carrying opposite signs in two terms is usually one statement about a ratio rather than two conflicting ones about a quantity.
@@ -206,33 +201,30 @@ What the fitted equation says about each raw feature it uses, kept only when the
 
 **These are associations across 20 datasets, not causal claims, and not practices on their own** — a statement about a meta-feature column is a measurement. Section 5 is where they become advice, by supporting or failing to support something a practitioner could already have been told.
 
- 1. [unrated ] Higher noise-to-signal ratio went with lower MCC (about 0.95 MCC between its lowest and highest decile).
- 2. [unrated ] Higher how the parameters are reached, closed form to in-context (1-5) went with lower MCC (about 0.68 MCC between its lowest and highest decile).
- 3. [unrated ] Higher how hard the loss penalises points far from the boundary (1-5) went with lower MCC (about 0.59 MCC between its lowest and highest decile).
- 4. [unrated ] Higher gravity (separation between the majority and minority class centres) went with higher MCC (about 0.21 MCC between its lowest and highest decile).
- 5. [unrated ] Higher number of classes went with lower MCC (about 0.05 MCC between its lowest and highest decile).
+ 1. [moderate] Higher model capacity (number of fitted processing units) went with higher MCC (about 0.52 MCC between its lowest and highest decile).
+ 2. [moderate] Higher equivalent number of attributes (effective feature count) went with lower MCC (about 0.51 MCC between its lowest and highest decile).
+ 3. [unrated ] Higher gravity (separation between the majority and minority class centres) went with lower MCC (about 0.34 MCC between its lowest and highest decile).
+ 4. [moderate] Higher how hard the loss penalises points far from the boundary (1-5) went with lower MCC (about 0.15 MCC between its lowest and highest decile).
 
 Evidence:
 
 | feature | meaning | n_terms | direction | effect | stability | confidence |
 |---|---|---|---|---|---|---|
-| ns_ratio | noise-to-signal ratio | 4 | -0.6708 | -0.9515 |  | unrated |
-| Fitting Regime | how the parameters are reached, closed form to in-context (1-5) | 7 | -0.2250 | -0.6837 |  | unrated |
-| Loss Margin Behaviour | how hard the loss penalises points far from the boundary (1-5) | 8 | -0.5384 | -0.5905 |  | unrated |
-| gravity | gravity (separation between the majority and minority class centres) | 4 | 0.2227 | 0.2135 |  | unrated |
-| nr_class | number of classes | 5 | -0.2633 | -0.0466 |  | unrated |
+| Processing Units Number | model capacity (number of fitted processing units) | 4 | 0.2843 | 0.5169 | 0.7125 | moderate |
+| eq_num_attr | equivalent number of attributes (effective feature count) | 3 | -0.4087 | -0.5070 | 0.6333 | moderate |
+| gravity | gravity (separation between the majority and minority class centres) | 5 | -0.4539 | -0.3413 |  | unrated |
+| Loss Margin Behaviour | how hard the loss penalises points far from the boundary (1-5) | 1 | -0.8368 | -0.1527 | 0.6000 | moderate |
 
 #### These are conditional statements, not marginal ones
 
-A practice states what the *equation* does as a feature rises, with every other term present. A marginal correlation states what the feature does alone. They are different quantities, and here **3 of 5 agree** on the sign:
+A practice states what the *equation* does as a feature rises, with every other term present. A marginal correlation states what the feature does alone. They are different quantities, and here **4 of 4 agree** on the sign:
 
 | feature | meaning | marginal | conditional | practice_says | agrees |
 |---|---|---|---|---|---|
-| ns_ratio | noise-to-signal ratio | -0.3954 | -0.6708 | lower | yes |
-| Fitting Regime | how the parameters are reached, closed form to in-context (1-5) | 0.0502 | -0.2250 | lower | no |
-| Loss Margin Behaviour | how hard the loss penalises points far from the boundary (1-5) | -0.1838 | -0.5384 | lower | yes |
-| gravity | gravity (separation between the majority and minority class centres) | -0.2863 | 0.2227 | higher | no |
-| nr_class | number of classes | -0.0726 | -0.2633 | lower | yes |
+| Processing Units Number | model capacity (number of fitted processing units) | 0.3080 | 0.2843 | higher | yes |
+| eq_num_attr | equivalent number of attributes (effective feature count) | -0.1781 | -0.4087 | lower | yes |
+| gravity | gravity (separation between the majority and minority class centres) | -0.2863 | -0.4539 | lower | yes |
+| Loss Margin Behaviour | how hard the loss penalises points far from the boundary (1-5) | -0.1838 | -0.8368 | lower | yes |
 
 Disagreement is what conditioning does, not a defect. A marginal correlation mixes a feature's effect with everything it travels with; inside the equation the terms carrying those companions are already present, so what is left for this feature is what it adds beyond them. The practical consequence: **these statements describe what to expect once the other factors are accounted for, not what a scatter plot of that one feature will show** — and the scatter plot is what a reader will accidentally check against.
 
@@ -241,22 +233,21 @@ Disagreement is what conditioning does, not a defect. A marginal correlation mix
 The same equation on one row, term by term. The column adds up, and a reader can check that it does, which is the interpretability payoff in its most direct form -- and the row is chosen arithmetically, at the equation's **median absolute error**, so the example is a typical prediction rather than a flattering one somebody picked.
 
 ```
-dataset  : DDOS-ANL
-model    : LightGBM_ExtraTrees
-actual   : +0.9256
-predicted: +1.0000
+dataset  : RT-IoT2022
+model    : LDA
+actual   : +0.8126
+predicted: +0.7238
 
 contribution breakdown:
-    +2.0261   intercept
-    -0.5705   ([log(class_ent)] + [log(Processing Units Number)]) / [Fitting Regime]
-    -0.4988   [log(inst_to_attr)] * [log(nr_class)]
-    +0.4607   [log(gravity)] * [log(Model Capability)]
-    +0.3577   ([log(ns_ratio)] + [log(Fitting Regime)]) / [log(eq_num_attr)]
-    -0.3415   ([log(eq_num_attr)] + [log(gravity)]) / [log(nr_inst)]
-    -0.2939   ([log(class_ent)] + [log(inst_to_attr)]) / [log(eq_num_attr)]
-    -0.1356   the remaining 19 terms
-  = +1.0042   sum
-    clipped to +1.0000, the range MCC can take
+    +1.6628   intercept
+    -0.4976   [log(eq_num_attr)] * [log(nr_class)]
+    -0.2437   [log(nr_inst)] / [Fitting Regime]
+    +0.2191   [log(nr_inst)] / [Model Capability]
+    -0.1556   [log(gravity)] / [log(nr_inst)]
+    +0.1553   [log(gravity)] * [log(Model Capability)]
+    -0.1222   [log(gravity)] / [log(nr_attr)]
+    -0.2944   the remaining 12 terms
+  = +0.7238   sum
 ```
 
 <!-- end generated -->
@@ -287,8 +278,9 @@ the features they use — dataset-only, model-only, or mixed. Shares are compute
 
 $$\text{share}_g = \frac{\operatorname{cov}(\textstyle\sum_{i \in g} c_i,\; \sum_i c_i)}{\operatorname{var}(\sum_i c_i)}$$
 
-which sums to exactly 1 even when groups are correlated — and they are, since three model
-features are functions of dataset size. A naive $\operatorname{var}(g)/\operatorname{var}(\text{total})$
+which sums to exactly 1 even when groups are correlated. `Processing Units Number` varies
+with dataset shape as well as the learner, and the selected terms also share raw features.
+A naive $\operatorname{var}(g)/\operatorname{var}(\text{total})$
 does not. Population covariance is used throughout to match `np.var`; mixing `np.cov`'s
 default `ddof=1` with `np.var`'s `ddof=0` inflates every share by $n/(n-1)$.
 
@@ -347,11 +339,11 @@ here, the expensive ones were not the ones that scored well on the datasets wher
 expensive — and training cost is partly a function of dataset size, so it carries data
 difficulty as well as model capacity.
 
-**One feature carries a caveat wherever it is quoted.** `Model Capability` is the one
-column in the set that was *asserted* rather than measured, so "higher capability rank went
-with higher MCC" is partly the ladder being read back out. [Chapter 4](04-equation.md) sets
-out the three costs of that in full, and the practice it bears on is the one to read most
-sceptically.
+**The asserted descriptors carry a caveat wherever they are quoted.** Five of the six model
+descriptors are assigned from published descriptions rather than measured from a run.
+`Model Capability` needs particular care because its ordinal directly encodes a prior ranking,
+so "higher capability rank went with higher MCC" is partly the ladder being read back out.
+[Chapter 4](04-equation.md) sets out the costs in full.
 
 Twenty datasets from one domain is a narrow evidential base. Every statement in this chapter
 should be read as a hypothesis this data is consistent with, not a finding established by it.
@@ -410,8 +402,9 @@ the penalty and the length, none of which the practitioner reading the practice 
 **The feature was eventually retired for exactly this.** A column that moves with model
 capacity and dataset size at once is not a model descriptor, and two of the other three
 retired columns had the same defect. That is a resolution of this particular case, not of the
-general problem: nothing guarantees the six current features are free of it, and the mitigations
-below are still what stands between a fitted weight and a stated practice.
+general problem: the current `Processing Units Number` descriptor still varies with dataset
+shape, and the mitigations below are still what stands between a fitted weight and a stated
+practice.
 
 This generalises past this one feature, and it is the reason the study does not present
 per-feature associations as advice. A measurement like "higher training cost went with
@@ -420,11 +413,11 @@ weak evidence. It is not, on its own, a best practice: a practice is a general
 recommendation that a body of evidence can support, and no single fitted equation is that
 body.
 
-That is why the generated section below states its practices at the level of received
+That is why the generated section above states its practices at the level of received
 guidance from the literature and uses this study to weigh each one, rather than reading new
 guidance out of the weights. A recommendation that survives being weighed against several
 independent measurements is worth something; one extracted from a single equation inherits
-that equation'"'"'s instabilities, of which this is a worked example.
+that equation's instabilities, of which this is a worked example.
 
 Three mitigations are in place and none of them is sufficient:
 
@@ -433,7 +426,7 @@ Three mitigations are in place and none of them is sufficient:
   configurations — `Training Operations` sat at 0.66 fold stability in the equation
   published at the time, which was not low enough to suppress it;
 - the marginal correlation is printed beside the conditional direction
-  (the generated section below), so a reader can at least see when the two disagree, as they
+  (the generated section above), so a reader can at least see when the two disagree, as they
   do here;
 - features whose rank direction and decile effect disagree in sign are dropped outright.
 

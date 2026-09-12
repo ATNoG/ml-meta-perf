@@ -15,8 +15,10 @@ on both sides of the fold and the equation can memorise dataset identity; measur
 this data that inflates R2 from 0.28 to 0.50 without changing the model at all.
 ``random_kfold_groups`` exists so that the README can show that gap, not to score with.
 
-Study chapter: [5. Evaluation](../../assets/docs/05-evaluation.md) -- the rationale, in
+Study chapter: [5. Evaluation][study-chapter] -- the rationale, in
 prose, with the figures.
+
+[study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/05-evaluation.md
 """
 
 from __future__ import annotations
@@ -161,9 +163,9 @@ class CrossValidation:
     def stability(self) -> pl.DataFrame:
         """How often each term was selected across folds.
 
-        A term chosen in 19 of 20 folds is a finding. A term chosen in 3 is an artefact
-        of which datasets happened to be in the training split, and reporting the final
-        all-data equation without this column would present the two identically.
+        A term chosen in nearly every fold has stronger support than one chosen only a few
+        times. Reporting the final all-data equation without this column would present the
+        two identically.
         """
         counts: dict[str, int] = {}
         for names in self.selected:
@@ -216,9 +218,9 @@ def fold_selections(
 def term_stability(selections: list[list[str]]) -> pl.DataFrame:
     """How often each term was selected across folds.
 
-    A term chosen in 19 of 20 folds is a finding. A term chosen in 3 is an artefact of which
-    datasets happened to be in the training split, and reporting the final all-data equation
-    without this column would present the two identically.
+    A term chosen in nearly every fold has stronger support than one chosen only a few times.
+    Reporting the final all-data equation without this column would present the two
+    identically.
     """
     counts: dict[str, int] = {}
     for names in selections:

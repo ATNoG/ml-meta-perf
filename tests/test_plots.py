@@ -155,7 +155,7 @@ class TestPlots(PlotTestCase):
                 "equation": [
                     "E1, dataset only (7 terms)",
                     "E1 reference: true dataset means",
-                    "E3, dataset + model (15 terms)",
+                    "E3-Valid, dataset + model (15 terms)",
                 ],
                 "r2": [0.337, 0.354, 0.556],
             }

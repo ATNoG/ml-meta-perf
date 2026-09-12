@@ -77,34 +77,29 @@ arity is now fitted with the same ridge penalty, stability cap, candidate pool, 
 and search horizon. Keeping those settings fixed is essential: otherwise a difference
 between two arities would also be a difference between two tuning runs.
 
-Arity 2 offers atoms, ratios and products. Arity 3 adds `sum_ratio`; the search then derives
-an equation length independently for each grammar and compares their worst result across
-the four validation protocols. The current comparison follows immediately below.
+Arity 2 offers atoms, ratios and products. Arity 3 adds `sum_ratio`. Both grammars contribute
+their complete term-count curves to the E3-Valid and E3-MAX selectors.
 
 ### The arity is searched, not set
 
-The table above answers "which single arity should the study fix?", and since 2026-09-09 the
-study does not fix one. `experiment.search_grammars` fits E3 once per arity in
-`experiment.ARITIES` — `(2, 3)` by default, and `--arity` is repeatable — and
-`selection.best_configuration` decides between the results. Both are reported:
+The table above answers "which single arity should the study fix?", but the study searches
+both retained grammars. `experiment.search_grammars` fits E3 once per arity in
+`experiment.ARITIES` — `(2, 3)` by default, and `--arity` is repeatable. Both selected roles
+are reported:
 
 | | grammar | terms | complexity `a·k` | floor over four protocols | protocol spread |
 |---|---|---|---|---|---|
-| arity-2 candidate | arity 2 | 17 | 34 | 0.6109 | 0.0629 |
-| **E3-Valid + E3-MAX** | **arity 3** | **25** | **75** | **0.6554** | **0.0640** |
+| **E3-Valid** | **arity 2** | **18** | **36** | **0.6103** | **0.0684** |
+| E3-MAX | arity 3 | 25 | 75 | 0.6554 | 0.0640 |
 
 The **floor** is the minimum over all four protocols — in-sample, leave-one-dataset-out,
 leave-one-model-out, and the doubly-held-out cell — so a grammar is judged by its worst
 showing rather than its best. See [chapter 5](05-evaluation.md#four-protocols) for the four.
 
-**Arity 3 wins the corrected-corpus comparison.** Against arity 2 it reduces the mean error
-under the strictest protocol by 0.0137, with a paired bootstrap spread of 0.0044 — a
-gain-to-spread ratio of 3.09 where the rule's bar is 1. The larger grammar therefore earns its
-extra complexity, and E3-Valid and E3-MAX become the same equation.
-
-The selected equation uses the third arity extensively: `sum_ratio` supplies 14 of its 25
-terms and 61% of the absolute standardised weight mass. The search did not merely tolerate
-three-feature expressions; it built most of the equation's weight from them.
+E3-Valid uses the arity-2 point immediately before the first sustained plateau in Combined R².
+E3-MAX uses arity 3 because that grammar reaches the highest four-protocol floor. Keeping the
+roles separate preserves a readable recommended equation while showing the additional
+accuracy available to the wider grammar.
 
 **Arity 4 remains available through the flag and outside the default search on readability
 grounds.** A `(f1+f2)/(f3+f4)` term names four features and two operations, beyond the intended
@@ -204,8 +199,8 @@ preferable to an indicator that switches on it.
 |---|---|---|
 | E1 (dataset features only) | 5.0 | 134 |
 | E2 (model features only) | 5.0 | 48 |
-| E3 candidate, arity 2 | 5.0 | 229 |
-| **E3 retained, arity 3** | **5.0** | **901** |
+| **E3-Valid grammar, arity 2** | **5.0** | **229** |
+| E3-MAX grammar, arity 3 | 5.0 | 901 |
 | arity-4 grammar (available, not default) | 5.0 | 4840 |
 
 The `max_abs_zscore` cap rejects a term when a single row sits more than that many
@@ -220,42 +215,43 @@ compression applied to every composite operand. The obvious extensions — highe
 polynomials and `exp` — were measured rather than argued about. **None is technically
 difficult; each is a one-line addition. The constraint is statistical.**
 
-How many of the 18 features survive each transform's admissibility rules, and the best
+How many of the current 18 corpus features survive each transform's admissibility rules, and the best
 absolute correlation with MCC among those that do:
 
-| transform | admissible | overflow | single-row spike | best \|r\| |
+| transform | admissible | undefined / overflow | single-row spike | best \|r\| |
 |---|---|---|---|---|
-| `f` | 17/17 | 0 | 0 | **0.376** |
-| `log(f)` | 11/17 | 0 | 0 | 0.356 |
-| `sqrt(f)` | 11/17 | 0 | 0 | 0.356 |
-| `1/f` | 11/17 | 0 | 0 | 0.341 |
-| `f^2` | 16/17 | 0 | 1 | 0.360 |
-| `f^3` | 16/17 | 0 | 1 | 0.333 |
-| `f^4` | 16/17 | 0 | 1 | 0.317 |
-| `exp(f)` | **8/17** | **5** | 4 | 0.303 |
-| `exp(-f)` | 16/17 | 0 | 1 | 0.317 |
-| `exp(f / max f)` | 17/17 | 0 | 0 | 0.372 |
+| `f` | 17/18 | 0 | 1 | **0.376** |
+| `log(f)` | 14/18 | 4 | 0 | 0.356 |
+| `sqrt(f)` | 14/18 | 4 | 0 | 0.371 |
+| `1/f` | 12/18 | 4 | 2 | 0.294 |
+| `f^2` | 17/18 | 0 | 1 | 0.373 |
+| `f^3` | 17/18 | 0 | 1 | 0.363 |
+| `f^4` | 17/18 | 0 | 1 | 0.352 |
+| `exp(f)` | **12/18** | **6** | 0 | 0.300 |
+| `exp(-f)` | 14/18 | 0 | 4 | 0.251 |
+| `exp(f / max f)` | 17/18 | 0 | 1 | 0.376 |
 
-`log` and `1/f` reach only 14 of 18 features because `nr_bin`, `nr_cor_attr`, `nr_norm` and
-`nr_outliers` contain zeros — that is a property of the data, not a restriction of the
-grammar. **All four columns that block them are dataset features**: every model feature is
-strictly positive, which is a requirement the model side is now held to by
+`log` and `sqrt` reach 14 of 18 features because `nr_bin`, `nr_cor_attr`, `nr_norm` and
+`nr_outliers` contain zeros. The reciprocal loses two more features to the z-score cap.
+These are properties of the data rather than arbitrary exclusions from the grammar.
+**All four columns that block the positive-only transforms are dataset features**: every
+model feature is strictly positive, which is a requirement pinned by
 `tests/test_model_features.py` rather than a coincidence.
 
 ### Polynomials
 
-Admissible beyond squared, but **monotonically less useful**: best correlation falls 0.360
-(`f^2`) → 0.333 (`f^3`) → 0.317 (`f^4`). Adding `f^3` to the vocabulary was measured
+Admissible beyond squared, but **monotonically less useful**: best correlation falls 0.373
+(`f^2`) → 0.363 (`f^3`) → 0.352 (`f^4`). Adding `f^3` to the vocabulary was measured
 end-to-end and dropped leave-one-dataset-out R² from 0.443 to 0.420. Squared is kept;
 higher powers are not.
 
 ### `exp`
 
-Raw `exp(f)` **overflows on five features** — `gravity` reaches 1.0e16 and `nr_inst` 7.1e6,
-so $e^f$ is not representable — and four more produce single-row spikes, leaving 8 of 17.
-Where it does survive it scores *worse* than the untransformed feature (0.303 against
-0.376). Scaling the argument (`exp(f / max f)`) makes all 17 admissible but is then close
-to the identity over its range and still scores below it (0.372 against 0.376), so it adds
+Raw `exp(f)` **overflows on six features** — including `gravity`, `nr_inst`, and
+`Processing Units Number` — leaving 12 of 18. Where it survives, its best correlation is
+lower than that of an untransformed feature (0.300 against 0.376). Scaling the argument
+(`exp(f / max f)`) avoids overflow but leaves the raw `Processing Units Number` column above
+the z-score cap; its best correlation then merely matches the identity (0.376), so it adds
 nothing the grammar does not already have.
 
 The decisive argument is directional. Every feature with a meaningful gap between its
@@ -395,5 +391,6 @@ equation, the standardised weights ($\beta$) are how terms rank against each oth
 ### The additive form
 
 The equation is additive in its terms. [Chapter 4](04-equation.md) quantifies what that
-costs: a rank-1 interaction component is worth +0.122 R² and the equation captures
-essentially none of it. This is a limitation of the model family, not of the fitting.
+costs: a rank-1 interaction component is worth +0.122 R², while E3-Valid aligns with about
+one third of that leading interaction pattern. The remaining gap is a limitation of the
+current model family rather than of the linear weight solve.

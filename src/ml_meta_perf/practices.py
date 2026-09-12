@@ -14,8 +14,10 @@ feature, and the direction is the rank correlation between the feature and the t
 drives. That answers "what does this equation actually do as this feature rises", which
 is the question a practitioner is asking.
 
-Study chapter: [6. Best practices against the equation](../../assets/docs/06-practices.md) -- the rationale, in
+Study chapter: [6. Best practices against the equation][study-chapter] -- the rationale, in
 prose, with the figures.
+
+[study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/06-practices.md
 """
 
 from __future__ import annotations

@@ -17,12 +17,16 @@ abstract: >-
   expression over one to three raw features and each weight is stated in the
   features' own units. Terms are drawn from a filtered candidate library,
   screened by paired Pearson and Spearman correlation, and selected by beam
-  search with ridge refitting. Three equations are contrasted, differing only in
-  the features they may use: dataset features alone, which can only predict a
-  per-dataset constant; model features alone; and both, which isolates how much
-  of MCC is attributable to model capability. Validation is leave-one-dataset-out and leave-one-model-out;
-  the leakage induced by random k-fold splitting on grouped meta-data is
-  quantified rather than assumed away.
+  search with ridge refitting. Four equations are reported across three
+  descriptor scopes: E1 uses dataset descriptors alone; E2 uses model
+  descriptors alone; and E3-Valid and E3-MAX use both. E3-Valid selects a
+  compact equation before the first sustained plateau in validation performance,
+  whereas E3-MAX maximises the minimum R² over the four evaluated protocols.
+  Validation includes
+  leave-one-dataset-out, leave-one-model-out, and the stricter protocol that
+  removes every row sharing the held-out pair's dataset or model. The leakage
+  induced by random k-fold splitting on grouped meta-data is quantified rather
+  than assumed away.
 keywords:
   - meta-learning
   - algorithm-selection

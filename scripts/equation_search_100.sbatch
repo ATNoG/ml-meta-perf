@@ -2,12 +2,12 @@
 # Recalibrate the E3 configuration against the current packaged meta-dataset. Submit from the
 # repository root with:
 #
-#   sbatch scripts/equation_search.sbatch
+#   sbatch scripts/equation_search_100.sbatch
 #
 # The Python command is resumable. Submitting the same script again after a timeout skips every
-# complete shard under results/configuration_search.
+# complete shard under results/configuration_search_max100.
 
-#SBATCH --job-name=e3-config-search
+#SBATCH --job-name=e3-config-search-100
 #SBATCH --partition=cpuPartition
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -50,8 +50,9 @@ venv/bin/python -c "from importlib.metadata import version; print(*(f'{name} {ve
 
 exec venv/bin/python -m ml_meta_perf.configuration_search all \
     --data src/ml_meta_perf/meta_dataset.csv \
-    --output results/configuration_search \
+    --output results/configuration_search_max100 \
     --jobs "$SLURM_CPUS_PER_TASK" \
     --min-terms 1 \
+    --max-terms 100 \
     --plateau-tolerance 0.001 \
     --plateau-window 3

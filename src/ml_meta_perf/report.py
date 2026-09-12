@@ -24,8 +24,10 @@ Feature-level guidance is not re-derived here. It comes from `ml_meta_perf.pract
 measures direction empirically rather than reading signs off weights, because a feature
 appearing in two terms or inside a denominator has no single sign to read.
 
-Study chapter: [6. Best practices against the equation](../../assets/docs/06-practices.md) -- the rationale, in
+Study chapter: [6. Best practices against the equation][study-chapter] -- the rationale, in
 prose, with the figures.
+
+[study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/06-practices.md
 """
 
 from __future__ import annotations
@@ -583,9 +585,9 @@ def _headline(report: Report) -> pl.DataFrame:
     """
     ceilings = dict(zip(report.comparison["equation"].to_list(), report.comparison["r2"].to_list(), strict=True))
     rows: list[dict[str, object]] = []
-    listed = [("E1", report.e1), ("E2", report.e2), ("E3", report.e3)]
+    listed = [("E1", report.e1), ("E2", report.e2), ("E3-Valid", report.e3)]
     if report.e3_capability is not report.e3:
-        listed.append(("E3 capability", report.e3_capability))
+        listed.append(("E3-MAX", report.e3_capability))
     for name, equation in listed:
         ceiling = ceilings.get(CEILING_ROWS.get(name, ""))
         in_sample = float(equation.in_sample["r2"])
@@ -819,30 +821,32 @@ def _opaque_note(report: Report) -> str:
     best_fit = max(rows, key=lambda row: float(row["r2_in_sample"]))
     best_cell = max(rows, key=lambda row: float(row["r2_loo_cell"]))
     return (
-        f"**Read the {best_fit['model']} row across.** It fits this meta-data at R2 "
+        f"**Read the {best_fit['model']} row across.** It fits this meta-data at R² "
         f"{float(best_fit['r2_in_sample']):.4f}; holding out a whole model leaves it at "
         f"{float(best_fit['r2_loo_model']):.4f}; holding out a whole dataset drops it to "
         f"{float(best_fit['r2_loo_dataset']):.4f}; and with **both** held out it reaches "
         f"{float(best_fit['r2_loo_cell']):.4f}. The published equation is at "
         f"{float(report.e3.in_sample['r2']):.4f} and "
-        f"{float(report.e3.cross_validated['loo_dataset']['r2']):.4f} on the first and third of "
-        "those.\n"
+        f"{float(report.e3.cross_validated['loo_dataset']['r2']):.4f} in the corresponding "
+        "in-sample and leave-one-dataset-out settings.\n"
         "\nThe ordering of those four columns is the whole finding. A flexible model on twenty "
         "dataset groups, with dataset features constant inside a group, does not learn a "
         "relationship -- it learns which dataset a row came from and looks the answer up. Every "
         "column that removes an identity removes some of that, and the column that removes "
         "both leaves almost nothing.\n"
         f"\n**Under full leakage prevention the best opaque estimator reaches "
-        f"{float(best_cell['r2_loo_cell']):.4f}** ({best_cell['model']}), which is at or below "
-        "what predicting the corpus mean would score. This is the like-for-like comparison in "
+        f"{float(best_cell['r2_loo_cell']):.4f}** ({best_cell['model']}), approximately the "
+        "corpus-mean R² reference of zero. This is the like-for-like comparison in "
         "the study: leave-one-dataset-out still hands a forest the held-out learner on nineteen "
         "other problems, and leave-one-model-out still hands it the held-out dataset. Only here "
         "is it denied what the equation is denied -- and it is also the protocol on which the "
         "trivial per-model baselines cannot be computed at all, since a model held out of every "
         "fold has no rows to average. A feature-based predictor still predicts.\n"
-        "\nThis is the likely provenance of the R2 near 0.9 figures reported for opaque "
-        "meta-models: an in-sample or randomly-split forest reproduces them exactly. **None of "
-        "these is tuned**, and tuning them would answer a different objection -- the failure is "
+        "\nThis is the likely provenance of the R² near 0.9 figures reported for opaque "
+        "meta-models: an in-sample or randomly-split forest reproduces them exactly. The ridge "
+        "penalty is selected internally by RidgeCV; the tree ensembles use fixed, documented "
+        "settings rather than a hyperparameter search. Further tuning would answer a different "
+        "objection -- the failure is "
         "that the sample has twenty dataset groups, which no amount of tuning changes. What the "
         "table licenses is that the accuracy this study traded away was not there to be had "
         "under a protocol where the dataset is genuinely unseen.\n"
@@ -850,45 +854,23 @@ def _opaque_note(report: Report) -> str:
 
 
 def _length_note(report: Report) -> str:
-    """How the length was chosen, and what the alternatives would have chosen.
-
-    Every rule the study computed is on the page. A selection rule is only defensible if what
-    it beats is visible beside it, and the geometric rules here disagree with the one adopted
-    by a wide margin.
-    """
+    """Explain the retained E3-Valid plateau selection and its paired sensitivity table."""
     if report.length_choice.height == 0:
         return ""
     rows = report.length_choice.to_dicts()
     selected = next((row for row in rows if row["verdict"] == "selected"), None)
     if selected is None:
         return ""
-    ties = [row for row in rows if row["verdict"] in ("tie", "selected")]
-    shortest = min(ties, key=lambda row: int(row["n_terms"])) if ties else selected
-    worse = [row for row in rows if row["verdict"] == "worse"]
-
     lines = [
-        f"The length is chosen by one rule with no threshold and no smoothing: **the argmax of "
-        f"the worst protocol at each length** (`selection.floor_argmax`), which here selects "
-        f"**{int(selected['n_terms'])} terms**. Nothing about that number is written down — it "
-        "falls out of the curve, and it re-derives itself if the corpus changes. The "
-        "three-protocol median reading of the same curve (`selection.best_length`) is reported "
-        "beside it in the table below and agrees here.\n",
+        f"E3-Valid selects **{int(selected['n_terms'])} terms** immediately before the first "
+        "sustained plateau in Combined R², the median of in-sample, leave-one-dataset-out, "
+        "and leave-one-model-out R². The retained rule uses a forward window of three "
+        "evaluated lengths and a maximum best-so-far gain of 0.001. It compares both searched "
+        "arities before selecting the equation.\n",
         _crater_note(report),
-        "Every alternative rule is reported beside it, because a selection rule is only "
-        "defensible if what it beats is on the page:\n",
-        _table(report.term_choice) + "\n",
-        f"The geometric rules — the Pareto-front knee by its three standard forms — choose far "
-        f"shorter equations, and **{len(worse)} of the {len(rows)} lengths searched are "
-        "significantly worse** than the selected one when paired fold by fold over the "
-        "held-out datasets. A knee finds where the *marginal* return per term collapses, which "
-        "on a saturating curve is early; it does not ask whether the accuracy still being "
-        "added is real.\n",
-        f"The parsimony alternative is **{int(shortest['n_terms'])} terms** — the shortest "
-        "length whose paired interval against the selected one spans zero. It is reported and "
-        "not adopted: the accuracy it gives up is measurable "
-        f"({float(shortest['r2_loo_dataset']):.4f} against "
-        f"{float(selected['r2_loo_dataset']):.4f} leave-one-dataset-out) even where it is not "
-        "significant.\n",
+        "The following paired analysis compares every length on the selected arity against "
+        "E3-Valid; it is a sensitivity analysis rather than an additional selector:\n",
+        _table(report.length_choice) + "\n",
     ]
     return "\n".join(lines)
 
@@ -907,8 +889,8 @@ def _capability_note(report: Report) -> str:
     published = float(report.e3.in_sample["r2"])
     reached = float(capability.in_sample["r2"])
     lines = [
-        f"The published equation is the **parsimonious** grammar (arity 2). The same features "
-        f"under the **full** grammar (arity 3), with the length chosen by the same rule, reach "
+        f"The published equation uses the **parsimonious** grammar (arity 2). The same features "
+        f"under the **full** grammar (arity 3), selected by the E3-MAX floor rule, reach "
         f"{len(capability.equation.terms)} terms at R² {reached:.4f} in-sample:\n",
         "| | terms | in-sample | LOO-dataset | LOO-model |",
         "|---|---|---|---|---|",
@@ -958,7 +940,7 @@ def _reach_note(report: Report) -> str:
         f"| every raw term admitted by the grammar | {n_raw} | {raw:.4f} |",
         f"| the best single-feature term per feature | {len(ALL_FEATURES)} | {best:.4f} |",
         f"| every single-feature term at once | {n_single} | {single:.4f} |",
-        f"| **the fitted equation (E3)** | **{n_terms}** | **{fitted:.4f}** |",
+        f"| **the fitted equation (E3-Valid)** | **{n_terms}** | **{fitted:.4f}** |",
         "",
     ]
     if strongest is not None:
@@ -969,12 +951,12 @@ def _reach_note(report: Report) -> str:
             f"feature is worth {best - raw:+.3f} over the admissible raw-term fit.\n"
         )
     verdict = (
-        f"E3 reaches {fitted:.4f} with {n_terms} terms, **above** the {single:.4f} that all "
+        f"E3-Valid reaches {fitted:.4f} with {n_terms} terms, **above** the {single:.4f} that all "
         f"{n_single} single-feature terms reach together. An equation cannot pass that level "
         "by describing features one at a time, so the excess is what the cross-feature terms "
         "buy — the same conclusion the additive oracle reaches, by an independent route."
         if fitted > single
-        else f"E3 reaches {fitted:.4f} with {n_terms} terms against the {single:.4f} available "
+        else f"E3-Valid reaches {fitted:.4f} with {n_terms} terms against the {single:.4f} available "
         f"from all {n_single} single-feature terms, so on this configuration its accuracy is "
         "still within what per-feature description alone could explain."
     )
@@ -1033,9 +1015,10 @@ def _protocol_note(report: Report) -> str:
     if baselines:
         best = max(baselines, key=lambda n: float(rank_rows[n]["ap"]))
         lines.append(
-            "The trivial predictors are in the tables below at leave-one-dataset-out, which is "
-            "the only protocol under which they exist. **Under the strictest one they cannot be "
-            "computed at all**: a model held out of every fold has no rows to average, so "
+            "The per-model mean and median predictors are reported below under "
+            "leave-one-dataset-out, the only held-out protocol in which the test model still "
+            "has training rows. **Under the strictest protocol they cannot be computed at "
+            "all**: a model held out of every fold has no rows to average, so "
             f'"how well does this model usually do" has no value. The best of them reaches AP '
             f"{float(rank_rows[best]['ap']):.3f} and F1 {float(dec_rows[best]['f1']):.3f} while "
             "being shown the model identity the strictest row of the equation is denied.\n"
@@ -1176,7 +1159,8 @@ def render(
         parts.append("And how MCC is distributed over those rows:\n")
         parts.append(_table(target_summary(frame)) + "\n")
         parts.append(
-            "**A third of the corpus is pinned at one end of the range or the other.** That is "
+            "**One fifth of the corpus is exactly 0 or 1, and only one additional row is below "
+            "zero.** That is "
             "what makes MAE rather than SMAPE the reported error: SMAPE divides by "
             "`|truth| + |prediction|`, so every row at exactly zero contributes the full 200% "
             "unless the prediction is exactly zero too, and the metric ends up dominated by "
@@ -1184,8 +1168,9 @@ def render(
         )
         parts.append(
             "Two things these tables cannot say, both of which bound every number in the study. "
-            "Each row is the **best of three seeds**, not their mean, so the target is "
-            "optimistic and has a noise floor no predictor can go below; and every model was "
+            "Each row is the **best of five seeds**, not their mean, so the target is "
+            "optimistic and subject to seed variation that is not modelled separately; and "
+            "every model was "
             "trained on a stratified sample **capped at 100,000 rows**, so `nr_inst` is the "
             "source dataset's size rather than the training set's. Both are properties of the "
             "corpus builder upstream, and are audited against it in the prose above.\n"
@@ -1197,8 +1182,8 @@ def render(
     parts.append(
         "The one table the study is summarised by, so that the summary cannot drift from "
         f"the chapters. Every row is scored on the same {int(report.e3.in_sample['n'])} rows "
-        "under the same protocols; the equations differ **only** in which features they may "
-        "draw on.\n"
+        "under the same protocols. E1, E2, and E3-Valid share the retained base configuration; "
+        "E3-MAX uses the wider retained grammar as a capability bound.\n"
     )
     parts.append(_table(_headline(report)) + "\n")
     parts.append(
@@ -1210,18 +1195,19 @@ def render(
         "each equation's own ceiling, which the last column gives.\n"
     )
     parts.append(
-        "**E3's ceiling cells are blank because it has no structural one.** Nothing in the "
+        "**E3-Valid and E3-MAX have blank ceiling cells because neither has a structural "
+        "group-identity ceiling.** Nothing in the "
         "feature set stops an equation over both halves of the meta-data from predicting "
-        "every cell, so there is no group-identity bound to divide by. The reference it is "
-        "shown instead is the additive oracle, in the comparison table of chapter 5. That "
-        "oracle bounds only an equation additive in dataset effect plus model effect; E3's "
+        "every cell, so there is no group-identity bound to divide by. The reference shown "
+        "instead is the additive oracle, in the comparison table of chapter 5. That "
+        "oracle bounds only an equation additive in dataset effect plus model effect; E3-Valid's "
         "mixed terms can represent interactions beyond it. The comparison table reports "
         "whether the current equation reaches or exceeds that reference.\n"
     )
 
     parts.append("## 2. The equation\n")
     parts.append(
-        f"E3 uses **{equation.n_terms} terms** over dataset and model meta-features, "
+        f"E3-Valid uses **{equation.n_terms} terms** over dataset and model meta-features, "
         "simplified and refitted after pruning, so it evaluates exactly as printed.\n"
     )
     parts.append("```\n" + str(equation) + "\n```\n")
@@ -1534,8 +1520,8 @@ def render(
 
     parts.append("## 6b. What an opaque model reaches, and does not\n")
     parts.append(
-        "The other side of the trade, priced. Three standard regressors on the same "
-        "eighteen raw columns, under the same protocols, with the same clip to the training "
+        "The other side of the trade, priced. Three standard regressors on all eighteen "
+        "raw corpus columns, under the same protocols, with the same clip to the training "
         "fold's range that every reported number uses.\n"
     )
     parts.append(_table(report.opaque) + "\n")
@@ -1544,9 +1530,10 @@ def render(
     parts.append("## 7. Why a random split is not a protocol\n")
     parts.append(
         "The same equation under three splits. A random k-fold puts rows of one dataset on "
-        "both sides of the fold, and since the dataset features are constant within a dataset "
-        "the equation can memorise dataset identity rather than predict from features. The "
-        "gap between the first row and the other two is what that memorisation is worth:\n"
+        "both sides of the fold, so it does not test transfer to an unseen dataset. The "
+        "difference between that row and the grouped splits measures how much this potential "
+        "leakage changes the score; here random k-fold and leave-one-dataset-out are essentially "
+        "identical:\n"
     )
     parts.append(_table(report.leakage) + "\n")
 
@@ -1588,7 +1575,7 @@ def render(
             f"**{float(capability_scores['loo_dataset']['r2']):.4f}** leave-one-dataset-out "
             f"against {float(report.e3.cross_validated['loo_dataset']['r2']):.4f}.\n"
         )
-        parts.append(f"**E3 capability** ({report.e3_capability.equation.n_terms} terms):\n")
+        parts.append(f"**E3-MAX** ({report.e3_capability.equation.n_terms} terms):\n")
         parts.append("```\n" + str(report.e3_capability.equation) + "\n```\n")
         parts.append("LaTeX:\n")
         parts.append("```latex\n" + report.e3_capability.equation.to_latex() + "\n```\n")
@@ -1606,8 +1593,7 @@ CHAPTER_SECTIONS: dict[str, tuple[str, ...]] = {
     "01-dataset.md": ("1b. The corpus",),
     # Ownership, one topic to one chapter. The length rule lives with the selection procedure
     # that applies it, the ceilings with the equation they bound, the protocols with the
-    # evaluation. `term_choice` and the length note were rendered into two chapters at once
-    # until 2026-09-07, which is most of what made chapters 4 and 5 read as repetitive.
+    # evaluation. Each generated section has one chapter owner.
     "03-term-selection.md": ("3b. Why a subset rather than every term", "8. Equation length"),
     "04-equation.md": (
         "2. The equation",
@@ -1723,37 +1709,6 @@ def write_into_chapters(
             )
             written.append(page)
     return written
-
-
-def write(
-    report: Report,
-    columns: dict[str, np.ndarray],
-    truth: np.ndarray,
-    dataset_features: tuple[str, ...],
-    model_features: tuple[str, ...],
-    path: str | Path,
-    *,
-    frame: pl.DataFrame | None = None,
-    config: Configuration | None = None,
-    source: str | None = None,
-) -> Path:
-    """Render the report and write it to ``path``."""
-    destination = Path(path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(
-        render(
-            report,
-            columns,
-            truth,
-            dataset_features,
-            model_features,
-            frame=frame,
-            config=config,
-            source=source,
-        ),
-        encoding="utf-8",
-    )
-    return destination
 
 
 def glossary() -> pl.DataFrame:

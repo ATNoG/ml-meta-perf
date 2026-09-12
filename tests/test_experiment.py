@@ -78,10 +78,7 @@ class TestEquationReports(unittest.TestCase):
         self.assertIn("r2_loo_cell", self.e3.curve.columns)
 
     def test_cross_validated_scores_are_reported_for_every_protocol(self) -> None:
-        """Three, not two, since C1 (2026-09-09). The doubly-held-out protocol is computed at
-        every length anyway -- `selection.floor_curve` needs it to choose the length -- and the
-        standing rule here is that a comparison missing its strictest column is not
-        conservative, it flatters whichever side had more left over."""
+        """Both single-group protocols and the doubly-held-out protocol are reported."""
         self.assertEqual(set(self.e3.cross_validated), {"loo_dataset", "loo_model", "loo_cell"})
 
     def test_cross_validated_scores_are_finite_and_bounded(self) -> None:
@@ -199,7 +196,7 @@ class TestWhatTheCorpusSays(unittest.TestCase):
         # The central claim of the study: model features carry information that dataset
         # features cannot express, because E1 can only predict a per-dataset constant.
         table = comparison(self.frame, self.e1, self.e3)
-        self.assertGreater(scored(table, "E3, dataset + model"), scored(table, "E1, dataset only"))
+        self.assertGreater(scored(table, "E3-Valid, dataset + model"), scored(table, "E1, dataset only"))
 
     def test_the_median_baseline_is_the_harder_one_on_absolute_error(self) -> None:
         """Why both centres are reported rather than just the mean.

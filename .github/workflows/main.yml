@@ -1,8 +1,5 @@
 name: Python CI
 
-# The same gate as ess, knee, pyBlindOpt and torann, so a change that passes
-# locally in one repository passes in all of them.
-
 on:
   push:
     branches: [main]
@@ -35,12 +32,16 @@ jobs:
           # release that enables new rules by default fails a PR that changed
           # none of the code it flags -- which is what happened at ruff 0.16.
           pip install ruff==0.16.1 basedpyright==1.39.8 vulture==2.16
-          # No extras: there are none. joblib is a base dependency because `opaque` runs on
-          # it, so a plain install type-checks and runs the whole study.
-          pip install .
+          # Exercise the exact reference environment on its recorded Python version and
+          # the declared compatible ranges on the newest supported Python version.
+          if [ "${{ matrix.python-version }}" = "3.12" ]; then
+            pip install -r requirements-reproducibility.txt
+          else
+            pip install .
+          fi
 
       - name: Lint with Ruff
-        run: ruff check src tests
+        run: ruff check src tests scripts
 
       - name: Type-check with basedpyright
         # --pythonpath, because pyproject.toml deliberately pins no venv: without it

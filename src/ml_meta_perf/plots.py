@@ -21,6 +21,8 @@ style as well as colour, so the figures survive being printed in greyscale.
 
 from __future__ import annotations
 
+import tempfile
+import time
 from pathlib import Path
 
 import matplotlib
@@ -48,6 +50,39 @@ FIGURE_DPI = 150
 VECTOR_SUFFIX = ".pdf"
 
 
+def _save_atomic(figure: Figure, path: Path, *, vector: bool) -> None:
+    """Render beside ``path`` and replace it, tolerating brief Windows reader locks."""
+    with tempfile.NamedTemporaryFile(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False) as handle:
+        temporary = Path(handle.name)
+    try:
+        if vector:
+            figure.savefig(
+                temporary,
+                format="pdf",
+                bbox_inches="tight",
+                transparent=True,
+                metadata={"CreationDate": None},
+            )
+        else:
+            figure.savefig(
+                temporary,
+                format="png",
+                dpi=FIGURE_DPI,
+                bbox_inches="tight",
+                transparent=True,
+            )
+        for attempt in range(10):
+            try:
+                temporary.replace(path)
+                return
+            except OSError:
+                if attempt == 9:
+                    raise
+                time.sleep(0.1)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def _finish(figure: Figure, destination: str | Path, *, tight_layout: bool = True) -> Path:
     """Write the figure as PNG and PDF, both on a transparent background.
 
@@ -64,18 +99,13 @@ def _finish(figure: Figure, destination: str | Path, *, tight_layout: bool = Tru
     path.parent.mkdir(parents=True, exist_ok=True)
     if tight_layout:
         figure.tight_layout()
-    figure.savefig(path, dpi=FIGURE_DPI, bbox_inches="tight", transparent=True)
+    _save_atomic(figure, path, vector=False)
     # `CreationDate: None` because matplotlib otherwise stamps the PDF with the wall clock,
     # so every run rewrote seven tracked figures with byte-different, visually identical
     # files. That makes `git status` dirty after any run and makes "did this change the
     # output?" -- the check this project verifies optimisations with -- unanswerable for the
     # vector figures. The PNGs were already deterministic.
-    figure.savefig(
-        path.with_suffix(VECTOR_SUFFIX),
-        bbox_inches="tight",
-        transparent=True,
-        metadata={"CreationDate": None},
-    )
+    _save_atomic(figure, path.with_suffix(VECTOR_SUFFIX), vector=True)
     plt.close(figure)
     return path
 
@@ -354,7 +384,8 @@ def equation_comparison(comparison: pl.DataFrame, destination: str | Path) -> Pa
     are the most a predictor constant within that group can achieve. The additive oracle is
     a ceiling only for an equation additive in dataset *and* model effects, and E3 is not
     one: its mixed terms carry interactions that the oracle cannot represent. The current
-    E3 remains below that reference, but a mixed equation is not structurally bounded by it.
+    E3 passes that reference, which is permitted because a mixed equation is not structurally
+    bounded by it.
     """
     table = comparison.filter(~pl.col("equation").str.contains("capability"))
     labels = table["equation"].to_list()

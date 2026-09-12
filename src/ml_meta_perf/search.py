@@ -43,8 +43,10 @@ beam, off a Gram matrix and a cache the beam's constructor builds. Splitting it 
 two halves of one constructor in two files to make a naming point, which is worse than the
 naming point is worth.
 
-Study chapter: [3. Term generation and selection](../../assets/docs/03-term-selection.md) -- the rationale, in
+Study chapter: [3. Term generation and selection][study-chapter] -- the rationale, in
 prose, with the figures.
+
+[study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/03-term-selection.md
 """
 
 from __future__ import annotations
@@ -406,8 +408,8 @@ class SearchResult:
     """Everything one search produces: the equation per size, and the pool it drew from.
 
     One search yields the whole curve rather than one equation, because the beam records its
-    best subset at every size as it grows. That is what `selection.floor_argmax` reads to pick
-    the published length, and it is why the length is not a parameter here.
+    best subset at every size as it grows. The selection rules read that complete curve, which
+    is why the selected length is not a parameter here.
     """
 
     equations: dict[int, Equation]

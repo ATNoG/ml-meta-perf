@@ -7,9 +7,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import polars as pl
+
 from corpus import sample_path
 from ml_meta_perf.configuration_search import (
+    DEFAULT_MIN_TERMS,
     SearchSettings,
+    _select_plateau_valid,
     feature_subsets,
     grid_table,
     historical_objective,
@@ -55,6 +59,28 @@ class ConfigurationSearchTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "different search"):
                 initialise(output, sample_path(), SearchSettings(penalties=(10.0,)))
 
+    def test_default_search_starts_at_one_term(self) -> None:
+        self.assertEqual(DEFAULT_MIN_TERMS, 1)
+        self.assertEqual(SearchSettings().minimum_terms, 1)
+
+    def test_plateau_rule_selects_the_best_equation_before_stalling(self) -> None:
+        scores = (0.2, 0.4, 0.6, 0.6002, 0.6004, 0.7)
+        shared = pl.DataFrame(
+            {
+                "n_terms": range(1, 7),
+                "requested_terms": range(1, 7),
+                "max_arity": [2] * 6,
+                "complexity": range(2, 14, 2),
+                "combined_r2": scores,
+                "four_protocol_floor": scores,
+            }
+        )
+
+        selected, diagnostic = _select_plateau_valid(shared, tolerance=0.001, window=2)
+
+        self.assertEqual(selected["n_terms"], 3)
+        self.assertEqual(diagnostic["plateau_starts_at_terms"], 3)
+
     def test_small_search_runs_every_stage_and_writes_reloadable_equations(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
@@ -96,6 +122,40 @@ class ConfigurationSearchTests(unittest.TestCase):
             summary = json.loads((output / "run_summary.json").read_text(encoding="utf-8"))
             self.assertEqual(summary["stage"], "all")
             self.assertGreaterEqual(summary["elapsed_seconds"], 0.0)
+            selection_code = main(
+                [
+                    "select",
+                    "--data",
+                    str(sample_path()),
+                    "--output",
+                    str(output),
+                    "--penalty",
+                    "20",
+                    "--zscore",
+                    "3",
+                    "--arity",
+                    "2",
+                    "--feature-set",
+                    "Model Capability,Processing Units Number",
+                    "--min-terms",
+                    "2",
+                    "--max-terms",
+                    "3",
+                    "--pool",
+                    "40",
+                    "--beam",
+                    "2",
+                    "--shortlist-top",
+                    "1",
+                ]
+            )
+
+            self.assertEqual(selection_code, 0)
+            selected = json.loads((output / "selected_configurations.json").read_text(encoding="utf-8"))
+            self.assertEqual(
+                selected["e3_valid_diagnostics"]["implementation"],
+                "best-so-far gain over a forward window",
+            )
 
 
 if __name__ == "__main__":

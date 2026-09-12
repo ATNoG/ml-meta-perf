@@ -28,8 +28,10 @@ about the conclusion -- the failure is that 20 dataset groups let a flexible mod
 group identity, which more trees cannot fix -- but an untuned opponent should be described as
 one, so `n_estimators` and depth are stated in the table rather than buried.
 
-Study chapter: [5. Evaluation](../../assets/docs/05-evaluation.md) -- the rationale, in
+Study chapter: [5. Evaluation][study-chapter] -- the rationale, in
 prose, with the figures.
+
+[study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/05-evaluation.md
 """
 
 from __future__ import annotations
