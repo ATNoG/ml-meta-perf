@@ -428,17 +428,23 @@ def term_effects(effects: pl.DataFrame, destination: str | Path, *, top: int | N
     labels = [term_to_math(name) for name in table["term"].to_list()]
     values = table["effect"].to_numpy() * np.sign(table["beta"].to_numpy())
 
-    figure, axes = plt.subplots(figsize=(8.0, 0.46 * len(labels) + 1.2))
+    # Keep every selected term while making the publication figure compact enough to sit
+    # beside the surrounding discussion. At the retained 18 terms this renders at roughly
+    # 550 pixels high; the lower bound keeps small ad-hoc tables usable as well.
+    compact_height = max(2.0, (0.46 * len(labels) + 1.2) / 2.504)
+    figure, axes = plt.subplots(figsize=(8.0, compact_height))
     axes.barh(
         range(len(labels)),
         values,
+        height=0.4,
         color=[POSITIVE if value > 0 else NEGATIVE for value in values],
         alpha=0.85,
     )
     axes.set_yticks(range(len(labels)))
-    axes.set_yticklabels(labels, fontsize=11)
+    axes.set_yticklabels(labels, fontsize=7.5)
     axes.axvline(0.0, color="black", linewidth=0.8)
-    axes.set_xlabel("effect on predicted MCC (10th to 90th percentile swing)")
+    axes.set_xlabel("effect on predicted MCC (10th to 90th percentile swing)", fontsize=9)
+    axes.tick_params(axis="x", labelsize=8)
     axes.grid(axis="x", alpha=0.25, linestyle=":")
     return _finish(figure, destination)
 
@@ -595,13 +601,13 @@ def ranking_quality(selection: pl.DataFrame, destination: str | Path) -> Path:
     figure, (axes, cost) = plt.subplots(
         1,
         2,
-        figsize=(9.0, 0.34 * table.height + 1.8),
+        figsize=(9.0, 0.29 * table.height + 1.8),
         sharey=True,
         gridspec_kw={"width_ratios": [2.1, 1.0], "wspace": 0.10},
     )
 
-    axes.barh(positions - 0.19, table["ap"], height=0.36, color=IN_SAMPLE, label="average precision")
-    axes.barh(positions + 0.19, table["mrr"], height=0.36, color=LOO_MODEL, label="reciprocal rank")
+    axes.barh(positions - 0.16, table["ap"], height=0.28, color=IN_SAMPLE, label="average precision")
+    axes.barh(positions + 0.16, table["mrr"], height=0.28, color=LOO_MODEL, label="reciprocal rank")
     hits = [index for index, value in enumerate(table["hit_at_1"]) if value >= 1.0]
     if hits:
         axes.scatter(
@@ -625,7 +631,7 @@ def ranking_quality(selection: pl.DataFrame, destination: str | Path) -> Path:
     axes.legend(fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.06), ncol=3, framealpha=0.0)
 
     regret = table["regret"].to_numpy()
-    cost.barh(positions, regret, height=0.55, color=[CEILING if v <= 1e-9 else NEGATIVE for v in regret])
+    cost.barh(positions, regret, height=0.42, color=[CEILING if v <= 1e-9 else NEGATIVE for v in regret])
     cost.set_xlabel("MCC given up by taking\nthe top-ranked model")
     cost.grid(alpha=0.25, linewidth=0.6, axis="x")
     cost.tick_params(labelleft=False)
