@@ -1714,8 +1714,7 @@ def write_into_chapters(
 def glossary() -> pl.DataFrame:
     """The feature glossary as a table, for appending to a report or a paper.
 
-    Restricted to `ALL_FEATURES`, which is narrower than `FEATURE_GLOSSARY`: the glossary also
-    explains the four model columns retired on 2026-09-05, because the corpus still carries
-    them, and a reader of *this* report should see only what the equations may draw on.
+    Restricted to `ALL_FEATURES`, which is the generated corpus schema and exactly the set
+    of columns the equations may draw on.
     """
     return pl.DataFrame([{"feature": name, "meaning": FEATURE_GLOSSARY[name]} for name in ALL_FEATURES])

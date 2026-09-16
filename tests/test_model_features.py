@@ -1,18 +1,17 @@
 """The properties `MODEL_FEATURES` has to keep for the grammar and the identification claim.
 
 These are not style checks. Each one is a property some *other* part of the study relies on,
-and each was violated by the feature set retired on 2026-09-05:
+so the generated meta-dataset must keep satisfying them:
 
 * the term grammar applies ``log``, ``sqrt`` and ``1/f``, all undefined at zero, so a
   zero-based column can only ever enter as ``f`` and ``f^2`` -- the same narrowness that rules
   out binary indicators;
 * a rung with no rows is a level the corpus cannot speak about, and a gap in a ladder makes
   "one rung higher" mean different things at different points;
-* a model descriptor that varies *within* a model is partly a dataset feature, which is why
-  the retired columns helped transfer to a new dataset and hurt transfer to a new learner.
+* the ordinal model descriptors must be stable properties of the learner, not accidental
+  by-products of the dataset used in a row.
 
-The corpus carries exactly the twelve dataset features, the six model features and the target;
-the four retired columns were dropped from it, not merely unused.
+The corpus carries exactly the twelve dataset features, the six model features and the target.
 """
 
 from __future__ import annotations

@@ -386,10 +386,9 @@ def run_e2(frame: pl.DataFrame, config: Configuration = DEFAULT) -> EquationRepo
     reason -- six features offer only fifteen pairs -- which is why E2 is six terms.
 
     Aggregating this one to 25 per-model means -- the mirror of what E1 used to do -- was
-    measured and is worse. It was worse for a stronger reason before 2026-09-05, when
-    three model features varied within a model; those are retired, and only
-    `Processing Units Number` still does. Averaging it away still discards real variation,
-    and the optimum collapses to a single term.
+    measured and is worse. `Processing Units Number` is intentionally allowed to vary with
+    the dataset because it is a capacity calculation over that dataset's shape. Averaging
+    it away discards real variation, and the optimum collapses to a single term.
     """
     return run_equation(frame, (), MODEL_FEATURES, config, "E2")
 

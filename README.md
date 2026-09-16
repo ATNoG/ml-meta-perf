@@ -156,6 +156,38 @@ On Windows PowerShell, create the environment with `py -3.12 -m venv venv` and u
 For normal development, `venv/bin/python -m pip install -e .` installs the supported dependency
 ranges declared by the package.
 
+## Meta-Dataset Generation
+
+The package ships the generated corpus at
+[`src/ml_meta_perf/meta_dataset.csv`](src/ml_meta_perf/meta_dataset.csv). The scripts and
+configuration needed to rebuild that corpus live in
+[`meta_dataset_pipeline/`](meta_dataset_pipeline/).
+
+The meta-dataset pipeline has additional dependencies, including `pymfe` and the tabular
+model libraries used during the original model-evaluation stages. Install them explicitly:
+
+```bash
+venv/bin/python -m pip install -r requirements-meta-dataset.txt
+```
+
+On Windows PowerShell:
+
+```powershell
+venv\Scripts\python.exe -m pip install -r requirements-meta-dataset.txt
+```
+
+That folder is intentionally separate from the package code:
+
+- `meta_dataset_pipeline/` contains the raw-corpus stages and can regenerate a candidate
+  corpus at `meta_dataset_pipeline/results/meta_dataset.csv`;
+- `src/ml_meta_perf/data.py` loads and validates the published corpus schema;
+- `src/ml_meta_perf/meta_dataset.csv` is the versioned corpus consumed by the library and
+  command-line tool, and is updated only when the regenerated corpus is accepted.
+
+See [`meta_dataset_pipeline/README.md`](meta_dataset_pipeline/README.md) for the stage
+order, local token configuration, ignored raw dataset files, and instructions for comparing
+or publishing a regenerated corpus.
+
 ## Running it
 
 **One command runs every phase**: screening, searching the grammars, fitting E1, E2 and both
@@ -321,9 +353,11 @@ assets/docs/        the study chapters, hand-written with generated sections spl
 assets/figures/     generated figures
 results/            generated equations and tables
 scripts/            Slurm jobs and reproducible search-report utilities
+meta_dataset_pipeline/  raw-corpus pipeline used to regenerate meta_dataset.csv
 tests/              unittest suite
 .github/workflows/  CI on 3.12 and 3.14, and the published API reference
 requirements-reproducibility.txt  exact reference runtime
+requirements-meta-dataset.txt     dependencies for regenerating the shipped corpus
 ```
 
 ## Development

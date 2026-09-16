@@ -525,9 +525,7 @@ def _prefer_outlier_robust_learners(evidence: Evidence) -> Verdict:
     """Untestable on this corpus, and it will stay that way.
 
     The practice needs a column saying whether a *learner* resists outliers.
-    ``Robust to Outliers`` was that column and was dropped from the corpus on 2026-09-05:
-    it varied within a model, so it was partly a dataset feature wearing a model feature's
-    name, and being zero-based it could enter the grammar only as ``f`` and ``f^2``.
+    The generated corpus does not contain such a learner descriptor.
 
     The nearby column is not a substitute. ``nr_outliers`` counts outliers in the *data*,
     which is a property of the problem rather than of the learner, so a term over it
@@ -546,11 +544,10 @@ def _prefer_outlier_robust_learners(evidence: Evidence) -> Verdict:
         verdict=NOT_TESTED,
         evidence=(
             "This corpus cannot weigh it. The practice is about a property of the learner, "
-            "and the column that recorded one -- `Robust to Outliers` -- was retired because "
-            "it varied within a model and was undefined under every transform in the grammar "
-            "but two. `nr_outliers` counts outliers in the data, not resistance to them in "
-            "the model, so it answers a different question. Reported as untested rather than "
-            "answered with the nearest available number."
+            "and the generated meta-dataset has no learner-robustness descriptor. "
+            "`nr_outliers` counts outliers in the data, not resistance to them in the model, "
+            "so it answers a different question. Reported as untested rather than answered "
+            "with the nearest available number."
         ),
         magnitude=float("nan"),
     )
@@ -560,9 +557,6 @@ def _capacity_is_not_free(evidence: Evidence) -> Verdict:
     generic = evidence.family("generic NN")
     trees = evidence.families(TREE_FAMILIES)
     capacity_terms = evidence.practice_terms("Processing Units Number")
-    # An earlier version described two blocks of terms, one of which paired capacity with
-    # inference cost. `Prediction Operations` left the corpus on 2026-09-05 and no such
-    # block exists; the count is read from the equation now rather than written down.
     equation_says = (
         f" The equation says it conditionally rather than flatly: `Processing Units Number` "
         f"carries {capacity_terms} of its terms, mostly against a dataset property, so what "

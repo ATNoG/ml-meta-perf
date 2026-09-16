@@ -55,7 +55,7 @@ def effects() -> pl.DataFrame:
 def practices() -> pl.DataFrame:
     return pl.DataFrame(
         {
-            "feature": ["gravity", "nr_attr", "Robust to Outliers"],
+            "feature": ["gravity", "nr_attr", "Model Capability"],
             "effect": [-0.42, 0.23, 0.13],
             "confidence": ["strong", "moderate", "strong"],
         }

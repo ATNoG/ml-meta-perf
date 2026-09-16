@@ -6,12 +6,10 @@ meta-features recover 92%. The residual 8% is capability this corpus records now
 the difference between *what a model costs*, which the features state, and *what a model
 is good at*, which they do not.
 
-**That gap was 42% when this module was written, and closing it is what shrank this
-module's claim.** The four asserted ordinals merged on 2026-09-05 took the model side from
-63% to the high eighties, so the headroom a per-model table can still recover is small.
-The module is kept because it measures the ceiling that bounds every model-side proposal,
-not because the correction it computes is worth publishing -- see the standing objections
-in chapter 4.
+The remaining headroom for a per-model table is small, but still useful as a ceiling:
+it bounds what any model-side proposal could recover beyond the generated descriptors.
+The module is kept for that measurement, not because the correction it computes is worth
+publishing -- see the standing objections in chapter 4.
 
 This module writes that difference down. Under leave-one-dataset-out every one of the 25
 models appears in every training fold, so the residual of the fitted equation can be

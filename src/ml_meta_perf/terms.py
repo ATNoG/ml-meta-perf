@@ -480,8 +480,8 @@ class Library:
     any consumer reading `terms` or `matrix` directly.
 
     The first term of a pair wins. Generation order runs simple to complex, so the survivor
-    is the shorter form: ``[log(nr_inst)] / [log(Training Operations)]`` is kept and
-    ``([log(inst_to_attr)] + [log(nr_attr)]) / [log(Training Operations)]`` is dropped.
+    is the shorter form: ``[log(nr_inst)] / [log(Processing Units Number)]`` is kept and
+    ``([log(inst_to_attr)] + [log(nr_attr)]) / [log(Processing Units Number)]`` is dropped.
     """
 
     def __init__(

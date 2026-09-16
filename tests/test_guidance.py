@@ -101,7 +101,7 @@ class _Report:
             "practices",
             pl.DataFrame(
                 {
-                    "feature": ["Robust to Outliers", "ns_ratio"],
+                    "feature": ["Model Capability", "ns_ratio"],
                     "effect": [0.42, -0.17],
                 }
             ),

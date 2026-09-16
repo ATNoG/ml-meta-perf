@@ -38,6 +38,24 @@ dependencies = [
     "joblib>=1.4.0",
 ]
 
+[project.optional-dependencies]
+meta-dataset = [
+    "pandas>=2.2.0",
+    "pymfe==0.4.4",
+    "optuna",
+    "pytorch-tabnet",
+    "tab-transformer-pytorch==0.4.2",
+    "rtdl_revisiting_models",
+    "tabicl",
+    "tabpfn",
+    "torch",
+    "keras",
+    "xgboost>=2.0",
+    "lightgbm>=4.0",
+    "deap",
+    "pyBlindOpt",
+]
+
 [project.scripts]
 # The pipeline entry point. `ml-meta-perf --help` documents every input; the study is
 # the default with no arguments.

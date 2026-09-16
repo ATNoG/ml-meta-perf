@@ -6,10 +6,9 @@ and they behave very differently, which is why they are named separately here:
 * dataset features are constant across every row of a given dataset, so on their own
   they can only ever predict a per-dataset constant;
 * model features vary with the model, and one of them -- ``Processing Units Number`` --
-  also varies with the dataset, since it is a function of the dataset's shape. Three
-  others once did and were retired for it on 2026-09-05: a descriptor that moves within a
-  model is partly a dataset feature wearing a model feature's name, which is why they
-  helped transfer to a new dataset and hurt transfer to a new learner.
+  also varies with the dataset, since it is a function of the dataset's shape. The
+  meta-dataset pipeline is the source of this schema; this module loads the generated
+  corpus and keeps the package-level column contract explicit.
 
 That asymmetry is the whole point of the two-equation comparison, so the split is
 part of the public API rather than something each caller re-derives.
@@ -93,21 +92,11 @@ DATASET_FEATURES: tuple[str, ...] = (
     "ns_ratio",
 )
 
-#: The six columns an equation may use to describe a *learner*.
+#: The six generated columns an equation may use to describe a *learner*.
 #:
-#: Four are new as of 2026-09-05, replacing four that were dropped from the corpus entirely:
-#: ``Training Operations``, ``Prediction Operations``, ``Active Regularization Mechanisms`` and
-#: ``Robust to Outliers``. Three measurements retired them together:
-#:
-#: * removing any of the four *helps* leave-one-model-out (+0.007 to +0.022 each, paired over
-#:   60 configurations), and adding any back to ``Model Capability`` +
-#:   ``Processing Units Number`` hurts it -- ``Prediction Operations`` in 60 cells of 60;
-#: * three of them vary *within* a model, so they are partly dataset features wearing a model
-#:   feature's name, which is why they help transfer to a new dataset and hurt transfer to a
-#:   new learner;
-#: * ``Active Regularization Mechanisms`` and ``Robust to Outliers`` are zero-based, so the
-#:   grammar can only enter them as ``f`` and ``f^2`` -- every log, root and reciprocal is
-#:   undefined on them.
+#: This is the package-level schema expected in ``meta_dataset.csv``. The generation logic
+#: lives in ``meta_dataset_pipeline``; the package keeps only the validated feature contract
+#: used by loading, fitting, plotting and reporting.
 MODEL_FEATURES: tuple[str, ...] = (
     "Processing Units Number",
     "Model Capability",
