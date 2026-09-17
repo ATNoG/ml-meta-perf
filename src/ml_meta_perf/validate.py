@@ -1,19 +1,21 @@
-"""Validation: leave-one-group-out protocols, baselines and the term-count sweep.
+"""Validation protocols, baselines, and the term-count sweep.
 
-Two protocols are reported, and they answer different questions.
+Four protocols are reported, and they answer different questions.
 
-* Leave-one-dataset-out holds out all rows of one dataset. It answers "what MCC will
+* In-sample (IS) fits and scores the equation on all observed rows.
+* Leave-one-dataset-out (LODO) holds out all rows of one dataset. It answers "what MCC will
   these models reach on a dataset nobody has run yet", which is the meta-learning use
   case, and it is the harder number because dataset features are constant within a
   fold and so the held-out dataset is genuinely unseen.
-* Leave-one-model-out holds out all rows of one model. It answers "what will a new
+* Leave-one-model-out (LOMO) holds out all rows of one model. It answers "what will a new
   model reach on datasets we know".
+* Doubly held out (DHO) removes every row sharing either the test dataset or the test
+  model before fitting the coefficients for an observed pair.
 
 A random k-fold split is deliberately *not* offered as a headline protocol. With
 dataset features constant across a dataset's rows, a random split puts the same dataset
-on both sides of the fold and the equation can memorise dataset identity; measured on
-this data that inflates R2 from 0.28 to 0.50 without changing the model at all.
-``random_kfold_groups`` exists so that the README can show that gap, not to score with.
+on both sides of the fold and can therefore leak group identity. ``random_kfold_groups``
+exists only to measure that diagnostic on the current corpus, not as a reported protocol.
 
 Study chapter: [5. Evaluation][study-chapter] -- the rationale, in
 prose, with the figures.
@@ -100,7 +102,7 @@ class CrossValidation:
     equations: dict[str, Equation] = field(default_factory=dict)
     #: How many out-of-fold predictions `_clip_to_training` moved. Not a diagnostic detail:
     #: on this corpus it is 50 to 78 of 476 at *every* equation length, so a tenth to a sixth
-    #: of the reported leave-one-dataset-out predictions are decided by the bound rather than
+    #: of the reported LODO predictions are decided by the bound rather than
     #: by the equation. A study that clips has to say how often the clip fired.
     clipped: int = 0
 
@@ -112,7 +114,7 @@ class CrossValidation:
 
         `scores` pools every out-of-fold prediction and scores it against the *global* mean.
         On this corpus most of the variance is between datasets, which the dataset features
-        capture almost for free, so pooled R2 flatters a leave-one-dataset-out split: a set
+        capture almost for free, so pooled R² flatters a LODO split: a set
         reaching a pooled 0.53 was explaining 0.29 of the variance *within* the average
         dataset. Pooling also hides that a single fold can dominate.
 
@@ -317,15 +319,15 @@ def cross_validate_doubly_held_out(
 
     This is the protocol for the question the study is actually for: *what MCC will this
     model reach on this dataset*, when neither has been run. Neither single-group protocol
-    answers it. Leave-one-dataset-out holds the dataset out and keeps the model -- it has
-    seen that learner on nineteen other problems. Leave-one-model-out does the reverse. For a
+    answers it. LODO holds the dataset out and keeps the model -- it has
+    seen that learner on nineteen other problems. LOMO does the reverse. For a
     cell to be genuinely unseen, the whole dataset row-block *and* the whole model
     column-block have to leave the training set, which is what this does.
 
     **It is also the only protocol under which the comparison with the trivial baselines is
     fair, and under it they do not exist.** A per-model mean or median answers "how well does
     this model usually do", and a model held out of every fold has no rows to average. So a
-    baseline that beats the equation on ranking under leave-one-dataset-out is a baseline
+    baseline that beats the equation on ranking under LODO is a baseline
     being handed the model identity the equation is denied; here it cannot be computed at
     all, while the equation still predicts from features.
 
@@ -377,8 +379,8 @@ def _clip_to_training(prediction: np.ndarray, training_target: np.ndarray) -> np
 
     It happens. Held out, `ASNM-CDX-2009` -- 25 rows of 476, mean MCC 0.370 against the
     corpus's 0.731 -- was predicted at the -1.0 floor by several configurations, and that one
-    fold alone reached **89% of the total squared error**, taking pooled leave-one-dataset-out
-    R2 negative. Predicting it at the global mean would have cost 0.113 of the total.
+    fold alone reached **89% of the total squared error**, taking pooled LODO
+    R² negative. Predicting it at the global mean would have cost 0.113 of the total.
 
     The training fold's own observed range uses no held-out information -- it is exactly what
     the fitted equation was shown -- so this tightens the bound without leaking. Measured, it
@@ -405,7 +407,7 @@ def baseline_group_centre(
 ) -> np.ndarray:
     """Predict a training-fold centre, optionally conditioned on a second grouping.
 
-    With ``inner`` set to the model column under a leave-one-dataset-out split, this is
+    With ``inner`` set to the model column under a LODO split, this is
     "what does this model usually score", the baseline any meta-model has to beat to be
     worth writing down.
 
@@ -444,12 +446,13 @@ def baseline_group_mean(
     return baseline_group_centre(target, outer, inner, centre="mean")
 
 
-def additive_oracle(target: np.ndarray, first: np.ndarray, second: np.ndarray) -> np.ndarray:
-    """The best any purely additive equation could do, given perfect group effects.
+def additive_mean_reference(target: np.ndarray, first: np.ndarray, second: np.ndarray) -> np.ndarray:
+    """Dataset and model target means combined into a descriptive IS reference.
 
-    Fit in-sample with the true per-group means, so it is not a predictor -- it is the
-    ceiling that says how much of MCC is additive in dataset and model at all, and
-    therefore how much of the remaining error no amount of term engineering can remove.
+    The calculation adds each observed dataset mean and model mean, subtracts the global
+    mean, and clips the result to the MCC range. It uses target identities and is therefore
+    not a deployable predictor. With an incomplete dataset-by-model grid it is also not the
+    jointly fitted least-squares optimum or a ceiling for additive equations.
     """
     grand = float(target.mean())
     prediction = np.full_like(target, grand)
@@ -466,9 +469,9 @@ def interaction_oracle(
     second: np.ndarray,
     rank: int,
 ) -> np.ndarray:
-    """The additive oracle plus the best rank-``rank`` approximation of what it misses.
+    """The additive mean-based reference plus the best rank-``rank`` approximation of what it misses.
 
-    ``additive_oracle`` answers "how much of MCC is dataset effect plus model effect".
+    ``additive_mean_reference`` describes how much MCC follows dataset and model means.
     The obvious next question is what the leftover looks like, and the leftover is not
     noise: it is a (dataset x model) matrix of interactions, and interaction matrices are
     usually dominated by a few components.
@@ -479,11 +482,11 @@ def interaction_oracle(
     subjects crossed with conditions where some pairings suit each other.
 
     The result is a *ladder* rather than a single ceiling. ``rank=0`` is the additive
-    oracle; each further component is one more pattern of "this kind of model suits this
+    mean-based reference; each further component is one more pattern of "this kind of model suits this
     kind of dataset". At full rank it reproduces every observed cell and R2 is 1, which is
     why the interesting question is how fast the ladder climbs, not where it ends.
 
-    Like ``additive_oracle`` this is fitted with the true values and predicts nothing.
+    Like ``additive_mean_reference`` this is fitted with the true values and predicts nothing.
     Unobserved cells (24 of the 500 here) contribute zero residual, so they neither
     distort the decomposition nor are counted in any score.
     """
@@ -698,15 +701,10 @@ class PairedResult:
 
     Every headline in this study is a mean over twenty held-out datasets, and a mean over
     twenty groups is not a measurement until something says how much of it one group could
-    have produced. Two cases from this corpus make the point, and both looked conclusive
-    as single numbers:
-
-    * a 16-term equation ranks at average precision 0.819 against a trivial baseline's
-      0.798 -- and is the better of the two on **7 of the 17** datasets where they differ
-      at all. The favourable mean comes from a few large wins, not from being better;
-    * lengthening that equation to 20 terms drops hit@1 from 0.800 to 0.700, which reads
-      as a trend until one notices that hit@1 over twenty folds moves only in steps of
-      0.05, and that the drop is two datasets changing their top pick.
+    have produced. A higher mean can come from a few large wins while the other predictor
+    wins on more datasets. Hit@1 is coarser still: over twenty datasets it moves in steps of
+    0.05, so an apparently visible change can be only one or two datasets changing their top
+    pick.
 
     So: a **sign test** on how many groups improved, which no single group can swing, and
     a **paired bootstrap** interval on the mean, which shows what the mean is worth. The

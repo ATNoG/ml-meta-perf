@@ -78,11 +78,11 @@ class TestEquationReports(unittest.TestCase):
         self.assertIn("r2_loo_cell", self.e3.curve.columns)
 
     def test_cross_validated_scores_are_reported_for_every_protocol(self) -> None:
-        """Both single-group protocols and the doubly-held-out protocol are reported."""
+        """Both single-group protocols and the doubly held out (DHO) protocol are reported."""
         self.assertEqual(set(self.e3.cross_validated), {"loo_dataset", "loo_model", "loo_cell"})
 
     def test_cross_validated_scores_are_finite_and_bounded(self) -> None:
-        # Deliberately *not* asserting cross-validated <= in-sample. Cross-validated
+        # Deliberately *not* asserting cross-validated <= in-sample (IS). Cross-validated
         # predictions come from 20 different fold-equations, and that ensemble can beat a
         # single equation when each one is heavily constrained -- which is exactly the
         # FAST configuration used here (3 terms from a 40-term pool). At the real
@@ -129,10 +129,10 @@ class TestStudyTables(unittest.TestCase):
     def test_group_equations_stay_under_their_own_ceilings(self) -> None:
         """E1 and E2 cannot pass the ceiling their group identity sets.
 
-        This replaces an assertion that E3 also stays under the additive oracle. That is not
-        an invariant and the published equation violates it: the oracle bounds a predictor
+        This replaces an assertion that E3 also stays under the additive mean-based reference. That is not
+        an invariant and the published equation violates it: the reference bounds a predictor
         that is a per-dataset value *plus* a per-model value, and E3's mixed terms multiply a
-        dataset feature by a model one, so they represent interactions the oracle cannot. E3
+        dataset feature by a model one, so they represent interactions the reference cannot. E3
         scores above it, and that is the study's headline rather than a bug. The test only
         passed because the fast configuration used here fits a weaker E3.
         """
@@ -140,7 +140,7 @@ class TestStudyTables(unittest.TestCase):
         self.assertLessEqual(scored(table, "E1, dataset only"), scored(table, "E1 reference") + 1e-9)
 
     def test_baselines_table_is_complete(self) -> None:
-        """Four trivial predictors at two centres each, plus the oracle."""
+        """Four trivial predictors at two centres each, plus the additive reference."""
         table = baselines(self.frame)
         self.assertEqual(table.height, 9)
         self.assertIn("r2", table.columns)
@@ -278,7 +278,7 @@ class TestOnlyTheValidEquationIsEvaluated(unittest.TestCase):
         """The C3 defect, pinned. Several tables rebuild the library from a `Configuration`
         and refit. Handing them the configuration's arity rather than the chosen one scored
         the published equation's strictest protocol on a different grammar -- an arity-3
-        equation with an arity-2 leave-one-cell row -- and every test passed."""
+        equation with an arity-2 DHO row -- and every test passed."""
         from ml_meta_perf.experiment import run
 
         # The configuration must disagree with the search, or this proves nothing.

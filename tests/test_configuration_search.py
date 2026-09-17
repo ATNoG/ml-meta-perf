@@ -9,7 +9,6 @@ from pathlib import Path
 
 import polars as pl
 
-from corpus import sample_path
 from ml_meta_perf.configuration_search import (
     DEFAULT_MIN_TERMS,
     SearchSettings,
@@ -21,6 +20,7 @@ from ml_meta_perf.configuration_search import (
     main,
 )
 from ml_meta_perf.model import Equation
+from tests.corpus import sample_path
 
 
 class ConfigurationSearchTests(unittest.TestCase):

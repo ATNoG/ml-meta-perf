@@ -14,8 +14,8 @@ real library, and a test that passes here is not passing on numbers invented to 
 
 **Two of the eighty cells are missing on purpose.** `KPI-KQI` is one of the three datasets the
 eight neural models were never run on, and `MLP` and `XGBoost` are two of those eight, so the
-slice is ragged exactly the way the corpus is. A grid with no holes would let the
-doubly-held-out protocol pass while assuming a rectangle.
+slice is ragged exactly the way the corpus is. A grid with no holes would let the doubly
+held out (DHO) protocol pass while assuming a rectangle.
 
 **What does not belong here.** This corpus cannot answer whether the study's findings hold --
 eight datasets is not the corpus the paper reports, and a finding measured on a slice is not
@@ -80,7 +80,7 @@ class Stub:
     """An estimator that fits and predicts and does nothing else.
 
     scikit-learn's regressors are not this project's to test; the folds around them are. A
-    double exercises every one of those -- that the doubly-held-out split removes both groups,
+    double exercises every one of those -- that the DHO split removes both groups,
     that predictions are clipped to the training range, that the table is scored from the
     predictions that are kept -- and costs nothing. The real ensembles are what makes
     `opaque.evaluate` the most expensive function in the package.

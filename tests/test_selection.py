@@ -41,7 +41,7 @@ class TestConsensusCurve(unittest.TestCase):
         self.table = curve(
             [2, 4, 6, 8],
             [0.40, 0.50, 0.60, 0.66],
-            [0.30, 0.45, 0.10, 0.62],  # 0.10 is a crater, as loo-dataset genuinely has
+            [0.30, 0.45, 0.10, 0.62],  # 0.10 is a crater, as LODO genuinely has
             [0.35, 0.47, 0.58, 0.60],
         )
 
@@ -71,7 +71,7 @@ class TestConsensusCurve(unittest.TestCase):
 
 
 class TestFloorCurve(unittest.TestCase):
-    """A length scores as its worst protocol, over all four including the cell protocol."""
+    """A length scores as its worst protocol, over all four including DHO."""
 
     def test_it_takes_the_minimum_over_every_protocol_present(self) -> None:
         table = curve([4], [0.70], [0.65], [0.60], [0.55])

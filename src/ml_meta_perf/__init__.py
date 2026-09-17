@@ -2,7 +2,8 @@
 
 Fits equations of the form ``MCC = w1*t1 + w2*t2 + ...`` where each term is a simple
 expression over dataset and model meta-features, and reports what they are actually
-worth under leave-one-dataset-out and leave-one-model-out validation.
+worth under in-sample (IS), leave-one-dataset-out (LODO), leave-one-model-out (LOMO),
+and doubly held-out (DHO) evaluation.
 """
 
 from ml_meta_perf.analysis import redundancy_groups, screen
@@ -51,7 +52,7 @@ from ml_meta_perf.terms import Atom, Library, Term, build_library, ratio_of_sums
 from ml_meta_perf.validate import (
     CrossValidation,
     Scores,
-    additive_oracle,
+    additive_mean_reference,
     baseline_group_centre,
     baseline_group_mean,
     cross_validate_fixed_form,
@@ -83,7 +84,7 @@ __all__ = [
     "Term",
     "Verdict",
     "__version__",
-    "additive_oracle",
+    "additive_mean_reference",
     "aggregate_by_dataset",
     "arity_candidates",
     "assess",

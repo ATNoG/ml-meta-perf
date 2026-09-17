@@ -1,8 +1,8 @@
 """The retained E3 equation-selection rules.
 
-E3-Valid follows the first sustained plateau in the median of in-sample,
-leave-one-dataset-out and leave-one-model-out R2. E3-MAX independently maximises the worst of
-those protocols and the doubly-held-out cell protocol.
+E3-Valid follows the first sustained plateau in the median of in-sample (IS),
+leave-one-dataset-out (LODO), and leave-one-model-out (LOMO) R². E3-MAX independently
+maximises the worst of those protocols and doubly held-out (DHO) evaluation.
 """
 
 from __future__ import annotations
@@ -15,10 +15,10 @@ PROTOCOLS = ("r2_in_sample", "r2_loo_dataset", "r2_loo_model")
 PLATEAU_TOLERANCE = 0.001
 PLATEAU_WINDOW = 3
 
-#: Every protocol a *configuration* is judged on, which is `PROTOCOLS` plus the doubly-held-out
+#: Every protocol a *configuration* is judged on, which is `PROTOCOLS` plus DHO
 #: one. `floor_curve` takes the minimum over these and E3-MAX selects on it.
 #:
-#: The cell protocol is in this set and not in `PROTOCOLS` deliberately. `consensus_curve` is
+#: DHO is in this set and not in `PROTOCOLS` deliberately. `consensus_curve` is
 #: the per-length reading used by E3-Valid and stays on the three single-group protocols. The E3-MAX rule
 #: is the one that publishes a headline about an unseen (dataset, model) cell, so it is the one
 #: that has to select on that protocol rather than on three looser ones.
@@ -28,10 +28,10 @@ JUDGED_PROTOCOLS = (*PROTOCOLS, "r2_loo_cell")
 def consensus_curve(curve: pl.DataFrame, how: str = "median") -> np.ndarray:
     """One score per length, combining every protocol present.
 
-    **A length must not be chosen on in-sample R2 alone.** In-sample is monotone in the number
+    **A length must not be chosen on IS R² alone.** IS is monotone in the number
     of terms, so it can only ever say "more", and a length picked on it is picked on the one
     curve that cannot express the trade the choice is about. But the cross-validated curves
-    cannot be used alone either: on twenty groups they wander, and leave-one-dataset-out has
+    cannot be used alone either: on twenty groups they wander, and LODO has
     genuine craters -- a held-out dataset lying outside the convex hull of the other nineteen
     is extrapolated far outside MCC's range and then clipped, which at one length drops the
     pooled figure from 0.63 to 0.39.
@@ -126,8 +126,7 @@ def floor_curve(curve: pl.DataFrame) -> np.ndarray:
 
     A length is only as good as the protocol it does worst on. That is the conservative
     reading `consensus_curve` offers as ``how="min"``, taken here as the criterion rather than
-    as an option, and taken over **four** protocols rather than three: in-sample,
-    leave-one-dataset-out, leave-one-model-out and the doubly-held-out cell protocol.
+    as an option, and taken over **four** protocols rather than three: IS, LODO, LOMO, and DHO.
 
     Two reasons the minimum rather than the median, and both are about what the study claims.
     The median lets a length hide its weakest protocol behind its other two, and the weakest
@@ -139,7 +138,7 @@ def floor_curve(curve: pl.DataFrame) -> np.ndarray:
 
     The craters `consensus_curve` was made robust against are still handled, because they are
     *shared*: a held-out dataset outside the convex hull of the other nineteen is extrapolated
-    under leave-one-dataset-out and under the cell protocol alike, so at those lengths the
+    under LODO and DHO alike, so at those lengths the
     minimum drops with the median rather than instead of it. On this corpus the two agree on
     where the arity-2 curve peaks to within the lengths that crater.
     """
@@ -150,7 +149,7 @@ def floor_curve(curve: pl.DataFrame) -> np.ndarray:
 
 
 def protocol_spread(curve: pl.DataFrame) -> np.ndarray:
-    """How far a length falls from its fit to its worst protocol: ``in-sample - floor``.
+    """How far a length falls from its fit to its worst protocol: ``IS - floor``.
 
     **Reported, not selected on** -- E3-Valid uses `plateau_configuration` -- and reported because the
     claim it measures would otherwise be asserted. An equation that fits well and transfers
@@ -158,10 +157,10 @@ def protocol_spread(curve: pl.DataFrame) -> np.ndarray:
     tell them apart: two lengths reaching the same worst protocol from a different fit are the
     same number to `floor_curve` and are not the same equation.
 
-    On the corrected corpus the selected arity-3 equation has a spread of 0.0640. The arity-2
-    candidate is slightly tighter at 0.0629, but its worst-protocol R2 is lower by 0.0444.
-    This is the same quantity the beam negatives record: a policy that fits well and then
-    collapses under validation has a large spread.
+    On the corrected corpus, arity-3 E3-MAX has a spread of 0.0640. Arity-2 E3-Valid has a
+    spread of 0.0684 and its worst-protocol R² is lower by 0.0451. This is the same quantity
+    the beam negatives record: a policy that fits well and then collapses under validation
+    has a large spread.
 
     This is deliberately *not* folded into the selection score. Combining a level and a spread
     needs a weight between them, a weight is a free parameter, and a free parameter is what
@@ -170,7 +169,7 @@ def protocol_spread(curve: pl.DataFrame) -> np.ndarray:
     """
     columns = [name for name in JUDGED_PROTOCOLS if name in curve.columns]
     if "r2_in_sample" not in columns:
-        raise ValueError("a spread needs the in-sample column to measure the drop from")
+        raise ValueError("a spread needs the IS column to measure the drop from")
     return curve["r2_in_sample"].to_numpy() - floor_curve(curve)
 
 

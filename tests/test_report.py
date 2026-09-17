@@ -13,6 +13,9 @@ import polars as pl
 from ml_meta_perf.model import Equation
 from ml_meta_perf.report import (
     MAJOR_MASS,
+    _baseline_centre_note,
+    _ranking_verdict,
+    _table,
     coverage,
     feature_usage,
     glossary,
@@ -29,6 +32,59 @@ from ml_meta_perf.terms import Atom, Term
 
 DATASET = ("a", "b")
 MODEL = ("m",)
+
+
+class TestPublishedProtocolLabels(unittest.TestCase):
+    def test_table_uses_the_published_protocol_acronyms(self) -> None:
+        frame = pl.DataFrame(
+            {
+                "protocol": [
+                    "in-sample",
+                    "leave-one-dataset-out",
+                    "leave-one-model-out",
+                    "doubly held out",
+                ],
+                "r2_loo_dataset": [0.1, 0.2, 0.3, 0.4],
+            }
+        )
+
+        rendered = _table(frame)
+
+        self.assertIn("| IS |", rendered)
+        self.assertIn("| LODO |", rendered)
+        self.assertIn("| LOMO |", rendered)
+        self.assertIn("| DHO |", rendered)
+        self.assertIn("r2_LODO", rendered)
+        self.assertNotIn("leave-one-", rendered)
+        self.assertNotIn("loo_dataset", rendered)
+
+    def test_baseline_summary_translates_internal_protocol_names(self) -> None:
+        frame = pl.DataFrame(
+            {
+                "baseline": ["per-dataset mean (loo-model)", "per-dataset median (loo-model)"],
+                "r2": [0.3, 0.2],
+                "mae": [0.2, 0.1],
+                "smape": [40.0, 35.0],
+            }
+        )
+
+        rendered = _baseline_centre_note(frame)
+
+        self.assertIn("(LOMO)", rendered)
+        self.assertNotIn("loo-model", rendered)
+
+    def test_ranking_verdict_translates_internal_protocol_names(self) -> None:
+        frame = pl.DataFrame(
+            {
+                "predictor": ["per-model mean (loo-dataset)", "equation (loo-cell: both held out)"],
+                "ap_vs_e3_significant": [True, False],
+            }
+        )
+
+        rendered = _ranking_verdict(frame)
+
+        self.assertIn("per-model mean (LODO)", rendered)
+        self.assertNotIn("loo-", rendered)
 
 
 def _columns(rows: int = 40) -> dict[str, np.ndarray]:
@@ -62,10 +118,7 @@ def _equation(columns: dict[str, np.ndarray] | None = None) -> Equation:
         Term("product", (Atom("b"), Atom("m"))),
         Term("atom", (Atom("m"),)),
     )
-    betas = tuple(
-        weight * float(term.evaluate(columns).std())
-        for term, weight in zip(terms, _WEIGHTS, strict=True)
-    )
+    betas = tuple(weight * float(term.evaluate(columns).std()) for term, weight in zip(terms, _WEIGHTS, strict=True))
     return Equation(
         intercept=0.5,
         terms=terms,
@@ -190,9 +243,7 @@ class TestCoverage(unittest.TestCase):
 class TestUnstableMajors(unittest.TestCase):
     def _table(self, frequencies: list[float]) -> pl.DataFrame:
         columns = _columns()
-        stability = pl.DataFrame(
-            {"term": ["a", "[b] * [m]", "m"], "frequency": frequencies}
-        )
+        stability = pl.DataFrame({"term": ["a", "[b] * [m]", "m"], "frequency": frequencies})
         return term_importance(_equation(columns), columns, DATASET, MODEL, stability)
 
     def test_flags_terms_with_a_large_weight_and_few_folds(self) -> None:
@@ -242,9 +293,7 @@ class TestFeatureUsage(unittest.TestCase):
         # A transform buried inside a nested term still has to be found, or the coverage
         # table would understate what the equation used.
         nested = Term("ratio", (Term("product", (Atom("a", "log"), Atom("b"))), Atom("m")))
-        equation = Equation(
-            intercept=0.0, terms=(nested,), weights=(1.0,), standardized_weights=(1.0,)
-        )
+        equation = Equation(intercept=0.0, terms=(nested,), weights=(1.0,), standardized_weights=(1.0,))
         importance = term_importance(equation, self.columns, DATASET, MODEL)
         table = feature_usage(equation, importance, (*DATASET, *MODEL))
         self.assertEqual(table.filter(pl.col("feature") == "a")["transforms"][0], "log")
@@ -348,9 +397,7 @@ class TestTermGroups(unittest.TestCase):
 
 class TestMarginalVersusConditional(unittest.TestCase):
     def _practices(self, direction: float) -> pl.DataFrame:
-        return pl.DataFrame(
-            {"feature": ["a"], "meaning": ["feature a"], "direction": [direction]}
-        )
+        return pl.DataFrame({"feature": ["a"], "meaning": ["feature a"], "direction": [direction]})
 
     def test_flags_agreement_when_the_signs_match(self) -> None:
         columns = _columns()

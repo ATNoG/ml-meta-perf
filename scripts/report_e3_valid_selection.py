@@ -27,10 +27,10 @@ def _candidate_table(payload: dict[str, Any]) -> str:
         _table_row("Maximum arity", [str(item["max_arity"]) for item in candidates]),
         _table_row("Complexity", [str(item["complexity"]) for item in candidates]),
         _table_row("Composite objective $J$", [_metric(item["objective"]) for item in candidates]),
-        _table_row("In-sample R²", [_metric(item["in_sample_r2"]) for item in candidates]),
+        _table_row("IS R²", [_metric(item["in_sample_r2"]) for item in candidates]),
         _table_row("LODO R²", [_metric(item["loo_dataset_r2"]) for item in candidates]),
         _table_row("LOMO R²", [_metric(item["loo_model_r2"]) for item in candidates]),
-        _table_row("Doubly held-out R²", [_metric(item["loo_cell_r2"]) for item in candidates]),
+        _table_row("DHO R²", [_metric(item["loo_cell_r2"]) for item in candidates]),
         _table_row("Combined R²", [_metric(item["combined_r2"]) for item in candidates]),
         _table_row("Four-protocol R² floor", [_metric(item["four_protocol_floor"]) for item in candidates]),
         _table_row("Term stability", [_metric(item["stability"]) for item in candidates]),
@@ -60,6 +60,9 @@ def generate(search_directory: Path) -> tuple[Path, Path]:
 
     report = f"""# E3 Selection: Search from {minimum_terms} to {maximum_terms} Terms
 
+The evaluation protocols are in-sample (**IS**), leave-one-dataset-out (**LODO**),
+leave-one-model-out (**LOMO**), and doubly held out (**DHO**).
+
 ## Scope
 
 E3-Valid and E3-MAX share the base configuration selected by the exhaustive search:
@@ -69,7 +72,7 @@ E3-Valid and E3-MAX share the base configuration selected by the exhaustive sear
 - Maximum absolute z-score: {maximum["max_abs_zscore"]}
 
 For every term count, the curve retains the arity-2 or arity-3 candidate with the highest
-Combined R². Combined R² is the median of in-sample, LODO, and LOMO R².
+Combined R². Combined R² is the median of IS, LODO, and LOMO R².
 
 ## Results
 
@@ -77,7 +80,7 @@ Combined R². Combined R² is the median of in-sample, LODO, and LOMO R².
 
 ## Selection rules
 
-E3-MAX maximises the minimum R² over in-sample, LODO, LOMO, and doubly held-out
+E3-MAX maximises the minimum R² over IS, LODO, LOMO, and DHO
 evaluation. In the last protocol, every row sharing the test cell's dataset or model is
 removed from training. E3-Valid selects the highest best-so-far Combined R² immediately before a
 sustained plateau. The plateau tolerance is `{diagnostics["tolerance"]}`, and the forward

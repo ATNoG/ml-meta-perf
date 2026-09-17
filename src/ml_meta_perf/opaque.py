@@ -7,6 +7,9 @@ measured once by hand and reproducible by nobody -- which for a study whose whol
 that its analysis is generated rather than narrated was the wrong way round. This module
 computes it on every run.
 
+The evaluation protocols are in-sample (IS), leave-one-dataset-out (LODO),
+leave-one-model-out (LOMO), and doubly held out (DHO).
+
 Three regressors, chosen because they are what a reader would reach for rather than because
 they are the strongest available:
 
@@ -42,9 +45,9 @@ from typing import Protocol
 
 import numpy as np
 import polars as pl
-from joblib import Parallel, delayed
 from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.linear_model import RidgeCV
+from sklearn.utils.parallel import Parallel, delayed
 
 from ml_meta_perf.data import (
     ALL_FEATURES,
@@ -63,8 +66,8 @@ from ml_meta_perf.validate import leave_one_group_out
 #: larger than the spread a different seed produces.
 SEED = 0
 
-#: The published ensemble sizes. **A parameter rather than a literal because the cell
-#: protocol refits each estimator 476 times**, which puts one `evaluate` at 226 s -- almost
+#: The published ensemble sizes. **A parameter rather than a literal because DHO
+#: refits each estimator 476 times**, which puts one `evaluate` at 226 s -- almost
 #: the whole cost of a study run, and, until 2026-09-08, of the test suite six times over
 #: because `--quick` reached the equation's knobs and not these. The study still runs at
 #: these numbers and its output is unchanged; a caller that only needs the shape of the
@@ -96,7 +99,7 @@ class Regressor(Protocol):
 #: A factory taking the thread budget for one fit and returning a fresh unfitted regressor.
 #:
 #: **A callable, not a name to dispatch on.** The protocols below are the study's contribution
-#: on this side -- the leave-one-cell refit especially -- and the estimators are scikit-learn's
+#: on this side -- the DHO refit especially -- and the estimators are scikit-learn's
 #: contribution, which needs no testing here. Injecting the factory separates them: a caller
 #: that wants to check the *plumbing* passes something trivial and pays nothing, and the tests
 #: do exactly that. It also makes these factories what this module always said they were.
@@ -178,14 +181,14 @@ class OpaqueRun:
 def evaluate(frame: pl.DataFrame, *, models: tuple[tuple[str, Builder], ...] | None = None) -> OpaqueRun:
     """Fit and score every opaque regressor once, keeping the predictions.
 
-    **Read the in-sample and leave-one-cell columns of the forest row together.** That pair is
+    **Read the IS and DHO columns of the forest row together.** That pair is
     the study's argument in two numbers: a flexible model fits this meta-data almost perfectly
     and, with neither the dataset nor the model in training, reaches nothing. With twenty
     dataset groups and features constant within a group it identifies the dataset and looks the
     answer up, and identification is worth nothing on a cell nobody has run.
 
     It is also the likely provenance of the R2 ~ 0.9 figures reported for opaque meta-models
-    elsewhere: an in-sample or randomly-split forest reproduces them exactly.
+    elsewhere: a forest evaluated under IS or a random split reproduces them exactly.
     """
     design = _design(frame)
     truth = target(frame)
@@ -230,8 +233,8 @@ def _doubly_held_out(
 
     The protocol the study is actually for -- *what will this model reach on this dataset*,
     when neither has been run -- and the only one under which the equation and an opaque
-    regressor are denied the same things. Under leave-one-dataset-out a forest still has the
-    held-out learner on nineteen other problems; under leave-one-model-out it still has the
+    regressor are denied the same things. Under LODO a forest still has the
+    held-out learner on nineteen other problems; under LOMO it still has the
     held-out dataset. Here it has neither, and neither does the equation.
 
     That makes this the like-for-like comparison in the study, and it is also the protocol on

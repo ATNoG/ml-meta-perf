@@ -2,6 +2,15 @@
 
 *Produced by `ml_meta_perf.experiment`; reproduce with `PYTHONPATH=src venv/bin/python -m ml_meta_perf`.*
 
+The abbreviations used in this chapter are Matthews Correlation Coefficient (**MCC**),
+coefficient of determination (**R²**), in-sample (**IS**), leave-one-dataset-out (**LODO**),
+leave-one-model-out (**LOMO**), doubly held out (**DHO**), singular value decomposition (**SVD**), additive main effects
+and multiplicative interaction (**AMMI**), machine learning (**ML**), and neural network
+(**NN**).
+The equation labels are **E1** (dataset features only), **E2** (model features only), **E3**
+(dataset and model features), **E3-Valid** (the plateau-selected E3 equation), and
+**E3-MAX** (the maximum-capability E3 equation).
+
 ## The three equations
 
 The study is built around a deliberate contrast. The three equations differ **only** in
@@ -35,7 +44,7 @@ about what each half of the meta-data is worth if *nothing else* differs between
 20 per-dataset means is tempting — a predictor constant inside a group can only predict that
 group's mean anyway — but it puts E1's R² on a twenty-point denominator:
 
-| E1 fitted on | in-sample R² | LOO-dataset R² | comparable with E3? |
+| E1 fitted on | IS R² | LODO R² | comparable with E3? |
 |---|---|---|---|
 | 20 dataset means | 0.337 | 0.506 *(on 20 points)* | no |
 | **476 rows** | **0.354** | **0.349** *(on 476 rows)* | yes |
@@ -48,7 +57,7 @@ removes the caveat instead of requiring one.
 **Aggregating E2 the same way was measured, and is worse.** The mirror move is to fit E2
 on 25 per-model means:
 
-| E2 fitted on | in-sample R² (476 rows) | best out-of-fold | terms at the optimum |
+| E2 fitted on | IS R² (476 rows) | best out-of-fold | terms at the optimum |
 |---|---|---|---|
 | **476 rows** | **0.177** | **0.090** | 6 |
 | 25 model means | 0.125 | 0.112 | **1** |
@@ -77,7 +86,7 @@ handle the difference.
 Every equation is fitted on all 476 rows and scored on all 476 rows, so there is one
 scale and one table:
 
-Each equation, each equation's own ceiling, and the additive oracle are in one generated
+Each equation, each equation's own ceiling, and the additive mean-based reference are in one generated
 table — on the [index page](index.md), which carries the headline, and again with the full
 metric set in [chapter 5](05-evaluation.md). The figure is the same comparison drawn:
 
@@ -99,8 +108,8 @@ is the `reached` column of the generated headline table and what the next sectio
 ## Under all four protocols
 
 All three equations are scored under every protocol
-[chapter 5](05-evaluation.md#four-protocols) defines: in-sample, leave-one-dataset-out,
-leave-one-model-out, and the doubly-held-out cell. The numbers are on the
+[chapter 5](05-evaluation.md#four-protocols) defines: IS, LODO,
+LOMO, and the DHO cell. The numbers are on the
 [index page](index.md) and, with the full metric set, in [chapter 5](05-evaluation.md) —
 this chapter does not keep a second copy of them.
 
@@ -108,7 +117,7 @@ What is worth stating here is what to look for in them.
 
 **E3's transfer numbers should be close to each other and to its fit, and the gap between the
 best and the worst is a reported quantity.** `selection.protocol_spread` is exactly that
-gap — in-sample minus the floor over the four — and for the published equation it is 0.0684.
+gap — IS minus the floor over the four — and for the published equation it is 0.0684.
 An equation that loses little R² when a whole dataset, a whole learner, or both are withheld
 is transferring rather than memorising; a small spread says no single protocol is carrying
 it. E3-Valid has a spread of 0.0684; E3-MAX is reported separately as the capability bound.
@@ -130,7 +139,7 @@ as the cost they are.
 
 ## How much was there to explain? Three ceilings
 
-*Implemented in `ml_meta_perf.validate.additive_oracle`, `interaction_oracle` and
+*Implemented in `ml_meta_perf.validate.additive_mean_reference`, `interaction_oracle` and
 `oracle_ladder`, and in `ml_meta_perf.analysis.grammar_ceiling`.*
 
 An R² means nothing on its own. Before the equation can be judged, three questions have to
@@ -155,18 +164,18 @@ The same construction with one group at a time gives the two ceilings that bound
 knowing only which dataset it is, and knowing only which model it is. All three are in the
 generated section below, under *Where the variance is, before any equation*.
 
-**This does not bound E3-Valid, and the current E3-Valid equation exceeds it.** The additive oracle
+**This does not bound E3-Valid, and the current E3-Valid equation exceeds it.** The additive mean-based reference
 bounds a predictor that is a per-dataset value *plus* a per-model value. Most of E3-Valid's terms
 are *mixed* — each
 multiplying or dividing a dataset feature by a model feature — and those express precisely
-the interaction the two-way additive form cannot. E3-Valid reaches 0.679 in-sample against the
-oracle's 0.661. Its direct alignment with the oracle's interaction components, reported below,
+the interaction the two-way additive form cannot. E3-Valid reaches 0.679 under IS against the
+reference value of 0.661. Its direct alignment with the interaction components of that reference, reported below,
 is therefore the evidence that the mixed
 terms capture part of that structure.
 
 ### Ceiling 2 — what the vocabulary can reach
 
-The oracle bounds a sum of *group* effects. A different and equally useful bound is a sum
+The additive mean-based reference bounds a sum of *group* effects. A different and equally useful bound is a sum
 of *per-feature* functions — what an equation could explain if it never combined two
 features in one term. `analysis.grammar_ceiling` computes it as three least-squares fits
 over the term library, none of which needs the search to have run. The ladder — raw columns,
@@ -186,13 +195,13 @@ best form of it.
 
 **E3 passes this ceiling too.**
 An equation cannot exceed it by describing features one at a time, so the excess is the
-work the cross-feature terms do. That is the same conclusion the additive oracle reaches,
+work the cross-feature terms do. That is the same conclusion the additive mean-based reference reaches,
 by an entirely independent route — one argues from group means, the other from the term
 library — which is worth more than either on its own.
 
 ### Ceiling 3 — how fast interaction pays
 
-The additive oracle's residual is not noise. It is a (dataset × model) matrix of
+The residual of the additive mean-based reference is not noise. It is a (dataset × model) matrix of
 interactions, and interaction matrices are typically dominated by a few components. So
 decompose it by SVD and add the leading components back:
 
@@ -216,8 +225,8 @@ but is inaccurate elsewhere. Comparing the two interaction *structures* can.
 
 | protocol | alignment with rank 1 | with ranks 1–2 |
 |---|---|---|
-| in-sample | 0.37 | 0.32 |
-| leave-one-dataset-out | 0.33 | 0.26 |
+| IS | 0.37 | 0.32 |
+| LODO | 0.33 | 0.26 |
 
 The equation reaches **about a third** of the leading interaction pattern under both readings.
 Interaction is 36% of
@@ -241,10 +250,10 @@ closing it: the dataset features recover almost all of their ceiling, the model 
 clearly smaller share of theirs. The `reached` column of the [index page](index.md)'s headline
 table is that comparison in one place.
 
-The additive oracle is the third reference, and it is **not** a ceiling for E3: ten of the
+The additive mean-based reference is the third reference, and it is **not** a ceiling for E3: ten of the
 eighteen terms combine a dataset feature with a model feature, and such a term
 expresses interaction a two-way additive form by construction cannot. The two group-identity
-levels are hard ceilings; the oracle is a reference level that a mixed equation can pass.
+levels are hard ceilings; the additive reference is a level that a mixed equation can pass.
 
 **Both halves are now close to their own ceilings.** Twelve dataset meta-features exhaust what
 dataset identity can explain to the reported precision, so there is essentially nothing left
@@ -271,7 +280,7 @@ Three qualifications keep that from being oversold, all of them developed there:
 is asserted rather than measured, so it cannot be
 evidence for the prior knowledge it encodes; the corpus agrees with it at only 6 of 9 steps,
 with `generic NN` conspicuously misplaced; and it does not extend to a learner nobody has
-classified, which is what the fall in leave-one-model-out records.
+classified, which is what the fall in LOMO records.
 
 Collecting more meta-features of the *data* remains low priority — E1 is already within
 0.003 of what perfect knowledge of dataset identity would buy.
@@ -294,9 +303,9 @@ corpus and the same four model descriptors once per arity under a shared configu
 
 * **E3-Valid** is the equation used by the study. Across the arity-2 and arity-3 curves, it
   retains the highest Combined R² at every term count and selects the point immediately before
-  the first sustained plateau. Combined R² is the median of in-sample, LODO, and LOMO R².
-* **E3-MAX** is the capability measurement. It selects the best floor over in-sample, LODO,
-  LOMO, and doubly held-out R².
+  the first sustained plateau. Combined R² is the median of IS, LODO, and LOMO R².
+* **E3-MAX** is the capability measurement. It selects the best floor over IS, LODO,
+  LOMO, and DHO R².
 
 The corrected-corpus 1-to-25-term search selects E3-Valid at arity 2 with 18 terms and E3-MAX
 at arity 3 with 25 terms. Downstream prediction, threshold, and model-ranking analyses use only
@@ -390,7 +399,7 @@ move with every configuration and this sentence has drifted from them before.
 ## Reading the equation: what interpretability buys and what it costs
 
 The equation is not the most accurate predictor available on this meta-data — an opaque
-regressor reaches R² ≈ 0.9 in-sample, and [chapter 5](05-evaluation.md) shows what happens
+regressor reaches R² ≈ 0.9 under IS, and [chapter 5](05-evaluation.md) shows what happens
 to that number out of fold. It is the one that can be *read*, and this section says what
 reading it actually gets you, because "interpretable" is a claim that ought to be cashed
 out rather than asserted.
@@ -448,7 +457,7 @@ argument for accepting the accuracy it gives up.
 
 ![Predicted versus actual MCC](../figures/03_predicted_vs_actual.png)
 
-In-sample predictions never fall below **0.01**, while 15 rows sit at exactly MCC = 0 — a short
+IS predictions never fall below **0.01**, while 15 rows sit at exactly MCC = 0 — a short
 column of points hanging above the diagonal on the left. The equation compresses toward
 the middle of the range, as a shrunk linear fit will.
 
@@ -507,18 +516,18 @@ Two ceilings, both computed from the library alone and so available *before* an 
 
 #### How far the additive form reaches
 
-The published equation uses the **parsimonious** grammar (arity 2). The same features under the **full** grammar (arity 3), selected by the E3-MAX floor rule, reach 25 terms at R² 0.7194 in-sample:
+The published equation uses the **parsimonious** grammar (arity 2). The same features under the **full** grammar (arity 3), selected by the E3-MAX floor rule, reach 25 terms at R² 0.7194 under IS:
 
-| | terms | in-sample | LOO-dataset | LOO-model |
+| | terms | IS | LODO | LOMO |
 |---|---|---|---|---|
 | published (arity 2) | 18 | 0.6787 | 0.6517 | 0.6149 |
 | capability (arity 3) | 25 | 0.7194 | 0.6911 | 0.6554 |
 
-This is a **capability measurement, not a recommendation**. It answers the question the published equation cannot answer about itself — whether the additive form is out of room or whether this equation is short of it — and the answer is that +0.0407 of in-sample R² is still available to a longer equation over a wider grammar. What that costs is what the published equation is buying: more terms, an operation more, and a form that reselects far less often across folds.
+This is a **capability measurement, not a recommendation**. It answers the question the published equation cannot answer about itself — whether the additive form is out of room or whether this equation is short of it — and the answer is that +0.0407 of IS R² is still available to a longer equation over a wider grammar. What that costs is what the published equation is buying: more terms, an operation more, and a form that reselects far less often across folds.
 
 #### What the vocabulary could reach, before any search
 
-Three levels of what the vocabulary can explain, each a least-squares fit over the library and each computable before the search runs. They bound a *sum of per-feature functions*, which is a different question from the additive oracle above: that one bounds a per-dataset value plus a per-model value.
+Three levels of what the vocabulary can explain, each a least-squares fit over the library and each computable before the search runs. They bound a *sum of per-feature functions*, which is a different question from the additive mean-based reference above: that one bounds a per-dataset value plus a per-model value.
 
 | level | terms | R² |
 |---|---|---|
@@ -529,7 +538,7 @@ Three levels of what the vocabulary can explain, each a least-squares fit over t
 
 No individual feature carries much: the strongest is `eq_num_attr` at R² 0.142, so any accuracy beyond that is combination rather than a single dominant driver. Taking one best admissible term per feature is worth +0.085 over the admissible raw-term fit.
 
-E3-Valid reaches 0.6787 with 18 terms, **above** the 0.6321 that all 73 single-feature terms reach together. An equation cannot pass that level by describing features one at a time, so the excess is what the cross-feature terms buy — the same conclusion the additive oracle reaches, by an independent route.
+E3-Valid reaches 0.6787 with 18 terms, **above** the 0.6321 that all 73 single-feature terms reach together. An equation cannot pass that level by describing features one at a time, so the excess is what the cross-feature terms buy — the same conclusion the additive mean-based reference reaches, by an independent route.
 
 #### Where the variance is, before any equation
 
@@ -558,10 +567,10 @@ That is a ceiling, not a score. Whether the equation reaches any of it is a sepa
 
 | protocol | rank | alignment | leading_share | interaction_share |
 |---|---|---|---|---|
-| in-sample | 1 | 0.3676 | 0.3757 | 0.3647 |
-| in-sample | 2 | 0.3168 | 0.5658 | 0.3647 |
-| leave-one-dataset-out | 1 | 0.3340 | 0.3757 | 0.3647 |
-| leave-one-dataset-out | 2 | 0.2576 | 0.5658 | 0.3647 |
+| IS | 1 | 0.3676 | 0.3757 | 0.3647 |
+| IS | 2 | 0.3168 | 0.5658 | 0.3647 |
+| LODO | 1 | 0.3340 | 0.3757 | 0.3647 |
+| LODO | 2 | 0.2576 | 0.5658 | 0.3647 |
 
 ## Equation analysis
 
@@ -569,7 +578,7 @@ The equation has 18 terms, of which **12** carry 84% of the standardised weight 
 
 That last number is the one to read for concentration, because it does not depend on where a threshold is drawn. At 77% of the term count the equation is **flat**: no single term dominates. That is a statement about the *unit of explanation*, not about the quality of the equation — MCC here is inferred by a set of terms acting together rather than by one or two that could be quoted on their own. Three readings follow, and the sections below give each one: read the terms in the blocks that move together, read which features the search reached for, and read which operations it needed to apply to them.
 
-`beta` is the standardised weight — the MCC contributed per standard deviation of the term, which is what makes terms in unrelated units comparable. `effect` is the swing in predicted MCC across the middle 80% of the term's observed range. `stability` is the fraction of leave-one-dataset-out folds that selected the term.
+`beta` is the standardised weight — the MCC contributed per standard deviation of the term, which is what makes terms in unrelated units comparable. `effect` is the swing in predicted MCC across the middle 80% of the term's observed range. `stability` is the fraction of LODO folds that selected the term.
 
 | rank | term | group | features | weight | beta | effect | share | cumulative | major | stability | direction |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -692,15 +701,15 @@ The vocabulary offers five operations and five transforms and the search is free
 
 ## The ceiling on model descriptors
 
-Under leave-one-dataset-out every model appears in every training fold, so the equation's residual can be averaged per model on the training rows and applied to the held-out dataset with no leak. That replaces the model descriptors with the best possible substitute -- the model's **identity**, fitted freely -- so what it adds is a ceiling on what any descriptor set could reach by telling these classifiers apart.
+Under LODO every model appears in every training fold, so the equation's residual can be averaged per model on the training rows and applied to the held-out dataset with no leak. That replaces the model descriptors with the best possible substitute -- the model's **identity**, fitted freely -- so what it adds is a ceiling on what any descriptor set could reach by telling these classifiers apart.
 
-| correction | r2_loo_dataset | mae | gain | ci_low | ci_high | sign_p | wins | verdict |
+| correction | r2_LODO | mae | gain | ci_low | ci_high | sign_p | wins | verdict |
 |---|---|---|---|---|---|---|---|---|
 | none (E3-Valid, 18 terms) | 0.6517 | 0.1361 | 0.0000 |  |  |  | 0 | baseline |
 | per-model level | 0.6735 | 0.1334 | 0.0020 | -0.0037 | 0.0079 | 1.0000 | 10 | tie |
 | per-model level and slope | 0.7074 | 0.1225 | 0.0130 | 0.0030 | 0.0249 | 1.0000 | 10 | real |
 
-**The gap is 0.056 of leave-one-dataset-out R2**, of which a per-model *level* recovers 0.022 and the level-plus-slope form the remaining 0.034.
+**The gap is 0.056 of LODO R²**, of which a per-model *level* recovers 0.022 and the level-plus-slope form the remaining 0.034.
 
 **Whether that is real is a paired question**, so each rung is compared with the uncorrected equation dataset by dataset, on absolute error, over the twenty held-out folds. The two rungs come back differently, and the difference is the finding:
 
@@ -754,7 +763,7 @@ MCC = +0.598118
 
 The same feature sets under the most capable searched grammar. This variant is reported so that the published equation's accuracy can be read against what the wider additive form can do, rather than only against oracles and baselines.
 
-It reaches **0.7194** in-sample against the published equation's 0.6787, and **0.6911** leave-one-dataset-out against 0.6517.
+It reaches **0.7194** under IS against the published equation's 0.6787, and **0.6911** under LODO against 0.6517.
 
 **E3-MAX** (25 terms):
 
@@ -861,7 +870,7 @@ below is much smaller than the text originally described.
 
 The interaction ladder measures the same gap from the other side: the first interaction
 component is worth substantially more than the equation reaches, and the equation recovers
-about a third of that pattern in-sample and a quarter out of fold — measured, not inferred
+about a third of that pattern under IS and a quarter out of fold — measured, not inferred
 from an R² comparison. Both numbers are in the generated section above.
 
 Both are statements that something is missing. Neither says **how much** a better set of
@@ -870,7 +879,7 @@ whether to go and collect them. This chapter measures it.
 
 ### The measurement
 
-Under leave-one-dataset-out **every one of the 25 models appears in every training fold**.
+Under LODO **every one of the 25 models appears in every training fold**.
 So the equation's residual can be averaged per model on the training rows and applied to
 the held-out dataset without any leak. Doing that replaces the model descriptors with the
 best possible substitute — the model's *identity*, fitted freely — and the improvement is
@@ -901,7 +910,7 @@ does not reach significance, so the gain comes from its size on the folds it win
 from winning nearly all of them. That is weaker evidence than a bare "significant" implies and
 clearly stronger than a tie.
 
-The current pooled gap is 0.056 of leave-one-dataset-out R²: the level recovers 0.022 and
+The current pooled gap is 0.056 of LODO R²: the level recovers 0.022 and
 the level-plus-slope form the remaining 0.034. **The residual is specifically the interaction
 the mixed terms were supposed to absorb**, and they have absorbed only part of it.
 
@@ -949,7 +958,7 @@ not published as an equation are worth stating:
   about a *meta-feature* that generalises ([chapter 6](06-practices.md)). A table says "add
   0.24 for logistic regression on this corpus", which is a fact about these 25 runs and this
   equation's bias, not transferable guidance.
-- **It cannot extrapolate to a new model.** Under leave-one-model-out the correction is
+- **It cannot extrapolate to a new model.** Under LOMO the correction is
   empty and its predictions are bitwise E3's. Every number comes from rows where that model
   was already run.
 What survives is the **measurement**: the generated per-model identity ceiling as the upper

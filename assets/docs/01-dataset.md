@@ -2,6 +2,17 @@
 
 *Implemented in `ml_meta_perf.data`.*
 
+The abbreviations used in this chapter are Matthews Correlation Coefficient (**MCC**), F1
+score (**F1**), Internet of Things (**IoT**), coefficient of determination (**R²**), mean
+absolute error (**MAE**), symmetric mean absolute percentage error (**SMAPE**),
+comma-separated values (**CSV**), machine learning (**ML**), linear discriminant analysis
+(**LDA**), quadratic discriminant analysis (**QDA**), stochastic gradient descent (**SGD**),
+key performance indicator (**KPI**), and key quality indicator (**KQI**).
+The equation labels used below are **E1** (dataset features only) and **E3-Valid** (the
+plateau-selected equation using dataset and model features).
+The evaluation protocols are in-sample (**IS**), leave-one-dataset-out (**LODO**), and
+leave-one-model-out (**LOMO**).
+
 ## The algorithm selection problem
 
 Predicting how well an algorithm will perform on a dataset it has not seen is the
@@ -173,7 +184,7 @@ along with each ladder being gapless and constant within a model.
 
 **Four earlier model columns were retired**: `Training Operations`, `Prediction Operations`,
 `Active Regularization Mechanisms` and `Robust to Outliers`. Removing any of them improves
-leave-one-model-out; three varied *within* a model, which made them partly dataset features
+LOMO; three varied *within* a model, which made them partly dataset features
 wearing a model feature's name; and two were zero-based, so no log, root or reciprocal was
 defined on them at all.
 
@@ -262,15 +273,14 @@ Two things these tables cannot say, both of which bound every number in the stud
 
 **Twenty datasets is the binding constraint on every cross-validated number here.**
 
-- Leave-one-dataset-out R² can move by about 0.10 between adjacent term counts. The curve
+- LODO R² can move by about 0.10 between adjacent term counts. The curve
   should be read, never a single cell.
 - E1's cross-validated result rests on only 20 folds; its per-fold errors and dispersion must
   be read alongside the pooled R².
 - E3-Valid operates on a curve whose points carry that much noise. Its sustained-plateau rule
   therefore reads a forward window of term counts rather than reacting to one adjacent point.
 
-Twenty-five models is more comfortable but still small for the leave-one-model-out
-protocol.
+Twenty-five models is more comfortable but still small for the LOMO protocol.
 
 ### Domain
 

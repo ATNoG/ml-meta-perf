@@ -24,7 +24,7 @@ from ml_meta_perf.plots import (
     term_effects,
 )
 
-ORACLE_ROW = "reference: additive oracle"
+ADDITIVE_REFERENCE_ROW = "reference: additive mean-based reference"
 
 #: The figure set in the order the study presents it. **The order is the identity**: files
 #: are written as ``01_equation_comparison.png`` and so on, so a figure can be named by its
@@ -48,14 +48,14 @@ def figure_name(stem: str) -> str:
     return f"{FIGURE_ORDER.index(stem) + 1:02d}_{stem}.png"
 
 
-def _oracle(report: Report) -> float | None:
-    """The additive ceiling as this run computed it.
+def _additive_reference(report: Report) -> float | None:
+    """The additive mean-based reference as this run computed it.
 
-    Read from the report rather than hardcoded: the ceiling is a property of the data,
+    Read from the report rather than hardcoded: the reference is a property of the data,
     so a literal here would silently drift out of step with the comparison table the
     moment the meta-dataset changed.
     """
-    matched = report.comparison.filter(pl.col("equation") == ORACLE_ROW)
+    matched = report.comparison.filter(pl.col("equation") == ADDITIVE_REFERENCE_ROW)
     return float(matched["r2"][0]) if matched.height else None
 
 
@@ -83,7 +83,7 @@ def generate(report: Report, destination: str | Path, data: str | Path | None = 
         term_count_curve(
             report.e3.curve,
             folder / figure_name("term_count_curve"),
-            oracle=_oracle(report),
+            reference=_additive_reference(report),
             marker=_published_length(report),
             marker_label="selected term count",
         ),
@@ -113,18 +113,19 @@ def captions(report: Report, data: str | Path | None = None) -> dict[str, str]:
         figure_name("equation_comparison"): (
             "Each fitted equation against the level it is read against, all scored on the "
             f"same {frame.height} rows. Dataset-only and model-only equations are bounded by what "
-            "their group identity can explain. The additive oracle bounds only an equation "
+            "their group identity can explain. The additive mean-based reference bounds only an equation "
             "additive in dataset and model effects, which E3 is not: its mixed terms can "
             "carry interactions beyond that reference, and the current E3 passes it. "
-            "All bars are in-sample."
+            "All bars use in-sample (IS) estimates."
         ),
         figure_name("term_count_curve"): (
-            "Accuracy against equation length for E3, in-sample and under every "
-            "cross-validation protocol. The vertical line is the published length, chosen by "
+            "Accuracy against equation length for E3 under in-sample (IS), "
+            "leave-one-dataset-out (LODO), and leave-one-model-out (LOMO) evaluation. "
+            "The vertical line is the published length, chosen by "
             "the retained Combined-R2 plateau rule across the searched arities. "
-            "The additive oracle is the best score reachable by an equation additive in "
+            "The additive mean-based reference is the best score reachable by an equation additive in "
             "dataset and model effects; an equation passes it only by representing the "
-            "dataset-by-model interaction the oracle cannot."
+            "dataset-by-model interaction the additive reference cannot."
         ),
         figure_name("predicted_vs_actual"): (
             "Predicted against actual MCC for E3. Axes start at 0; "
@@ -142,16 +143,19 @@ def captions(report: Report, data: str | Path | None = None) -> dict[str, str]:
         ),
         figure_name("decision_quality"): (
             "F1 of the above-or-below-threshold decision against the threshold, one line per "
-            "protocol. The four differ only in what the equation was allowed to see, so the "
+            "evaluation protocol: in-sample (IS), leave-one-dataset-out (LODO), "
+            "leave-one-model-out (LOMO), and doubly held-out (DHO). The four differ only in "
+            "what the equation was allowed to see, so the "
             "spread between them is the cost of generalisation on this task. F1 rather than "
             "accuracy because the classes are unbalanced at the outer thresholds, where "
             "always answering with the larger class reaches 0.51 accuracy at an F1 of zero."
         ),
         figure_name("ranking_quality"): (
-            "Head-of-list ranking quality per held-out dataset, beside what a bad ranking "
+            "Head-of-list ranking quality per dataset under doubly held-out (DHO) evaluation, "
+            "beside what a bad ranking "
             "costs. Left: average precision and reciprocal rank, with a star where the "
-            "equation ranked the best model first; relevance is being within 0.01 MCC of the "
-            "dataset's best. Right: the MCC given up by taking the top-ranked model. Both are "
+            "top-ranked choice is within 0.01 MCC of the dataset's best. Right: the MCC given "
+            "up by taking the top-ranked model. Both are "
             "scored with the dataset and the model of every cell held out of the fit."
         ),
     }

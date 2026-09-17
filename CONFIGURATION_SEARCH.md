@@ -1,8 +1,13 @@
-# E3 configuration recalibration
+# E3 (dataset-and-model equation) configuration recalibration
 
 The ordinary `ml-meta-perf` command reproduces the study with its retained configuration and
 selection rules. The separate `ml-meta-perf-search` command performs the exhaustive, resumable
 configuration search intended for a Slurm node.
+
+The abbreviations used below are coefficient of determination (**R²**), in-sample (**IS**),
+leave-one-dataset-out (**LODO**), leave-one-model-out (**LOMO**), doubly held out (**DHO**),
+comma-separated values (**CSV**), Secure File Transfer Protocol (**SFTP**), line feed (**LF**),
+carriage return plus line feed (**CRLF**), and central processing unit (**CPU**).
 
 ## Retained 1–25-term search
 
@@ -20,9 +25,8 @@ in the source, chapters, and figures. Its shared base configuration is:
 - maximum arities: `2` and `3`;
 - equation lengths: `1` through `25`.
 
-E3-MAX selects the arity-3 equation with 25 terms. Its R² values are 0.7194 in-sample, 0.6911
-leave-one-dataset-out, 0.6554 leave-one-model-out, and 0.6554 with both the dataset and model
-held out.
+E3-MAX selects the arity-3 equation with 25 terms. Its R² values are 0.7194 under IS, 0.6911
+under LODO, 0.6554 under LOMO, and 0.6554 under DHO.
 
 E3-Valid selects the arity-2 equation with 18 terms. Its corresponding R² values are 0.6787,
 0.6517, 0.6149, and 0.6103.
@@ -38,18 +42,18 @@ It crosses those 57 subsets with:
 - every equation length from 1 through 25, obtained from one reused beam path.
 
 The cheap stage ranks candidates with the historical composite objective `J`. It combines
-in-sample, leave-one-dataset-out and leave-one-model-out R², threshold decisions, ranking,
+IS, LODO and LOMO R², threshold decisions, ranking,
 term stability and brevity. `J` produces a diverse shortlist and does not make the final
 selection.
 
-The expensive stage computes doubly held-out validation for the shortlisted base settings:
+The expensive stage computes DHO validation for the shortlisted base settings:
 for each observed cell, it removes every row sharing that cell's dataset or model.
 E3-MAX maximises the minimum R² over all four protocols. E3-Valid shares E3-MAX's descriptor
 subset, ridge penalty and z-score, and uses:
 
 $$
 R^2_{\mathrm{combined}} = \operatorname{median}\left(
-R^2_{\mathrm{in\text{-}sample}},
+R^2_{\mathrm{IS}},
 R^2_{\mathrm{LODO}},
 R^2_{\mathrm{LOMO}}
 \right).
@@ -148,9 +152,9 @@ manifest.json                 exact search identity
 run_summary.json              requested stage and elapsed time
 grid.csv                     every requested configuration
 equation_search.csv          all cheap-stage lengths and components of J
-shortlist.csv                base settings sent to doubly held-out validation
+shortlist.csv                base settings sent to DHO validation
 finalists.csv                shortlist with the fourth protocol
-finalist_fold_errors.csv     per-dataset doubly held-out errors
+finalist_fold_errors.csv     per-dataset DHO errors
 selected_configurations.json selected settings, metrics and plateau diagnostics
 e3_valid.json / .txt         retained E3-Valid equation
 e3_max.json / .txt           E3-MAX capability equation

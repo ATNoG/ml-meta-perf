@@ -169,7 +169,7 @@ class TestCorrectOutOfFold(unittest.TestCase):
         self.assertGreater(after, before)
 
     def test_holding_out_the_model_leaves_predictions_untouched(self) -> None:
-        # Under leave-one-model-out the held-out model has no training row, so there is no
+        # Under leave-one-model-out (LOMO), the held-out model has no training row, so there is no
         # effect to apply and the correction must be exactly the identity. This is the
         # boundary of the method and it is asserted rather than described.
         path = cross_validate_fixed_form(
@@ -237,7 +237,7 @@ class TestIdentityCeiling(unittest.TestCase):
 
     def test_the_uncorrected_row_is_the_reported_equation(self) -> None:
         """The ceiling is only a ceiling *for* the published equation, so its baseline row has
-        to be that equation's own reported leave-one-dataset-out score."""
+        to be that equation's own reported leave-one-dataset-out (LODO) score."""
         reported = float(corpus.published().cross_validated["loo_dataset"]["r2"])
         self.assertAlmostEqual(self.table["r2_loo_dataset"][0], reported, places=9)
 

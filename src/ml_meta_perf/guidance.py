@@ -586,11 +586,10 @@ def _beat_the_trivial_baseline(evidence: Evidence) -> Verdict:
     were once separated by 0.0006 -- a margin that chose a published verdict while
     measuring nothing. `validate.ranking_report` says so where it is computed.
 
-    It must not decide on a difference of means over twenty folds. On the head-weighted
-    metrics the equation's mean average precision leads the baseline's by 0.021, and it is
-    the better of the two on only 7 of the 17 datasets where they differ: the lead is a few
-    large wins, not an advantage. So the verdict runs `validate.paired_comparison` on the
-    per-dataset scores and reads the interval, not the mean.
+    It must not decide on a difference of means over twenty folds. A mean difference does
+    not say whether the advantage is broad or driven by a few large wins. The verdict
+    therefore runs `validate.paired_comparison` on the per-dataset scores and reads the
+    interval, not the mean alone.
 
     The practice claims the trivial baseline is *competitive*, so an inconclusive paired
     test is the practice being right rather than a failure to measure. Only a baseline that

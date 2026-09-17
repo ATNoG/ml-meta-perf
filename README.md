@@ -1,7 +1,7 @@
 # ![ml-meta-perf logo](assets/logo.svg) ml-meta-perf
 
 **ml-meta-perf** fits short, readable equations that predict the **Matthews Correlation
-Coefficient** a classifier will reach on a dataset, from meta-features of the dataset and
+Coefficient (MCC)** a classifier will reach on a dataset, from meta-features of the dataset and
 of the model:
 
 ```
@@ -12,33 +12,41 @@ In the retained grammars, each `t` is a simple expression over one to three raw 
 `f^2`, `f1/f2`, `f1*f2`, `(f1+f2)/f3` — and each `w` is a real number in the features' own
 units, so the printed equation evaluates as written.
 
+The evaluation protocols are in-sample (**IS**), leave-one-dataset-out (**LODO**),
+leave-one-model-out (**LOMO**), and doubly held out (**DHO**).
+
 The project prioritises a readable equation and tests whether that transparency costs transfer
-accuracy. Opaque regressors fit these meta-data more closely in-sample, but none beats the
-equation when both the dataset and model are held out. The result is an equation a practitioner
+accuracy. Opaque regressors fit these meta-data more closely under IS, but none beats the
+equation under DHO. The result is an equation a practitioner
 can inspect, challenge, and use to derive guidance.
 
 > **Status:** research prototype for an academic study. The corpus contains 476 observed pairs
 > from a grid of 20 datasets and 25 models, which is small. The headline equation scores are
-> reported both in-sample and under leave-one-out cross-validation because the two differ a lot
+> reported both under IS and held-out cross-validation because the two differ a lot
 > at this size.
 
 ## Headline results
 
-| | in-sample | LOO-dataset | LOO-model |
+The equation labels are **E1** (dataset features only), **E2** (model features only),
+**E3-Valid** (the plateau-selected equation using both feature groups), and **E3-MAX**
+(the maximum-capability equation using both feature groups).
+
+| | IS | LODO | LOMO |
 |---|---|---|---|
 | E1 — dataset features only, 16 terms | 0.354 | 0.349 | 0.300 |
 | E2 — model features only, 6 terms | 0.259 | 0.197 | 0.237 |
 | **E3-Valid — both, 18 terms** | **0.679** | **0.652** | **0.615** |
 | E3-MAX — capability bound, 25 terms | 0.719 | 0.691 | 0.655 |
 
-The three primary equations differ only in which features they may draw on — **E1** sees the
-dataset, **E2** sees the model, and **E3-Valid** sees both. All three are fitted on the same 476 rows
-by the same function, from one configuration, and scored on the same 476 rows under the same
-four protocols, so the gaps between them measure the features and nothing else.
+The three primary equations differ only in which features they may draw on. All three are
+fitted on the same 476 rows by the same function, from one configuration, and scored on the
+same 476 rows under the same four protocols, so the gaps between them measure the features
+and nothing else.
 
-**Their R² values share a scale but not a ceiling, and this is the most common way to
-misread the table.** E1 predicts one value per dataset, so 0.354 — the variance of the true
-per-dataset means — is the most it could *ever* reach, however good its terms were. E1 at
+**Their coefficient of determination (R²) values share a scale but not a ceiling, and this
+is the most common way to misread the table.** E1 predicts one value per dataset, so 0.354 —
+the variance of the true per-dataset means — is the most it could *ever* reach, however good
+its terms were. E1 at
 0.354 is not "much worse than E3"; it is finished. The comparable quantity is the fraction
 of its own ceiling each equation attains:
 
@@ -54,7 +62,7 @@ levels it can be read against are both reached or passed, and that is the result
 | level | R² | what it bounds |
 |---|---|---|
 | all 73 single-feature terms | 0.6321 | the best a sum of per-feature functions can do |
-| additive oracle | 0.6605 | the best a per-dataset value **plus** a per-model value can do |
+| additive mean-based reference | 0.6605 | the best a per-dataset value **plus** a per-model value can do |
 | **E3-Valid, 18 terms** | **0.6787** | — |
 | E3-MAX, 25 terms | 0.7194 | capability bound |
 
@@ -90,9 +98,9 @@ capability bound selected by the best four-protocol R² floor.
   admissible raw-term fit. There is no headline driver to quote, which is why the equation needs many
   terms rather than two. [Chapter 4](assets/docs/04-equation.md).
 - **One interaction component is worth +0.122 R², and the equation reaches about a third of
-  it** — alignment 0.37 in-sample and 0.33 out of fold, measured by stripping the additive
+  it** — alignment 0.37 under IS and 0.33 out of fold, measured by stripping the additive
   part from both the truth and the prediction and correlating what is left. A free per-model
-  level and slope raise leave-one-dataset-out R² from 0.652 to 0.707, locating the remaining
+  level and slope raise LODO R² from 0.652 to 0.707, locating the remaining
   headroom on the model side. [Chapter 4](assets/docs/04-equation.md).
 - **Ten best practices from the literature, weighed against the corpus** — 8 supported,
   1 qualified, 1 untestable here. The strongest: tree-based families average MCC **0.927**
@@ -100,7 +108,7 @@ capability bound selected by the best four-protocol R² floor.
   and DNNs last of ten families at 0.454. [chapter 6](assets/docs/06-practices.md).
 
 > **Status:** research prototype for an academic study. With only 476 rows, the headline
-> equation scores are reported both in-sample and under held-out cross-validation because the
+> equation scores are reported both under IS and under held-out cross-validation because the
 > two differ substantially. The search settings were recalibrated after correcting the processing-unit
 > column; the retained parameters, descriptor subset, equation length and grammar all come
 > from that corrected-corpus sweep.
@@ -126,7 +134,7 @@ close with a **generated section** that `ml_meta_perf.report` rewrites on every 
 above the marker is hand-written and describes the method; everything below it is computed
 from the fitted equation, so no chapter can carry a stale table.
 
-The API reference is generated from the module docstrings with `pdoc` and published to
+The application programming interface (API) reference is generated from the module docstrings with `pdoc` and published to
 GitHub Pages by `.github/workflows/docs.yml`; each module links back to the chapter
 covering it.
 
@@ -200,7 +208,7 @@ venv/bin/ml-meta-perf          # or: PYTHONPATH=src venv/bin/python -m ml_meta_p
 
 That takes about six minutes on the reference Windows environment — nearly all of it the opaque-regressor comparison, which
 refits a random forest once per held-out group and then once per *cell* for the
-doubly held-out cell protocol, 522 fits in all. The equation half of the pipeline is 14 seconds.
+DHO protocol, 522 fits in all. The equation half of the pipeline is 14 seconds.
 It reproduces every number in this README, and writes:
 
 | | |
@@ -232,14 +240,15 @@ wiring check is `python -m unittest discover -s tests`, which takes about a minu
 
 The retained E3 settings can be recalibrated with a separate, resumable Slurm search. It
 reuses the historical composite objective for the broad sweep, applies the expensive
-doubly held-out protocol only to a diverse shortlist, and produces a shared-base
+DHO protocol only to a diverse shortlist, and produces a shared-base
 E3-Valid/E3-MAX pair for review. E3-Valid uses the retained Combined-R² plateau rule. See
 [the configuration-search guide](CONFIGURATION_SEARCH.md) for the complete grid, selection
 rule and cluster instructions.
 
 **One note on threading.** The inner loop is ~87k solves of matrices no larger than 32×32,
-far below the size where BLAS parallelism pays: threading buys no wall time and burns 3.5×
-the CPU spinning. Setting `OPENBLAS_NUM_THREADS=1` costs nothing and saves the CPU; it is
+far below the size where Basic Linear Algebra Subprograms (BLAS) parallelism pays: threading
+buys no wall time and burns 3.5× the central processing unit (CPU) spinning. Setting
+`OPENBLAS_NUM_THREADS=1` costs nothing and saves the CPU; it is
 left to the caller rather than forced from inside a library.
 
 ### Parameters
@@ -257,7 +266,7 @@ PYTHONPATH=src venv/bin/python -m ml_meta_perf --data mine.csv \
 | flag | default | what it does |
 |---|---|---|
 | `--data` | the shipped corpus | the meta-dataset to fit |
-| `--output` | `results` | where the equations and CSV tables go |
+| `--output` | `results` | where the equations and comma-separated value (CSV) tables go |
 | `--figures` | `assets/figures` | where the figures go |
 | `--docs` | `assets/docs` | chapter directory whose generated sections are rewritten |
 | `--max-terms` | 25 | longest equation the search explores (drives the curve) |
@@ -315,7 +324,8 @@ practice_effects(practices, "practice_effects.png")
 
 ## Figures
 
-`--figures <dir>` writes the figure set, each as a PNG and a PDF on a transparent
+`--figures <dir>` writes the figure set, each as a Portable Network Graphics (PNG) file and
+a Portable Document Format (PDF) file on a transparent
 background. **Files are numbered by their position in the set** — `01_equation_comparison.png`,
 `02_term_count_curve.png` and so on — so a figure can be named by its number in a review or a
 caption. `ml_meta_perf.figures.FIGURE_ORDER` is the single place that order is written down,
@@ -331,7 +341,9 @@ caption per file, including the disclosures deliberately kept out of the images.
 src/ml_meta_perf/
     data.py         loading, schema validation, aggregation, feature glossary
     terms.py        the term vocabulary and its admissibility rules
-    stats.py        pearson, spearman, ranks, R2/MAE/RMSE/SMAPE, written out
+    stats.py        pearson, spearman, ranks, R2 (R²), mean absolute error (MAE),
+                    root mean squared error (RMSE), and symmetric mean absolute percentage
+                    error (SMAPE), written out
     opaque.py       the opaque-regressor comparison (scikit-learn), same protocols
     analysis.py     correlation screening, redundancy clustering
     search.py       screening, beam search, refinement, pruning
@@ -355,7 +367,7 @@ results/            generated equations and tables
 scripts/            Slurm jobs and reproducible search-report utilities
 meta_dataset_pipeline/  raw-corpus pipeline used to regenerate meta_dataset.csv
 tests/              unittest suite
-.github/workflows/  CI on 3.12 and 3.14, and the published API reference
+.github/workflows/  continuous integration (CI) on 3.12 and 3.14, and the published API reference
 requirements-reproducibility.txt  exact reference runtime
 requirements-meta-dataset.txt     dependencies for regenerating the shipped corpus
 ```
@@ -374,7 +386,8 @@ venv/bin/pre-commit run --all-files   # ruff, basedpyright, vulture, unittest
 ```
 
 `requirements.txt` installs the project editable and pins pre-commit plus the three static-analysis
-tools; the latter match the versions CI installs. `pyproject.toml` defines the supported runtime dependency ranges;
+tools; the latter match the versions that continuous integration (CI) installs. `pyproject.toml`
+defines the supported runtime dependency ranges;
 `requirements-reproducibility.txt` freezes the complete environment used for the reference
 experiment.
 

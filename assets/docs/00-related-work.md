@@ -1,5 +1,22 @@
 # 0. Related work and positioning
 
+The method abbreviations used in this chapter are machine learning (**ML**), symbolic
+regression (**SR**), explainable boosting machine (**EBM**), sparse identification of
+nonlinear dynamics (**SINDy**), Transformation-Interaction-Rational (**TIR**), genetic
+programming (**GP**), additive main effects and multiplicative interaction (**AMMI**),
+Sparse Regression of Turbulent Stress Anisotropy (**SpaRTA**), and data, optimization,
+model, and evaluation (**DOME**). The metric, protocol, and domain abbreviations are Matthews
+Correlation Coefficient (**MCC**), coefficient of determination (**R²**), average precision
+(**AP**), mean reciprocal rank (**MRR**), hit at rank one (**Hit@1**), F1 score (**F1**),
+in-sample (**IS**), leave-one-dataset-out (**LODO**), leave-one-model-out (**LOMO**),
+doubly held out (**DHO**), and Internet of Things (**IoT**).
+Model-family abbreviations are random forest (**RF**), gradient-boosting machine (**GBM**),
+and neural network (**NN**).
+
+The equation labels are **E1** (dataset features only), **E3-Valid** (the plateau-selected
+equation using dataset and model features), and **E3-MAX** (the maximum-capability equation
+using those feature groups).
+
 Notes gathered while building `ml-meta-perf`, organised around the question the project
 actually faces: *why choose a short additive equation over an accurate opaque regressor,
 and what should be expected of it?*
@@ -41,8 +58,8 @@ Their central result is directly relevant and worth quoting in full:
 > guidance."
 
 **Relevance.** This is independent corroboration of the central measurement here. Our
-published equation reaches leave-one-dataset-out R² of 0.652 for a classification metric
-(MCC), against 0.679 in-sample; the less constrained E3-MAX capability bound reaches 0.691
+published equation reaches LODO R² of 0.652 for a classification metric
+(MCC), against 0.679 under IS; the less constrained E3-MAX capability bound reaches 0.691
 and 0.719. These modest transfer figures reflect a documented property of classifier
 performance prediction. The paper also names the **"interpretability tax"**: methods
 optimising for structural sparsity pay significantly in training time. `ml-meta-perf` pays a
@@ -57,7 +74,8 @@ numbers as a finding rather than a shortfall.
 functions** — the same machinery as SINDy, applied to meta-learning rather than dynamics.
 
 - Brunton, Proctor, Kutz, "Discovering governing equations from data by sparse
-  identification of nonlinear dynamical systems", *PNAS* 113(15) (2016). The original
+  identification of nonlinear dynamical systems", *Proceedings of the National Academy of
+  Sciences (PNAS)* 113(15) (2016). The original
   library-plus-sparse-regression formulation.
 - Schmelzer, Dwight, Cinnella, **"Discovery of Algebraic Reynolds-Stress Models Using
   Sparse Symbolic Regression"** (SpaRTA), *Flow, Turbulence and Combustion* 104, 579-603
@@ -88,7 +106,8 @@ long to interpret. That is a known and named failure mode.
 - Cranmer, "Interpretable Machine Learning for Science with PySR and SymbolicRegression.jl",
   arXiv:2305.01582 (2023). Preprint.
 - de França et al., "Call for Action: towards the next generation of symbolic regression
-  benchmark" (SRBench update), *GECCO 2025 Companion*.
+  benchmark" (SRBench update), *Genetic and Evolutionary Computation Conference (GECCO)
+  2025 Companion*.
 - Virgolin & Bosman, "Coefficient Mutation in the Gene-pool Optimal Mixing Evolutionary
   Algorithm for Symbolic Regression", *GECCO 2022 Companion* — GP struggles to optimise
   real-valued coefficients, which linear-in-the-weights methods get exactly and for free.
@@ -102,17 +121,21 @@ coefficient-optimisation weakness that GP has to work around.
 **A caution on the R² > 0.7 figure.** Dataset meta-features are constant across a dataset's
 rows, so random row splits permit identity leakage and grouped validation remains necessary.
 The current fixed-form equation itself scores almost identically under random 10-fold
-(0.651) and leave-one-dataset-out (0.652), while the opaque comparison shows how strongly a
-flexible model can exploit that identity. The **additive oracle sits at 0.6605**: exact
+(0.651) and LODO (0.652), while the opaque comparison shows how strongly a
+flexible model can exploit that identity. The **additive mean-based reference sits at 0.6605**: exact
 per-dataset plus per-model effects cannot exceed it, while the published equation reaches
-0.679 through 10 mixed dataset×model terms. A reported value above the additive oracle can
+0.679 through 10 mixed dataset×model terms. A reported value above the additive mean-based reference can
 therefore represent genuine interaction, leakage, or both; grouped protocols distinguish
 those explanations.
 
 ## 5. Performance-influence models — the closest methodological sibling
 
-Searching the systems-performance literature (the MASCOTS / SIGMETRICS / ESEC-FSE
-neighbourhood) turns up a line of work building models of **exactly this form**, for a
+Searching the systems-performance literature around the International Symposium on Modeling,
+Analysis, and Simulation of Computer and Telecommunication Systems (**MASCOTS**), the
+Association for Computing Machinery (**ACM**) SIGMETRICS International Conference on
+Measurement and Modeling of Computer Systems (**SIGMETRICS**), and the European Software
+Engineering Conference and Symposium on the Foundations of Software Engineering
+(**ESEC/FSE**) turns up a line of work building models of **exactly this form**, for a
 structurally identical problem.
 
 - Siegmund, Grebhahn, Apel, Kästner, "Performance-influence models for highly
@@ -123,11 +146,13 @@ structurally identical problem.
   fitted by stepwise forward/backward selection. That is `ml-meta-perf`'s model class and
   `ml-meta-perf`'s search strategy, arrived at independently for a different domain.
 - Velez et al., "White-Box Analysis over Machine Learning: Modeling Performance of
-  Configurable Systems", *ICSE 2021*, 1072-1084.
+  Configurable Systems", *International Conference on Software Engineering (ICSE) 2021*,
+  1072-1084.
 - Velez et al., "ConfigCrusher: Towards White-Box Performance Analysis for Configurable
   Systems", *Automated Software Engineering* 27 (2020).
 - Jamshidi et al., "Transfer Learning for Performance Modeling of Configurable Systems:
-  An Exploratory Analysis", *ASE 2017*, 497-508.
+  An Exploratory Analysis", *International Conference on Automated Software Engineering
+  (ASE) 2017*, 497-508.
 - Lesoil et al., "The Interaction between Inputs and Configurations fed to Software
   Systems: an Empirical Study", arXiv:2112.07279 (2021). Preprint.
 
@@ -135,7 +160,7 @@ structurally identical problem.
 software system to our classifier, and their *workload* to our dataset. Lesoil et al. study
 input×configuration interaction, which is our dataset×model interaction under another name.
 Jamshidi et al. transfer a performance model across environments, which is our
-leave-one-dataset-out question.
+LODO question.
 
 **What this community already knows that is worth borrowing.** Interaction terms are the
 standard remedy and are included by default rather than discovered, which is consistent
@@ -145,7 +170,7 @@ analogue here is which (dataset, model) pairs get run, and our 476-of-500 grid i
 complete, so we do not have their hardest problem.
 
 **Where we differ.** They report accuracy on held-out configurations of the *same* system;
-our leave-one-dataset-out protocol holds out a whole system. That is the harder question
+our LODO protocol holds out a whole system. That is the harder question
 and explains part of the gap between their reported accuracies and ours.
 
 ## 5b. Two-way tables with covariates on one side — the model behind the ceiling
@@ -166,15 +191,16 @@ descriptors would be worth.
 - Finlay & Wilkinson, "The analysis of adaptation in a plant-breeding programme",
   *Australian Journal of Agricultural Research* 14 (1963) — the earliest form of the same
   idea: each subject gets its own *slope* on an index of the condition.
-- Efron & Morris, "Data analysis using Stein's estimator and its generalizations", *JASA*
-  70 (1975) — the shrinkage applied to both the levels and the slopes.
+- Efron & Morris, "Data analysis using Stein's estimator and its generalizations", *Journal
+  of the American Statistical Association (JASA)* 70 (1975) — the shrinkage applied to both
+  the levels and the slopes.
 - Hastie & Tibshirani, *Generalized Additive Models* (1990) — backfitting, the alternative
   fitting scheme, which was measured here and is worse.
 
 **Relevance.** The agronomy literature already cited for AMMI ([chapter 4](04-equation.md))
 answers the question AMMI raises. AMMI's latents are free on both margins, so it explains a
 grid and predicts nothing outside it; factorial regression with covariates on one margin is
-the predictive version, and it is exactly what leave-one-dataset-out permits — the datasets
+the predictive version, and it is exactly what LODO permits — the datasets
 are new, the classifiers are not. Using it as a *ceiling* rather than as a result is the
 honest reading: it says what the meta-features fail to capture, in the units the study
 reports.
@@ -188,14 +214,14 @@ in AutoML.
 - Mısır & Sebag, "Alors: An algorithm recommender system", *Artificial Intelligence* 244
   (2017). Collaborative filtering over an algorithm-by-instance performance matrix, with
   meta-features used to place a *new* instance — the cold-start case, which is our
-  leave-one-dataset-out protocol.
+  LODO protocol.
 - Fusi, Sheth, Elibol, "Probabilistic Matrix Factorization for Automated Machine Learning",
   *NeurIPS 2018*, 3352-3361.
 - Yang, Akimoto, Kim, Udell, "Oboe: Collaborative Filtering for AutoML Model Selection",
-  *KDD 2019*.
+  *Conference on Knowledge Discovery and Data Mining (KDD) 2019*.
 
 **Relevance.** These establish that latent-factor models over a pipeline-by-dataset matrix
-are standard practice for algorithm recommendation, and they are why the +0.056 leave-one-dataset-out
+are standard practice for algorithm recommendation, and they are why the +0.056 LODO
 R² headroom measured in [chapter 4](04-equation.md#the-ceiling-on-model-descriptors) is unsurprising in size. They are also what
 this study deliberately does *not* deliver: a latent factor per model is an uninterpreted
 coordinate, and a table of them supports no term analysis and no transferable practice.
@@ -208,7 +234,8 @@ additive equation gives up against a factorised recommender on this corpus.
   *Advances in Large Margin Classifiers* (2000); Joachims, "Optimizing search engines using
   clickthrough data", KDD 2002 — pairwise learning-to-rank.
 - Brazdil & Soares, "A comparison of ranking methods for classification algorithm
-  selection", ECML 2000 — ranking as *the* output of algorithm selection, and the
+  selection", European Conference on Machine Learning (**ECML**) 2000 — ranking as *the*
+  output of algorithm selection, and the
   average-ranking baseline that our per-model mean reproduces.
 - Mundlak, "On the pooling of time series and cross section data", *Econometrica* 46 (1978)
   — the within (fixed-effects) transform, which is what makes a pairwise-ranking least
@@ -241,7 +268,7 @@ identity, and is the same concern as subject-wise splitting in clinical ML.
   biology", *Nature Methods* 18, 1122-1127 (2021) — community standards on how validation should be
   reported, including the leakage traps.
 
-**Relevance.** Supports reporting leave-one-dataset-out as the headline and treating
+**Relevance.** Supports reporting LODO as the headline and treating
 random k-fold as a diagnostic for leakage rather than a result.
 
 ## 8. Where this work is positioned
@@ -249,11 +276,11 @@ random k-fold as a diagnostic for leakage rather than a result.
 | | prior work | `ml-meta-perf` |
 |---|---|---|
 | Model class | opaque regressors (RF, GBM, NN); or GP-evolved long expressions | fixed additive form, linear in the weights |
-| Reported R² | ~0.9 (opaque), >0.7 (GP) | 0.679 in-sample, 0.652 LOO-dataset; E3-MAX reaches 0.719 / 0.691 |
-| Validation | often random k-fold | leave-one-dataset-out and leave-one-model-out |
+| Reported R² | ~0.9 (opaque), >0.7 (GP) | IS 0.679, LODO 0.652; E3-MAX reaches 0.719 / 0.691 |
+| Validation | often random k-fold | LODO and LOMO |
 | Extractable guidance | little | each weight reads directly in feature units |
-| Ceiling stated | rarely | additive oracle at 0.6605, rank-1 at 0.783, E1 capped at 0.354 |
-| Reachable ceiling | not distinguished | per-model level and slope raise LOO-dataset R² from 0.652 to 0.707 (+0.056) |
+| Ceiling stated | rarely | additive mean-based reference at 0.6605, rank-1 at 0.783, E1 capped at 0.354 |
+| Reachable ceiling | not distinguished | per-model level and slope raise LODO R² from 0.652 to 0.707 (+0.056) |
 
 The contribution is not a higher number. It is (a) an equation that can be read, (b) an
 explicit accuracy-versus-length curve instead of a single operating point, (c) the
@@ -267,12 +294,12 @@ quantified.
   interaction at +0.122 R², and the performance-influence literature (§5) includes
   interaction terms by default. Our symmetric `sum_ratio` fix was a step in that
   direction and materially improved the wider grammar. The current equation aligns with
-  only 0.37 of the leading interaction pattern in-sample and 0.33 out of fold, while a
+  only 0.37 of the leading interaction pattern under IS and 0.33 out of fold, while a
   per-model slope still improves transfer. The interaction basis and richer measured model
   descriptors therefore remain open questions.
-- **Ranking.** Under the strict held-out-cell protocol E3-Valid reaches average precision 0.724
+- **Ranking.** Under DHO, E3-Valid reaches average precision 0.724
   and top-1 regret 0.015, against 0.798 and 0.011 for the per-model-mean baseline evaluated
-  under leave-one-dataset-out. The baseline leads on both summaries and its average-precision
+  under LODO. The baseline leads on both summaries and its average-precision
   advantage is significant, while it cannot operate when the model itself is unseen.
 - **More datasets.** Twenty is the binding constraint on every cross-validated number
   here; OpenML-scale meta-data would settle whether the 0.6605 additive ceiling is a

@@ -2,9 +2,9 @@
 Script to run the experiment.
 """
 import ast
-import json
 import os
 from pathlib import Path
+
 import pandas as pd
 
 PIPELINE_DIR = Path(__file__).resolve().parent
@@ -289,14 +289,10 @@ def add_canonical_model_descriptors(frame):
 # whatever the frozen backbone contains, so this is detected dynamically
 # (by actually fitting a tiny dummy batch and counting real torch
 # parameters - see utils/foundation_model_introspection.py) rather than
-# hardcoded, so it stays correct automatically if checkpoint_version ever
-# changes. Environments without tabicl/tabpfn installed (e.g. a machine that
-# only runs this lightweight join stage) fall back to the committed cache at
-# foundation_model_param_counts.json
-# for how to refresh it after a checkpoint_version bump).
-_FOUNDATION_MODEL_PARAM_COUNT_CACHE_PATH = os.path.join(
-    os.path.dirname(__file__), "foundation_model_param_counts.json"
-)
+# hardcoded, so it stays correct automatically if the checkpoint changes.
+# Environments without tabicl/tabpfn installed (for example, a machine that
+# only runs this lightweight join stage) use the recorded counts below. Those
+# constants must be refreshed whenever the corresponding checkpoint changes.
 _FOUNDATION_MODEL_PARAM_COUNT_DEFAULTS = {
     "TabICL": 27552258,
     "TabPFN": 53153144,
@@ -308,7 +304,7 @@ def get_foundation_model_parameter_count(model):
     """
     Returns the real parameter count of a pretrained foundation model
     checkpoint (TabICL, TabPFN), detecting it dynamically when possible and
-    falling back to an on-disk cache otherwise.
+    falling back to the recorded checkpoint count otherwise.
     """
     if model in _foundation_model_parameter_count_memo:
         return _foundation_model_parameter_count_memo[model]
@@ -319,21 +315,12 @@ def get_foundation_model_parameter_count(model):
         )
         count = detect_foundation_model_parameter_count(model)
     except ImportError:
-        cache = {}
-        if os.path.exists(_FOUNDATION_MODEL_PARAM_COUNT_CACHE_PATH):
-            with open(_FOUNDATION_MODEL_PARAM_COUNT_CACHE_PATH) as cache_file:
-                cache = json.load(cache_file)
-
-        if model not in cache:
-            cache = _FOUNDATION_MODEL_PARAM_COUNT_DEFAULTS
-
-        if model not in cache:
+        if model not in _FOUNDATION_MODEL_PARAM_COUNT_DEFAULTS:
             raise ValueError(
-                f"{model} is not installed in this environment and no cached "
-                f"parameter count was found at "
-                f"{_FOUNDATION_MODEL_PARAM_COUNT_CACHE_PATH}."
-            )
-        count = cache[model]
+                f"{model} is not installed in this environment and no fallback "
+                "parameter count is recorded for it."
+            ) from None
+        count = _FOUNDATION_MODEL_PARAM_COUNT_DEFAULTS[model]
 
     _foundation_model_parameter_count_memo[model] = count
     return count

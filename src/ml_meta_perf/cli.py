@@ -44,6 +44,7 @@ from ml_meta_perf.report import term_importance, write_into_chapters
 
 #: What ``--phase`` accepts. ``all`` is the default and is what the study runs.
 PHASES = ("screen", "equations", "validation", "practices", "figures", "report")
+PROTOCOL_LABELS = {"loo_dataset": "LODO", "loo_model": "LOMO", "loo_cell": "DHO"}
 
 
 def _section(title: str) -> None:
@@ -83,29 +84,33 @@ def render(
         _show(report.correlations)
 
     if "equations" in phases:
+        print(
+            "Evaluation protocols: in-sample (IS), leave-one-dataset-out (LODO), "
+            "leave-one-model-out (LOMO), and doubly held out (DHO)."
+        )
         _section("E1 -- dataset features only (fitted on all rows)")
         print(report.e1.equation)
-        print(f"\nin-sample: {report.e1.in_sample}")
+        print(f"\nIS: {report.e1.in_sample}")
         for label, scores in report.e1.cross_validated.items():
-            print(f"{label}: {scores}")
+            print(f"{PROTOCOL_LABELS.get(label, label)}: {scores}")
         print("\naccuracy vs number of terms:")
         _show(report.e1.curve)
 
         _section("E2 -- model features only (the control for 'model choice dominates')")
         print(report.e2.equation)
-        print(f"\nin-sample: {report.e2.in_sample}")
+        print(f"\nIS: {report.e2.in_sample}")
         for label, scores in report.e2.cross_validated.items():
-            print(f"{label}: {scores}")
+            print(f"{PROTOCOL_LABELS.get(label, label)}: {scores}")
 
         _section("E3 -- dataset + model features (fitted on all rows)")
         print(report.e3.equation)
-        print(f"\nin-sample: {report.e3.in_sample}")
+        print(f"\nIS: {report.e3.in_sample}")
         for label, scores in report.e3.cross_validated.items():
-            print(f"{label}: {scores}")
+            print(f"{PROTOCOL_LABELS.get(label, label)}: {scores}")
         print("\naccuracy vs number of terms:")
         _show(report.e3.curve)
         if report.e3.stability is not None:
-            print("\nterm stability across leave-one-dataset-out folds:")
+            print("\nterm stability across LODO folds:")
             _show(report.e3.stability.head(20))
 
     if "practices" in phases:

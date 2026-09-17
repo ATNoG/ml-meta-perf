@@ -12,7 +12,7 @@ from ml_meta_perf.stats import mae, r2_score
 from ml_meta_perf.terms import build_library
 from ml_meta_perf.validate import (
     CrossValidation,
-    additive_oracle,
+    additive_mean_reference,
     baseline_group_centre,
     baseline_group_mean,
     cross_validate_fixed_form,
@@ -169,17 +169,17 @@ class TestBaselines(unittest.TestCase):
         conditioned = baseline_group_mean(self.target, self.outer, self.inner)
         self.assertLess(float(np.abs(self.target - conditioned).mean()), float(np.abs(self.target - plain).mean()))
 
-    def test_additive_oracle_beats_either_group_alone(self) -> None:
-        oracle = additive_oracle(self.target, self.outer, self.inner)
+    def test_additive_mean_reference_beats_either_group_alone(self) -> None:
+        reference = additive_mean_reference(self.target, self.outer, self.inner)
         self.assertGreater(
-            float(np.corrcoef(oracle, self.target)[0, 1]),
+            float(np.corrcoef(reference, self.target)[0, 1]),
             float(np.corrcoef(baseline_group_mean(self.target, self.outer), self.target)[0, 1]),
         )
 
     def test_baselines_stay_inside_the_mcc_range(self) -> None:
         for predictions in (
             baseline_group_mean(self.target, self.outer),
-            additive_oracle(self.target, self.outer, self.inner),
+            additive_mean_reference(self.target, self.outer, self.inner),
         ):
             self.assertGreaterEqual(predictions.min(), -1.0)
             self.assertLessEqual(predictions.max(), 1.0)
@@ -189,10 +189,10 @@ class TestInteractionOracle(unittest.TestCase):
     def setUp(self) -> None:
         _, self.target, self.outer, self.inner = grid()
 
-    def test_rank_zero_equals_the_additive_oracle(self) -> None:
+    def test_rank_zero_equals_the_additive_mean_reference(self) -> None:
         np.testing.assert_allclose(
             interaction_oracle(self.target, self.outer, self.inner, 0),
-            additive_oracle(self.target, self.outer, self.inner),
+            additive_mean_reference(self.target, self.outer, self.inner),
             atol=1e-9,
         )
 
@@ -483,7 +483,7 @@ class TestGrammarReach(unittest.TestCase):
 
         `r2_all_single_feature` bounds a sum of per-feature functions. E3's cross-feature
         terms are not that, so exceeding it is expected -- and is the independent route to
-        the same conclusion the additive oracle reaches.
+        the same conclusion the additive mean-based reference reaches.
         """
         ladder = grammar_ceiling(self.library, self.truth, self.features)
         fitted = float(corpus.published().in_sample["r2"])

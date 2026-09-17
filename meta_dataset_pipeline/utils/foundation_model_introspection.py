@@ -12,10 +12,9 @@ torch parameters, so the resulting number tracks whatever checkpoint the
 project's model_wrappers.py is actually using instead of a value hardcoded
 by hand.
 
-Used by both scripts/compute_foundation_model_param_counts.py (a standalone
-CLI to refresh the committed cache) and
-exp_stage_create_meta_dataset.py (lazy, in-process detection with an
-on-disk cache fallback for environments without tabicl/tabpfn installed).
+Used by exp_stage_create_meta_dataset.py for lazy, in-process detection. That
+stage contains recorded fallback counts for environments without tabicl or
+tabpfn installed.
 """
 
 

@@ -547,7 +547,7 @@ class Library:
 
         An equation this study cannot reason about term by term has failed its purpose,
         so the constraint is part of the protocol rather than an option. It costs nothing
-        measurable: paired over the twenty leave-one-dataset-out folds it moves mean
+        measurable: paired over the twenty leave-one-dataset-out (LODO) folds it moves mean
         absolute error by +0.0018 at twenty terms, worse on ten of twenty datasets, sign
         test p = 1.000 and a bootstrap interval of [-0.0039, +0.0084] that spans zero.
 
@@ -602,7 +602,7 @@ def build_library(
     # already kept*, so which of a near-collinear pair survived also depended on order, and
     # across five orderings of one six-feature set the library came out at 270, 270, 272, 270
     # and 271 terms with 24 of 257 pool slots differing. That is the whole of the
-    # leave-one-dataset-out ordering band recorded in the branch notes;
+    # LODO ordering band recorded in the branch notes;
     # it was never the beam's tie-breaking.
     dataset_features = tuple(sorted(dataset_features))
     model_features = tuple(sorted(model_features))

@@ -2,6 +2,15 @@
 
 *Implemented in `ml_meta_perf.search`, `ml_meta_perf.fit`, `ml_meta_perf.analysis` and `ml_meta_perf.selection`.*
 
+The abbreviations used in this chapter are Matthews Correlation Coefficient (**MCC**),
+residual sum of squares (**RSS**), Linear Algebra PACKage (**LAPACK**), Basic Linear Algebra
+Subprograms (**BLAS**), central processing unit (**CPU**), coefficient of determination
+(**R²**), in-sample (**IS**), leave-one-dataset-out (**LODO**), leave-one-model-out
+(**LOMO**), and doubly held out (**DHO**). Memory and interface abbreviations are megabyte (**MB**), kilobyte (**KB**),
+level-1 cache (**L1**), and the 64-bit-integer BLAS interface (**ILP64**).
+The equation labels are **E3-Valid** (the plateau-selected dataset-and-model equation) and
+**E3-MAX** (the maximum-capability dataset-and-model equation).
+
 Two problems are involved and only one of them is hard.
 
 | problem | nature | method |
@@ -9,7 +18,7 @@ Two problems are involved and only one of them is hard.
 | Given a set of terms, what are the best weights? | linear | `numpy.linalg.solve` on the ridge normal equations — **exact, no iteration** |
 | Which $k$ of a few hundred candidate terms? | combinatorial | beam search with local refinement |
 
-Handing every term to `lstsq` at once fits *better* in-sample than the published equation and
+Handing every term to `lstsq` at once fits *better* under IS than the published equation and
 transfers catastrophically — the generated section at the foot of this chapter measures both,
 against the published equation, on this run. The solver is not the hard part; the sample size
 is, and everything below is about spending it well.
@@ -81,7 +90,7 @@ identity against the literal definition across penalties and subset sizes.
 Every candidate refit is a $k \times k$ solve against a precomputed Gram matrix rather
 than a least-squares call against the full design. Everything this study fits — the term
 sweeps, four equations across two grammars, and all four protocols including the
-doubly-held-out cell — runs in tens of seconds on the reference environment, and every
+DHO cell — runs in tens of seconds on the reference environment, and every
 optimisation that got it there was verified to leave the outputs unchanged.
 
 A full `python -m ml_meta_perf` takes about six minutes on the reference Windows environment;
@@ -191,7 +200,7 @@ products, and this study never forms one.
 Accuracy is **not** limited by search strength. Sweeping beam width, candidate pool and
 refinement rounds over an order of magnitude each:
 
-| setting | beam | candidates | rounds | in-sample (k=14) | in-sample (k=20) |
+| setting | beam | candidates | rounds | IS (k=14) | IS (k=20) |
 |---|---|---|---|---|---|
 | baseline | 6 | 24 | 2 | 0.5582 | 0.5662 |
 | wide beam | 16 | 24 | 2 | 0.5582 | 0.5663 |
@@ -202,7 +211,7 @@ refinement rounds over an order of magnitude each:
 <sub>Default library. The wider library gains ~0.01 non-monotonically, which is search noise
 rather than systematic improvement. **Measured before the 2026-09-05 protocol change**, so
 these are re-selecting numbers and are not comparable with any current figure — the
-in-sample column here is not the in-sample column of chapter 5. What the table supports is a
+IS column here is not the IS column of chapter 5. What the table supports is a
 statement about *differences between search settings*, and those are internally consistent
 because every row was measured the same way.</sub>
 
@@ -211,7 +220,7 @@ negative result on a richer vocabulary ([chapter 2](02-additive-model.md)), this
 the limit in the model *form*, not in the optimiser.
 
 **Per-length penalty tuning** was also tested: choosing $\lambda$ separately for each $k$
-lifted leave-one-dataset-out R² at $k=14$ from 0.4429 to 0.4456 — again on the pre-2026-09-05
+lifted LODO R² at $k=14$ from 0.4429 to 0.4456 — again on the pre-2026-09-05
 re-selecting protocol, so read the *gain* and not the level. A gain of 0.003 does not justify
 the extra configuration surface, and one global penalty is retained.
 
@@ -223,9 +232,9 @@ uses a forward window of three evaluated lengths with a tolerance of 0.001.
 
 ### Which evidence the rule combines
 
-In-sample R² is monotone in the number of terms, so it cannot express the trade between fit
+IS R² is monotone in the number of terms, so it cannot express the trade between fit
 and equation length by itself. A single cross-validated curve is also insufficient. On twenty groups they wander, and
-leave-one-dataset-out on this corpus has genuine craters — lengths where the held-out number
+LODO on this corpus has genuine craters — lengths where the held-out number
 collapses by a fifth of the scale while its two neighbours are untouched. That is not noise,
 and it is not a property of the length either: at such a length one held-out dataset sits
 outside the convex hull of the other nineteen in term space, where a linear equation
@@ -233,8 +242,8 @@ extrapolates without limit and `validate._clip_to_training` pins the fold to its
 floor. `ASNM-CDX-2009` is the fold this happens to. One fold's extrapolation should not
 choose the published length.
 
-The rule therefore uses `selection.consensus_curve`: the per-length **median** of in-sample,
-leave-one-dataset-out, and leave-one-model-out R². The median keeps one unstable validation
+The rule therefore uses `selection.consensus_curve`: the per-length **median** of IS,
+LODO, and LOMO R². The median keeps one unstable validation
 protocol from determining the equation length. Which length contains the deepest crater moves
 with the configuration, so the generated section below identifies it from the current curve
 and reports the median and mean side by side.
@@ -249,7 +258,7 @@ length costs nothing, because the beam search already builds the whole path.
 
 ![Accuracy versus equation length](../figures/02_term_count_curve.png)
 
-The craters are visible in that figure. They are a real property of leave-one-dataset-out on
+The craters are visible in that figure. They are a real property of LODO on
 twenty groups and they belong on the plot.
 
 ### The retained E3-Valid rule
@@ -276,7 +285,7 @@ arity 2**. The selection is derived from the curve by `selection.plateau_configu
 chosen term count and arity are not separately hard-coded.
 
 E3-MAX answers a separate capability question. It chooses the arity and length that maximise
-the minimum R² over all four protocols, including doubly held-out evaluation. It selects
+the minimum R² over all four protocols, including DHO evaluation. It selects
 **25 terms at arity 3**. E3-MAX is reported as a bound and is not used for the downstream
 prediction and model-ranking results.
 
@@ -288,21 +297,21 @@ a sensitivity analysis. It does not define additional E3-Valid equations.
 
 The control for the whole selection stage. If handing every candidate term to unpenalised least squares in one go transferred well, the beam search and the length rule would be machinery in search of a problem.
 
-| terms | r2_in_sample | r2_loo_dataset_clipped | r2_loo_dataset_unclipped |
+| terms | r2_IS | r2_LODO_clipped | r2_LODO_unclipped |
 |---|---|---|---|
 | 229.0000 | 0.7805 | -0.0972 | -1281.2773 |
 
-**The solver is not the hard part; the sample size is.** All 229 terms at once fit better in-sample than the published equation (0.7805 against 0.6787) and transfer at -0.0972 leave-one-dataset-out, against the published equation's 0.6517. The unclipped figure — -1281.3 — is what the fit does when a held-out dataset falls outside the convex hull of the other nineteen and nothing bounds the extrapolation. A design this much wider than 20 held-out groups can support has nothing to constrain it, which is what selection is for.
+**The solver is not the hard part; the sample size is.** All 229 terms at once fit better under IS than the published equation (0.7805 against 0.6787) and transfer at -0.0972 under LODO, against the published equation's 0.6517. The unclipped figure — -1281.3 — is what the fit does when a held-out dataset falls outside the convex hull of the other nineteen and nothing bounds the extrapolation. A design this much wider than 20 held-out groups can support has nothing to constrain it, which is what selection is for.
 
 ## Equation length
 
-E3-Valid selects **18 terms** immediately before the first sustained plateau in Combined R², the median of in-sample, leave-one-dataset-out, and leave-one-model-out R². The retained rule uses a forward window of three evaluated lengths and a maximum best-so-far gain of 0.001. It compares both searched arities before selecting the equation.
+E3-Valid selects **18 terms** immediately before the first sustained plateau in Combined R², the median of IS, LODO, and LOMO R². The retained rule uses a forward window of three evaluated lengths and a maximum best-so-far gain of 0.001. It compares both searched arities before selecting the equation.
 
 **Why the consensus is a median and not a mean.** The deepest crater on this curve is at **8 terms**, where the three protocols read 0.611 / 0.463 / 0.581. The median takes 0.581 and ignores it; a mean would be dragged to 0.552. The crater is 0.117 below the neighbouring lengths and is not a property of the length at all -- it is one held-out dataset sitting outside the convex hull of the other nineteen in term space, where a linear equation extrapolates without limit and `validate._clip_to_training` pins the fold to its training floor. One fold's extrapolation should not choose the published length.
 
 The following paired analysis compares every length on the selected arity against E3-Valid; it is a sensitivity analysis rather than an additional selector:
 
-| n_terms | r2_loo_dataset | mae_loo_dataset | mean_difference | p_value | ci_low | ci_high | verdict |
+| n_terms | r2_LODO | mae_LODO | mean_difference | p_value | ci_low | ci_high | verdict |
 |---|---|---|---|---|---|---|---|
 | 1 | 0.1952 | 0.2393 | 0.1026 | 0.0000 | 0.0758 | 0.1302 | worse |
 | 2 | 0.3112 | 0.2120 | 0.0754 | 0.0004 | 0.0493 | 0.1015 | worse |
@@ -330,9 +339,9 @@ The following paired analysis compares every length on the selected arity agains
 | 24 | 0.6422 | 0.1368 | 0.0002 | 0.5034 | -0.0073 | 0.0091 | tie |
 | 25 | 0.6445 | 0.1367 | 0.0001 | 0.8238 | -0.0078 | 0.0091 | tie |
 
-The full curve the rule reads, at every length under all three protocols:
+The full curve reports all four protocols at every length. E3-Valid reads IS, LODO, and LOMO through Combined R²; DHO is reported alongside them but is not an input to that plateau rule:
 
-| n_terms | r2_in_sample | mae_in_sample | smape_in_sample | r2_loo_dataset | mae_loo_dataset | smape_loo_dataset | r2_loo_model | mae_loo_model | smape_loo_model | r2_loo_cell | mae_loo_cell | smape_loo_cell |
+| n_terms | r2_IS | mae_IS | smape_IS | r2_LODO | mae_LODO | smape_LODO | r2_LOMO | mae_LOMO | smape_LOMO | r2_DHO | mae_DHO | smape_DHO |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | 1 | 0.2427 | 0.2358 | 46.1034 | 0.1952 | 0.2432 | 47.0548 | 0.2268 | 0.2388 | 46.4802 | 0.1834 | 0.2455 | 47.3340 |
 | 2 | 0.3591 | 0.2062 | 43.2745 | 0.3112 | 0.2135 | 44.3767 | 0.3466 | 0.2084 | 43.5564 | 0.3037 | 0.2150 | 44.5448 |
@@ -367,9 +376,9 @@ The full curve the rule reads, at every length under all three protocols:
 ### Hyperparameter selection is not nested
 
 The stability cap, penalty and equation length were tuned by inspecting
-leave-one-dataset-out scores. Those scores are therefore **mildly optimistic** as estimates
+LODO scores. Those scores are therefore **mildly optimistic** as estimates
 of performance on genuinely new data. A fully nested protocol would cost another factor of
 20 in compute and, at this sample size, would mostly measure noise; the honest reading is
 that the reported transfer numbers are an upper estimate rather than an unbiased one.
 
-The **in-sample** numbers are unaffected by this.
+The **IS** numbers are unaffected by this.

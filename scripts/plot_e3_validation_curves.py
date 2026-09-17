@@ -23,7 +23,7 @@ CURVE_COLUMNS = (
 
 
 def generate(search_directory: Path) -> tuple[Path, Path, Path]:
-    """Generate the in-sample, LODO, and LOMO term-count curves."""
+    """Generate the in-sample (IS), leave-one-dataset-out (LODO), and leave-one-model-out (LOMO) curves."""
     source_path = search_directory / "e3_valid_term_count_curve.csv"
     if not source_path.is_file():
         raise FileNotFoundError(f"required term-count curve is missing: {source_path}")
@@ -41,7 +41,7 @@ def generate(search_directory: Path) -> tuple[Path, Path, Path]:
         curve["in_sample_r2"].to_numpy(),
         "o-",
         color=IN_SAMPLE,
-        label="in-sample",
+        label="IS",
         linewidth=2,
         markersize=3.5,
     )
@@ -50,7 +50,7 @@ def generate(search_directory: Path) -> tuple[Path, Path, Path]:
         curve["loo_dataset_r2"].to_numpy(),
         "s--",
         color=LOO_DATASET,
-        label="leave-one-dataset-out",
+        label="LODO",
         markersize=3.5,
     )
     axes.plot(
@@ -58,7 +58,7 @@ def generate(search_directory: Path) -> tuple[Path, Path, Path]:
         curve["loo_model_r2"].to_numpy(),
         "^:",
         color=LOO_MODEL,
-        label="leave-one-model-out",
+        label="LOMO",
         markersize=3.5,
     )
 

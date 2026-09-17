@@ -26,13 +26,14 @@ dependencies = [
     # It brings scipy with it, which this project refused for a long time on size grounds --
     # `ml_meta_perf.stats` exists because four statistics were not worth the dependency, and
     # that reasoning still holds for those four. What changed the answer is that the
-    # comparison the chapters lean on hardest ("a forest reaches R2 0.9 in-sample and
-    # transfers at 0.082") was measured once during exploration and could not be reproduced
+    # comparison the chapters lean on hardest ("a forest reaches R² 0.9 in-sample (IS) and
+    # transfers at 0.082 under leave-one-dataset-out (LODO)") was measured once during
+    # exploration and could not be reproduced
     # by anyone reading the study. An unreproducible headline is a worse cost than a large
     # wheel, so it is a base dependency rather than an extra: an extra would leave the same
     # numbers unreproducible for anyone who did not know to ask for it.
     "scikit-learn>=1.5.0",
-    # `opaque` threads the leave-one-cell protocol's 476 estimator refits over it. It used to
+    # `opaque` threads the DHO protocol's 476 estimator refits over it. It used to
     # arrive with the `search` extra, which meant a base-only install type-checked with an
     # unresolved import; it is a base dependency now because the study itself runs it.
     "joblib>=1.4.0",

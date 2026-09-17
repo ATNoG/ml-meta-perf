@@ -2,33 +2,43 @@
 
 *Implemented in `ml_meta_perf.validate` and `ml_meta_perf.stats`.*
 
+The metric abbreviations used in this chapter are coefficient of determination (**R²**),
+Matthews Correlation Coefficient (**MCC**), mean absolute error (**MAE**), root mean squared
+error (**RMSE**), symmetric mean absolute percentage error (**SMAPE**), average precision
+(**AP**), mean reciprocal rank (**MRR**), hit at rank one (**Hit@1**), and F1 score (**F1**).
+The equation labels are **E1** (dataset features only), **E2** (model features only),
+**E3-Valid** (the plateau-selected equation using both feature groups), and **E3-MAX**
+(the maximum-capability equation using both feature groups).
+The evaluation protocols are in-sample (**IS**), leave-one-dataset-out (**LODO**),
+leave-one-model-out (**LOMO**), and doubly held out (**DHO**).
+
 ## Four protocols
 
 | protocol | fitted on | scored on | question answered |
 |---|---|---|---|
-| **in-sample** | all 476 rows | the same 476 rows | how well does the equation *describe* the data |
-| **leave-one-dataset-out** | 19 datasets | the held-out 20th, rotated | what will these models score on a dataset nobody has run |
-| **leave-one-model-out** | 24 models | the held-out 25th, rotated | what will a new model score on datasets we know |
-| **doubly-held-out cell** | every row sharing neither the dataset nor the model | one observed (dataset, model) cell, rotated over all 476 | what will *this* model score on *this* dataset, when neither has been run |
+| **IS** | all 476 rows | the same 476 rows | how well does the equation *describe* the data |
+| **LODO** | 19 datasets | the held-out 20th, rotated | what will these models score on a dataset nobody has run |
+| **LOMO** | 24 models | the held-out 25th, rotated | what will a new model score on datasets we know |
+| **DHO** | every row sharing neither the dataset nor the model | one observed (dataset, model) cell, rotated over all 476 | what will *this* model score on *this* dataset, when neither has been run |
 
 **The fourth is the question the study is actually for**, and it is the strictest of the
-four: leave-one-dataset-out still shows a predictor the held-out learner on nineteen other
-problems, and leave-one-model-out still shows it the held-out dataset. Only the cell protocol
+four: LODO still shows a predictor the held-out learner on nineteen other
+problems, and LOMO still shows it the held-out dataset. Only DHO
 denies both, which makes it the one place an equation and an opaque regressor are denied the
 same things. `ml_meta_perf.validate.cross_validate_doubly_held_out` implements it, one refit
 per observed cell rather than per group.
 
 It is also where the study's decisions are tested. E3-Valid selects the first sustained
-plateau in the median of in-sample, leave-one-dataset-out and leave-one-model-out R².
+plateau in the median of IS, LODO and LOMO R².
 E3-MAX uses `selection.floor_curve`, the **minimum over all four**, as its capability
-criterion. The ranking and threshold tables report E3-Valid under the strict cell protocol.
+criterion. The ranking and threshold tables report E3-Valid under DHO.
 
-In-sample is reported as a first-class result rather than dismissed. Term count is capped
+IS is reported as a first-class result rather than dismissed. Term count is capped
 and terms are drawn from a screened pool, so this is **equation fitting, not model
 fitting**: the capacity to memorise 476 rows with 18 terms is limited, and the gap between
-in-sample and the other three is itself the diagnostic. For contrast, a RandomForest on all
-eighteen raw corpus columns reaches 0.9584 in-sample, 0.0821 leave-one-dataset-out and
-**-0.0058** with both held out — the table is in the generated
+IS and the other three is itself the diagnostic. For contrast, a RandomForest on all
+eighteen raw corpus columns reaches 0.9584 under IS, 0.0821 under LODO, and
+**-0.0058** under DHO — the table is in the generated
 [opaque section](#what-an-opaque-model-reaches-and-does-not) below, and that ordering is the
 whole of the argument this study makes for a readable form.
 
@@ -47,7 +57,7 @@ the search.
 
 Re-running selection inside every fold answers that other question, and answering it *as
 though it were the first* has a cost: twenty folds fit twenty different equations, so the
-pooled R² is an average over twenty models. Measured here, that made leave-one-dataset-out
+pooled R² is an average over twenty models. Measured here, that made LODO
 move by as much as 0.3 when the requested length changed by two, while the fixed form varies
 by 0.014 over the same range. The reported curve is smooth because it is one equation being
 asked the same question at different lengths.
@@ -82,7 +92,7 @@ this section does not keep a second copy, for the reason given
 [above](#where-the-numbers-are).
 
 **The three now agree, and that is itself the finding.** A random split used to score 0.083
-above leave-one-dataset-out, because putting rows from the same dataset on both sides of the
+above LODO, because putting rows from the same dataset on both sides of the
 split let the equation recognise the dataset rather than generalise to it. The gap has closed
 to 0.001. Two changes did it, and neither was a better search: the equation's *form* is now
 fixed and only its weights are refit per fold (below), so there is far less for a leaky split
@@ -171,6 +181,8 @@ one 240 lines further down the same file.
 
 ![Decision quality against threshold](../figures/07_decision_quality.png)
 
+The legend uses the four protocol abbreviations: **IS**, **LODO**, **LOMO**, and **DHO**.
+
 F1 is reported beside accuracy because the classes are unbalanced at the outer thresholds and
 accuracy alone hides it: the majority rule reaches 0.51 accuracy at a threshold of 0.9 at an
 F1 of exactly zero. **A regression too imprecise to state an MCC is accurate on the decision**,
@@ -186,12 +198,15 @@ and a top-3 rule would score a correct answer as a miss.
 
 The equation and every competitor are in the generated [Acting on it](#acting-on-it) tables
 below, **each row naming the protocol it was scored under** — which matters more here than
-anywhere else in the chapter, because a ranking scored in-sample and a ranking scored with
+anywhere else in the chapter, because a ranking scored under IS and a ranking scored with
 both the dataset and the model held out are not the same claim. The four E3 rows differ by
-0.011 of average precision across the four protocols, and the strictest one, `loo-cell`, is
+0.011 of average precision across the four protocols, and the strictest one, DHO, is
 what this section's conclusions are read from.
 
 ![Per-dataset ranking quality](../figures/06_ranking_quality.png)
+
+In the figure, a star marks a **top choice within 0.01 MCC of the dataset's best** observed
+model, matching the relevance tolerance used by AP, MRR, and hit@1.
 
 On six of the twenty held-out datasets the top pick is the dataset's best model to within the
 relevance tolerance, so the regret is exactly zero. The largest misses are IoTID20 at 0.062,
@@ -219,7 +234,7 @@ being predicted into its own group's centre inflates the per-model mean's R² by
 `validate.baseline_group_centre` does it correctly and a naive group centre does not.
 
 Every per-model baseline also has a limit no metric shows: it is **empty under
-leave-one-model-out**. A held-out model has no training row, so "how well does this model
+LOMO**. A held-out model has no training row, so "how well does this model
 usually do" does not exist. The per-dataset baselines remain defined under that protocol;
 the per-model baselines are competitors only when model history is available.
 
@@ -229,13 +244,13 @@ Ranking is the one of the three questions where the equation does not clear the 
 predictors, and reading it correctly needs the paired test rather than the means.
 
 The comparison is in the generated section below, and it carries **four rows for the equation
-and two for the baselines**. The four are the four protocols — in-sample, dataset held out,
+and two for the baselines**. The four are the four protocols — IS, dataset held out,
 model held out, and both held out — because a ranking comparison is only a comparison if
 every side is scored under the same one, and this went wrong twice: the ranking was once
-scored in-sample against leave-one-out baselines, and the leave-one-out baselines then turned
+scored under IS against leave-one-out baselines, and the leave-one-out baselines then turned
 out to be handed the model identity the equation is denied. Every row names its protocol.
 
-Read as means, both per-model centres lead the strict held-out-cell equation on AP, MRR,
+Read as means, both per-model centres lead the DHO equation on AP, MRR,
 Hit@1 and regret. Compared dataset by dataset with `validate.paired_comparison`, the AP
 differences against both centres are significant. This is a qualified comparison because a
 per-model centre uses observations of that model on other datasets and is undefined when the
@@ -251,7 +266,7 @@ models are generally good is most of what *ranking* needs, which is why a trivia
 hard to beat there.
 
 **The figures show the strictest protocol; the tables show all four.** A figure has room for
-one line per dataset and the honest one to draw is the leave-one-cell protocol, where neither
+one line per dataset and the honest one to draw is DHO, where neither
 the dataset nor the model was in the fit. The tables keep every protocol beside it, because
 the spread between them is itself the measurement — it is the cost of generalisation on this
 task, and it cannot be read off a single line.
@@ -290,16 +305,16 @@ comparison does not withhold available information from them. The shape of the r
 **A forest fits this meta-data almost perfectly and cannot generalise across datasets.** With
 twenty dataset groups and dataset features constant within a group, it identifies the dataset
 and looks the answer up. Identification is worth nothing on a dataset nobody has run, which
-is why the in-sample and leave-one-dataset-out columns of that row have to be read together.
+is why the IS and LODO columns of that row have to be read together.
 
 **Every protocol is reported, and the ordering of the four columns is the finding.** Removing
 a whole model costs the forest little; removing a whole dataset costs it almost everything;
 removing both leaves it approximately at the corpus-mean R² reference of zero. That is the
 signature of a model that learned which dataset a row came from rather than a relationship.
 
-**The leave-one-cell column is the like-for-like comparison, and the only one.** Under
-leave-one-dataset-out a forest still has the held-out learner on nineteen other problems;
-under leave-one-model-out it still has the held-out dataset. Only with both removed is it
+**The DHO column is the like-for-like comparison, and the only one.** Under
+LODO a forest still has the held-out learner on nineteen other problems;
+under LOMO it still has the held-out dataset. Only with both removed is it
 denied what the equation is denied — and it is also the protocol on which the trivial
 per-model baselines cannot be computed at all, since a model held out of every fold has no
 rows to average. A feature-based predictor still predicts.
@@ -307,7 +322,7 @@ rows to average. A feature-based predictor still predicts.
 **And it loses on the two decisions as well, to the equation *and* to the trivial
 predictors.** This is the part that was never measured before. On the go/no-go decision at a
 0.7 threshold the opaque models reach an MCC around 0.27, against the equation's 0.66 under
-the same leave-one-cell protocol and 0.44 for a per-model mean scored under an easier one —
+the same DHO protocol and 0.44 for a per-model mean scored under an easier one —
 so a forest is worse at deciding whether a model will clear a bar than "how well does this
 model usually do". On ranking they do not reach the equation either, and again fall short of
 the per-model median. Both comparisons are in the generated ranking and decision tables, with
@@ -315,7 +330,7 @@ the per-model median. Both comparisons are in the generated ranking and decision
 
 The honest summary is not that opaque models are bad at this. It is that **the accuracy this
 study traded away was not there to be had** under a protocol where the dataset is genuinely
-unseen, so the trade cost less than the R² gap in-sample suggests.
+unseen, so the trade cost less than the R² gap under IS suggests.
 
 <!-- generated: do not edit below -->
 
@@ -323,12 +338,12 @@ unseen, so the trade cost less than the R² gap in-sample suggests.
 
 | protocol | R² | MAE | RMSE | n |
 |---|---|---|---|---|
-| in-sample | 0.6787 | 0.1286 | 0.1945 | 476 |
-| loo-dataset | 0.6517 | 0.1361 | 0.2025 | 476 |
-| loo-model | 0.6149 | 0.1398 | 0.2130 | 476 |
-| loo-cell | 0.6103 | 0.1431 | 0.2142 | 476 |
+| IS | 0.6787 | 0.1286 | 0.1945 | 476 |
+| LODO | 0.6517 | 0.1361 | 0.2025 | 476 |
+| LOMO | 0.6149 | 0.1398 | 0.2130 | 476 |
+| DHO | 0.6103 | 0.1431 | 0.2142 | 476 |
 
-Cross-validated rows hold out a whole dataset or a whole model, so the equation is scored on a group it has never seen. That is the number that matters, and it is well below the in-sample one at this sample size.
+Cross-validated rows hold out a whole dataset or a whole model, so the equation is scored on a group it has never seen. That is the number that matters, and it is well below the IS value at this sample size.
 
 Against the baselines and the ceiling that bounds any additive equation:
 
@@ -340,29 +355,29 @@ Against the baselines and the ceiling that bounds any additive equation:
 | E2 reference: true model means |  | 0.2821 | 0.2257 | 0.2908 | 45.8786 | 0.4870 | 476 |
 | E3-Valid, dataset + model (18 terms) | 18 | 0.6787 | 0.1286 | 0.1945 | 34.3920 | 0.8324 | 476 |
 | E3-MAX, arity 3 (25 terms) | 25 | 0.7194 | 0.1161 | 0.1818 | 30.9675 | 0.8452 | 476 |
-| reference: additive oracle |  | 0.6605 | 0.1447 | 0.2000 | 35.2889 | 0.8100 | 476 |
+| reference: additive mean-based reference |  | 0.6605 | 0.1447 | 0.2000 | 35.2889 | 0.8100 | 476 |
 
 #### The trivial predictors, at both centres
 
 | baseline | r2 | mae | rmse | smape | spearman | n |
 |---|---|---|---|---|---|---|
-| global mean (loo-dataset) | -0.0396 | 0.2928 | 0.3499 | 50.9160 | -0.6527 | 476 |
-| per-model mean (loo-dataset) | 0.2006 | 0.2382 | 0.3068 | 47.3028 | 0.3885 | 476 |
-| global mean (loo-model) | -0.0239 | 0.2905 | 0.3473 | 50.6571 | -0.4787 | 476 |
-| per-dataset mean (loo-model) | 0.2964 | 0.2132 | 0.2879 | 43.7772 | 0.5808 | 476 |
-| global median (loo-dataset) | -0.3032 | 0.2580 | 0.3918 | 43.6423 | -0.6749 | 476 |
-| per-model median (loo-dataset) | 0.0899 | 0.2256 | 0.3274 | 45.1719 | 0.3968 | 476 |
-| global median (loo-model) | -0.2938 | 0.2556 | 0.3904 | 43.3930 | -0.4798 | 476 |
-| per-dataset median (loo-model) | 0.1291 | 0.1920 | 0.3203 | 40.3032 | 0.6069 | 476 |
-| additive oracle (ceiling, in-sample) | 0.6605 | 0.1447 | 0.2000 | 35.2889 | 0.8100 | 476 |
+| global mean (LODO) | -0.0396 | 0.2928 | 0.3499 | 50.9160 | -0.6527 | 476 |
+| per-model mean (LODO) | 0.2006 | 0.2382 | 0.3068 | 47.3028 | 0.3885 | 476 |
+| global mean (LOMO) | -0.0239 | 0.2905 | 0.3473 | 50.6571 | -0.4787 | 476 |
+| per-dataset mean (LOMO) | 0.2964 | 0.2132 | 0.2879 | 43.7772 | 0.5808 | 476 |
+| global median (LODO) | -0.3032 | 0.2580 | 0.3918 | 43.6423 | -0.6749 | 476 |
+| per-model median (LODO) | 0.0899 | 0.2256 | 0.3274 | 45.1719 | 0.3968 | 476 |
+| global median (LOMO) | -0.2938 | 0.2556 | 0.3904 | 43.3930 | -0.4798 | 476 |
+| per-dataset median (LOMO) | 0.1291 | 0.1920 | 0.3203 | 40.3032 | 0.6069 | 476 |
+| additive mean-based reference (IS) | 0.6605 | 0.1447 | 0.2000 | 35.2889 | 0.8100 | 476 |
 
 Every trivial predictor appears at its mean and at its median, because the metrics disagree about which is the honest opponent: the mean minimises squared error and the median minimises absolute error, so an MAE quoted against a mean baseline is quoted against a predictor that is not minimising the metric it is judged on. Reading the strongest baseline of each kind, per metric:
 
 | metric | strongest mean baseline | strongest median baseline | harder |
 |---|---|---|---|
-| R2 | per-dataset mean (loo-model) (0.2964) | per-dataset median (loo-model) (0.1291) | **mean** |
-| MAE | per-dataset mean (loo-model) (0.2132) | per-dataset median (loo-model) (0.1920) | **median** |
-| SMAPE | per-dataset mean (loo-model) (43.7772) | per-dataset median (loo-model) (40.3032) | **median** |
+| R2 | per-dataset mean (LOMO) (0.2964) | per-dataset median (LOMO) (0.1291) | **mean** |
+| MAE | per-dataset mean (LOMO) (0.2132) | per-dataset median (LOMO) (0.1920) | **median** |
+| SMAPE | per-dataset mean (LOMO) (43.7772) | per-dataset median (LOMO) (40.3032) | **median** |
 
 ## Acting on it
 
@@ -380,107 +395,107 @@ R² is the wrong question for a practitioner, who asks whether a model will work
 
 | predictor | threshold | accuracy | majority | precision | recall | mcc | f1 | map | n_positive |
 |---|---|---|---|---|---|---|---|---|---|
-| equation (in-sample) | 0.5000 | 0.9055 | 0.7668 | 0.9211 | 0.9589 | 0.7257 | 0.9396 | 0.9820 | 365 |
-| equation (in-sample) | 0.6000 | 0.8887 | 0.7332 | 0.9353 | 0.9112 | 0.7225 | 0.9231 | 0.9730 | 349 |
-| equation (in-sample) | 0.7000 | 0.8634 | 0.6681 | 0.9317 | 0.8585 | 0.7085 | 0.8936 | 0.9555 | 318 |
-| equation (in-sample) | 0.8000 | 0.8277 | 0.6261 | 0.9576 | 0.7584 | 0.6796 | 0.8464 | 0.9310 | 298 |
-| equation (in-sample) | 0.9000 | 0.8151 | 0.5084 | 0.9477 | 0.6736 | 0.6609 | 0.7874 | 0.9227 | 242 |
-| equation (loo-dataset) | 0.5000 | 0.9013 | 0.7668 | 0.9184 | 0.9562 | 0.7133 | 0.9369 | 0.9797 | 365 |
-| equation (loo-dataset) | 0.6000 | 0.8971 | 0.7332 | 0.9335 | 0.9255 | 0.7389 | 0.9295 | 0.9580 | 349 |
-| equation (loo-dataset) | 0.7000 | 0.8550 | 0.6681 | 0.9308 | 0.8459 | 0.6936 | 0.8863 | 0.9528 | 318 |
-| equation (loo-dataset) | 0.8000 | 0.8193 | 0.6261 | 0.9492 | 0.7517 | 0.6622 | 0.8390 | 0.9289 | 298 |
-| equation (loo-dataset) | 0.9000 | 0.8004 | 0.5084 | 0.9455 | 0.6446 | 0.6368 | 0.7666 | 0.9218 | 242 |
-| equation (loo-model) | 0.5000 | 0.8824 | 0.7668 | 0.9013 | 0.9507 | 0.6542 | 0.9253 | 0.9711 | 365 |
-| equation (loo-model) | 0.6000 | 0.8761 | 0.7332 | 0.9290 | 0.8997 | 0.6928 | 0.9141 | 0.9610 | 349 |
-| equation (loo-model) | 0.7000 | 0.8466 | 0.6681 | 0.9153 | 0.8491 | 0.6701 | 0.8809 | 0.9448 | 318 |
-| equation (loo-model) | 0.8000 | 0.8256 | 0.6261 | 0.9574 | 0.7550 | 0.6763 | 0.8443 | 0.9171 | 298 |
-| equation (loo-model) | 0.9000 | 0.8025 | 0.5084 | 0.9458 | 0.6488 | 0.6402 | 0.7696 | 0.9086 | 242 |
-| equation (loo-cell: both held out) | 0.5000 | 0.8908 | 0.7668 | 0.9065 | 0.9562 | 0.6795 | 0.9307 | 0.9749 | 365 |
-| equation (loo-cell: both held out) | 0.6000 | 0.8739 | 0.7332 | 0.9238 | 0.9026 | 0.6848 | 0.9130 | 0.9645 | 349 |
-| equation (loo-cell: both held out) | 0.7000 | 0.8403 | 0.6681 | 0.9172 | 0.8365 | 0.6607 | 0.8750 | 0.9475 | 318 |
-| equation (loo-cell: both held out) | 0.8000 | 0.8214 | 0.6261 | 0.9610 | 0.7450 | 0.6723 | 0.8393 | 0.9200 | 298 |
-| equation (loo-cell: both held out) | 0.9000 | 0.7983 | 0.5084 | 0.9398 | 0.6446 | 0.6314 | 0.7647 | 0.9148 | 242 |
-| per-model mean (loo-dataset) | 0.5000 | 0.7395 | 0.7668 | 0.8005 | 0.8795 | 0.1842 | 0.8381 | 0.9788 | 365 |
-| per-model mean (loo-dataset) | 0.6000 | 0.6828 | 0.7332 | 0.8113 | 0.7393 | 0.2506 | 0.7736 | 0.9567 | 349 |
-| per-model mean (loo-dataset) | 0.7000 | 0.7227 | 0.6681 | 0.8550 | 0.7044 | 0.4391 | 0.7724 | 0.9645 | 318 |
-| per-model mean (loo-dataset) | 0.8000 | 0.7122 | 0.6261 | 0.8368 | 0.6711 | 0.4374 | 0.7449 | 0.9332 | 298 |
-| per-model mean (loo-dataset) | 0.9000 | 0.6450 | 0.5084 | 0.7744 | 0.4256 | 0.3314 | 0.5493 | 0.9408 | 242 |
-| per-model median (loo-dataset) | 0.5000 | 0.7206 | 0.7668 | 0.7829 | 0.8795 | 0.0950 | 0.8284 | 0.9779 | 365 |
-| per-model median (loo-dataset) | 0.6000 | 0.7416 | 0.7332 | 0.8038 | 0.8567 | 0.3018 | 0.8294 | 0.9432 | 349 |
-| per-model median (loo-dataset) | 0.7000 | 0.6933 | 0.6681 | 0.7671 | 0.7767 | 0.3040 | 0.7719 | 0.9636 | 318 |
-| per-model median (loo-dataset) | 0.8000 | 0.7437 | 0.6261 | 0.8121 | 0.7685 | 0.4635 | 0.7897 | 0.9301 | 298 |
-| per-model median (loo-dataset) | 0.9000 | 0.6933 | 0.5084 | 0.6967 | 0.7025 | 0.3863 | 0.6996 | 0.9368 | 242 |
-| RidgeCV (linear) (in-sample) | 0.5000 | 0.8382 | 0.7668 | 0.8618 | 0.9397 | 0.5075 | 0.8991 | 0.9558 | 365 |
-| RidgeCV (linear) (in-sample) | 0.6000 | 0.8256 | 0.7332 | 0.8866 | 0.8739 | 0.5600 | 0.8802 | 0.9308 | 349 |
-| RidgeCV (linear) (in-sample) | 0.7000 | 0.7773 | 0.6681 | 0.8759 | 0.7767 | 0.5321 | 0.8233 | 0.9395 | 318 |
-| RidgeCV (linear) (in-sample) | 0.8000 | 0.7332 | 0.6261 | 0.9091 | 0.6376 | 0.5176 | 0.7495 | 0.9212 | 298 |
-| RidgeCV (linear) (in-sample) | 0.9000 | 0.6786 | 0.5084 | 0.8938 | 0.4174 | 0.4301 | 0.5690 | 0.9262 | 242 |
-| RidgeCV (linear) (loo-dataset) | 0.5000 | 0.7311 | 0.7668 | 0.8319 | 0.8137 | 0.2668 | 0.8227 | 0.9126 | 365 |
-| RidgeCV (linear) (loo-dataset) | 0.6000 | 0.6954 | 0.7332 | 0.8187 | 0.7507 | 0.2771 | 0.7833 | 0.8862 | 349 |
-| RidgeCV (linear) (loo-dataset) | 0.7000 | 0.6660 | 0.6681 | 0.7809 | 0.6950 | 0.2902 | 0.7354 | 0.9045 | 318 |
-| RidgeCV (linear) (loo-dataset) | 0.8000 | 0.6450 | 0.6261 | 0.7892 | 0.5906 | 0.3166 | 0.6756 | 0.8681 | 298 |
-| RidgeCV (linear) (loo-dataset) | 0.9000 | 0.6239 | 0.5084 | 0.7266 | 0.4174 | 0.2803 | 0.5302 | 0.8863 | 242 |
-| RidgeCV (linear) (loo-model) | 0.5000 | 0.8214 | 0.7668 | 0.8553 | 0.9233 | 0.4589 | 0.8880 | 0.9209 | 365 |
-| RidgeCV (linear) (loo-model) | 0.6000 | 0.8067 | 0.7332 | 0.8813 | 0.8510 | 0.5214 | 0.8659 | 0.9026 | 349 |
-| RidgeCV (linear) (loo-model) | 0.7000 | 0.7437 | 0.6681 | 0.8630 | 0.7327 | 0.4738 | 0.7925 | 0.8969 | 318 |
-| RidgeCV (linear) (loo-model) | 0.8000 | 0.6891 | 0.6261 | 0.8989 | 0.5671 | 0.4557 | 0.6955 | 0.9019 | 298 |
-| RidgeCV (linear) (loo-model) | 0.9000 | 0.6534 | 0.5084 | 0.8738 | 0.3719 | 0.3841 | 0.5217 | 0.8716 | 242 |
-| RidgeCV (linear) (loo-cell: both held out) | 0.5000 | 0.7080 | 0.7668 | 0.8210 | 0.7918 | 0.2160 | 0.8061 | 0.8750 | 365 |
-| RidgeCV (linear) (loo-cell: both held out) | 0.6000 | 0.6891 | 0.7332 | 0.8170 | 0.7421 | 0.2677 | 0.7778 | 0.8509 | 349 |
-| RidgeCV (linear) (loo-cell: both held out) | 0.7000 | 0.6450 | 0.6681 | 0.7749 | 0.6604 | 0.2609 | 0.7131 | 0.8608 | 318 |
-| RidgeCV (linear) (loo-cell: both held out) | 0.8000 | 0.6197 | 0.6261 | 0.7854 | 0.5403 | 0.2864 | 0.6402 | 0.8280 | 298 |
-| RidgeCV (linear) (loo-cell: both held out) | 0.9000 | 0.5966 | 0.5084 | 0.6866 | 0.3802 | 0.2231 | 0.4894 | 0.8408 | 242 |
-| RandomForest (300 trees) (in-sample) | 0.5000 | 0.9769 | 0.7668 | 0.9810 | 0.9890 | 0.9349 | 0.9850 | 0.9995 | 365 |
-| RandomForest (300 trees) (in-sample) | 0.6000 | 0.9769 | 0.7332 | 0.9884 | 0.9799 | 0.9415 | 0.9842 | 0.9990 | 349 |
-| RandomForest (300 trees) (in-sample) | 0.7000 | 0.9622 | 0.6681 | 0.9747 | 0.9686 | 0.9150 | 0.9716 | 0.9926 | 318 |
-| RandomForest (300 trees) (in-sample) | 0.8000 | 0.9622 | 0.6261 | 0.9930 | 0.9463 | 0.9223 | 0.9691 | 0.9949 | 298 |
-| RandomForest (300 trees) (in-sample) | 0.9000 | 0.9307 | 0.5084 | 0.9953 | 0.8678 | 0.8690 | 0.9272 | 0.9860 | 242 |
-| RandomForest (300 trees) (loo-dataset) | 0.5000 | 0.7458 | 0.7668 | 0.8112 | 0.8712 | 0.2269 | 0.8402 | 0.9784 | 365 |
-| RandomForest (300 trees) (loo-dataset) | 0.6000 | 0.7311 | 0.7332 | 0.8113 | 0.8252 | 0.3024 | 0.8182 | 0.9578 | 349 |
-| RandomForest (300 trees) (loo-dataset) | 0.7000 | 0.6975 | 0.6681 | 0.7862 | 0.7516 | 0.3335 | 0.7685 | 0.9538 | 318 |
-| RandomForest (300 trees) (loo-dataset) | 0.8000 | 0.6765 | 0.6261 | 0.8103 | 0.6309 | 0.3714 | 0.7094 | 0.9234 | 298 |
-| RandomForest (300 trees) (loo-dataset) | 0.9000 | 0.6492 | 0.5084 | 0.7863 | 0.4256 | 0.3425 | 0.5523 | 0.9233 | 242 |
-| RandomForest (300 trees) (loo-model) | 0.5000 | 0.8655 | 0.7668 | 0.9101 | 0.9151 | 0.6217 | 0.9126 | 0.9548 | 365 |
-| RandomForest (300 trees) (loo-model) | 0.6000 | 0.8592 | 0.7332 | 0.9172 | 0.8883 | 0.6510 | 0.9025 | 0.9600 | 349 |
-| RandomForest (300 trees) (loo-model) | 0.7000 | 0.8508 | 0.6681 | 0.9158 | 0.8553 | 0.6777 | 0.8846 | 0.9288 | 318 |
-| RandomForest (300 trees) (loo-model) | 0.8000 | 0.8466 | 0.6261 | 0.9377 | 0.8087 | 0.6978 | 0.8685 | 0.9261 | 298 |
-| RandomForest (300 trees) (loo-model) | 0.9000 | 0.8487 | 0.5084 | 0.9521 | 0.7397 | 0.7171 | 0.8326 | 0.8843 | 242 |
-| RandomForest (300 trees) (loo-cell: both held out) | 0.5000 | 0.7311 | 0.7668 | 0.8062 | 0.8548 | 0.1943 | 0.8298 | 0.9457 | 365 |
-| RandomForest (300 trees) (loo-cell: both held out) | 0.6000 | 0.6933 | 0.7332 | 0.7908 | 0.7908 | 0.2160 | 0.7908 | 0.9355 | 349 |
-| RandomForest (300 trees) (loo-cell: both held out) | 0.7000 | 0.6639 | 0.6681 | 0.7687 | 0.7107 | 0.2716 | 0.7386 | 0.9267 | 318 |
-| RandomForest (300 trees) (loo-cell: both held out) | 0.8000 | 0.6429 | 0.6261 | 0.8019 | 0.5705 | 0.3257 | 0.6667 | 0.9182 | 298 |
-| RandomForest (300 trees) (loo-cell: both held out) | 0.9000 | 0.6113 | 0.5084 | 0.7478 | 0.3554 | 0.2703 | 0.4818 | 0.8963 | 242 |
-| GradientBoosting (100 stages) (in-sample) | 0.5000 | 0.9559 | 0.7668 | 0.9599 | 0.9836 | 0.8744 | 0.9716 | 0.9940 | 365 |
-| GradientBoosting (100 stages) (in-sample) | 0.6000 | 0.9475 | 0.7332 | 0.9629 | 0.9656 | 0.8654 | 0.9642 | 0.9945 | 349 |
-| GradientBoosting (100 stages) (in-sample) | 0.7000 | 0.9265 | 0.6681 | 0.9609 | 0.9277 | 0.8382 | 0.9440 | 0.9782 | 318 |
-| GradientBoosting (100 stages) (in-sample) | 0.8000 | 0.8887 | 0.6261 | 0.9658 | 0.8523 | 0.7802 | 0.9055 | 0.9579 | 298 |
-| GradientBoosting (100 stages) (in-sample) | 0.9000 | 0.8676 | 0.5084 | 0.9735 | 0.7603 | 0.7550 | 0.8538 | 0.9481 | 242 |
-| GradientBoosting (100 stages) (loo-dataset) | 0.5000 | 0.7563 | 0.7668 | 0.8120 | 0.8877 | 0.2434 | 0.8482 | 0.9570 | 365 |
-| GradientBoosting (100 stages) (loo-dataset) | 0.6000 | 0.7374 | 0.7332 | 0.8237 | 0.8166 | 0.3338 | 0.8201 | 0.9391 | 349 |
-| GradientBoosting (100 stages) (loo-dataset) | 0.7000 | 0.7017 | 0.6681 | 0.7933 | 0.7484 | 0.3473 | 0.7702 | 0.9231 | 318 |
-| GradientBoosting (100 stages) (loo-dataset) | 0.8000 | 0.6912 | 0.6261 | 0.8008 | 0.6745 | 0.3815 | 0.7322 | 0.9091 | 298 |
-| GradientBoosting (100 stages) (loo-dataset) | 0.9000 | 0.6534 | 0.5084 | 0.7550 | 0.4711 | 0.3362 | 0.5802 | 0.9208 | 242 |
-| GradientBoosting (100 stages) (loo-model) | 0.5000 | 0.8782 | 0.7668 | 0.9137 | 0.9288 | 0.6532 | 0.9212 | 0.9459 | 365 |
-| GradientBoosting (100 stages) (loo-model) | 0.6000 | 0.8550 | 0.7332 | 0.9217 | 0.8768 | 0.6471 | 0.8987 | 0.9345 | 349 |
-| GradientBoosting (100 stages) (loo-model) | 0.7000 | 0.8361 | 0.6681 | 0.9138 | 0.8333 | 0.6516 | 0.8717 | 0.9135 | 318 |
-| GradientBoosting (100 stages) (loo-model) | 0.8000 | 0.7836 | 0.6261 | 0.9185 | 0.7181 | 0.5918 | 0.8060 | 0.9012 | 298 |
-| GradientBoosting (100 stages) (loo-model) | 0.9000 | 0.7878 | 0.5084 | 0.9434 | 0.6198 | 0.6162 | 0.7481 | 0.8889 | 242 |
-| GradientBoosting (100 stages) (loo-cell: both held out) | 0.5000 | 0.7353 | 0.7668 | 0.8041 | 0.8658 | 0.1918 | 0.8338 | 0.9348 | 365 |
-| GradientBoosting (100 stages) (loo-cell: both held out) | 0.6000 | 0.7080 | 0.7332 | 0.8088 | 0.7880 | 0.2704 | 0.7983 | 0.9442 | 349 |
-| GradientBoosting (100 stages) (loo-cell: both held out) | 0.7000 | 0.6660 | 0.6681 | 0.7789 | 0.6981 | 0.2876 | 0.7363 | 0.9097 | 318 |
-| GradientBoosting (100 stages) (loo-cell: both held out) | 0.8000 | 0.6492 | 0.6261 | 0.8075 | 0.5772 | 0.3375 | 0.6732 | 0.8794 | 298 |
-| GradientBoosting (100 stages) (loo-cell: both held out) | 0.9000 | 0.6345 | 0.5084 | 0.7537 | 0.4174 | 0.3072 | 0.5372 | 0.8877 | 242 |
+| equation (IS) | 0.5000 | 0.9055 | 0.7668 | 0.9211 | 0.9589 | 0.7257 | 0.9396 | 0.9820 | 365 |
+| equation (IS) | 0.6000 | 0.8887 | 0.7332 | 0.9353 | 0.9112 | 0.7225 | 0.9231 | 0.9730 | 349 |
+| equation (IS) | 0.7000 | 0.8634 | 0.6681 | 0.9317 | 0.8585 | 0.7085 | 0.8936 | 0.9555 | 318 |
+| equation (IS) | 0.8000 | 0.8277 | 0.6261 | 0.9576 | 0.7584 | 0.6796 | 0.8464 | 0.9310 | 298 |
+| equation (IS) | 0.9000 | 0.8151 | 0.5084 | 0.9477 | 0.6736 | 0.6609 | 0.7874 | 0.9227 | 242 |
+| equation (LODO) | 0.5000 | 0.9013 | 0.7668 | 0.9184 | 0.9562 | 0.7133 | 0.9369 | 0.9797 | 365 |
+| equation (LODO) | 0.6000 | 0.8971 | 0.7332 | 0.9335 | 0.9255 | 0.7389 | 0.9295 | 0.9580 | 349 |
+| equation (LODO) | 0.7000 | 0.8550 | 0.6681 | 0.9308 | 0.8459 | 0.6936 | 0.8863 | 0.9528 | 318 |
+| equation (LODO) | 0.8000 | 0.8193 | 0.6261 | 0.9492 | 0.7517 | 0.6622 | 0.8390 | 0.9289 | 298 |
+| equation (LODO) | 0.9000 | 0.8004 | 0.5084 | 0.9455 | 0.6446 | 0.6368 | 0.7666 | 0.9218 | 242 |
+| equation (LOMO) | 0.5000 | 0.8824 | 0.7668 | 0.9013 | 0.9507 | 0.6542 | 0.9253 | 0.9711 | 365 |
+| equation (LOMO) | 0.6000 | 0.8761 | 0.7332 | 0.9290 | 0.8997 | 0.6928 | 0.9141 | 0.9610 | 349 |
+| equation (LOMO) | 0.7000 | 0.8466 | 0.6681 | 0.9153 | 0.8491 | 0.6701 | 0.8809 | 0.9448 | 318 |
+| equation (LOMO) | 0.8000 | 0.8256 | 0.6261 | 0.9574 | 0.7550 | 0.6763 | 0.8443 | 0.9171 | 298 |
+| equation (LOMO) | 0.9000 | 0.8025 | 0.5084 | 0.9458 | 0.6488 | 0.6402 | 0.7696 | 0.9086 | 242 |
+| equation (DHO) | 0.5000 | 0.8908 | 0.7668 | 0.9065 | 0.9562 | 0.6795 | 0.9307 | 0.9749 | 365 |
+| equation (DHO) | 0.6000 | 0.8739 | 0.7332 | 0.9238 | 0.9026 | 0.6848 | 0.9130 | 0.9645 | 349 |
+| equation (DHO) | 0.7000 | 0.8403 | 0.6681 | 0.9172 | 0.8365 | 0.6607 | 0.8750 | 0.9475 | 318 |
+| equation (DHO) | 0.8000 | 0.8214 | 0.6261 | 0.9610 | 0.7450 | 0.6723 | 0.8393 | 0.9200 | 298 |
+| equation (DHO) | 0.9000 | 0.7983 | 0.5084 | 0.9398 | 0.6446 | 0.6314 | 0.7647 | 0.9148 | 242 |
+| per-model mean (LODO) | 0.5000 | 0.7395 | 0.7668 | 0.8005 | 0.8795 | 0.1842 | 0.8381 | 0.9788 | 365 |
+| per-model mean (LODO) | 0.6000 | 0.6828 | 0.7332 | 0.8113 | 0.7393 | 0.2506 | 0.7736 | 0.9567 | 349 |
+| per-model mean (LODO) | 0.7000 | 0.7227 | 0.6681 | 0.8550 | 0.7044 | 0.4391 | 0.7724 | 0.9645 | 318 |
+| per-model mean (LODO) | 0.8000 | 0.7122 | 0.6261 | 0.8368 | 0.6711 | 0.4374 | 0.7449 | 0.9332 | 298 |
+| per-model mean (LODO) | 0.9000 | 0.6450 | 0.5084 | 0.7744 | 0.4256 | 0.3314 | 0.5493 | 0.9408 | 242 |
+| per-model median (LODO) | 0.5000 | 0.7206 | 0.7668 | 0.7829 | 0.8795 | 0.0950 | 0.8284 | 0.9779 | 365 |
+| per-model median (LODO) | 0.6000 | 0.7416 | 0.7332 | 0.8038 | 0.8567 | 0.3018 | 0.8294 | 0.9432 | 349 |
+| per-model median (LODO) | 0.7000 | 0.6933 | 0.6681 | 0.7671 | 0.7767 | 0.3040 | 0.7719 | 0.9636 | 318 |
+| per-model median (LODO) | 0.8000 | 0.7437 | 0.6261 | 0.8121 | 0.7685 | 0.4635 | 0.7897 | 0.9301 | 298 |
+| per-model median (LODO) | 0.9000 | 0.6933 | 0.5084 | 0.6967 | 0.7025 | 0.3863 | 0.6996 | 0.9368 | 242 |
+| RidgeCV (linear) (IS) | 0.5000 | 0.8382 | 0.7668 | 0.8618 | 0.9397 | 0.5075 | 0.8991 | 0.9558 | 365 |
+| RidgeCV (linear) (IS) | 0.6000 | 0.8256 | 0.7332 | 0.8866 | 0.8739 | 0.5600 | 0.8802 | 0.9308 | 349 |
+| RidgeCV (linear) (IS) | 0.7000 | 0.7773 | 0.6681 | 0.8759 | 0.7767 | 0.5321 | 0.8233 | 0.9395 | 318 |
+| RidgeCV (linear) (IS) | 0.8000 | 0.7332 | 0.6261 | 0.9091 | 0.6376 | 0.5176 | 0.7495 | 0.9212 | 298 |
+| RidgeCV (linear) (IS) | 0.9000 | 0.6786 | 0.5084 | 0.8938 | 0.4174 | 0.4301 | 0.5690 | 0.9262 | 242 |
+| RidgeCV (linear) (LODO) | 0.5000 | 0.7311 | 0.7668 | 0.8319 | 0.8137 | 0.2668 | 0.8227 | 0.9126 | 365 |
+| RidgeCV (linear) (LODO) | 0.6000 | 0.6954 | 0.7332 | 0.8187 | 0.7507 | 0.2771 | 0.7833 | 0.8862 | 349 |
+| RidgeCV (linear) (LODO) | 0.7000 | 0.6660 | 0.6681 | 0.7809 | 0.6950 | 0.2902 | 0.7354 | 0.9045 | 318 |
+| RidgeCV (linear) (LODO) | 0.8000 | 0.6450 | 0.6261 | 0.7892 | 0.5906 | 0.3166 | 0.6756 | 0.8681 | 298 |
+| RidgeCV (linear) (LODO) | 0.9000 | 0.6239 | 0.5084 | 0.7266 | 0.4174 | 0.2803 | 0.5302 | 0.8863 | 242 |
+| RidgeCV (linear) (LOMO) | 0.5000 | 0.8214 | 0.7668 | 0.8553 | 0.9233 | 0.4589 | 0.8880 | 0.9209 | 365 |
+| RidgeCV (linear) (LOMO) | 0.6000 | 0.8067 | 0.7332 | 0.8813 | 0.8510 | 0.5214 | 0.8659 | 0.9026 | 349 |
+| RidgeCV (linear) (LOMO) | 0.7000 | 0.7437 | 0.6681 | 0.8630 | 0.7327 | 0.4738 | 0.7925 | 0.8969 | 318 |
+| RidgeCV (linear) (LOMO) | 0.8000 | 0.6891 | 0.6261 | 0.8989 | 0.5671 | 0.4557 | 0.6955 | 0.9019 | 298 |
+| RidgeCV (linear) (LOMO) | 0.9000 | 0.6534 | 0.5084 | 0.8738 | 0.3719 | 0.3841 | 0.5217 | 0.8716 | 242 |
+| RidgeCV (linear) (DHO) | 0.5000 | 0.7080 | 0.7668 | 0.8210 | 0.7918 | 0.2160 | 0.8061 | 0.8750 | 365 |
+| RidgeCV (linear) (DHO) | 0.6000 | 0.6891 | 0.7332 | 0.8170 | 0.7421 | 0.2677 | 0.7778 | 0.8509 | 349 |
+| RidgeCV (linear) (DHO) | 0.7000 | 0.6450 | 0.6681 | 0.7749 | 0.6604 | 0.2609 | 0.7131 | 0.8608 | 318 |
+| RidgeCV (linear) (DHO) | 0.8000 | 0.6197 | 0.6261 | 0.7854 | 0.5403 | 0.2864 | 0.6402 | 0.8280 | 298 |
+| RidgeCV (linear) (DHO) | 0.9000 | 0.5966 | 0.5084 | 0.6866 | 0.3802 | 0.2231 | 0.4894 | 0.8408 | 242 |
+| RandomForest (300 trees) (IS) | 0.5000 | 0.9769 | 0.7668 | 0.9810 | 0.9890 | 0.9349 | 0.9850 | 0.9995 | 365 |
+| RandomForest (300 trees) (IS) | 0.6000 | 0.9769 | 0.7332 | 0.9884 | 0.9799 | 0.9415 | 0.9842 | 0.9990 | 349 |
+| RandomForest (300 trees) (IS) | 0.7000 | 0.9622 | 0.6681 | 0.9747 | 0.9686 | 0.9150 | 0.9716 | 0.9926 | 318 |
+| RandomForest (300 trees) (IS) | 0.8000 | 0.9622 | 0.6261 | 0.9930 | 0.9463 | 0.9223 | 0.9691 | 0.9949 | 298 |
+| RandomForest (300 trees) (IS) | 0.9000 | 0.9307 | 0.5084 | 0.9953 | 0.8678 | 0.8690 | 0.9272 | 0.9860 | 242 |
+| RandomForest (300 trees) (LODO) | 0.5000 | 0.7458 | 0.7668 | 0.8112 | 0.8712 | 0.2269 | 0.8402 | 0.9784 | 365 |
+| RandomForest (300 trees) (LODO) | 0.6000 | 0.7311 | 0.7332 | 0.8113 | 0.8252 | 0.3024 | 0.8182 | 0.9578 | 349 |
+| RandomForest (300 trees) (LODO) | 0.7000 | 0.6975 | 0.6681 | 0.7862 | 0.7516 | 0.3335 | 0.7685 | 0.9538 | 318 |
+| RandomForest (300 trees) (LODO) | 0.8000 | 0.6765 | 0.6261 | 0.8103 | 0.6309 | 0.3714 | 0.7094 | 0.9234 | 298 |
+| RandomForest (300 trees) (LODO) | 0.9000 | 0.6492 | 0.5084 | 0.7863 | 0.4256 | 0.3425 | 0.5523 | 0.9233 | 242 |
+| RandomForest (300 trees) (LOMO) | 0.5000 | 0.8655 | 0.7668 | 0.9101 | 0.9151 | 0.6217 | 0.9126 | 0.9548 | 365 |
+| RandomForest (300 trees) (LOMO) | 0.6000 | 0.8592 | 0.7332 | 0.9172 | 0.8883 | 0.6510 | 0.9025 | 0.9600 | 349 |
+| RandomForest (300 trees) (LOMO) | 0.7000 | 0.8508 | 0.6681 | 0.9158 | 0.8553 | 0.6777 | 0.8846 | 0.9288 | 318 |
+| RandomForest (300 trees) (LOMO) | 0.8000 | 0.8466 | 0.6261 | 0.9377 | 0.8087 | 0.6978 | 0.8685 | 0.9261 | 298 |
+| RandomForest (300 trees) (LOMO) | 0.9000 | 0.8487 | 0.5084 | 0.9521 | 0.7397 | 0.7171 | 0.8326 | 0.8843 | 242 |
+| RandomForest (300 trees) (DHO) | 0.5000 | 0.7311 | 0.7668 | 0.8062 | 0.8548 | 0.1943 | 0.8298 | 0.9457 | 365 |
+| RandomForest (300 trees) (DHO) | 0.6000 | 0.6933 | 0.7332 | 0.7908 | 0.7908 | 0.2160 | 0.7908 | 0.9355 | 349 |
+| RandomForest (300 trees) (DHO) | 0.7000 | 0.6639 | 0.6681 | 0.7687 | 0.7107 | 0.2716 | 0.7386 | 0.9267 | 318 |
+| RandomForest (300 trees) (DHO) | 0.8000 | 0.6429 | 0.6261 | 0.8019 | 0.5705 | 0.3257 | 0.6667 | 0.9182 | 298 |
+| RandomForest (300 trees) (DHO) | 0.9000 | 0.6113 | 0.5084 | 0.7478 | 0.3554 | 0.2703 | 0.4818 | 0.8963 | 242 |
+| GradientBoosting (100 stages) (IS) | 0.5000 | 0.9559 | 0.7668 | 0.9599 | 0.9836 | 0.8744 | 0.9716 | 0.9940 | 365 |
+| GradientBoosting (100 stages) (IS) | 0.6000 | 0.9475 | 0.7332 | 0.9629 | 0.9656 | 0.8654 | 0.9642 | 0.9945 | 349 |
+| GradientBoosting (100 stages) (IS) | 0.7000 | 0.9265 | 0.6681 | 0.9609 | 0.9277 | 0.8382 | 0.9440 | 0.9782 | 318 |
+| GradientBoosting (100 stages) (IS) | 0.8000 | 0.8887 | 0.6261 | 0.9658 | 0.8523 | 0.7802 | 0.9055 | 0.9579 | 298 |
+| GradientBoosting (100 stages) (IS) | 0.9000 | 0.8676 | 0.5084 | 0.9735 | 0.7603 | 0.7550 | 0.8538 | 0.9481 | 242 |
+| GradientBoosting (100 stages) (LODO) | 0.5000 | 0.7563 | 0.7668 | 0.8120 | 0.8877 | 0.2434 | 0.8482 | 0.9570 | 365 |
+| GradientBoosting (100 stages) (LODO) | 0.6000 | 0.7374 | 0.7332 | 0.8237 | 0.8166 | 0.3338 | 0.8201 | 0.9391 | 349 |
+| GradientBoosting (100 stages) (LODO) | 0.7000 | 0.7017 | 0.6681 | 0.7933 | 0.7484 | 0.3473 | 0.7702 | 0.9231 | 318 |
+| GradientBoosting (100 stages) (LODO) | 0.8000 | 0.6912 | 0.6261 | 0.8008 | 0.6745 | 0.3815 | 0.7322 | 0.9091 | 298 |
+| GradientBoosting (100 stages) (LODO) | 0.9000 | 0.6534 | 0.5084 | 0.7550 | 0.4711 | 0.3362 | 0.5802 | 0.9208 | 242 |
+| GradientBoosting (100 stages) (LOMO) | 0.5000 | 0.8782 | 0.7668 | 0.9137 | 0.9288 | 0.6532 | 0.9212 | 0.9459 | 365 |
+| GradientBoosting (100 stages) (LOMO) | 0.6000 | 0.8550 | 0.7332 | 0.9217 | 0.8768 | 0.6471 | 0.8987 | 0.9345 | 349 |
+| GradientBoosting (100 stages) (LOMO) | 0.7000 | 0.8361 | 0.6681 | 0.9138 | 0.8333 | 0.6516 | 0.8717 | 0.9135 | 318 |
+| GradientBoosting (100 stages) (LOMO) | 0.8000 | 0.7836 | 0.6261 | 0.9185 | 0.7181 | 0.5918 | 0.8060 | 0.9012 | 298 |
+| GradientBoosting (100 stages) (LOMO) | 0.9000 | 0.7878 | 0.5084 | 0.9434 | 0.6198 | 0.6162 | 0.7481 | 0.8889 | 242 |
+| GradientBoosting (100 stages) (DHO) | 0.5000 | 0.7353 | 0.7668 | 0.8041 | 0.8658 | 0.1918 | 0.8338 | 0.9348 | 365 |
+| GradientBoosting (100 stages) (DHO) | 0.6000 | 0.7080 | 0.7332 | 0.8088 | 0.7880 | 0.2704 | 0.7983 | 0.9442 | 349 |
+| GradientBoosting (100 stages) (DHO) | 0.7000 | 0.6660 | 0.6681 | 0.7789 | 0.6981 | 0.2876 | 0.7363 | 0.9097 | 318 |
+| GradientBoosting (100 stages) (DHO) | 0.8000 | 0.6492 | 0.6261 | 0.8075 | 0.5772 | 0.3375 | 0.6732 | 0.8794 | 298 |
+| GradientBoosting (100 stages) (DHO) | 0.9000 | 0.6345 | 0.5084 | 0.7537 | 0.4174 | 0.3072 | 0.5372 | 0.8877 | 242 |
 
-The ranking and the go/no-go decision are reported with **both the dataset and the model of every cell held out of the fit**. Neither single-group protocol answers the question those tasks pose: leave-one-dataset-out has seen the learner on the other nineteen problems, and leave-one-model-out has seen the dataset. A recommendation is asked about a pair that has not been run.
+The ranking and the go/no-go decision are reported with **both the dataset and the model of every cell held out of the fit**. Neither single-group protocol answers the question those tasks pose: LODO has seen the learner on the other nineteen problems, and LOMO has seen the dataset. A recommendation is asked about a pair that has not been run.
 
-| what the equation was shown | AP | MRR | hit@1 | regret | F1 @ 0.7 | MCC @ 0.7 |
+| Evaluation protocol | AP | MRR | hit@1 | regret | F1 @ 0.7 | MCC @ 0.7 |
 |---|---|---|---|---|---|---|
-| in-sample — nothing held out | 0.735 | 0.753 | 0.60 | 0.015 | 0.894 | 0.708 |
-| leave-one-dataset-out — the dataset unseen, the model known | 0.736 | 0.753 | 0.60 | 0.018 | 0.886 | 0.694 |
-| leave-one-model-out — the model unseen, the dataset known | 0.728 | 0.761 | 0.60 | 0.015 | 0.881 | 0.670 |
-| **leave-one-cell-out** — **both unseen** | 0.724 | 0.753 | 0.60 | 0.015 | 0.875 | 0.661 |
+| IS — nothing held out | 0.735 | 0.753 | 0.60 | 0.015 | 0.894 | 0.708 |
+| LODO — the dataset unseen, the model known | 0.736 | 0.753 | 0.60 | 0.018 | 0.886 | 0.694 |
+| LOMO — the model unseen, the dataset known | 0.728 | 0.761 | 0.60 | 0.015 | 0.881 | 0.670 |
+| **DHO** — **both unseen** | 0.724 | 0.753 | 0.60 | 0.015 | 0.875 | 0.661 |
 
-The per-model mean and median predictors are reported below under leave-one-dataset-out, the only held-out protocol in which the test model still has training rows. **Under the strictest protocol they cannot be computed at all**: a model held out of every fold has no rows to average, so "how well does this model usually do" has no value. The best of them reaches AP 0.837 and F1 0.772 while being shown the model identity the strictest row of the equation is denied.
+The per-model mean and median predictors are reported below under LODO, the only held-out protocol in which the test model still has training rows. **Under the strictest protocol they cannot be computed at all**: a model held out of every fold has no rows to average, so "how well does this model usually do" has no value. The best of them reaches AP 0.837 and F1 0.772 while being shown the model identity the strictest row of the equation is denied.
 
 Ranking models within a held-out dataset:
 
@@ -488,54 +503,54 @@ Ranking models within a held-out dataset:
 
 | predictor | ap | mrr | hit_at_1 | regret | datasets | ap_vs_e3_p | ap_vs_e3_significant |
 |---|---|---|---|---|---|---|---|
-| equation (in-sample) | 0.7350 | 0.7530 | 0.6000 | 0.0153 | 20 | 1.0000 | no |
-| equation (loo-dataset) | 0.7357 | 0.7530 | 0.6000 | 0.0175 | 20 |  |  |
-| equation (loo-model) | 0.7281 | 0.7613 | 0.6000 | 0.0153 | 20 | 0.3877 | no |
-| equation (loo-cell: both held out) | 0.7242 | 0.7530 | 0.6000 | 0.0153 | 20 | 0.1460 | no |
-| per-model mean (loo-dataset) | 0.7980 | 0.8350 | 0.7500 | 0.0111 | 20 | 0.0007 | yes |
-| per-model median (loo-dataset) | 0.8375 | 0.8850 | 0.8500 | 0.0088 | 20 | 0.0075 | yes |
-| RidgeCV (linear) (in-sample) | 0.7449 | 0.8125 | 0.7000 | 0.0135 | 20 | 0.1671 | no |
-| RidgeCV (linear) (loo-dataset) | 0.6554 | 0.7287 | 0.6000 | 0.0277 | 20 | 0.5034 | yes |
-| RidgeCV (linear) (loo-model) | 0.7166 | 0.7850 | 0.6500 | 0.0354 | 20 | 0.3593 | no |
-| RidgeCV (linear) (loo-cell: both held out) | 0.6059 | 0.6801 | 0.5000 | 0.0763 | 20 | 0.1153 | yes |
-| RandomForest (300 trees) (in-sample) | 0.9291 | 0.9750 | 0.9500 | 0.0013 | 20 | 0.0000 | yes |
-| RandomForest (300 trees) (loo-dataset) | 0.7780 | 0.8142 | 0.7500 | 0.0170 | 20 | 0.0309 | no |
-| RandomForest (300 trees) (loo-model) | 0.7280 | 0.7655 | 0.6500 | 0.0279 | 20 | 1.0000 | no |
-| RandomForest (300 trees) (loo-cell: both held out) | 0.7043 | 0.7296 | 0.6000 | 0.0382 | 20 | 0.6476 | no |
-| GradientBoosting (100 stages) (in-sample) | 0.8447 | 0.9042 | 0.8500 | 0.0048 | 20 | 0.0118 | yes |
-| GradientBoosting (100 stages) (loo-dataset) | 0.7798 | 0.8508 | 0.8000 | 0.0179 | 20 | 0.0963 | no |
-| GradientBoosting (100 stages) (loo-model) | 0.7168 | 0.7821 | 0.6500 | 0.0432 | 20 | 1.0000 | no |
-| GradientBoosting (100 stages) (loo-cell: both held out) | 0.7349 | 0.7810 | 0.7000 | 0.0199 | 20 | 0.6476 | no |
+| equation (IS) | 0.7350 | 0.7530 | 0.6000 | 0.0153 | 20 | 1.0000 | no |
+| equation (LODO) | 0.7357 | 0.7530 | 0.6000 | 0.0175 | 20 |  |  |
+| equation (LOMO) | 0.7281 | 0.7613 | 0.6000 | 0.0153 | 20 | 0.3877 | no |
+| equation (DHO) | 0.7242 | 0.7530 | 0.6000 | 0.0153 | 20 | 0.1460 | no |
+| per-model mean (LODO) | 0.7980 | 0.8350 | 0.7500 | 0.0111 | 20 | 0.0007 | yes |
+| per-model median (LODO) | 0.8375 | 0.8850 | 0.8500 | 0.0088 | 20 | 0.0075 | yes |
+| RidgeCV (linear) (IS) | 0.7449 | 0.8125 | 0.7000 | 0.0135 | 20 | 0.1671 | no |
+| RidgeCV (linear) (LODO) | 0.6554 | 0.7287 | 0.6000 | 0.0277 | 20 | 0.5034 | yes |
+| RidgeCV (linear) (LOMO) | 0.7166 | 0.7850 | 0.6500 | 0.0354 | 20 | 0.3593 | no |
+| RidgeCV (linear) (DHO) | 0.6059 | 0.6801 | 0.5000 | 0.0763 | 20 | 0.1153 | yes |
+| RandomForest (300 trees) (IS) | 0.9291 | 0.9750 | 0.9500 | 0.0013 | 20 | 0.0000 | yes |
+| RandomForest (300 trees) (LODO) | 0.7780 | 0.8142 | 0.7500 | 0.0170 | 20 | 0.0309 | no |
+| RandomForest (300 trees) (LOMO) | 0.7280 | 0.7655 | 0.6500 | 0.0279 | 20 | 1.0000 | no |
+| RandomForest (300 trees) (DHO) | 0.7043 | 0.7296 | 0.6000 | 0.0382 | 20 | 0.6476 | no |
+| GradientBoosting (100 stages) (IS) | 0.8447 | 0.9042 | 0.8500 | 0.0048 | 20 | 0.0118 | yes |
+| GradientBoosting (100 stages) (LODO) | 0.7798 | 0.8508 | 0.8000 | 0.0179 | 20 | 0.0963 | no |
+| GradientBoosting (100 stages) (LOMO) | 0.7168 | 0.7821 | 0.6500 | 0.0432 | 20 | 1.0000 | no |
+| GradientBoosting (100 stages) (DHO) | 0.7349 | 0.7810 | 0.7000 | 0.0199 | 20 | 0.6476 | no |
 
-Paired over the datasets, the equation differs significantly from: per-model mean (loo-dataset), per-model median (loo-dataset), RidgeCV (linear) (loo-dataset), RidgeCV (linear) (loo-cell: both held out), RandomForest (300 trees) (in-sample), GradientBoosting (100 stages) (in-sample). The remaining comparisons are ties.
+Paired over the datasets, the equation differs significantly from: per-model mean (LODO), per-model median (LODO), RidgeCV (linear) (LODO), RidgeCV (linear) (DHO), RandomForest (300 trees) (IS), GradientBoosting (100 stages) (IS). The remaining comparisons are ties.
 
 ## What an opaque model reaches, and does not
 
 The other side of the trade, priced. Three standard regressors on all eighteen raw corpus columns, under the same protocols, with the same clip to the training fold's range that every reported number uses.
 
-| model | features | r2_in_sample | mae_in_sample | r2_loo_dataset | mae_loo_dataset | r2_loo_model | mae_loo_model | r2_loo_cell | mae_loo_cell |
+| model | features | r2_IS | mae_IS | r2_LODO | mae_LODO | r2_LOMO | mae_LOMO | r2_DHO | mae_DHO |
 |---|---|---|---|---|---|---|---|---|---|
 | RidgeCV (linear) | 18 | 0.4431 | 0.1847 | -0.5949 | 0.2934 | 0.3687 | 0.2013 | -0.5874 | 0.2988 |
 | RandomForest (300 trees) | 18 | 0.9584 | 0.0406 | 0.0821 | 0.2418 | 0.5969 | 0.1278 | -0.0058 | 0.2583 |
 | GradientBoosting (100 stages) | 18 | 0.8617 | 0.0786 | 0.1479 | 0.2303 | 0.5715 | 0.1444 | 0.0124 | 0.2527 |
 
-**Read the RandomForest (300 trees) row across.** It fits this meta-data at R² 0.9584; holding out a whole model leaves it at 0.5969; holding out a whole dataset drops it to 0.0821; and with **both** held out it reaches -0.0058. The published equation is at 0.6787 and 0.6517 in the corresponding in-sample and leave-one-dataset-out settings.
+**Read the RandomForest (300 trees) row across.** It fits this meta-data at R² 0.9584; holding out a whole model leaves it at 0.5969; holding out a whole dataset drops it to 0.0821; and with **both** held out it reaches -0.0058. The published equation is at 0.6787 and 0.6517 in the corresponding IS and LODO settings.
 
 The ordering of those four columns is the whole finding. A flexible model on twenty dataset groups, with dataset features constant inside a group, does not learn a relationship -- it learns which dataset a row came from and looks the answer up. Every column that removes an identity removes some of that, and the column that removes both leaves almost nothing.
 
-**Under full leakage prevention the best opaque estimator reaches 0.0124** (GradientBoosting (100 stages)), approximately the corpus-mean R² reference of zero. This is the like-for-like comparison in the study: leave-one-dataset-out still hands a forest the held-out learner on nineteen other problems, and leave-one-model-out still hands it the held-out dataset. Only here is it denied what the equation is denied -- and it is also the protocol on which the trivial per-model baselines cannot be computed at all, since a model held out of every fold has no rows to average. A feature-based predictor still predicts.
+**Under full leakage prevention the best opaque estimator reaches 0.0124** (GradientBoosting (100 stages)), approximately the corpus-mean R² reference of zero. This is the like-for-like comparison in the study: LODO still hands a forest the held-out learner on nineteen other problems, and LOMO still hands it the held-out dataset. Only here is it denied what the equation is denied -- and it is also the protocol on which the trivial per-model baselines cannot be computed at all, since a model held out of every fold has no rows to average. A feature-based predictor still predicts.
 
-This is the likely provenance of the R² near 0.9 figures reported for opaque meta-models: an in-sample or randomly-split forest reproduces them exactly. The ridge penalty is selected internally by RidgeCV; the tree ensembles use fixed, documented settings rather than a hyperparameter search. Further tuning would answer a different objection -- the failure is that the sample has twenty dataset groups, which no amount of tuning changes. What the table licenses is that the accuracy this study traded away was not there to be had under a protocol where the dataset is genuinely unseen.
+This is the likely provenance of the R² near 0.9 figures reported for opaque meta-models: a forest evaluated under IS or a random split reproduces them exactly. The ridge penalty is selected internally by RidgeCV; the tree ensembles use fixed, documented settings rather than a hyperparameter search. Further tuning would answer a different objection -- the failure is that the sample has twenty dataset groups, which no amount of tuning changes. What the table licenses is that the accuracy this study traded away was not there to be had under a protocol where the dataset is genuinely unseen.
 
 ## Why a random split is not a protocol
 
-The same equation under three splits. A random k-fold puts rows of one dataset on both sides of the fold, so it does not test transfer to an unseen dataset. The difference between that row and the grouped splits measures how much this potential leakage changes the score; here random k-fold and leave-one-dataset-out are essentially identical:
+The same equation under three splits. A random k-fold puts rows of one dataset on both sides of the fold, so it does not test transfer to an unseen dataset. The difference between that row and the grouped splits measures how much this potential leakage changes the score; here random k-fold and LODO are essentially identical:
 
 | protocol | r2 | mae | rmse | smape | spearman | n |
 |---|---|---|---|---|---|---|
 | random 10-fold (leaky) | 0.6509 | 0.1336 | 0.2028 | 35.1815 | 0.8230 | 476 |
-| leave-one-dataset-out | 0.6517 | 0.1361 | 0.2025 | 35.8120 | 0.8202 | 476 |
-| leave-one-model-out | 0.6149 | 0.1398 | 0.2130 | 36.1522 | 0.8111 | 476 |
+| LODO | 0.6517 | 0.1361 | 0.2025 | 35.8120 | 0.8202 | 476 |
+| LOMO | 0.6149 | 0.1398 | 0.2130 | 36.1522 | 0.8111 | 476 |
 
 <!-- end generated -->
 

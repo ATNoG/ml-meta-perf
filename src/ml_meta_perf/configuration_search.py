@@ -2,12 +2,12 @@
 
 The published study retained several search settings from a sweep that predates the
 correction of ``Processing Units Number``.  This module repeats that experiment against the
-current packaged corpus without making the expensive doubly-held-out protocol part of every
+current packaged corpus without making the expensive doubly held-out (DHO) protocol part of every
 grid point.
 
 The run has two stages.  ``sweep`` evaluates the historical composite objective over
-in-sample, leave-one-dataset-out and leave-one-model-out predictions.  One beam traversal is
-reused for every requested equation length.  ``validate`` then computes leave-one-cell-out
+in-sample (IS), leave-one-dataset-out (LODO), and leave-one-model-out (LOMO) predictions.
+One beam traversal is reused for every requested equation length. ``validate`` then computes DHO
 only for a defensible shortlist. ``select`` reports E3-MAX as the best four-protocol floor and
 E3-Valid as the equation immediately before a sustained plateau in combined R2, among
 candidates sharing E3-MAX's feature subset, ridge penalty and z-score.
@@ -344,7 +344,7 @@ def validate_finalists(
     *,
     jobs: int,
 ) -> None:
-    """Compute the doubly-held-out curve for every shortlisted shared base setting."""
+    """Compute the DHO curve for every shortlisted shared base setting."""
     points = [
         BasePoint(
             base_id=int(row["base_id"]),
@@ -459,7 +459,7 @@ def select_equations(
             "best-so-far combined R2 before a sustained plateau, among candidates sharing "
             "E3-MAX's feature subset, ridge penalty and z-score."
         ),
-        "combined_r2": "median of in-sample, LODO and LOMO R2",
+        "combined_r2": "median of IS, LODO, and LOMO R²",
         "selection_source_sha256": _file_hash(Path(__file__)),
         "e3_valid_diagnostics": diagnostics,
         "e3_valid": _public_candidate(valid),
@@ -521,9 +521,7 @@ def _select_plateau_valid(
     }
     if detected:
         diagnostics["plateau_starts_at_terms"] = int(rows[index]["n_terms"])
-        diagnostics["window_gain"] = float(
-            envelope[index + window]["combined_r2"] - envelope[index]["combined_r2"]
-        )
+        diagnostics["window_gain"] = float(envelope[index + window]["combined_r2"] - envelope[index]["combined_r2"])
     else:
         diagnostics["fallback"] = "maximum combined R2"
     return envelope[index], diagnostics
@@ -587,10 +585,7 @@ def initialise(
         "git_dirty": None if git_status == "unavailable" else bool(git_status),
         "python": sys.version,
         "platform": platform.platform(),
-        "packages": {
-            name: _package_version(name)
-            for name in ("ml-meta-perf", "numpy", "polars", "joblib")
-        },
+        "packages": {name: _package_version(name) for name in ("ml-meta-perf", "numpy", "polars", "joblib")},
         "created_unix": time.time(),
     }
     _write_json_atomic(manifest_path, manifest)

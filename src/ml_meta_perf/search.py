@@ -141,7 +141,7 @@ def _descending(scores: np.ndarray) -> np.ndarray:
     order rather than preserving it. Either way ties were resolved by where a term happened to
     land in the library, and `terms.build_library` emits terms in feature declaration order --
     so handing `run_equation` the same columns in a different order produced a different
-    equation, and leave-one-dataset-out moved by as much as 0.286 across seven orderings of a
+    equation, and leave-one-dataset-out (LODO) R² moved by as much as 0.286 across seven orderings of a
     single ten-feature set.
 
     Sorting the negated scores with an explicitly stable kind breaks ties by ascending library

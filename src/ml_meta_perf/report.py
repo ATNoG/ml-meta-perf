@@ -487,8 +487,36 @@ def marginal_versus_conditional(
     return pl.DataFrame(rows)
 
 
+_PROTOCOL_LABELS = (
+    ("loo_cell", "DHO"),
+    ("loo_dataset", "LODO"),
+    ("loo_model", "LOMO"),
+    ("in_sample", "IS"),
+    ("loo-cell: both held out", "DHO"),
+    ("loo-dataset", "LODO"),
+    ("loo-model", "LOMO"),
+    ("doubly-held-out", "DHO"),
+    ("doubly held out", "DHO"),
+    ("leave-one-dataset-out", "LODO"),
+    ("leave-one-model-out", "LOMO"),
+    ("in-sample", "IS"),
+)
+
+
+def _published_protocol_label(value: object) -> str:
+    """Translate stable internal protocol names at the publication boundary."""
+    text = str(value)
+    for internal, published in _PROTOCOL_LABELS:
+        text = text.replace(internal, published)
+    return text
+
+
 def _table(frame: pl.DataFrame, float_format: str = "{:.4f}") -> str:
-    """A polars frame as a GitHub-flavoured markdown table."""
+    """A polars frame as a GitHub-flavoured markdown table.
+
+    Result files keep the stable internal protocol keys. Published tables use the same
+    concise labels as the figures: IS, LODO, LOMO, and DHO.
+    """
     if frame.height == 0:
         return "_(empty)_"
 
@@ -501,9 +529,9 @@ def _table(frame: pl.DataFrame, float_format: str = "{:.4f}") -> str:
             return ""
         if isinstance(value, float):
             return "" if np.isnan(value) else float_format.format(value)
-        return str(value).replace("|", r"\|")
+        return _published_protocol_label(value).replace("|", r"\|")
 
-    header = "| " + " | ".join(frame.columns) + " |"
+    header = "| " + " | ".join(_published_protocol_label(column) for column in frame.columns) + " |"
     rule = "|" + "|".join("---" for _ in frame.columns) + "|"
     body = ["| " + " | ".join(cell(value) for value in row) + " |" for row in frame.iter_rows()]
     return "\n".join([header, rule, *body])
@@ -567,7 +595,7 @@ def single_prediction(
 
 
 #: How each equation's own ceiling is labelled in `Report.comparison`. E1 and E2 are bounded
-#: by what their group identity can explain at all. The additive oracle is a reference for E3,
+#: by what their group identity can explain at all. The additive mean-based reference applies to E3,
 #: not a structural bound, so E3 is not given a ratio.
 CEILING_ROWS = {"E1": "E1 reference: true dataset means", "E2": "E2 reference: true model means"}
 
@@ -596,9 +624,9 @@ def _headline(report: Report) -> pl.DataFrame:
                 "equation": name,
                 "features": {"E1": "dataset", "E2": "model"}.get(name, "both"),
                 "terms": equation.equation.n_terms,
-                "in-sample R2": in_sample,
-                "LOO-dataset R2": float(equation.cross_validated["loo_dataset"]["r2"]),
-                "LOO-model R2": float(equation.cross_validated["loo_model"]["r2"]),
+                "IS R2": in_sample,
+                "LODO R2": float(equation.cross_validated["loo_dataset"]["r2"]),
+                "LOMO R2": float(equation.cross_validated["loo_model"]["r2"]),
                 "own ceiling": float(ceiling) if ceiling is not None else float("nan"),
                 "reached": in_sample / float(ceiling) if ceiling else float("nan"),
             }
@@ -614,7 +642,7 @@ def _scores(label: str, scores: dict[str, float | int]) -> str:
 
 
 def _crater_note(report: Report) -> str:
-    """The deepest leave-one-dataset-out crater on the length curve, and what it costs a mean.
+    """The deepest leave-one-dataset-out (LODO) crater, and what it costs a mean.
 
     The consensus curve takes a **median** across the three protocols rather than a mean, and
     the argument for that is only convincing next to a length where the two disagree. Which
@@ -666,10 +694,10 @@ def _saturated_note(report: Report) -> str:
     published = float(report.e3.cross_validated["loo_dataset"]["r2"])
     return (
         f"**The solver is not the hard part; the sample size is.** All "
-        f"{int(row['terms'])} terms at once fit better in-sample than the published equation "
+        f"{int(row['terms'])} terms at once fit better under IS than the published equation "
         f"({float(row['r2_in_sample']):.4f} against "
         f"{float(report.e3.in_sample['r2']):.4f}) and transfer at "
-        f"{float(row['r2_loo_dataset_clipped']):.4f} leave-one-dataset-out, against the "
+        f"{float(row['r2_loo_dataset_clipped']):.4f} under LODO, against the "
         f"published equation's {published:.4f}. The unclipped figure — "
         f"{float(row['r2_loo_dataset_unclipped']):.1f} — is what the fit does when a held-out "
         "dataset falls outside the convex hull of the other nineteen and nothing bounds the "
@@ -763,7 +791,7 @@ def _identity_note(report: Report) -> str:
     step = float(level["r2_loo_dataset"]) - float(base["r2_loo_dataset"])
 
     lines = [
-        f"**The gap is {total:.3f} of leave-one-dataset-out R2**, of which a per-model *level* "
+        f"**The gap is {total:.3f} of LODO R²**, of which a per-model *level* "
         f"recovers {step:.3f} and the level-plus-slope form the remaining {total - step:.3f}.\n",
         "**Whether that is real is a paired question**, so each rung is compared with the "
         "uncorrected equation dataset by dataset, on absolute error, over the twenty held-out "
@@ -812,7 +840,7 @@ def _opaque_note(report: Report) -> str:
 
     The columns are ordered by how much the estimator was allowed to see, and reading them
     left to right is the argument. The last one is the comparison that matters: under
-    leave-one-cell-out neither side has the dataset or the model, so it is the only protocol on
+    Under DHO neither side has the dataset or the model, so it is the only protocol on
     which an opaque regressor and the published equation are denied the same things.
     """
     if report.opaque.height == 0 or "r2_loo_cell" not in report.opaque.columns:
@@ -828,7 +856,7 @@ def _opaque_note(report: Report) -> str:
         f"{float(best_fit['r2_loo_cell']):.4f}. The published equation is at "
         f"{float(report.e3.in_sample['r2']):.4f} and "
         f"{float(report.e3.cross_validated['loo_dataset']['r2']):.4f} in the corresponding "
-        "in-sample and leave-one-dataset-out settings.\n"
+        "IS and LODO settings.\n"
         "\nThe ordering of those four columns is the whole finding. A flexible model on twenty "
         "dataset groups, with dataset features constant inside a group, does not learn a "
         "relationship -- it learns which dataset a row came from and looks the answer up. Every "
@@ -837,13 +865,14 @@ def _opaque_note(report: Report) -> str:
         f"\n**Under full leakage prevention the best opaque estimator reaches "
         f"{float(best_cell['r2_loo_cell']):.4f}** ({best_cell['model']}), approximately the "
         "corpus-mean R² reference of zero. This is the like-for-like comparison in "
-        "the study: leave-one-dataset-out still hands a forest the held-out learner on nineteen "
-        "other problems, and leave-one-model-out still hands it the held-out dataset. Only here "
+        "the study: LODO still hands a forest the held-out learner on nineteen "
+        "other problems, and LOMO still hands it the held-out dataset. Only here "
         "is it denied what the equation is denied -- and it is also the protocol on which the "
         "trivial per-model baselines cannot be computed at all, since a model held out of every "
         "fold has no rows to average. A feature-based predictor still predicts.\n"
         "\nThis is the likely provenance of the R² near 0.9 figures reported for opaque "
-        "meta-models: an in-sample or randomly-split forest reproduces them exactly. The ridge "
+        "meta-models: a forest evaluated under IS or a random split reproduces them exactly. "
+        "The ridge "
         "penalty is selected internally by RidgeCV; the tree ensembles use fixed, documented "
         "settings rather than a hyperparameter search. Further tuning would answer a different "
         "objection -- the failure is "
@@ -863,8 +892,8 @@ def _length_note(report: Report) -> str:
         return ""
     lines = [
         f"E3-Valid selects **{int(selected['n_terms'])} terms** immediately before the first "
-        "sustained plateau in Combined R², the median of in-sample, leave-one-dataset-out, "
-        "and leave-one-model-out R². The retained rule uses a forward window of three "
+        "sustained plateau in Combined R², the median of IS, LODO, and LOMO R². "
+        "The retained rule uses a forward window of three "
         "evaluated lengths and a maximum best-so-far gain of 0.001. It compares both searched "
         "arities before selecting the equation.\n",
         _crater_note(report),
@@ -891,8 +920,8 @@ def _capability_note(report: Report) -> str:
     lines = [
         f"The published equation uses the **parsimonious** grammar (arity 2). The same features "
         f"under the **full** grammar (arity 3), selected by the E3-MAX floor rule, reach "
-        f"{len(capability.equation.terms)} terms at R² {reached:.4f} in-sample:\n",
-        "| | terms | in-sample | LOO-dataset | LOO-model |",
+        f"{len(capability.equation.terms)} terms at R² {reached:.4f} under IS:\n",
+        "| | terms | IS | LODO | LOMO |",
         "|---|---|---|---|---|",
         f"| published (arity 2) | {len(report.e3.equation.terms)} | {published:.4f} | "
         f"{float(report.e3.cross_validated['loo_dataset']['r2']):.4f} | "
@@ -904,7 +933,7 @@ def _capability_note(report: Report) -> str:
         "This is a **capability measurement, not a recommendation**. It answers the question "
         "the published equation cannot answer about itself — whether the additive form is out "
         f"of room or whether this equation is short of it — and the answer is that {reached - published:+.4f} "
-        "of in-sample R² is still available to a longer equation over a wider grammar. What "
+        "of IS R² is still available to a longer equation over a wider grammar. What "
         "that costs is what the published equation is buying: more terms, an operation more, "
         "and a form that reselects far less often across folds.\n",
     ]
@@ -933,7 +962,7 @@ def _reach_note(report: Report) -> str:
     lines = [
         "Three levels of what the vocabulary can explain, each a least-squares fit over the "
         "library and each computable before the search runs. They bound a *sum of "
-        "per-feature functions*, which is a different question from the additive oracle "
+        "per-feature functions*, which is a different question from the additive mean-based reference "
         "above: that one bounds a per-dataset value plus a per-model value.\n",
         "| level | terms | R² |",
         "|---|---|---|",
@@ -954,7 +983,7 @@ def _reach_note(report: Report) -> str:
         f"E3-Valid reaches {fitted:.4f} with {n_terms} terms, **above** the {single:.4f} that all "
         f"{n_single} single-feature terms reach together. An equation cannot pass that level "
         "by describing features one at a time, so the excess is what the cross-feature terms "
-        "buy — the same conclusion the additive oracle reaches, by an independent route."
+        "buy — the same conclusion the additive mean-based reference reaches, by an independent route."
         if fitted > single
         else f"E3-Valid reaches {fitted:.4f} with {n_terms} terms against the {single:.4f} available "
         f"from all {n_single} single-feature terms, so on this configuration its accuracy is "
@@ -978,10 +1007,10 @@ def _protocol_note(report: Report) -> str:
         return ""
 
     order = [
-        ("in-sample", "in-sample", "nothing held out"),
-        ("loo-dataset", "leave-one-dataset-out", "the dataset unseen, the model known"),
-        ("loo-model", "leave-one-model-out", "the model unseen, the dataset known"),
-        ("loo-cell", "leave-one-cell-out", "**both unseen**"),
+        ("in-sample", "IS", "nothing held out"),
+        ("loo-dataset", "LODO", "the dataset unseen, the model known"),
+        ("loo-model", "LOMO", "the model unseen, the dataset known"),
+        ("loo-cell", "DHO", "**both unseen**"),
     ]
     rank_rows = {str(row["predictor"]): row for row in ranking.to_dicts()}
     mid = sorted({float(value) for value in decision["threshold"]})
@@ -991,10 +1020,10 @@ def _protocol_note(report: Report) -> str:
     lines = [
         "The ranking and the go/no-go decision are reported with **both the dataset and the "
         "model of every cell held out of the fit**. Neither single-group protocol answers the "
-        "question those tasks pose: leave-one-dataset-out has seen the learner on the other "
-        "nineteen problems, and leave-one-model-out has seen the dataset. A recommendation is "
+        "question those tasks pose: LODO has seen the learner on the other "
+        "nineteen problems, and LOMO has seen the dataset. A recommendation is "
         "asked about a pair that has not been run.\n",
-        f"| what the equation was shown | AP | MRR | hit@1 | regret | F1 @ {threshold:g} | MCC @ {threshold:g} |",
+        f"| Evaluation protocol | AP | MRR | hit@1 | regret | F1 @ {threshold:g} | MCC @ {threshold:g} |",
         "|---|---|---|---|---|---|---|",
     ]
     for key, label, shown in order:
@@ -1016,7 +1045,7 @@ def _protocol_note(report: Report) -> str:
         best = max(baselines, key=lambda n: float(rank_rows[n]["ap"]))
         lines.append(
             "The per-model mean and median predictors are reported below under "
-            "leave-one-dataset-out, the only held-out protocol in which the test model still "
+            "LODO, the only held-out protocol in which the test model still "
             "has training rows. **Under the strictest protocol they cannot be computed at "
             "all**: a model held out of every fold has no rows to average, so "
             f'"how well does this model usually do" has no value. The best of them reaches AP '
@@ -1041,11 +1070,11 @@ def _ranking_verdict(baselines: pl.DataFrame) -> str:
     if not rivals:
         return ""
     beaten = [row for row in rivals if row["ap_vs_e3_significant"]]
-    names = ", ".join(str(row["predictor"]) for row in rivals)
+    names = ", ".join(_published_protocol_label(row["predictor"]) for row in rivals)
     if beaten:
         return (
             "Paired over the datasets, the equation differs significantly from: "
-            + ", ".join(str(row["predictor"]) for row in beaten)
+            + ", ".join(_published_protocol_label(row["predictor"]) for row in beaten)
             + ". The remaining comparisons are ties.\n"
         )
     return (
@@ -1092,8 +1121,9 @@ def _baseline_centre_note(baselines: pl.DataFrame) -> str:
         median_name, median_value = best(medians, metric, lower_is_better)
         median_wins = median_value < mean_value if lower_is_better else median_value > mean_value
         lines.append(
-            f"| {metric.upper()} | {mean_name} ({mean_value:.4f}) | "
-            f"{median_name} ({median_value:.4f}) | **{'median' if median_wins else 'mean'}** |"
+            f"| {metric.upper()} | {_published_protocol_label(mean_name)} ({mean_value:.4f}) | "
+            f"{_published_protocol_label(median_name)} ({median_value:.4f}) | "
+            f"**{'median' if median_wins else 'mean'}** |"
         )
     return "\n".join(lines) + "\n"
 
@@ -1199,8 +1229,8 @@ def render(
         "group-identity ceiling.** Nothing in the "
         "feature set stops an equation over both halves of the meta-data from predicting "
         "every cell, so there is no group-identity bound to divide by. The reference shown "
-        "instead is the additive oracle, in the comparison table of chapter 5. That "
-        "oracle bounds only an equation additive in dataset effect plus model effect; E3-Valid's "
+        "instead is the additive mean-based reference, in the comparison table of chapter 5. That "
+        "reference bounds only an equation additive in dataset effect plus model effect; E3-Valid's "
         "mixed terms can represent interactions beyond it. The comparison table reports "
         "whether the current equation reaches or exceeds that reference.\n"
     )
@@ -1217,14 +1247,15 @@ def render(
     parts.append("## 3. How well it does\n")
     parts.append("| protocol | R² | MAE | RMSE | n |")
     parts.append("|---|---|---|---|---|")
-    parts.append(_scores("in-sample", report.e3.in_sample))
+    parts.append(_scores("IS", report.e3.in_sample))
+    protocol_labels = {"loo_dataset": "LODO", "loo_model": "LOMO", "loo_cell": "DHO"}
     for label, scores in report.e3.cross_validated.items():
-        parts.append(_scores(label.replace("_", "-"), scores))
+        parts.append(_scores(protocol_labels.get(label, label.replace("_", "-")), scores))
     parts.append("")
     parts.append(
         "Cross-validated rows hold out a whole dataset or a whole model, so the equation "
         "is scored on a group it has never seen. That is the number that matters, and it "
-        "is well below the in-sample one at this sample size.\n"
+        "is well below the IS value at this sample size.\n"
     )
     parts.append("Against the baselines and the ceiling that bounds any additive equation:\n")
     parts.append(_table(report.comparison) + "\n")
@@ -1305,7 +1336,7 @@ def render(
         "`beta` is the standardised weight — the MCC contributed per standard deviation of "
         "the term, which is what makes terms in unrelated units comparable. `effect` is the "
         "swing in predicted MCC across the middle 80% of the term's observed range. "
-        "`stability` is the fraction of leave-one-dataset-out folds that selected the term.\n"
+        "`stability` is the fraction of LODO folds that selected the term.\n"
     )
     parts.append(_table(importance) + "\n")
 
@@ -1323,7 +1354,7 @@ def render(
     unstable = unstable_majors(importance)
     parts.append("### Large terms the folds disagreed on\n")
     if unstable.height == 0:
-        parts.append("None: every major term was selected by at least half of the leave-one-dataset-out folds.\n")
+        parts.append("None: every major term was selected by at least half of the LODO folds.\n")
     else:
         parts.append(
             f"{unstable.height} of the major terms were selected by fewer than half of the "
@@ -1386,7 +1417,7 @@ def render(
 
     parts.append("## 4b. The ceiling on model descriptors\n")
     parts.append(
-        "Under leave-one-dataset-out every model appears in every training fold, so the "
+        "Under LODO every model appears in every training fold, so the "
         "equation's residual can be averaged per model on the training rows and applied to "
         "the held-out dataset with no leak. That replaces the model descriptors with the best "
         "possible substitute -- the model's **identity**, fitted freely -- so what it adds is "
@@ -1532,14 +1563,18 @@ def render(
         "The same equation under three splits. A random k-fold puts rows of one dataset on "
         "both sides of the fold, so it does not test transfer to an unseen dataset. The "
         "difference between that row and the grouped splits measures how much this potential "
-        "leakage changes the score; here random k-fold and leave-one-dataset-out are essentially "
+        "leakage changes the score; here random k-fold and LODO are essentially "
         "identical:\n"
     )
     parts.append(_table(report.leakage) + "\n")
 
     parts.append("## 8. Equation length\n")
     parts.append(_length_note(report))
-    parts.append("The full curve the rule reads, at every length under all three protocols:\n")
+    parts.append(
+        "The full curve reports all four protocols at every length. E3-Valid reads IS, "
+        "LODO, and LOMO through Combined R²; DHO is reported alongside them but is not "
+        "an input to that plateau rule:\n"
+    )
     parts.append(_table(report.e3.curve) + "\n")
 
     parts.append("## 9. The dataset-only and model-only controls\n")
@@ -1570,9 +1605,9 @@ def render(
         )
         capability_scores = report.e3_capability.cross_validated
         parts.append(
-            f"It reaches **{float(report.e3_capability.in_sample['r2']):.4f}** in-sample against "
+            f"It reaches **{float(report.e3_capability.in_sample['r2']):.4f}** under IS against "
             f"the published equation's {float(report.e3.in_sample['r2']):.4f}, and "
-            f"**{float(capability_scores['loo_dataset']['r2']):.4f}** leave-one-dataset-out "
+            f"**{float(capability_scores['loo_dataset']['r2']):.4f}** under LODO "
             f"against {float(report.e3.cross_validated['loo_dataset']['r2']):.4f}.\n"
         )
         parts.append(f"**E3-MAX** ({report.e3_capability.equation.n_terms} terms):\n")

@@ -3,6 +3,12 @@
 *Implemented in `ml_meta_perf.attribution`, `ml_meta_perf.practices`, `ml_meta_perf.report` and
 `ml_meta_perf.guidance`.*
 
+The abbreviations used in this chapter are Matthews Correlation Coefficient (**MCC**), F1
+score (**F1**), machine learning (**ML**), multilayer perceptron (**MLP**), deep neural
+network (**DNN**), artificial intelligence (**AI**), coefficient of determination (**R²**),
+confidence interval (**CI**), linear discriminant analysis (**LDA**), Tabular Prior-Data
+Fitted Network (**TabPFN**), and tabular in-context learning model (**TabICL**).
+
 This is what the accuracy was traded for. An equation nobody can turn into guidance has
 bought nothing over a black box.
 
@@ -122,7 +128,7 @@ A best practice is general, transferable advice that already circulates in the f
 
 #### 6. On real-world data that has not been carefully curated, prefer a learner with built-in robustness to outliers.
 
-**Verdict: not tested.** This corpus cannot weigh it. The practice is about a property of the learner, and the column that recorded one -- `Robust to Outliers` -- was retired because it varied within a model and was undefined under every transform in the grammar but two. `nr_outliers` counts outliers in the data, not resistance to them in the model, so it answers a different question. Reported as untested rather than answered with the nearest available number.
+**Verdict: not tested.** This corpus cannot weigh it. The practice is about a property of the learner, and the generated meta-dataset has no learner-robustness descriptor. `nr_outliers` counts outliers in the data, not resistance to them in the model, so it answers a different question. Reported as untested rather than answered with the nearest available number.
 
 *Practice from:* Grinsztajn, Oyallon & Varoquaux, NeurIPS 2022 Datasets and Benchmarks Track, on non-smooth targets and outliers. Real tabular data carries outliers that a squared-error learner chases and a split-based or margin-based one largely ignores.
 

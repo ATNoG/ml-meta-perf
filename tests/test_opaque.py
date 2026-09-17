@@ -9,7 +9,7 @@ estimator once per observed cell, so at the published 300 trees and 100 stages o
 226 s -- which was the single largest cost in this suite. Measured 2026-09-08, the forest's
 fit-versus-transfer gap is the same at every size:
 
-| trees / stages | in-sample | loo-dataset | loo-cell |
+| trees / stages | IS | LODO | DHO |
 |---:|---:|---:|---:|
 | 5 / 5 | 0.933 | 0.031 | -0.161 |
 | 30 / 30 | 0.957 | 0.028 | -0.061 |
@@ -48,7 +48,7 @@ _RUN: list[OpaqueRun] = []
 def _outcome() -> OpaqueRun:
     """The shared `evaluate` result over the doubles, computed on first use.
 
-    Over the slice rather than the corpus: the cell protocol refits once per observed cell, so
+    Over the slice rather than the corpus: DHO refits once per observed cell, so
     the corpus is 476 joblib tasks per estimator to check that a fold excludes what it says it
     excludes. The slice is 78, and it is ragged, which is the part that can go wrong.
     """

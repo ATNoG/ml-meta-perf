@@ -3,6 +3,10 @@
 This folder contains the reproducible pipeline used to build the meta-dataset
 shipped by `ml_meta_perf`.
 
+The file-format abbreviations used below are comma-separated values (**CSV**) and
+Attribute-Relation File Format (**ARFF**). The pretrained tabular models are Tabular
+In-Context Learning (**TabICL**) and the Tabular Prior-Data Fitted Network (**TabPFN**).
+
 ## Folder Layout
 
 ```text
@@ -81,6 +85,12 @@ meta_dataset_pipeline/results/meta_dataset.csv
 `results_stage_ml_tune.csv` is produced by `exp_stage_ml_tune.py` and is required by
 both `exp_stage_dataset_desc.py` and `exp_stage_ml_eval.py`. The final creation stage
 requires both `results_stage_dataset_desc.csv` and `results_stage_ml_eval.csv`.
+
+The final stage computes `Processing Units Number` from each model's selected
+hyperparameters. For TabICL and TabPFN it counts the loaded checkpoint parameters when the
+corresponding library is available; otherwise, it uses the checkpoint counts recorded in
+`exp_stage_create_meta_dataset.py`. Update those fallback counts whenever either checkpoint
+changes.
 
 ## Publishing The Final Dataset
 

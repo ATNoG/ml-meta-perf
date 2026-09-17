@@ -6,8 +6,9 @@ measure what each half of the meta-data is worth.
 
 The defaults below are the configuration selected by the corrected-corpus sweep. The broad
 stage uses a composite objective to shortlist candidates. E3-Valid uses the retained
-Combined-R2 plateau rule, while E3-MAX independently maximises the worst R2 over in-sample,
-leave-one-dataset-out, leave-one-model-out and doubly-held-out validation.
+Combined-R² plateau rule, while E3-MAX independently maximises the worst R² over in-sample
+(IS), leave-one-dataset-out (LODO), leave-one-model-out (LOMO), and doubly held-out (DHO)
+validation.
 
 Study chapter: [4. The equation][study-chapter] -- the rationale, in
 prose, with the figures.
@@ -57,7 +58,7 @@ from ml_meta_perf.terms import Library, build_library
 from ml_meta_perf.validate import (
     CrossValidation,
     Scores,
-    additive_oracle,
+    additive_mean_reference,
     baseline_group_centre,
     cross_validate_doubly_held_out,
     cross_validate_fixed_form,
@@ -194,7 +195,7 @@ class EquationReport:
     #: it**, because several of them rebuild the library from a `Configuration` and the arity
     #: on that object is the default rather than the one `search_grammars` chose. Before this
     #: field existed, a run whose chosen grammar was not the configuration's -- `--arity 3`
-    #: reproduces it -- published an arity-3 equation and scored its leave-one-cell row on an
+    #: reproduces it -- published an arity-3 equation and scored its DHO row on an
     #: arity-2 refit.
     arity: int
     in_sample: dict[str, float | int]
@@ -215,8 +216,8 @@ def _curve(
 ) -> pl.DataFrame:
     """One row per equation length, carrying every metric under every protocol.
 
-    In-sample gets the same three metrics as the cross-validated columns, not just R2:
-    an error curve that omits the in-sample line cannot show how far apart fit and
+    IS gets the same three metrics as the cross-validated columns, not just R²:
+    an error curve that omits the IS line cannot show how far apart fit and
     transfer run, which is the whole point of plotting them together.
     """
     rows: list[dict[str, object]] = []
@@ -318,7 +319,7 @@ def run_equation(
         label: cross_validate_fixed_form(library, columns, truth, labels, result.equations, penalty=config.penalty)
         for label, labels in (("loo_dataset", datasets), ("loo_model", models))
     }
-    # The doubly-held-out protocol at **every** length, not just the selected one. E1, E2 and
+    # DHO at **every** length, not just the selected one. E1, E2 and
     # E3-MAX use it through `selection.floor_curve`; E3-Valid reports it without selecting on
     # it because its Combined-R2 plateau is defined over the other three protocols.
     paths["loo_cell"] = cross_validate_doubly_held_out(
@@ -494,9 +495,14 @@ def search_grammars(
                 "r2_in_sample": float(curves[arity]["r2_in_sample"][position]),
                 "r2_loo_dataset": float(curves[arity]["r2_loo_dataset"][position]),
                 "r2_loo_model": float(curves[arity]["r2_loo_model"][position]),
-                "combined_r2": float(np.median([curves[arity][column][position] for column in (
-                    "r2_in_sample", "r2_loo_dataset", "r2_loo_model"
-                )])),
+                "combined_r2": float(
+                    np.median(
+                        [
+                            curves[arity][column][position]
+                            for column in ("r2_in_sample", "r2_loo_dataset", "r2_loo_model")
+                        ]
+                    )
+                ),
                 "floor": float(floor_curve(curves[arity])[position]),
                 "spread": float(protocol_spread(curves[arity])[position]),
                 "role": role,
@@ -622,8 +628,8 @@ def baselines(frame: pl.DataFrame) -> pl.DataFrame:
             rows.append({"baseline": label, **score(truth, prediction).as_dict()})
     rows.append(
         {
-            "baseline": "additive oracle (ceiling, in-sample)",
-            **score(truth, additive_oracle(truth, datasets, models)).as_dict(),
+            "baseline": "additive mean-based reference (in-sample)",
+            **score(truth, additive_mean_reference(truth, datasets, models)).as_dict(),
         }
     )
     return pl.DataFrame(rows)
@@ -668,7 +674,7 @@ def leakage_demonstration(
 def identity_ceiling(frame: pl.DataFrame, e3: EquationReport) -> pl.DataFrame:
     """The upper bound on what any model descriptor could add, measured rather than argued.
 
-    Under leave-one-dataset-out **every one of the 25 models appears in every training fold**,
+    Under LODO **every one of the 25 models appears in every training fold**,
     so the equation's residual can be averaged per model on the training rows and applied to
     the held-out dataset with no leak. That replaces the model descriptors with the best
     possible substitute -- the model's *identity*, fitted freely -- and what it adds is
@@ -744,7 +750,7 @@ def interaction_reached(frame: pl.DataFrame, e3: EquationReport) -> pl.DataFrame
 
     The oracle ladder prices interaction components; this says whether E3 gets any of
     them. Reported under both the fit and the held-out protocol, because an equation can
-    align with a pattern in-sample and lose it out of fold -- and that difference is the
+    align with a pattern under IS and lose it out of fold -- and that difference is the
     whole question for a component nobody can predict from meta-features.
     """
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
@@ -839,9 +845,9 @@ def comparison(
                 else []
             ),
             {
-                "equation": "reference: additive oracle",
+                "equation": "reference: additive mean-based reference",
                 "n_terms": None,
-                **score(truth, additive_oracle(truth, datasets, models)).as_dict(),
+                **score(truth, additive_mean_reference(truth, datasets, models)).as_dict(),
             },
         ]
     )
@@ -857,7 +863,7 @@ def decision_quality(
 
     Same requirement as `model_selection` and for the same reason: the question is asked about
     a pair nobody has run, so neither half of it may be in the training set. ``known`` is
-    `run_e3`'s leave-one-dataset-out path and is the fallback when the doubly-held-out fit
+    `run_e3`'s LODO path and is the fallback when the DHO fit
     cannot be built.
     """
     truth = target(frame)
@@ -939,8 +945,8 @@ def doubly_held_out_predictions(
     Used for the ranking and the threshold decision and for nothing else. Those two are the
     questions a practitioner actually asks -- *which model should I run on this data*, and
     *will it clear my bar* -- and both are asked about a pair that has not been run. Neither
-    single-group protocol answers that: leave-one-dataset-out has seen the learner on nineteen
-    other problems, leave-one-model-out has seen the dataset.
+    single-group protocol answers that: LODO has seen the learner on nineteen
+    other problems, LOMO has seen the dataset.
 
     The R2 curve and the length rule stay on the single-group protocols, which is the right
     scope for them: they are about how the equation degrades as one axis becomes unfamiliar,
@@ -1008,8 +1014,8 @@ def model_selection(
     """Can the equation pick a good model for a dataset it has never run it on?
 
     **Reported under ``loo_cell``: both the dataset and the model of every cell are out of the
-    training set.** Anything weaker answers a different question. Leave-one-dataset-out has
-    seen the learner on nineteen other problems; leave-one-model-out has seen the dataset. A
+    training set.** Anything weaker answers a different question. LODO has
+    seen the learner on nineteen other problems; LOMO has seen the dataset. A
     recommendation is asked about a pair that has not been run, so both have to go.
 
     The cost of that is small, and structurally so rather than by luck: a ranking depends only
@@ -1055,9 +1061,9 @@ def ranking_baselines(
     """The equation's ranking against the trivial rankings, averaged over datasets.
 
     **Every predictor is scored under the same protocol**, which is what makes the comparison
-    a comparison. The equation appears three times -- in-sample and under both leave-one-group-out
-    protocols -- so the cost of generalisation on this task is visible rather than assumed, and
-    the trivial predictors appear leave-one-dataset-out, which is the only way a per-model
+    a comparison. The equation appears under IS, LODO, LOMO, and DHO, so the cost of
+    generalisation on this task is visible rather than assumed. The trivial predictors appear
+    under LODO, which is the only way a per-model
     centre can be computed honestly.
 
     Both centres are reported for the same reason the error metrics report both: the per-model
@@ -1080,14 +1086,14 @@ def ranking_baselines(
     doubly = doubly_held_out_predictions(frame, e3.n_terms, config)
     if doubly is not None:
         candidates["equation (loo-cell: both held out)"] = doubly
-    # The trivial predictors cannot be computed under the loo-cell protocol at all: a model
+    # The trivial predictors cannot be computed under DHO (internally ``loo_cell``) at all: a model
     # held out of every fold has no rows to average, so "how well does this model usually do"
-    # has no value. They appear leave-one-dataset-out, which is the only way they exist -- and
-    # that hands them the model identity the loo-cell row of the equation is denied.
+    # has no value. They appear under LODO, which is the only way they exist -- and
+    # that hands them the model identity denied to the DHO row of the equation.
     candidates["per-model mean (loo-dataset)"] = baseline_group_centre(truth, datasets, models, centre="mean")
     candidates["per-model median (loo-dataset)"] = baseline_group_centre(truth, datasets, models, centre="median")
     # The opaque opponent under every protocol it has, so each of its rows can be read against
-    # the equation row that was allowed to see the same things. The loo-cell rows are the
+    # the equation row that was allowed to see the same things. The DHO rows are the
     # comparison that matters: there neither side has the dataset or the model, and the trivial
     # baselines cannot be computed at all.
     if opaque is not None:
@@ -1131,7 +1137,7 @@ def decision_baselines(
     """The above-or-below-threshold decision, for the equation and both trivial centres.
 
     Every predictor under the same protocol, as in `ranking_baselines`, and the equation under
-    all three so the cost of generalisation on the decision is measured rather than assumed.
+    all four so the cost of generalisation on the decision is measured rather than assumed.
     `decision_report` already carries a majority-class column, which is the floor any rule has
     to clear; these are the harder comparison.
     """
@@ -1218,7 +1224,7 @@ class Report:
     #: What per-model *identity* adds to the reported path, which is the ceiling on what any
     #: model descriptor could reach. See `identity_ceiling`.
     identity: pl.DataFrame
-    #: What an unpenalised least-squares fit over the *whole* library reaches, in-sample and
+    #: What an unpenalised least-squares fit over the *whole* library reaches under IS and
     #: held out. The control for the selection stage: if this transferred, the beam search
     #: and the length rule would be machinery in search of a problem. See
     #: `analysis.saturated_fit`.
@@ -1249,7 +1255,7 @@ def run(
 
     ``opaque_models`` replaces the estimators the comparison is run against, in the shape
     `opaque.evaluate` takes. It exists for the same reason that parameter does: the opaque
-    side is scikit-learn's, the leave-one-cell refit around it is this project's, and a
+    side is scikit-learn's, the DHO refit around it is this project's, and a
     caller checking the wiring should be able to exercise the second without paying for the
     first -- which at 476 refits per estimator is most of what a run costs.
     """

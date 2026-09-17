@@ -164,11 +164,11 @@ def grammar_ceiling(
       equation's accuracy has to be coming from interactions.
 
     The gap between the last of these and the fitted equation is the part of the study that
-    the additive oracle cannot see: `validate.additive_oracle` bounds a per-dataset value plus
+    the additive mean-based reference cannot see: `validate.additive_mean_reference` combines a per-dataset value plus
     a per-model value, whereas this bounds a sum of per-*feature* functions. An equation above
     ``r2_all_single_feature`` is one whose mixed terms are doing real work.
 
-    Fitted in-sample and unregularised by default: it is a description of the vocabulary's
+    Fitted in-sample (IS) and unregularised by default: it is a description of the vocabulary's
     reach on this data, not a predictor, and shrinkage would understate it.
     """
     index = {name: position for position, name in enumerate(library.names)}

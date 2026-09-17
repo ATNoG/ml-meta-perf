@@ -36,13 +36,15 @@ def _best_per_term_count(table: pl.DataFrame) -> pl.DataFrame:
     return pl.DataFrame([selected[length] for length in sorted(selected)])
 
 
-def _oracle_value(search_directory: Path) -> float | None:
+def _additive_reference_value(search_directory: Path) -> float | None:
     baselines = search_directory.parent / "baselines.csv"
     if not baselines.is_file():
         return None
     table = pl.read_csv(baselines)
     label_column = "baseline" if "baseline" in table.columns else table.columns[0]
-    rows = table.filter(pl.col(label_column).cast(pl.String).str.contains("additive oracle"))
+    # Accept the legacy result label so archived searches remain reproducible after the
+    # public figure terminology changed to "additive mean-based reference".
+    rows = table.filter(pl.col(label_column).cast(pl.String).str.contains("additive mean-based reference"))
     if rows.is_empty() or "r2" not in rows.columns:
         return None
     return float(rows["r2"][0])
@@ -83,7 +85,7 @@ def generate(search_directory: Path) -> tuple[Path, Path, Path]:
         curve["in_sample_r2"].to_numpy(),
         "o-",
         color=IN_SAMPLE,
-        label="in-sample",
+        label="IS",
         linewidth=2,
         markersize=3.5,
     )
@@ -92,7 +94,7 @@ def generate(search_directory: Path) -> tuple[Path, Path, Path]:
         curve["loo_dataset_r2"].to_numpy(),
         "s--",
         color=LOO_DATASET,
-        label="leave-one-dataset-out",
+        label="LODO",
         markersize=3.5,
     )
     axes.plot(
@@ -100,7 +102,7 @@ def generate(search_directory: Path) -> tuple[Path, Path, Path]:
         curve["loo_model_r2"].to_numpy(),
         "^:",
         color=LOO_MODEL,
-        label="leave-one-model-out",
+        label="LOMO",
         markersize=3.5,
     )
     axes.plot(
@@ -114,14 +116,14 @@ def generate(search_directory: Path) -> tuple[Path, Path, Path]:
         alpha=0.8,
     )
 
-    oracle = _oracle_value(search_directory)
-    if oracle is not None:
+    reference = _additive_reference_value(search_directory)
+    if reference is not None:
         axes.axhline(
-            oracle,
+            reference,
             color=CEILING,
             linestyle="-.",
             linewidth=1.2,
-            label=f"additive oracle ({oracle:.3f})",
+            label=f"additive mean-based reference ({reference:.3f})",
         )
 
     markers = (("E3-Valid", payload["e3_valid"], "#e17c05"), ("E3-MAX", maximum, "#111827"))

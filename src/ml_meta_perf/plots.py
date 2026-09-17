@@ -250,42 +250,42 @@ def term_count_curve(
     curve: pl.DataFrame,
     destination: str | Path,
     *,
-    oracle: float | None = None,
+    reference: float | None = None,
     marker: int | None = None,
     marker_label: str | None = None,
 ) -> Path:
     """Accuracy against equation length: the explainability trade.
 
-    The oracle line is the point of the figure. Without it a reader sees a curve still
+    The reference line is the point of the figure. Without it a reader sees a curve still
     climbing and assumes more terms would keep paying, when the whole approach is bounded
     well below 1. It is drawn as a labelled line rather than described in text.
 
-    **It is labelled "additive oracle", not "additive ceiling".**
-    `validate.additive_oracle` is the best score reachable by a model that is additive
-    in *dataset effect plus model effect* -- perfect group means and nothing else. E3 carries
+    **It is labelled "additive mean-based reference", not "additive ceiling".**
+    `validate.additive_mean_reference` implements the descriptive reference that is additive
+    in *dataset effect plus model effect* -- observed group means and nothing else. E3 carries
     mixed terms, each multiplying a dataset feature by a model one, so it represents
-    interactions the oracle cannot and can cross the reference at longer lengths. Calling
+    interactions the additive reference cannot and can cross it at longer lengths. Calling
     that line a ceiling would therefore misstate what it bounds.
     """
     figure, axes = plt.subplots(figsize=(7.0, 4.4))
     sizes = curve["n_terms"].to_numpy()
 
-    axes.plot(sizes, curve["r2_in_sample"].to_numpy(), "o-", color=IN_SAMPLE, label="in-sample", linewidth=2)
+    axes.plot(sizes, curve["r2_in_sample"].to_numpy(), "o-", color=IN_SAMPLE, label="IS", linewidth=2)
     if "r2_loo_dataset" in curve.columns:
-        axes.plot(sizes, curve["r2_loo_dataset"].to_numpy(), "s--", color=LOO_DATASET, label="leave-one-dataset-out")
+        axes.plot(sizes, curve["r2_loo_dataset"].to_numpy(), "s--", color=LOO_DATASET, label="LODO")
     if "r2_loo_model" in curve.columns:
-        axes.plot(sizes, curve["r2_loo_model"].to_numpy(), "^:", color=LOO_MODEL, label="leave-one-model-out")
-    if oracle is not None:
+        axes.plot(sizes, curve["r2_loo_model"].to_numpy(), "^:", color=LOO_MODEL, label="LOMO")
+    if reference is not None:
         axes.axhline(
-            oracle,
+            reference,
             color=CEILING,
             linestyle="-.",
             linewidth=1.2,
-            label=f"additive oracle ({oracle:.3f})",
+            label=f"additive mean-based reference ({reference:.3f})",
         )
-        # Headroom above whichever is higher. Pinning the top to the oracle cropped the
-        # in-sample curve the moment it crossed -- which is exactly when it matters most.
-        highest = max(float(curve["r2_in_sample"].to_numpy().max()), oracle)
+        # Headroom above whichever is higher. Pinning the top to the reference cropped the
+        # IS curve the moment it crossed -- which is exactly when it matters most.
+        highest = max(float(curve["r2_in_sample"].to_numpy().max()), reference)
         axes.set_ylim(top=highest + 0.05)
 
     if marker is not None:
@@ -381,9 +381,9 @@ def equation_comparison(comparison: pl.DataFrame, destination: str | Path) -> Pa
 
     **"Reference level", not "ceiling", because one of the three is not a ceiling for the
     bar next to it.** The E1 and E2 references are genuine ceilings -- true per-group means
-    are the most a predictor constant within that group can achieve. The additive oracle is
+    are the most a predictor constant within that group can achieve. The additive mean-based reference is
     a ceiling only for an equation additive in dataset *and* model effects, and E3 is not
-    one: its mixed terms carry interactions that the oracle cannot represent. The current
+    one: its mixed terms carry interactions that the additive reference cannot represent. The current
     E3 passes that reference, which is permitted because a mixed equation is not structurally
     bounded by it.
     """
@@ -546,7 +546,9 @@ def decision_quality(decision: pl.DataFrame, destination: str | Path) -> Path:
     all -- a model held out of every fold has no rows to average.
 
     The four lines are the point: the gap between the top and the bottom one is the whole cost
-    of generalisation on this task, and on this corpus it is small.
+    of generalisation on this task, and on this corpus it is small. The legend uses IS for
+    in-sample (IS), leave-one-dataset-out (LODO), leave-one-model-out (LOMO), and doubly
+    held-out (DHO), in which both the dataset and model are absent from training.
     """
     figure, axes = plt.subplots(figsize=(6.8, 4.2))
     table = decision.sort("threshold")
@@ -558,6 +560,12 @@ def decision_quality(decision: pl.DataFrame, destination: str | Path) -> Path:
         "loo-model": (LOO_MODEL, "^:", 1.8),
         "loo-cell": ("#2f2f2f", "D-", 2.2),
     }
+    protocol_labels = {
+        "in-sample": "IS",
+        "loo-dataset": "LODO",
+        "loo-model": "LOMO",
+        "loo-cell": "DHO",
+    }
 
     if "predictor" in table.columns:
         names = [str(name) for name in table["predictor"].unique(maintain_order=True)]
@@ -567,8 +575,14 @@ def decision_quality(decision: pl.DataFrame, destination: str | Path) -> Path:
             rows = table.filter(pl.col("predictor") == name).sort("threshold")
             key = next((k for k in order if k in name), "in-sample")
             colour, marker, width = styles[key]
-            label = key + (" (both held out)" if key == "loo-cell" else "")
-            axes.plot(rows["threshold"], rows["f1"], marker, color=colour, label=label, linewidth=width)
+            axes.plot(
+                rows["threshold"],
+                rows["f1"],
+                marker,
+                color=colour,
+                label=protocol_labels[key],
+                linewidth=width,
+            )
     else:
         axes.plot(table["threshold"], table["f1"], "o-", color=IN_SAMPLE, label="equation", linewidth=2)
 
@@ -576,7 +590,7 @@ def decision_quality(decision: pl.DataFrame, destination: str | Path) -> Path:
     axes.set_ylabel("F1 of the decision")
     axes.set_xticks(sorted({float(value) for value in table["threshold"]}))
     axes.grid(alpha=0.25, linewidth=0.6)
-    axes.legend(fontsize=9, loc="lower left", framealpha=0.0, title="what the equation was shown")
+    axes.legend(fontsize=9, loc="lower left", framealpha=0.0, title="Evaluation protocol")
     return _finish(figure, destination)
 
 
@@ -619,7 +633,7 @@ def ranking_quality(selection: pl.DataFrame, destination: str | Path) -> Path:
             edgecolor="#333333",
             linewidth=0.7,
             zorder=5,
-            label="best model ranked first",
+            label="top choice within 0.01 of best",
         )
     axes.set_yticks(positions)
     axes.set_yticklabels([_shorten(name, 24) for name in table["group"]], fontsize=8)

@@ -2,6 +2,15 @@
 
 *Implemented in `ml_meta_perf.terms` and `ml_meta_perf.model`.*
 
+The abbreviations used in this chapter are Matthews Correlation Coefficient (**MCC**),
+genetic programming (**GP**), JavaScript Object Notation (**JSON**), coefficient of
+determination (**R²**), in-sample (**IS**), leave-one-dataset-out (**LODO**),
+leave-one-model-out (**LOMO**), doubly held out (**DHO**), and Sparse Regression of
+Turbulent Stress Anisotropy (**SpaRTA**).
+The equation labels are **E1** (dataset features only), **E2** (model features only), **E3**
+(dataset and model features), **E3-Valid** (the plateau-selected E3 equation), and
+**E3-MAX** (the maximum-capability E3 equation).
+
 ## The form
 
 $$\mathrm{MCC} = w_0 + \sum_{i=1}^{k} w_i \, t_i(\mathbf{f})$$
@@ -92,8 +101,8 @@ are reported:
 | **E3-Valid** | **arity 2** | **18** | **36** | **0.6103** | **0.0684** |
 | E3-MAX | arity 3 | 25 | 75 | 0.6554 | 0.0640 |
 
-The **floor** is the minimum over all four protocols — in-sample, leave-one-dataset-out,
-leave-one-model-out, and the doubly-held-out cell — so a grammar is judged by its worst
+The **floor** is the minimum over all four protocols — IS, LODO,
+LOMO, and the DHO cell — so a grammar is judged by its worst
 showing rather than its best. See [chapter 5](05-evaluation.md#four-protocols) for the four.
 
 E3-Valid uses the arity-2 point immediately before the first sustained plateau in Combined R².
@@ -142,13 +151,13 @@ corresponding product.
 
 ### Why this matters, quantitatively
 
-Allowing unrestricted division raises in-sample R² to 0.611 and drives leave-one-dataset-out
+Allowing unrestricted division raises IS R² to 0.611 and drives LODO
 R² to **-1.7**. Standardisation hides the problem while fitting — the spike simply becomes
 the scale — but the term explodes on a held-out dataset outside the training range.
 
 `ml_meta_perf.terms.is_admissible` remains as a cheap numerical backstop for libraries
 assembled by hand, but nothing `build_library` produces depends on it. Its effect is
-visible at loose stability caps: at `max_abs_zscore=6` the worst leave-one-dataset-out R²
+visible at loose stability caps: at `max_abs_zscore=6` the worst LODO R²
 across the sweep improved from **-1.66 to -0.39** once the rule became structural.
 
 ### Two terms, one column
@@ -242,7 +251,7 @@ model feature is strictly positive, which is a requirement pinned by
 
 Admissible beyond squared, but **monotonically less useful**: best correlation falls 0.373
 (`f^2`) → 0.363 (`f^3`) → 0.352 (`f^4`). Adding `f^3` to the vocabulary was measured
-end-to-end and dropped leave-one-dataset-out R² from 0.443 to 0.420. Squared is kept;
+end-to-end and dropped LODO R² from 0.443 to 0.420. Squared is kept;
 higher powers are not.
 
 ### `exp`
@@ -277,7 +286,7 @@ every feature column up front. It was tested, at the same admissibility cap thro
 (Measured against the pre-symmetry grammar, whose baseline was 0.5582; the comparison
 between rows is what matters and none of it depends on the baseline.)
 
-| feature scaling | library | in-sample (k=14) | LOO-dataset (k=14) |
+| feature scaling | library | IS (k=14) | LODO (k=14) |
 |---|---|---|---|
 | **none (current)** | 172 | 0.5582 | **+0.443** |
 | divide by max (multiplicative) | 120 | 0.5668 | +0.384 |
@@ -303,7 +312,7 @@ fix.)
 **Affine scaling fixes dynamic range by removing the signal.** Squeezing every feature into
 [1, 2] does make everything admissible — the library grows to 544 terms — but over that
 range `log`, `sqrt` and the identity are nearly the same function, so the library fills
-with near-duplicates and leave-one-dataset-out R² collapses to **-0.285**. The compression
+with near-duplicates and LODO R² collapses to **-0.285**. The compression
 `log` was providing is exactly what the scaling removed.
 
 The magnitude problem here is a *dynamic-range* problem, and log-compression is the
@@ -315,7 +324,7 @@ Two more principled options than min-max were tested, since the classical answer
 skewed predictors is a power transform (Box & Cox, 1964; Yeo & Johnson, 2000) or a
 rank-based transform (van der Waerden).
 
-| feature transform | library | in-sample (k=14) | LOO-dataset (k=14) |
+| feature transform | library | IS (k=14) | LODO (k=14) |
 |---|---|---|---|
 | **none (current)** | 172 | 0.5582 | **+0.443** |
 | Yeo-Johnson, λ per feature | 392 | 0.5597 | -0.124 |
@@ -334,7 +343,7 @@ accepts zero and negative values, which six of these features have:
 | `ns_ratio` | -0.35 | 3.73 | -0.02 |
 
 **And the λ it chooses is ≈ 0 for every heavy-tailed feature, which is the log transform.**
-The principled method converges on what the grammar already offers. In-sample changes
+The principled method converges on what the grammar already offers. The IS score changes
 little (0.5597 against 0.5582) and transfer falls sharply, because a λ fitted to the
 observed feature distribution extrapolates poorly on a held-out dataset whose features lie
 outside that range.

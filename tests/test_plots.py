@@ -93,9 +93,9 @@ class PlotTestCase(unittest.TestCase):
 
 class TestPlots(PlotTestCase):
     def test_term_count_curve(self) -> None:
-        self.assertIsPng(term_count_curve(curve(), self.folder / "curve.png", oracle=0.661))
+        self.assertIsPng(term_count_curve(curve(), self.folder / "curve.png", reference=0.661))
 
-    def test_term_count_curve_without_an_oracle(self) -> None:
+    def test_term_count_curve_without_a_reference(self) -> None:
         self.assertIsPng(term_count_curve(curve(), self.folder / "plain.png"))
 
     def test_term_count_curve_with_only_one_protocol(self) -> None:
@@ -105,28 +105,21 @@ class TestPlots(PlotTestCase):
     def test_predicted_versus_actual(self) -> None:
         rng = np.random.default_rng(0)
         truth = rng.uniform(-1.0, 1.0, 80)
-        self.assertIsPng(
-            predicted_versus_actual(truth, truth + rng.normal(0, 0.1, 80), self.folder / "scatter.png")
-        )
+        self.assertIsPng(predicted_versus_actual(truth, truth + rng.normal(0, 0.1, 80), self.folder / "scatter.png"))
 
     def test_scatter_with_a_rug(self) -> None:
         truth = np.linspace(0.0, 1.0, 40)
-        self.assertIsPng(
-            predicted_versus_actual(truth, truth * 0.9, self.folder / "rug.png", groups=truth)
-        )
+        self.assertIsPng(predicted_versus_actual(truth, truth * 0.9, self.folder / "rug.png", groups=truth))
 
     def test_scatter_of_realistic_data_is_still_a_png(self) -> None:
         truth = np.linspace(0.0, 1.0, 40)
-        self.assertIsPng(
-            predicted_versus_actual(truth, truth * 0.9 + 0.05, self.folder / "tight.png")
-        )
+        self.assertIsPng(predicted_versus_actual(truth, truth * 0.9 + 0.05, self.folder / "tight.png"))
 
     def test_scatter_renders_with_points_below_the_floor(self) -> None:
         # The out-of-range point falls outside the axes; rendering must not crash.
         truth = np.concatenate([np.array([-0.29]), np.linspace(0.0, 1.0, 30)])
         predicted = np.concatenate([np.array([0.5]), np.linspace(0.2, 1.0, 30)])
         self.assertIsPng(predicted_versus_actual(truth, predicted, self.folder / "clipped.png"))
-
 
     def test_term_effects(self) -> None:
         self.assertIsPng(term_effects(effects(), self.folder / "terms.png"))
@@ -222,24 +215,26 @@ class TestScatterLimits(unittest.TestCase):
         self.assertLess(low, high)
 
 
-class TestOracleLookup(unittest.TestCase):
+class TestAdditiveReferenceLookup(unittest.TestCase):
     """The ceiling drawn on the curve must be the one the run computed."""
 
-    def test_reads_the_oracle_from_the_comparison_table(self) -> None:
-        from ml_meta_perf.figures import ORACLE_ROW, _oracle
+    def test_reads_the_reference_from_the_comparison_table(self) -> None:
+        from ml_meta_perf.figures import ADDITIVE_REFERENCE_ROW, _additive_reference
 
         report = SimpleNamespace(
-            comparison=pl.DataFrame({"equation": ["E2 (dataset + model)", ORACLE_ROW], "r2": [0.556, 0.6605]})
+            comparison=pl.DataFrame(
+                {"equation": ["E2 (dataset + model)", ADDITIVE_REFERENCE_ROW], "r2": [0.556, 0.6605]}
+            )
         )
-        value = _oracle(report)  # pyright: ignore[reportArgumentType]
+        value = _additive_reference(report)  # pyright: ignore[reportArgumentType]
         assert value is not None
         self.assertAlmostEqual(value, 0.6605)
 
     def test_returns_none_when_the_row_is_absent(self) -> None:
-        from ml_meta_perf.figures import _oracle
+        from ml_meta_perf.figures import _additive_reference
 
         report = SimpleNamespace(comparison=pl.DataFrame({"equation": ["E2"], "r2": [0.5]}))
-        self.assertIsNone(_oracle(report))  # pyright: ignore[reportArgumentType]
+        self.assertIsNone(_additive_reference(report))  # pyright: ignore[reportArgumentType]
 
 
 class TestFigureSet(PlotTestCase):
@@ -349,9 +344,19 @@ class TestTermMath(unittest.TestCase):
         """mathtext raises on malformed input, so a bad term would break the whole figure."""
         import matplotlib.pyplot as plt
 
-        shapes = ["[a] * [b]", "[a] / [b]", "1/a", "a^2", "sqrt(a)", "log(a)",
-                  "([a] + [b]) / [c]", "[log(a)] / [log(b)]", "[1/a] / [b]", "[1/a] * [b]",
-                  "[sqrt(a)] / [1/b]"]
+        shapes = [
+            "[a] * [b]",
+            "[a] / [b]",
+            "1/a",
+            "a^2",
+            "sqrt(a)",
+            "log(a)",
+            "([a] + [b]) / [c]",
+            "[log(a)] / [log(b)]",
+            "[1/a] / [b]",
+            "[1/a] * [b]",
+            "[sqrt(a)] / [1/b]",
+        ]
         figure, axes = plt.subplots()
         for index, shape in enumerate(shapes):
             axes.text(0.1, 0.05 * index, term_to_math(shape))
