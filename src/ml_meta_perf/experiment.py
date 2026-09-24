@@ -41,7 +41,7 @@ from ml_meta_perf.model import Equation
 from ml_meta_perf.opaque import Builder as OpaqueBuilder
 from ml_meta_perf.opaque import OpaqueRun
 from ml_meta_perf.opaque import evaluate as opaque_evaluate
-from ml_meta_perf.practices import best_practices
+from ml_meta_perf.practices import best_practices, feature_practices
 from ml_meta_perf.search import prune, search
 from ml_meta_perf.selection import (
     PLATEAU_TOLERANCE,
@@ -358,7 +358,7 @@ def run_equation(
         cross_validated={
             label: path[size].scores(truth).as_dict() | path[size].dispersion() for label, path in paths.items()
         },
-        stability=term_stability(reselected),
+        stability=term_stability(reselected, tuple(term.name for term in equation.terms)),
         paths=paths,
     )
 
@@ -1192,6 +1192,8 @@ class Report:
     #: One row per grammar searched, with the floor, the spread and the margin against the
     #: best -- `search_grammars` shows the rule's working.
     grammars: pl.DataFrame
+    #: Feature-level effects and stability before evidence thresholds are applied.
+    feature_practices: pl.DataFrame
     practices: pl.DataFrame
     effects: pl.DataFrame
     shares: pl.DataFrame
@@ -1290,6 +1292,7 @@ def run(
         e3=e3,
         e3_capability=e3_capability,
         grammars=grammars.candidates,
+        feature_practices=feature_practices(e3.equation, columns, e3.stability),
         practices=best_practices(e3.equation, columns, e3.stability),
         effects=term_effects(e3.equation, columns, DATASET_FEATURES, MODEL_FEATURES),
         shares=group_shares(e3.equation, columns, DATASET_FEATURES, MODEL_FEATURES),

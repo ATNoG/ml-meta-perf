@@ -154,6 +154,12 @@ class TestFoldSelections(unittest.TestCase):
         self.assertLessEqual(int(stability["folds"].max()), len(np.unique(self.outer)))  # pyright: ignore[reportArgumentType]
         self.assertLessEqual(float(stability["frequency"].max()), 1.0)  # pyright: ignore[reportArgumentType]
 
+    def test_required_term_never_selected_is_exported_with_zero_frequency(self) -> None:
+        stability = term_stability([["selected"]], required_terms=("selected", "never selected"))
+        rows = {row["term"]: row for row in stability.iter_rows(named=True)}
+        self.assertEqual(rows["never selected"]["folds"], 0)
+        self.assertEqual(rows["never selected"]["frequency"], 0.0)
+
 
 class TestBaselines(unittest.TestCase):
     def setUp(self) -> None:

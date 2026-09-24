@@ -209,8 +209,7 @@ What the fitted equation says about each raw feature it uses, kept only when the
 
  1. [moderate] Higher model capacity (number of fitted processing units) went with higher MCC (about 0.52 MCC between its lowest and highest decile).
  2. [moderate] Higher equivalent number of attributes (effective feature count) went with lower MCC (about 0.51 MCC between its lowest and highest decile).
- 3. [unrated ] Higher gravity (separation between the majority and minority class centres) went with lower MCC (about 0.34 MCC between its lowest and highest decile).
- 4. [moderate] Higher how hard the loss penalises points far from the boundary (1-5) went with lower MCC (about 0.15 MCC between its lowest and highest decile).
+ 3. [moderate] Higher how hard the loss penalises points far from the boundary (1-5) went with lower MCC (about 0.15 MCC between its lowest and highest decile).
 
 Evidence:
 
@@ -218,7 +217,6 @@ Evidence:
 |---|---|---|---|---|---|---|
 | Processing Units Number | model capacity (number of fitted processing units) | 4 | 0.2843 | 0.5169 | 0.7125 | moderate |
 | eq_num_attr | equivalent number of attributes (effective feature count) | 3 | -0.4087 | -0.5070 | 0.6333 | moderate |
-| gravity | gravity (separation between the majority and minority class centres) | 5 | -0.4539 | -0.3413 |  | unrated |
 | Loss Margin Behaviour | how hard the loss penalises points far from the boundary (1-5) | 1 | -0.8368 | -0.1527 | 0.6000 | moderate |
 
 #### These are conditional statements, not marginal ones

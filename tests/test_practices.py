@@ -83,6 +83,16 @@ class TestFeaturePractices(unittest.TestCase):
         self.assertAlmostEqual(rows["up"]["stability"], 0.9)
         self.assertAlmostEqual(rows["down"]["stability"], 0.4)
 
+    def test_missing_term_in_a_non_empty_stability_table_counts_as_zero(self) -> None:
+        equation = Equation(
+            intercept=0.0,
+            terms=(Term("atom", (Atom("up"),)), Term("atom", (Atom("up", "sq"),))),
+            weights=(0.1, 0.1),
+            standardized_weights=(0.5, 0.5),
+        )
+        table = feature_practices(equation, {"up": columns()["up"]}, stability_table(up=0.8))
+        self.assertAlmostEqual(table["stability"][0], 0.4)
+
 
 class TestBestPractices(unittest.TestCase):
     def test_statements_state_the_direction(self) -> None:

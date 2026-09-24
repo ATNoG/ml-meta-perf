@@ -16,6 +16,8 @@ import polars as pl
 
 from ml_meta_perf.plots import CEILING, FIGURE_DPI, IN_SAMPLE, LOO_DATASET, LOO_MODEL
 
+DHO_COLOR = "#7f3c8d"
+
 
 def _candidate_rank(row: dict[str, Any]) -> tuple[float, int, int, int]:
     return (
@@ -103,6 +105,15 @@ def generate(search_directory: Path) -> tuple[Path, Path, Path]:
         "^:",
         color=LOO_MODEL,
         label="LOMO",
+        markersize=3.5,
+    )
+    axes.plot(
+        lengths,
+        curve["loo_cell_r2"].to_numpy(),
+        "v-.",
+        color=DHO_COLOR,
+        label="DHO",
+        linewidth=1.6,
         markersize=3.5,
     )
     axes.plot(

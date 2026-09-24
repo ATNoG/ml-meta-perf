@@ -14,16 +14,19 @@ import polars as pl
 
 from ml_meta_perf.plots import FIGURE_DPI, IN_SAMPLE, LOO_DATASET, LOO_MODEL
 
+DHO_COLOR = "#7f3c8d"
+
 CURVE_COLUMNS = (
     "n_terms",
     "in_sample_r2",
     "loo_dataset_r2",
     "loo_model_r2",
+    "loo_cell_r2",
 )
 
 
 def generate(search_directory: Path) -> tuple[Path, Path, Path]:
-    """Generate the in-sample (IS), leave-one-dataset-out (LODO), and leave-one-model-out (LOMO) curves."""
+    """Generate the IS, LODO, LOMO, and doubly held-out (DHO) term-count curves."""
     source_path = search_directory / "e3_valid_term_count_curve.csv"
     if not source_path.is_file():
         raise FileNotFoundError(f"required term-count curve is missing: {source_path}")
@@ -61,6 +64,15 @@ def generate(search_directory: Path) -> tuple[Path, Path, Path]:
         label="LOMO",
         markersize=3.5,
     )
+    axes.plot(
+        lengths,
+        curve["loo_cell_r2"].to_numpy(),
+        "v-.",
+        color=DHO_COLOR,
+        label="DHO",
+        linewidth=1.6,
+        markersize=3.5,
+    )
 
     axes.set_xlabel("number of terms")
     axes.set_ylabel("$R^2$")
@@ -75,7 +87,7 @@ def generate(search_directory: Path) -> tuple[Path, Path, Path]:
         fontsize=9,
         loc="upper center",
         bbox_to_anchor=(0.5, -0.13),
-        ncol=3,
+        ncol=4,
     )
     figure.tight_layout()
 

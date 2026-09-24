@@ -63,6 +63,9 @@ def feature_practices(
     ``direction`` is the rank correlation between the feature and the MCC it drives, so
     it survives transforms and multiple appearances. ``stability`` is the mean selection
     frequency of the terms involved, when a cross-validated stability table is supplied.
+    A published-equation term absent from a non-empty stability table was selected in zero
+    folds and therefore contributes zero to that mean. ``NaN`` is reserved for the case in
+    which no stability evaluation was supplied.
 
     A feature appearing in a term shared with another feature is credited the whole of
     that term, so two features sharing one dominant term will show the same effect. That
@@ -102,7 +105,7 @@ def feature_practices(
                 "direction": spearman(values, total),
                 "effect": effect,
                 "stability": float(
-                    np.mean([frequency.get(equation.terms[index].name, float("nan")) for index in indices])
+                    np.mean([frequency.get(equation.terms[index].name, 0.0) for index in indices])
                 )
                 if frequency
                 else float("nan"),

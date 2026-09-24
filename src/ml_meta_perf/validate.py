@@ -217,14 +217,14 @@ def fold_selections(
     return selections
 
 
-def term_stability(selections: list[list[str]]) -> pl.DataFrame:
+def term_stability(selections: list[list[str]], required_terms: tuple[str, ...] = ()) -> pl.DataFrame:
     """How often each term was selected across folds.
 
     A term chosen in nearly every fold has stronger support than one chosen only a few times.
     Reporting the final all-data equation without this column would present the two
     identically.
     """
-    counts: dict[str, int] = {}
+    counts: dict[str, int] = dict.fromkeys(required_terms, 0)
     for names in selections:
         for name in names:
             counts[name] = counts.get(name, 0) + 1

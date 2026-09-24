@@ -208,6 +208,7 @@ def _save_tables(report: Report, folder: Path) -> list[Path]:
         "decomposition": report.decomposition,
         "shares": report.shares,
         "term_effects": report.effects,
+        "feature_practices": report.feature_practices,
         "practices": report.practices,
         "length_choice": report.length_choice,
         "grammars": report.grammars,
