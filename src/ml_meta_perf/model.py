@@ -6,8 +6,10 @@ What gets published, though, must be evaluable as written, so the weights are fo
 back into raw units before they are stored. Both sets are kept: the raw weights are the
 equation, the standardised weights are how the terms rank against each other.
 
-Study chapter: [2. Equation form and term vocabulary](../../assets/docs/02-equation-form.md) -- the rationale, in
+Study chapter: [2. The additive model][study-chapter] -- the rationale, in
 prose, with the figures.
+
+[study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/02-additive-model.md
 """
 
 from __future__ import annotations
@@ -121,3 +123,16 @@ class Equation:
 
 def _escape(name: str) -> str:
     return name.replace("_", r"\_").replace("^", r"\^{}")
+
+
+#: How a term's direction is written in every exported table.
+#:
+#: One spelling, in one place, because `attribution.term_effects` and `report` both write a
+#: ``direction`` column and used to disagree -- "increases MCC" in one CSV, "raises MCC" in
+#: the next -- which reads as two different quantities to anyone joining them.
+RAISES, LOWERS = "raises MCC", "lowers MCC"
+
+
+def direction(signed: float) -> str:
+    """The word for the sign of a standardised weight or effect."""
+    return RAISES if signed > 0.0 else LOWERS

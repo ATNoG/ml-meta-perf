@@ -34,16 +34,33 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pdoc
+          pip install pdoc==16.0.0
           pip install .
 
       - name: Generate Docs
         run: |
-          # `ml_meta_perf` alone: pdoc recurses into the package's submodules, and
-          # naming them as well makes it warn about duplicate specs.
-          pdoc --math -d google -o docs_build ml_meta_perf \
+          # pdoc documents the package page but does not reliably discover every
+          # implementation module. Generate the public package page separately, then
+          # enumerate the modules so a pdoc upgrade cannot silently drop API pages.
+          MODULES="$(python - <<'PY'
+          import pkgutil
+          import ml_meta_perf
+
+          print(" ".join(sorted(
+              module.name
+              for module in pkgutil.walk_packages(
+                  ml_meta_perf.__path__, ml_meta_perf.__name__ + "."
+              )
+          )))
+          PY
+          )"
+          pdoc --math -d google -o docs_package ml_meta_perf \
             --logo "assets/logo.svg" \
             --favicon "assets/logo.svg"
+          pdoc --math -d google -o docs_build ${MODULES} \
+            --logo "assets/logo.svg" \
+            --favicon "assets/logo.svg"
+          cp docs_package/ml_meta_perf.html docs_build/ml_meta_perf.html
           # The logo path is resolved relative to the page referencing it, and
           # pdoc emits two levels: `ml_meta_perf.html` at the root and
           # `ml_meta_perf/<submodule>.html` below it. A single copy leaves every
@@ -54,12 +71,27 @@ jobs:
           cp -r assets docs_build/ml_meta_perf/assets
           touch docs_build/.nojekyll
 
-      - name: Every page must resolve its logo
+      - name: Validate generated API pages and logos
         run: |
           python - <<'PY'
-          import pathlib, re, sys
+          import pathlib, pkgutil, re, sys
+
+          import ml_meta_perf
+
           root = pathlib.Path("docs_build")
           pages = list(root.rglob("*.html"))
+          expected = {root / "ml_meta_perf.html"}
+          expected.update(
+              root / pathlib.Path(*module.name.split(".")).with_suffix(".html")
+              for module in pkgutil.walk_packages(
+                  ml_meta_perf.__path__, ml_meta_perf.__name__ + "."
+              )
+          )
+          absent = sorted(str(path.relative_to(root)) for path in expected if not path.exists())
+          if absent:
+              print("::error::API pages that were not generated:")
+              print("\n".join(absent))
+              sys.exit(1)
           missing = [f"{p.relative_to(root)} -> {r}" for p in pages
                      for r in set(re.findall(r'(?:src|href)="([^"]*logo\.svg)"',
                                              p.read_text()))

@@ -1,12 +1,17 @@
 """Model identity: the part of a classifier the meta-features do not describe.
 
-Chapter 6 measures a gap and leaves it open. Dataset identity explains 0.354 of MCC
-variance and twelve dataset meta-features recover 95% of that; model identity explains
-0.282 and five model meta-features recover only 58%. The missing 42% is real capability
-that this corpus records nowhere -- it is the difference between *what a model costs*,
-which the features state, and *what a model is good at*, which they do not.
+Chapter 4 measures a gap. Dataset identity explains 0.354 of MCC variance and the twelve
+dataset meta-features recover 99% of that; model identity explains 0.282 and the six model
+meta-features recover 92%. The residual 8% is capability this corpus records nowhere --
+the difference between *what a model costs*, which the features state, and *what a model
+is good at*, which they do not.
 
-This module writes that difference down. Under leave-one-dataset-out every one of the 25
+The remaining headroom for a per-model table is small, but still useful as a ceiling:
+it bounds what any model-side proposal could recover beyond the generated descriptors.
+The module is kept for that measurement, not because the correction it computes is worth
+publishing -- see the standing objections in chapter 4.
+
+This module writes that difference down. Under leave-one-dataset-out (LODO), every one of the 25
 models appears in every training fold, so the residual of the fitted equation can be
 averaged per model and the average used on the held-out dataset. Nothing about the
 held-out dataset enters it, and the result is two numbers per model:
@@ -21,21 +26,19 @@ held-out dataset enters it, and the result is two numbers per model:
 
 It is not a predictor for an unseen *model*. A model with no training rows has no
 effect, `ModelEffects.apply` returns zero for it, and the correction degenerates to the
-equation it corrects. The leave-one-model-out column measures exactly that and shows no
+equation it corrects. The leave-one-model-out (LOMO) column measures exactly that and shows no
 gain, by construction rather than by accident.
 
-It is fitted on the equation's residual, not jointly with it. Alternating the two --
-backfitting, the usual scheme for an additive model with a tabulated block (Hastie &
-Tibshirani, 1990) -- was measured and is much worse: leave-one-dataset-out R2 falls from
-0.520 to 0.407 over two rounds and keeps falling. Letting the table absorb model
-capability frees the equation to spend its terms on within-dataset detail, which does
-not transfer. The equation is fitted against MCC so that it remains a statement about
-MCC; the table then explains only what is left.
+It is fitted on the equation's residual, not jointly with it. Alternating the two would
+turn the measurement into a backfitted model with a different training procedure
+(Hastie & Tibshirani, 1990). The reported experiment does not fit or evaluate that
+variant. The equation remains a statement about MCC, and the table explains only what
+the finished equation leaves behind.
 
 The construction is a **factorial regression** in the sense used for genotype-by-
 environment trials: a two-way table modelled with covariates on one side and free
 coefficients on the other, one of which multiplies an environmental covariate (Denis,
-1988; van Eeuwijk, Denis & Kang, 1996). Where the AMMI oracle of chapter 5 estimates
+1988; van Eeuwijk, Denis & Kang, 1996). Where the AMMI oracle of chapter 4 estimates
 both sides freely and therefore predicts nothing, this estimates the dataset side from
 meta-features and keeps the model side free -- which is what makes it usable on a
 dataset nobody has run. In machine-learning terms it is the collaborative half of a
@@ -44,8 +47,10 @@ per-item effect learned from the observed grid, and algorithm selection has been
 as collaborative filtering before (Misir & Sebag, 2017; Fusi et al., 2018; Yang et al.,
 2019).
 
-Study chapter: [9. Model identity](../../assets/docs/09-model-effects.md) -- the rationale, in
-prose, with the figures.
+Study chapter: [4. The equation][study-chapter]
+-- the rationale, in prose, with the figures.
+
+[study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/04-equation.md#limitations-of-the-equation
 """
 
 from __future__ import annotations
@@ -63,7 +68,7 @@ from ml_meta_perf.validate import CrossValidation, leave_one_group_out
 #: 19 rows is shrunk by 19/24 toward zero, which is the empirical-Bayes estimator for a
 #: group mean under a common prior (Efron & Morris, 1975) with the prior-to-noise ratio
 #: fixed rather than estimated. Fixed because estimating it from 20 groups is noisier
-#: than choosing it: leave-one-dataset-out R2 moves by 0.015 across 0 to 20, which is
+#: than choosing it: LODO R² moves by 0.015 across 0 to 20, which is
 #: less than the fold noise it would be tuned against.
 INTERCEPT_SHRINKAGE = 5.0
 
@@ -178,7 +183,8 @@ def fit_effects(
         scaled = (carrier - centre) / spread
         gradient = {
             name: float(
-                scaled[labels == name] @ inner[labels == name]
+                scaled[labels == name]
+                @ inner[labels == name]
                 / (float(scaled[labels == name] @ scaled[labels == name]) + slope_shrinkage)
             )
             for name in names
@@ -212,7 +218,7 @@ def correct_out_of_fold(
     """Re-score a finished cross-validation with per-model effects fitted in each fold.
 
     The effects are cheap and the beam search is not, so this consumes the per-fold
-    equations a completed `ml_meta_perf.validate.cross_validate_path` already recorded rather
+    equations a completed `ml_meta_perf.validate.cross_validate_fixed_form` already recorded rather
     than searching again. Each fold's effects are fitted on that fold's training rows
     only, from that fold's own equation, and applied to the rows it held out -- so the
     protocol is the one the path was run under, unchanged.
@@ -269,9 +275,7 @@ def carrier_stability(
         if equation is None:
             continue
         trained = {name: values[train] for name, values in columns.items()}
-        effects = fit_effects(
-            target[train] - equation.evaluate(trained), trained, models[train], features
-        )
+        effects = fit_effects(target[train] - equation.evaluate(trained), trained, models[train], features)
         name = "none" if effects.atom is None else effects.atom.name
         counts[name] = counts.get(name, 0) + 1
     total = max(sum(counts.values()), 1)

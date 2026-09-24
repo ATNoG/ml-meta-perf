@@ -1,36 +1,47 @@
-"""Validation: leave-one-group-out protocols, baselines and the term-count sweep.
+"""Validation protocols, baselines, and the term-count sweep.
 
-Two protocols are reported, and they answer different questions.
+Four protocols are reported, and they answer different questions.
 
-* Leave-one-dataset-out holds out all rows of one dataset. It answers "what MCC will
+* In-sample (IS) fits and scores the equation on all observed rows.
+* Leave-one-dataset-out (LODO) holds out all rows of one dataset. It answers "what MCC will
   these models reach on a dataset nobody has run yet", which is the meta-learning use
   case, and it is the harder number because dataset features are constant within a
   fold and so the held-out dataset is genuinely unseen.
-* Leave-one-model-out holds out all rows of one model. It answers "what will a new
+* Leave-one-model-out (LOMO) holds out all rows of one model. It answers "what will a new
   model reach on datasets we know".
+* Doubly held out (DHO) removes every row sharing either the test dataset or the test
+  model before fitting the coefficients for an observed pair.
 
 A random k-fold split is deliberately *not* offered as a headline protocol. With
 dataset features constant across a dataset's rows, a random split puts the same dataset
-on both sides of the fold and the equation can memorise dataset identity; measured on
-this data that inflates R2 from 0.28 to 0.50 without changing the model at all.
-``random_kfold_groups`` exists so that the README can show that gap, not to score with.
+on both sides of the fold and can therefore leak group identity. ``random_kfold_groups``
+exists only to measure that diagnostic on the current corpus, not as a reported protocol.
 
-Study chapter: [4. Evaluation methodology](../../assets/docs/04-evaluation.md) -- the rationale, in
+Study chapter: [5. Evaluation][study-chapter] -- the rationale, in
 prose, with the figures.
+
+[study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/05-evaluation.md
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from math import comb
 
 import numpy as np
 import polars as pl
 
-from ml_meta_perf.fit import Selector, Standardizer, guided_screen, to_equation
+from ml_meta_perf.fit import Standardizer
 from ml_meta_perf.model import MCC_LOWER, MCC_UPPER, Equation
-from ml_meta_perf.stats import mae, r2_score, rmse, smape, spearman
+from ml_meta_perf.search import Selector, guided_screen
+from ml_meta_perf.stats import mae, pearson, r2_score, rmse, smape, spearman
 from ml_meta_perf.terms import Library
+
+#: A fold scoring a negative R2 while its MAE stays under this is a near-constant target, not
+#: a bad prediction. Set at a third of the corpus's own MCC standard deviation: below that,
+#: an error is small in absolute terms and any negative R2 is the denominator, not the fit.
+LOW_VARIANCE_MAE = 0.10
 
 
 def leave_one_group_out(groups: np.ndarray) -> Iterator[tuple[str, np.ndarray, np.ndarray]]:
@@ -89,16 +100,74 @@ class CrossValidation:
     #: correction fitted on a fold's training rows -- `ml_meta_perf.identity` fits one -- can
     #: reuse the search this path already paid for instead of repeating it.
     equations: dict[str, Equation] = field(default_factory=dict)
+    #: How many out-of-fold predictions `_clip_to_training` moved. Not a diagnostic detail:
+    #: on this corpus it is 50 to 78 of 476 at *every* equation length, so a tenth to a sixth
+    #: of the reported LODO predictions are decided by the bound rather than
+    #: by the equation. A study that clips has to say how often the clip fired.
+    clipped: int = 0
 
     def scores(self, truth: np.ndarray) -> Scores:
         return score(truth, self.predictions)
 
+    def dispersion(self) -> dict[str, float]:
+        """How the per-fold error is spread, next to the pooled number.
+
+        `scores` pools every out-of-fold prediction and scores it against the *global* mean.
+        On this corpus most of the variance is between datasets, which the dataset features
+        capture almost for free, so pooled R² flatters a LODO split: a set
+        reaching a pooled 0.53 was explaining 0.29 of the variance *within* the average
+        dataset. Pooling also hides that a single fold can dominate.
+
+        **Read the MAE columns, not ``worst_fold_r2``.** A per-fold R2 divides by the variance
+        of that fold's own target, and three datasets here have almost none: every one of
+        `5G_Slicing`'s 25 models scores about 0.986, a standard deviation of 0.052, and `NSR`
+        and `DeepSlice` are the same. Dividing an ordinary error by a variance that small
+        returns a large negative number for a nearly perfect prediction -- `5G_Slicing` reads
+        -10.6 while its predictions are all within 0.05 of the truth. Those three are the only
+        strongly negative folds, and the number is an artefact of the metric rather than a
+        failure of the equation.
+
+        MAE has no such denominator, so ``worst_fold_mae`` is the column that actually catches
+        a bad fold. ``worst_fold_r2`` is kept because it is what a reader expects to see, and
+        ``low_variance_folds`` counts the groups on which it cannot be trusted.
+        """
+        if not self.per_fold:
+            return {
+                "median_fold_r2": float("nan"),
+                "worst_fold_r2": float("nan"),
+                "median_fold_mae": float("nan"),
+                "worst_fold_mae": float("nan"),
+                "low_variance_folds": 0.0,
+                "clipped_predictions": float(self.clipped),
+                "folds": 0.0,
+            }
+        r2_values = [fold.r2 for fold in self.per_fold.values()]
+        mae_values = [fold.mae for fold in self.per_fold.values()]
+        return {
+            "median_fold_r2": float(np.median(r2_values)),
+            "worst_fold_r2": float(min(r2_values)),
+            "median_fold_mae": float(np.median(mae_values)),
+            "worst_fold_mae": float(max(mae_values)),
+            "low_variance_folds": float(self._low_variance_folds()),
+            "clipped_predictions": float(self.clipped),
+            "folds": float(len(r2_values)),
+        }
+
+    def _low_variance_folds(self) -> int:
+        """Folds whose per-fold R2 is not worth reading, inferred from the scores themselves.
+
+        A fold with a large negative R2 and a small MAE has a near-constant target, not a bad
+        prediction: R2 is dividing by nothing. The pair of conditions identifies that without
+        the class needing a copy of the target.
+        """
+        return sum(1 for fold in self.per_fold.values() if fold.r2 < 0.0 and fold.mae < LOW_VARIANCE_MAE)
+
     def stability(self) -> pl.DataFrame:
         """How often each term was selected across folds.
 
-        A term chosen in 19 of 20 folds is a finding. A term chosen in 3 is an artefact
-        of which datasets happened to be in the training split, and reporting the final
-        all-data equation without this column would present the two identically.
+        A term chosen in nearly every fold has stronger support than one chosen only a few
+        times. Reporting the final all-data equation without this column would present the
+        two identically.
         """
         counts: dict[str, int] = {}
         for names in self.selected:
@@ -112,62 +181,8 @@ class CrossValidation:
         )
 
 
-def cross_validate_path(
+def fold_selections(
     library: Library,
-    columns: dict[str, np.ndarray],
-    target: np.ndarray,
-    groups: np.ndarray,
-    *,
-    max_terms: int,
-    penalty: float,
-    pool_size: int = 250,
-    beam_width: int = 6,
-    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
-) -> dict[int, CrossValidation]:
-    """Cross-validate every equation size at once, from a single search per fold.
-
-    The beam already records its best subset at each size, so scoring sizes 1..k costs
-    one search rather than k of them. That is what makes an honest penalty-by-size sweep
-    affordable, and the sweep is not optional: on this data the in-sample optimum and
-    the cross-validated optimum sit at opposite ends of the penalty range.
-
-    Term *selection* happens inside the fold, not once outside it. Screening the library
-    against the full target and then cross-validating only the weights is the standard
-    way to leak a held-out fold into the model, and it would flatter these numbers
-    considerably.
-    """
-    results: dict[int, CrossValidation] = {
-        size: CrossValidation(predictions=np.zeros_like(target)) for size in range(1, max_terms + 1)
-    }
-
-    for label, train, test in leave_one_group_out(groups):
-        train_matrix = library.matrix[train]
-        standardizer = Standardizer.fit(train_matrix)
-        design = standardizer.apply(train_matrix)
-        pool = guided_screen(_view(library, train), target[train], keep=pool_size)
-        selector = Selector(design, target[train], penalty)
-        subsets = selector.search(pool, max_terms, beam_width=beam_width)
-        held = {name: values[test] for name, values in columns.items()}
-        fallback = float(target[train].mean())
-
-        for size, result in results.items():
-            if size not in subsets:
-                result.predictions[test] = fallback
-                continue
-            equation = to_equation(
-                library, subsets[size], standardizer, selector.offset, f"fold_{label}", bounds=bounds
-            )
-            result.predictions[test] = equation.predict(held)
-            result.per_fold[label] = score(target[test], result.predictions[test])
-            result.selected.append([term.name for term in equation.terms])
-            result.equations[label] = equation
-
-    return results
-
-
-def cross_validate(
-    library: Library,
-    columns: dict[str, np.ndarray],
     target: np.ndarray,
     groups: np.ndarray,
     *,
@@ -175,21 +190,205 @@ def cross_validate(
     penalty: float,
     pool_size: int = 250,
     beam_width: int = 6,
-    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
-) -> CrossValidation:
-    """Cross-validate a single equation size."""
-    path = cross_validate_path(
-        library,
-        columns,
-        target,
-        groups,
-        max_terms=n_terms,
-        penalty=penalty,
-        pool_size=pool_size,
-        beam_width=beam_width,
-        bounds=bounds,
+) -> list[list[str]]:
+    """Which terms selection picks when it is re-run inside each fold.
+
+    **This returns term names and nothing else, deliberately.** Re-selecting inside the folds
+    and scoring the result answers a question about the *discovery procedure*, not about the
+    equation, and the study does not report it; `cross_validate_fixed_form` produces every
+    cross-validated number. Returning no predictions means the re-selecting protocol cannot
+    produce a reported score even by accident.
+
+    What it is for is `CrossValidation.stability`. Fixing an equation's form is a claim that
+    the form describes the phenomenon rather than these 476 rows, and the way to check that is
+    to remove a fifth of the data and see whether the same terms come back. A form whose terms
+    churn fold to fold has not earned the fixed-form protocol.
+    """
+    selections: list[list[str]] = []
+    for _, train, _ in leave_one_group_out(groups):
+        train_matrix = library.matrix[train]
+        standardizer = Standardizer.fit(train_matrix)
+        design = standardizer.apply(train_matrix)
+        pool = guided_screen(_view(library, train), target[train], keep=pool_size)
+        selector = Selector(design, target[train], penalty, library.feature_groups)
+        subsets = selector.search(pool, n_terms, beam_width=beam_width)
+        if n_terms in subsets:
+            selections.append([library.terms[index].name for index in subsets[n_terms].indices])
+    return selections
+
+
+def term_stability(selections: list[list[str]]) -> pl.DataFrame:
+    """How often each term was selected across folds.
+
+    A term chosen in nearly every fold has stronger support than one chosen only a few times.
+    Reporting the final all-data equation without this column would present the two
+    identically.
+    """
+    counts: dict[str, int] = {}
+    for names in selections:
+        for name in names:
+            counts[name] = counts.get(name, 0) + 1
+    total = max(len(selections), 1)
+    return (
+        pl.DataFrame({"term": list(counts), "folds": list(counts.values())})
+        .with_columns((pl.col("folds") / total).alias("frequency"))
+        .sort("folds", descending=True)
     )
-    return path[n_terms]
+
+
+def cross_validate_fixed_form(
+    library: Library,
+    columns: dict[str, np.ndarray],
+    target: np.ndarray,
+    groups: np.ndarray,
+    equations: dict[int, Equation],
+    *,
+    penalty: float,
+) -> dict[int, CrossValidation]:
+    """Cross-validate each equation with its **form fixed**: only the weights are refit.
+
+    **This is the study's cross-validation protocol.** Every reported leave-one-group-out
+    number comes from here. The choice is a position about what the artefact is rather than a
+    statistical convenience. The form of an equation is its
+    conceptual claim -- a statement about which quantities govern how well a learner does on a
+    dataset -- and for a simpler problem one would write that form down from domain expertise
+    and never search for it. What cross-validation then tests is whether the claim survives
+    data it has not seen, with its constants recalibrated.
+
+    `fold_selections` re-runs selection inside every fold and so answers a different
+    question -- whether the *discovery procedure* generalises. **It cannot be used for a reported score** -- it
+    returns no predictions. Twenty folds fit twenty different equations, so its pooled R2 is an
+    average over twenty models: it moved by up to 0.3 when the requested length changed by
+    two, while the fixed form varies by 0.014 over the same range. Its one remaining job is
+    `CrossValidation.stability`.
+
+    The obligation this creates is that the form must not be an artefact of the sample, and
+    `term_stability` over a `fold_selections` run is how that is checked --
+    separately, and not as part of the reported score.
+
+    Predictions are bounded by each training fold's own target range, as in
+    `fold_selections`; see `_clip_to_training`.
+    """
+    index = {name: position for position, name in enumerate(library.names)}
+    results: dict[int, CrossValidation] = {}
+    for size, equation in equations.items():
+        positions = [index[term.name] for term in equation.terms]
+        if not positions:
+            continue
+        matrix = library.matrix[:, positions]
+        outcome = CrossValidation(predictions=np.zeros_like(target))
+        for label, train, test in leave_one_group_out(groups):
+            standardizer = Standardizer.fit(matrix[train])
+            design = standardizer.apply(matrix[train])
+            gram = design.T @ design + penalty * np.eye(len(positions))
+            offset = float(target[train].mean())
+            weights = np.linalg.solve(gram, design.T @ (target[train] - offset))
+            held = standardizer.apply(matrix[test]) @ weights + offset
+            bounded = _clip_to_training(held, target[train])
+            outcome.clipped += int(np.count_nonzero(bounded != held))
+            outcome.predictions[test] = bounded
+            outcome.per_fold[label] = score(target[test], outcome.predictions[test])
+            outcome.selected.append([term.name for term in equation.terms])
+            # The same terms every fold, carrying that fold's weights, with the standardisation
+            # folded back in exactly as `fit.to_equation` does. Recorded so a downstream
+            # correction -- `identity.correct_out_of_fold` fits one -- can reuse the fold's own
+            # equation instead of the all-data one.
+            raw = weights / standardizer.scale
+            outcome.equations[label] = Equation(
+                intercept=offset - float(raw @ standardizer.mean),
+                terms=tuple(equation.terms),
+                weights=tuple(float(value) for value in raw),
+                standardized_weights=tuple(float(value) for value in weights),
+                name=f"fold_{label}",
+                bounds=equation.bounds,
+            )
+        results[size] = outcome
+    return results
+
+
+def cross_validate_doubly_held_out(
+    library: Library,
+    columns: dict[str, np.ndarray],
+    target: np.ndarray,
+    first: np.ndarray,
+    second: np.ndarray,
+    equations: dict[int, Equation],
+    *,
+    penalty: float,
+) -> dict[int, CrossValidation]:
+    """Refit each equation with **both** groups of a cell removed, and predict that cell.
+
+    This is the protocol for the question the study is actually for: *what MCC will this
+    model reach on this dataset*, when neither has been run. Neither single-group protocol
+    answers it. LODO holds the dataset out and keeps the model -- it has
+    seen that learner on nineteen other problems. LOMO does the reverse. For a
+    cell to be genuinely unseen, the whole dataset row-block *and* the whole model
+    column-block have to leave the training set, which is what this does.
+
+    **It is also the only protocol under which the comparison with the trivial baselines is
+    fair, and under it they do not exist.** A per-model mean or median answers "how well does
+    this model usually do", and a model held out of every fold has no rows to average. So a
+    baseline that beats the equation on ranking under LODO is a baseline
+    being handed the model identity the equation is denied; here it cannot be computed at
+    all, while the equation still predicts from features.
+
+    Costlier than the single-group protocols -- one solve per observed cell rather than per
+    group -- but each solve is a small ridge on a fixed design, so it is seconds, not minutes.
+    """
+    index = {name: position for position, name in enumerate(library.names)}
+    results: dict[int, CrossValidation] = {}
+    for size, equation in equations.items():
+        positions = [index[term.name] for term in equation.terms]
+        if not positions:
+            continue
+        matrix = library.matrix[:, positions]
+        outcome = CrossValidation(predictions=np.zeros_like(target))
+        for row_label in np.unique(first):
+            for column_label in np.unique(second):
+                test = (first == row_label) & (second == column_label)
+                if not test.any():
+                    continue
+                train = (first != row_label) & (second != column_label)
+                if not train.any():
+                    continue
+                standardizer = Standardizer.fit(matrix[train])
+                design = standardizer.apply(matrix[train])
+                gram = design.T @ design + penalty * np.eye(len(positions))
+                offset = float(target[train].mean())
+                weights = np.linalg.solve(gram, design.T @ (target[train] - offset))
+                held = standardizer.apply(matrix[test]) @ weights + offset
+                bounded = _clip_to_training(held, target[train])
+                outcome.clipped += int(np.count_nonzero(bounded != held))
+                outcome.predictions[test] = bounded
+        # Scored per held-out *dataset* rather than per cell: a cell is one to a few rows and
+        # a per-cell R2 has no variance to divide by. The dataset grouping is what the
+        # dispersion columns and the paired tests use everywhere else.
+        for label, _, test in leave_one_group_out(first):
+            outcome.per_fold[label] = score(target[test], outcome.predictions[test])
+            outcome.selected.append([term.name for term in equation.terms])
+        results[size] = outcome
+    return results
+
+
+def _clip_to_training(prediction: np.ndarray, training_target: np.ndarray) -> np.ndarray:
+    """Bound a fold's predictions by the target range that fold was trained on.
+
+    `model.predict` already clips to ``[MCC_LOWER, MCC_UPPER]``, the range MCC can take in
+    principle. That is the right bound for the equation as published and too loose here: this
+    corpus has exactly one negative row (-0.29), so a floor at -1.0 leaves a held-out fold free
+    to be predicted at a value nothing in training ever took.
+
+    It happens. Held out, `ASNM-CDX-2009` -- 25 rows of 476, mean MCC 0.370 against the
+    corpus's 0.731 -- was predicted at the -1.0 floor by several configurations, and that one
+    fold alone reached **89% of the total squared error**, taking pooled LODO
+    R² negative. Predicting it at the global mean would have cost 0.113 of the total.
+
+    The training fold's own observed range uses no held-out information -- it is exactly what
+    the fitted equation was shown -- so this tightens the bound without leaking. Measured, it
+    moves an affected configuration from -0.383 to +0.260 and leaves unaffected ones untouched
+    to four decimal places.
+    """
+    return np.clip(prediction, float(training_target.min()), float(training_target.max()))
 
 
 def _view(library: Library, mask: np.ndarray) -> Library:
@@ -200,6 +399,44 @@ def _view(library: Library, mask: np.ndarray) -> Library:
     return clone
 
 
+def baseline_group_centre(
+    target: np.ndarray,
+    outer: np.ndarray,
+    inner: np.ndarray | None = None,
+    *,
+    centre: str = "mean",
+    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
+) -> np.ndarray:
+    """Predict a training-fold centre, optionally conditioned on a second grouping.
+
+    With ``inner`` set to the model column under a LODO split, this is
+    "what does this model usually score", the baseline any meta-model has to beat to be
+    worth writing down.
+
+    ``centre`` picks the summary. **Which one is the fair comparison depends on the metric
+    being reported, and using the mean for all of them understates the baseline.** The mean
+    minimises squared error, so it is the right opponent for R2 and RMSE. The *median*
+    minimises absolute error, so an MAE quoted against a mean baseline is quoted against a
+    baseline that is not even trying -- and SMAPE, being an absolute-error ratio, behaves the
+    same way. Both are reported so each metric is read against the baseline that is hardest
+    to beat on it.
+
+    The leave-one-group-out loop is not decoration: with 17-25 rows per group, including the
+    row being predicted inflates the per-model mean's R2 by 0.082. A naive group centre
+    computed over all rows is not this function.
+    """
+    summarise = np.median if centre == "median" else np.mean
+    predictions = np.zeros_like(target)
+    for _, train, test in leave_one_group_out(outer):
+        fallback = float(summarise(target[train]))
+        if inner is None:
+            predictions[test] = fallback
+            continue
+        for label in np.unique(inner[test]):
+            selected = test & (inner == label)
+            source = train & (inner == label)
+            predictions[selected] = float(summarise(target[source])) if source.any() else fallback
+    return predictions if bounds is None else np.clip(predictions, *bounds)
 
 
 def baseline_group_mean(
@@ -209,37 +446,23 @@ def baseline_group_mean(
     *,
     bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
 ) -> np.ndarray:
-    """Predict the training mean, optionally conditioned on a second grouping.
-
-    With ``inner`` set to the model column under a leave-one-dataset-out split, this is
-    "what does this model usually score", the baseline any meta-model has to beat to be
-    worth writing down.
-    """
-    predictions = np.zeros_like(target)
-    for _, train, test in leave_one_group_out(outer):
-        fallback = float(target[train].mean())
-        if inner is None:
-            predictions[test] = fallback
-            continue
-        for label in np.unique(inner[test]):
-            selected = test & (inner == label)
-            source = train & (inner == label)
-            predictions[selected] = float(target[source].mean()) if source.any() else fallback
-    return predictions if bounds is None else np.clip(predictions, *bounds)
+    """`baseline_group_centre` at the mean. Kept as the name the rest of the study uses."""
+    return baseline_group_centre(target, outer, inner, centre="mean", bounds=bounds)
 
 
-def additive_oracle(
+def additive_mean_reference(
     target: np.ndarray,
     first: np.ndarray,
     second: np.ndarray,
     *,
     bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
 ) -> np.ndarray:
-    """The best any purely additive equation could do, given perfect group effects.
+    """Dataset and model target means combined into a descriptive IS reference.
 
-    Fit in-sample with the true per-group means, so it is not a predictor -- it is the
-    ceiling that says how much of MCC is additive in dataset and model at all, and
-    therefore how much of the remaining error no amount of term engineering can remove.
+    The calculation adds each observed dataset mean and model mean, subtracts the global
+    mean, and clips the result to the MCC range. It uses target identities and is therefore
+    not a deployable predictor. With an incomplete dataset-by-model grid it is also not the
+    jointly fitted least-squares optimum or a ceiling for additive equations.
     """
     grand = float(target.mean())
     prediction = np.full_like(target, grand)
@@ -258,9 +481,9 @@ def interaction_oracle(
     *,
     bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
 ) -> np.ndarray:
-    """The additive oracle plus the best rank-``rank`` approximation of what it misses.
+    """The additive mean-based reference plus the best rank-``rank`` approximation of what it misses.
 
-    ``additive_oracle`` answers "how much of MCC is dataset effect plus model effect".
+    ``additive_mean_reference`` describes how much MCC follows dataset and model means.
     The obvious next question is what the leftover looks like, and the leftover is not
     noise: it is a (dataset x model) matrix of interactions, and interaction matrices are
     usually dominated by a few components.
@@ -271,11 +494,11 @@ def interaction_oracle(
     subjects crossed with conditions where some pairings suit each other.
 
     The result is a *ladder* rather than a single ceiling. ``rank=0`` is the additive
-    oracle; each further component is one more pattern of "this kind of model suits this
+    mean-based reference; each further component is one more pattern of "this kind of model suits this
     kind of dataset". At full rank it reproduces every observed cell and R2 is 1, which is
     why the interesting question is how fast the ladder climbs, not where it ends.
 
-    Like ``additive_oracle`` this is fitted with the true values and predicts nothing.
+    Like ``additive_mean_reference`` this is fitted with the true values and predicts nothing.
     Unobserved cells (24 of the 500 here) contribute zero residual, so they neither
     distort the decomposition nor are counted in any score.
     """
@@ -329,10 +552,32 @@ def oracle_ladder(
     return pl.DataFrame(rows)
 
 
+#: A model is a right answer for the ranking if its MCC is within this of its dataset's best.
+#: See `ranking_report`: a fixed top-k relevance set misscores the datasets whose best models
+#: are genuinely tied.
+RELEVANCE_TOLERANCE = 0.01
+
+
+def average_precision(labels: np.ndarray, scores: np.ndarray) -> float:
+    """Area under the precision-recall curve, by the step-wise sum.
+
+    ``sum (R_n - R_{n-1}) * P_n`` over the ranking, the definition that does not interpolate
+    and so cannot flatter a short list. Returns NaN when no label is positive, which is a
+    real state here: at a threshold of 0.9 some datasets have no model above it.
+    """
+    if not labels.any():
+        return float("nan")
+    order = np.argsort(-scores, kind="stable")
+    hits = np.cumsum(labels[order])
+    precision = hits / np.arange(1, labels.size + 1)
+    return float((precision * labels[order]).sum() / labels.sum())
+
+
 def decision_report(
     target: np.ndarray,
     prediction: np.ndarray,
-    thresholds: tuple[float, ...] = (0.3, 0.5, 0.7, 0.8, 0.9),
+    groups: np.ndarray | None = None,
+    thresholds: tuple[float, ...] = (0.5, 0.6, 0.7, 0.8, 0.9),
 ) -> pl.DataFrame:
     """Quality of the go/no-go decision the equation supports.
 
@@ -345,6 +590,17 @@ def decision_report(
     Each row thresholds both the truth and the prediction at the same value and scores the
     resulting binary decision. ``majority`` is the accuracy of always answering with the
     larger class, which is the bar any such rule has to clear to be worth running.
+
+    ``f1`` is reported beside accuracy because the classes are far from balanced at the outer
+    thresholds -- at 0.9 a constant predictor reaches 0.49 accuracy and an F1 of exactly zero,
+    and only the pair distinguishes a rule that works from one that has guessed the majority.
+
+    ``map`` needs ``groups`` and is the mean over datasets of the average precision of the
+    ranking the prediction induces. It is the threshold-free companion: accuracy grades one
+    cut of an ordering, average precision grades the whole ordering. The mean is taken over
+    datasets rather than pooled over all rows because the question is always "which model for
+    *this* data" -- pooling would let a correct ordering between datasets hide a wrong one
+    within a dataset, and nobody ever chooses between datasets.
     """
     rows: list[dict[str, object]] = []
     for threshold in thresholds:
@@ -378,10 +634,29 @@ def decision_report(
                     if denominator > 0.0
                     else float("nan")
                 ),
+                "f1": (
+                    2 * hits / (2 * hits + false_alarms + misses)
+                    if (2 * hits + false_alarms + misses)
+                    else float("nan")
+                ),
+                "map": _grouped_average_precision(target, prediction, groups, threshold),
                 "n_positive": actual_positives,
             }
         )
     return pl.DataFrame(rows)
+
+
+def _grouped_average_precision(
+    target: np.ndarray, prediction: np.ndarray, groups: np.ndarray | None, threshold: float
+) -> float:
+    if groups is None:
+        return float("nan")
+    scores = [
+        average_precision(target[groups == label] >= threshold, prediction[groups == label])
+        for label in np.unique(groups)
+    ]
+    usable = [value for value in scores if not np.isnan(value)]
+    return float(np.mean(usable)) if usable else float("nan")
 
 
 def ranking_report(
@@ -389,20 +664,210 @@ def ranking_report(
     prediction: np.ndarray,
     groups: np.ndarray,
 ) -> pl.DataFrame:
-    """Per-group rank correlation and top-1 regret.
+    """Per-group ranking quality, scored the way a search engine is scored.
 
-    Regret is the practical question: if you pick the model this equation ranks first,
-    how much MCC do you give up against the best model you could have picked?
+    Only the head of the list is ever used: a practitioner tries the top few models and never
+    sees the tail, so a metric rewarding a correct rank twenty is measuring something nobody
+    reads. Hence ``mrr``, ``hit@1`` and ``regret`` -- all head-weighted -- with ``ap`` grading
+    the whole ordering and ``spearman`` kept for continuity.
+
+    **Read ``ap``, ``mrr``, ``hit@1`` and ``regret``; treat ``spearman`` as weak evidence.**
+    Measured on this corpus it sits between 0.63 and 0.73 for every predictor *and* every
+    baseline, including a constant, so it cannot separate the things this study compares.
+
+    A model counts as a right answer if its MCC is within ``RELEVANCE_TOLERANCE`` of the best
+    on its dataset, rather than by a fixed top-k cut. That is not a convenience: 80 of the 476
+    rows sit at exactly MCC 1.0, so many datasets have several genuinely tied best models, and
+    a top-3 rule would score a correct answer as a miss.
+
+    Regret is the practical question in the target's own units: if you pick the model this
+    equation ranks first, how much MCC do you give up against the best you could have picked?
     """
     rows: list[dict[str, object]] = []
     for label in np.unique(groups):
         mask = groups == label
         truth, predicted = target[mask], prediction[mask]
+        relevant = truth >= truth.max() - RELEVANCE_TOLERANCE
+        order = np.argsort(-predicted, kind="stable")
+        ranks = [position for position, index in enumerate(order, 1) if relevant[index]]
         rows.append(
             {
                 "group": str(label),
+                "ap": average_precision(relevant, predicted),
+                "mrr": 1.0 / ranks[0] if ranks else 0.0,
+                "hit_at_1": float(relevant[order[0]]),
+                "regret": float(truth.max() - truth[int(order[0])]),
                 "spearman": spearman(predicted, truth),
-                "regret": float(truth.max() - truth[int(np.argmax(predicted))]),
             }
         )
     return pl.DataFrame(rows).sort("group")
+
+
+#: Resamples for the paired bootstrap. Twenty groups is a small enough sample that the
+#: interval is the point of the exercise, and 20k resamples costs microseconds.
+BOOTSTRAP_ROUNDS = 20_000
+BOOTSTRAP_SEED = 42
+
+
+@dataclass(frozen=True)
+class PairedResult:
+    """Whether a per-group difference is real, or inside the spread between folds.
+
+    Every headline in this study is a mean over twenty held-out datasets, and a mean over
+    twenty groups is not a measurement until something says how much of it one group could
+    have produced. A higher mean can come from a few large wins while the other predictor
+    wins on more datasets. Hit@1 is coarser still: over twenty datasets it moves in steps of
+    0.05, so an apparently visible change can be only one or two datasets changing their top
+    pick.
+
+    So: a **sign test** on how many groups improved, which no single group can swing, and
+    a **paired bootstrap** interval on the mean, which shows what the mean is worth. The
+    two answer different questions and disagreeing is informative -- a significant sign
+    test with an interval spanning zero means a consistent but tiny effect.
+
+    ``mean`` and the interval are in the metric's own units, positive meaning the first
+    argument is better. Errors must therefore be negated by the caller; `paired_comparison`
+    does it for you when told the metric is an error.
+    """
+
+    mean: float
+    wins: int
+    losses: int
+    n: int
+    p_value: float
+    low: float
+    high: float
+
+    @property
+    def significant(self) -> bool:
+        """Whether the bootstrap interval excludes zero."""
+        return self.low > 0.0 or self.high < 0.0
+
+    def as_dict(self) -> dict[str, float | int]:
+        return {
+            "mean": self.mean,
+            "wins": self.wins,
+            "losses": self.losses,
+            "n_differing": self.n,
+            "p_value": self.p_value,
+            "ci_low": self.low,
+            "ci_high": self.high,
+        }
+
+
+def sign_test(differences: np.ndarray) -> tuple[int, int, float]:
+    """Wins, comparisons that differ, and the exact two-sided binomial p-value.
+
+    Exact rather than normal-approximate because the sample is twenty groups, where the
+    approximation is poor exactly when the answer matters. Summing binomial coefficients
+    directly is also why this needs no scipy: ``math.comb`` is in the standard library and
+    twenty choose ten is not a large number.
+
+    Ties are dropped rather than split, which is the conservative convention: a fold where
+    two predictors score identically is evidence for neither.
+    """
+    wins = int((differences > 0.0).sum())
+    n = int((differences != 0.0).sum())
+    if n == 0:
+        return 0, 0, 1.0
+    tail = sum(comb(n, k) for k in range(min(wins, n - wins) + 1))
+    return wins, n, min(1.0, 2.0 * tail / 2**n)
+
+
+def paired_comparison(
+    first: np.ndarray,
+    second: np.ndarray,
+    *,
+    lower_is_better: bool = False,
+    rounds: int = BOOTSTRAP_ROUNDS,
+    seed: int = BOOTSTRAP_SEED,
+) -> PairedResult:
+    """Compare two predictors group by group, on the same folds.
+
+    ``first`` and ``second`` are per-group scores in the same group order -- a column of
+    `ranking_report`, or per-fold errors. Pass ``lower_is_better`` for an error metric and
+    the sign is handled here, so a positive ``mean`` always means ``first`` won.
+
+    The bootstrap resamples *groups*, not rows. Rows within a dataset are not exchangeable
+    with rows in another one, and the question is whether the result survives a different
+    draw of datasets, which is the sampling this study's twenty-dataset corpus is a draw
+    from.
+    """
+    if first.shape != second.shape:
+        raise ValueError("paired comparison needs one score per group on both sides")
+    differences = (second - first) if lower_is_better else (first - second)
+    wins, n, p_value = sign_test(differences)
+    losses = int((differences < 0.0).sum())
+    if differences.size == 0:
+        return PairedResult(float("nan"), 0, 0, 0, 1.0, float("nan"), float("nan"))
+    generator = np.random.default_rng(seed)
+    draws = generator.integers(0, differences.size, size=(rounds, differences.size))
+    means = differences[draws].mean(axis=1)
+    return PairedResult(
+        mean=float(differences.mean()),
+        wins=wins,
+        losses=losses,
+        n=n,
+        p_value=p_value,
+        low=float(np.percentile(means, 2.5)),
+        high=float(np.percentile(means, 97.5)),
+    )
+
+
+def interaction_capture(
+    target: np.ndarray,
+    prediction: np.ndarray,
+    first: np.ndarray,
+    second: np.ndarray,
+    rank: int = 1,
+) -> dict[str, float]:
+    """How much of the leading interaction pattern the equation actually reaches.
+
+    `interaction_oracle` measures what a rank-``k`` interaction would be *worth* if
+    someone could predict it. It says nothing about whether the fitted equation gets any
+    of it, and chapter 5 originally answered that by comparing two R2 values -- which
+    cannot distinguish an equation that misses the pattern from one that finds it and is
+    inaccurate elsewhere.
+
+    This compares the two interaction *structures* directly. Both the truth and the
+    prediction are laid on the (dataset x model) grid and stripped of their own additive
+    part, leaving each side's interaction residual; the truth's is then reduced to its
+    leading ``rank`` components. ``alignment`` is the squared correlation between the two
+    over observed cells: 1.0 means the equation's interactions lie exactly along the
+    pattern the oracle found, 0.0 means they are unrelated to it.
+
+    Only observed cells count. The 24 absent ones contribute to neither side.
+    """
+    rows, columns = np.unique(first), np.unique(second)
+    row_index = {label: position for position, label in enumerate(rows)}
+    column_index = {label: position for position, label in enumerate(columns)}
+
+    def grid_of(values: np.ndarray) -> np.ndarray:
+        grid = np.full((rows.shape[0], columns.shape[0]), np.nan)
+        for value, row, column in zip(values, first, second, strict=True):
+            grid[row_index[row], column_index[column]] = value
+        return grid
+
+    def interaction(grid: np.ndarray) -> np.ndarray:
+        grand = float(np.nanmean(grid))
+        row_effect = np.nanmean(grid, axis=1) - grand
+        column_effect = np.nanmean(grid, axis=0) - grand
+        return grid - (grand + row_effect[:, None] + column_effect[None, :])
+
+    truth_grid = grid_of(target)
+    observed = ~np.isnan(truth_grid)
+    truth_interaction = np.where(observed, interaction(truth_grid), 0.0)
+    model_interaction = np.where(observed, interaction(grid_of(prediction)), 0.0)
+
+    left, values, right = np.linalg.svd(truth_interaction, full_matrices=False)
+    leading = (left[:, :rank] * values[:rank]) @ right[:rank]
+
+    wanted, reached = leading[observed], model_interaction[observed]
+    total = float((truth_interaction[observed] ** 2).sum())
+    return {
+        "alignment": float(pearson(wanted, reached) ** 2),
+        "leading_share": float((wanted**2).sum() / total) if total > 0.0 else float("nan"),
+        "interaction_share": total / float(((truth_grid[observed] - np.nanmean(truth_grid)) ** 2).sum())
+        if total > 0.0
+        else float("nan"),
+    }

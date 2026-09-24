@@ -14,35 +14,54 @@ import polars as pl
 from ml_meta_perf.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays, load, target
 from ml_meta_perf.experiment import Report
 from ml_meta_perf.plots import (
-    contribution_shares,
     count_below_floor,
+    decision_quality,
     equation_comparison,
-    error_curve,
-    per_group_quality,
     practice_effects,
     predicted_versus_actual,
+    ranking_quality,
     term_count_curve,
     term_effects,
 )
 
-ORACLE_ROW = "additive oracle (ceiling)"
+ADDITIVE_REFERENCE_ROW = "reference: additive mean-based reference"
+
+#: The figure set in the order the study presents it. **The order is the identity**: files
+#: are written as ``01_equation_comparison.png`` and so on, so a figure can be named by its
+#: number in a review comment or a caption without anyone having to agree on which
+#: "comparison" plot is meant. Position in this tuple is the only place a number is written
+#: down -- `figure_name` derives it -- so re-ordering the set renumbers the files and the
+#: captions together and cannot leave the two disagreeing.
+FIGURE_ORDER: tuple[str, ...] = (
+    "equation_comparison",
+    "term_count_curve",
+    "predicted_vs_actual",
+    "term_effects",
+    "practice_effects",
+    "ranking_quality",
+    "decision_quality",
+)
 
 
-def _oracle(report: Report) -> float | None:
-    """The additive ceiling as this run computed it.
+def figure_name(stem: str) -> str:
+    """The published filename for a figure, ``NN_stem.png``, numbered from `FIGURE_ORDER`."""
+    return f"{FIGURE_ORDER.index(stem) + 1:02d}_{stem}.png"
 
-    Read from the report rather than hardcoded: the ceiling is a property of the data,
+
+def _additive_reference(report: Report) -> float | None:
+    """The additive mean-based reference as this run computed it.
+
+    Read from the report rather than hardcoded: the reference is a property of the data,
     so a literal here would silently drift out of step with the comparison table the
     moment the meta-dataset changed.
     """
-    matched = report.comparison.filter(pl.col("equation") == ORACLE_ROW)
+    matched = report.comparison.filter(pl.col("equation") == ADDITIVE_REFERENCE_ROW)
     return float(matched["r2"][0]) if matched.height else None
 
 
-def _knee(report: Report) -> int | None:
-    """The knee of the in-sample curve, as the run's own selection table reports it."""
-    matched = report.term_choice.filter(pl.col("rule") == "knee (in-sample)")
-    return int(matched["n_terms"][0]) if matched.height else None
+def _published_length(report: Report) -> int | None:
+    """How many terms the reported E3-Valid equation actually has."""
+    return len(report.e3.equation.terms) or None
 
 
 def generate(report: Report, destination: str | Path, data: str | Path | None = None) -> list[Path]:
@@ -60,24 +79,26 @@ def generate(report: Report, destination: str | Path, data: str | Path | None = 
     predicted = report.e3.equation.predict(columns)
 
     written = [
-        equation_comparison(report.comparison, folder / "equation_comparison.png"),
+        equation_comparison(report.comparison, folder / figure_name("equation_comparison")),
         term_count_curve(
             report.e3.curve,
-            folder / "term_count_curve.png",
-            oracle=_oracle(report),
+            folder / figure_name("term_count_curve"),
+            reference=_additive_reference(report),
+            marker=_published_length(report),
+            marker_label="selected term count",
         ),
-        predicted_versus_actual(truth, predicted, folder / "predicted_vs_actual.png", groups=truth),
-        error_curve(
-            report.e3.curve,
-            folder / "error_curve_mae.png",
-            metric="mae",
-            marker=_knee(report),
-        ),
-        term_effects(report.effects, folder / "term_effects.png"),
-        practice_effects(report.practices, folder / "practice_effects.png"),
-        contribution_shares(report.shares, folder / "contribution_shares.png"),
-        per_group_quality(report.selection, folder / "per_group_quality.png"),
+        predicted_versus_actual(truth, predicted, folder / figure_name("predicted_vs_actual")),
+        term_effects(report.effects, folder / figure_name("term_effects")),
+        practice_effects(report.practices, folder / figure_name("practice_effects")),
+        ranking_quality(report.selection, folder / figure_name("ranking_quality")),
+        decision_quality(report.decision_baselines, folder / figure_name("decision_quality")),
     ]
+    # The list is what the README and the chapters index against, so it has to come back in
+    # `FIGURE_ORDER`. Asserting it here means a call added out of order fails the run rather
+    # than shipping a figure numbered one thing and referenced as another.
+    expected = [folder / figure_name(stem) for stem in FIGURE_ORDER]
+    if written != expected:
+        raise AssertionError(f"figures written out of FIGURE_ORDER: {[path.name for path in written]}")
     return written
 
 
@@ -89,39 +110,52 @@ def captions(report: Report, data: str | Path | None = None) -> dict[str, str]:
     hidden = count_below_floor(truth, report.e3.equation.predict(columns))
 
     return {
-        "equation_comparison.png": (
-            "Each fitted equation against the ceiling that bounds it, all scored on the "
-            "same 476 rows. Dataset-only and model-only equations are bounded by what "
-            "their group identity can explain; any additive equation is bounded by the "
-            "oracle. All bars are in-sample."
+        figure_name("equation_comparison"): (
+            "Each fitted equation against the level it is read against, all scored on the "
+            f"same {frame.height} rows. Dataset-only and model-only equations are bounded by what "
+            "their group identity can explain. The additive mean-based reference bounds only an equation "
+            "additive in dataset and model effects, which E3 is not: its mixed terms can "
+            "carry interactions beyond that reference, and the current E3 passes it. "
+            "All bars use in-sample (IS) estimates."
         ),
-        "term_count_curve.png": (
-            "Accuracy against equation length for E3, in-sample and under both "
-            "cross-validation protocols. The additive ceiling bounds every curve shown."
+        figure_name("term_count_curve"): (
+            "Accuracy against equation length for E3 under in-sample (IS), "
+            "leave-one-dataset-out (LODO), and leave-one-model-out (LOMO) evaluation. "
+            "The vertical line is the published length, chosen by "
+            "the retained Combined-R2 plateau rule across the searched arities. "
+            "The additive mean-based reference is the best score reachable by an equation additive in "
+            "dataset and model effects; an equation passes it only by representing the "
+            "dataset-by-model interaction the additive reference cannot."
         ),
-        "predicted_vs_actual.png": (
-            "Predicted against actual MCC for E3, with the rug showing the marginal "
-            f"distribution of the target. Axes start at 0; {hidden} point below that is "
-            "not shown. Predictions never fall below 0.17 while 15 rows sit at exactly 0."
+        figure_name("predicted_vs_actual"): (
+            "Predicted against actual MCC for E3. Axes start at 0; "
+            f"{hidden} point below that is not shown. The equation compresses toward the "
+            "middle of the range, as a shrunk linear fit will."
         ),
-        "error_curve_mae.png": (
-            "Mean absolute error in MCC against equation length, under both protocols. "
-            "The vertical line marks the knee of the in-sample curve."
-        ),
-        "term_effects.png": (
+        figure_name("term_effects"): (
             "Per-term effect on predicted MCC, measured as the swing between the term's "
             "10th and 90th percentile. Sign follows the fitted weight."
         ),
-        "practice_effects.png": (
+        figure_name("practice_effects"): (
             "Per-feature effect on predicted MCC between the feature's lowest and highest "
-            "decile, shaded by the confidence its practice was rated at."
+            "decile, shaded by the confidence its practice was rated at. Only the confidence "
+            "levels present in the table appear in the legend."
         ),
-        "contribution_shares.png": (
-            "Share of E3's output variance driven by terms using dataset features only, "
-            "model features only, and both. Shares are covariance-based and sum to 1."
+        figure_name("decision_quality"): (
+            "F1 of the above-or-below-threshold decision against the threshold, one line per "
+            "evaluation protocol: in-sample (IS), leave-one-dataset-out (LODO), "
+            "leave-one-model-out (LOMO), and doubly held-out (DHO). The four differ only in "
+            "what the equation was allowed to see, so the "
+            "spread between them is the cost of generalisation on this task. F1 rather than "
+            "accuracy because the classes are unbalanced at the outer thresholds, where "
+            "always answering with the larger class reaches 0.51 accuracy at an F1 of zero."
         ),
-        "per_group_quality.png": (
-            "Rank correlation and top-1 regret for each held-out dataset under "
-            "leave-one-dataset-out validation."
+        figure_name("ranking_quality"): (
+            "Head-of-list ranking quality per dataset under doubly held-out (DHO) evaluation, "
+            "beside what a bad ranking "
+            "costs. Left: average precision and reciprocal rank, with a star where the "
+            "top-ranked choice is within 0.01 MCC of the dataset's best. Right: the MCC given "
+            "up by taking the top-ranked model. Both are "
+            "scored with the dataset and the model of every cell held out of the fit."
         ),
     }

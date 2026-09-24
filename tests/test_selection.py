@@ -1,4 +1,4 @@
-"""Knee detection and the Pareto front over equation length."""
+"""Tests for the retained E3-Valid plateau rule and the independent E3-MAX bound."""
 
 import unittest
 
@@ -6,13 +6,14 @@ import numpy as np
 import polars as pl
 
 from ml_meta_perf.selection import (
-    DETECTORS,
-    knee_index,
-    knee_terms,
-    pareto_front,
-    pareto_table,
-    recommend,
-    simplify_curve,
+    arity_candidates,
+    complexity,
+    consensus_curve,
+    floor_curve,
+    most_capable,
+    plateau_configuration,
+    plateau_index,
+    protocol_spread,
 )
 
 
@@ -20,143 +21,121 @@ def curve(
     sizes: list[int],
     in_sample: list[float],
     loo: list[float] | None = None,
+    loo_model: list[float] | None = None,
+    loo_cell: list[float] | None = None,
 ) -> pl.DataFrame:
     data: dict[str, list[float] | list[int]] = {"n_terms": sizes, "r2_in_sample": in_sample}
     if loo is not None:
         data["r2_loo_dataset"] = loo
+    if loo_model is not None:
+        data["r2_loo_model"] = loo_model
+    if loo_cell is not None:
+        data["r2_loo_cell"] = loo_cell
     return pl.DataFrame(data)
 
 
-class TestKneeIndex(unittest.TestCase):
-    def test_finds_the_bend_of_a_saturating_curve(self) -> None:
-        sizes = np.array([1, 2, 3, 4, 5, 6, 7, 8], dtype=float)
-        scores = np.array([0.1, 0.4, 0.6, 0.68, 0.70, 0.71, 0.715, 0.717])
-        index = knee_index(sizes, scores)
-        # The bend is somewhere in the early-middle, not at either extreme.
-        self.assertGreater(index, 0)
-        self.assertLess(index, len(sizes) - 1)
+class TestConsensusCurve(unittest.TestCase):
+    """One score per length across the protocols, so no single curve chooses the length."""
 
-    def test_short_curves_fall_back_to_the_last_point(self) -> None:
-        self.assertEqual(knee_index(np.array([1.0, 2.0]), np.array([0.1, 0.5])), 1)
-
-    def test_single_point(self) -> None:
-        self.assertEqual(knee_index(np.array([1.0]), np.array([0.5])), 0)
-
-    def test_returns_a_valid_index(self) -> None:
-        sizes = np.arange(2.0, 20.0, 2.0)
-        scores = 1.0 - np.exp(-sizes / 4.0)
-        index = knee_index(sizes, scores)
-        self.assertTrue(0 <= index < len(sizes))
-
-
-class TestDetectorsAndSmoothing(unittest.TestCase):
-    def setUp(self) -> None:
-        self.sizes = np.arange(1.0, 33.0)
-        self.saturating = 1.0 - np.exp(-self.sizes / 5.0)
-        rng = np.random.default_rng(5)
-        self.noisy = self.saturating + rng.normal(0.0, 0.02, self.sizes.shape)
-
-    def test_every_detector_returns_a_valid_index(self) -> None:
-        for detector in DETECTORS:
-            index = knee_index(self.sizes, self.saturating, detector=detector)
-            self.assertTrue(0 <= index < self.sizes.shape[0], detector)
-
-    def test_an_unknown_detector_falls_back_to_the_default(self) -> None:
-        index = knee_index(self.sizes, self.saturating, detector="nonsense")
-        self.assertEqual(index, knee_index(self.sizes, self.saturating, detector="autoelbow"))
-
-    def test_simplification_keeps_the_endpoints(self) -> None:
-        kept = simplify_curve(self.sizes, self.saturating, 0.01)
-        self.assertIn(0, kept.tolist())
-        self.assertIn(self.sizes.shape[0] - 1, kept.tolist())
-
-    def test_simplification_reduces_the_point_count(self) -> None:
-        kept = simplify_curve(self.sizes, self.noisy, 0.05)
-        self.assertLess(kept.shape[0], self.sizes.shape[0])
-
-    def test_smoothed_knee_is_still_an_index_into_the_original(self) -> None:
-        index = knee_index(self.sizes, self.noisy, tolerance=0.01)
-        self.assertTrue(0 <= index < self.sizes.shape[0])
-
-    def test_smoothing_a_short_curve_falls_back(self) -> None:
-        short = np.array([1.0, 2.0, 3.0])
-        self.assertTrue(0 <= knee_index(short, np.array([0.1, 0.5, 0.6]), tolerance=0.5) < 3)
-
-
-class TestKneeTerms(unittest.TestCase):
-    def test_maps_the_index_back_to_a_term_count(self) -> None:
-        table = curve([2, 4, 6, 8, 10, 12], [0.2, 0.45, 0.55, 0.58, 0.585, 0.587])
-        chosen = knee_terms(table)
-        self.assertIn(chosen, [2, 4, 6, 8, 10, 12])
-
-    def test_reads_the_requested_column(self) -> None:
-        table = curve([2, 4, 6, 8], [0.2, 0.5, 0.55, 0.56], [0.1, 0.3, 0.32, 0.33])
-        self.assertIn(knee_terms(table, "r2_loo_dataset"), [2, 4, 6, 8])
-
-
-class TestParetoFront(unittest.TestCase):
-    def test_keeps_only_lengths_nothing_shorter_beats(self) -> None:
-        table = curve([2, 4, 6, 8], [0.0] * 4, [0.10, 0.30, 0.20, 0.40])
-        # 6 scores 0.20, worse than 4's 0.30, so it is dominated by a shorter equation.
-        self.assertEqual(pareto_front(table)["n_terms"].to_list(), [2, 4, 8])
-
-    def test_a_monotone_curve_is_entirely_on_the_front(self) -> None:
-        table = curve([2, 4, 6], [0.0] * 3, [0.1, 0.2, 0.3])
-        self.assertEqual(pareto_front(table)["n_terms"].to_list(), [2, 4, 6])
-
-    def test_a_decreasing_curve_keeps_only_the_shortest(self) -> None:
-        table = curve([2, 4, 6], [0.0] * 3, [0.3, 0.2, 0.1])
-        self.assertEqual(pareto_front(table)["n_terms"].to_list(), [2])
-
-    def test_front_is_never_empty(self) -> None:
-        table = curve([2, 4], [0.0, 0.0], [0.5, 0.5])
-        self.assertGreater(pareto_front(table).height, 0)
-
-
-class TestParetoTable(unittest.TestCase):
-    def test_flags_both_fronts(self) -> None:
-        table = pareto_table(curve([2, 4, 6], [0.2, 0.5, 0.6], [0.1, 0.3, 0.2]))
-        self.assertEqual(table["front_in_sample"].to_list(), [True, True, True])
-        self.assertEqual(table["front_loo_dataset"].to_list(), [True, True, False])
-
-    def test_in_sample_only_curve_gets_one_front(self) -> None:
-        table = pareto_table(curve([2, 4], [0.2, 0.5]))
-        self.assertIn("front_in_sample", table.columns)
-        self.assertNotIn("front_loo_dataset", table.columns)
-
-    def test_one_row_per_length(self) -> None:
-        table = pareto_table(curve([2, 4, 6, 8], [0.1, 0.2, 0.3, 0.4], [0.1, 0.2, 0.3, 0.4]))
-        self.assertEqual(table["n_terms"].to_list(), [2, 4, 6, 8])
-
-
-class TestRecommend(unittest.TestCase):
     def setUp(self) -> None:
         self.table = curve(
-            [2, 4, 6, 8, 10, 12, 14],
-            [0.20, 0.45, 0.52, 0.55, 0.560, 0.564, 0.566],
-            [0.05, 0.22, 0.26, 0.31, 0.330, 0.372, 0.441],
+            [2, 4, 6, 8],
+            [0.40, 0.50, 0.60, 0.66],
+            [0.30, 0.45, 0.10, 0.62],  # 0.10 is a crater, as LODO genuinely has
+            [0.35, 0.47, 0.58, 0.60],
         )
 
-    def test_reports_every_rule(self) -> None:
-        rules = recommend(self.table)["rule"].to_list()
-        self.assertIn("knee (in-sample)", rules)
-        self.assertIn("knee (loo-dataset)", rules)
-        self.assertIn("best loo-dataset", rules)
+    def test_the_median_ignores_a_single_protocol_crater(self) -> None:
+        """Why median and not mean.
 
-    def test_best_rule_picks_the_maximum(self) -> None:
-        rows = {row["rule"]: row for row in recommend(self.table).iter_rows(named=True)}
-        self.assertEqual(rows["best loo-dataset"]["n_terms"], 14)
-        self.assertAlmostEqual(rows["best loo-dataset"]["r2_loo_dataset"], 0.441)
+        At the cratered length the three protocols read 0.60 / 0.10 / 0.58. The median takes
+        0.58 -- one fold extrapolating outside the training hull is a property of that fold,
+        not of the length -- while the mean is dragged down by it.
+        """
+        median = consensus_curve(self.table, "median")
+        mean = consensus_curve(self.table, "mean")
+        self.assertAlmostEqual(float(median[2]), 0.58)
+        self.assertAlmostEqual(float(mean[2]), (0.60 + 0.10 + 0.58) / 3)
+        self.assertGreater(float(median[2]), float(mean[2]))
 
-    def test_every_recommendation_is_a_length_on_the_curve(self) -> None:
-        available = set(self.table["n_terms"].to_list())
-        for value in recommend(self.table)["n_terms"].to_list():
-            self.assertIn(value, available)
+    def test_min_is_the_conservative_reading(self) -> None:
+        self.assertAlmostEqual(float(consensus_curve(self.table, "min")[2]), 0.10)
 
-    def test_works_without_a_cross_validated_column(self) -> None:
-        plain = curve([2, 4, 6, 8], [0.2, 0.45, 0.52, 0.55])
-        table = recommend(plain)
-        self.assertEqual(table["rule"].to_list(), ["knee (in-sample)"])
+    def test_a_single_protocol_is_its_own_consensus(self) -> None:
+        plain = curve([2, 4, 6], [0.2, 0.5, 0.6])
+        np.testing.assert_allclose(consensus_curve(plain), [0.2, 0.5, 0.6])
+
+    def test_it_refuses_a_curve_with_no_protocol_columns(self) -> None:
+        with self.assertRaises(ValueError):
+            consensus_curve(pl.DataFrame({"n_terms": [2, 4]}))
+
+
+class TestFloorCurve(unittest.TestCase):
+    """A length scores as its worst protocol, over all four including DHO."""
+
+    def test_it_takes_the_minimum_over_every_protocol_present(self) -> None:
+        table = curve([4], [0.70], [0.65], [0.60], [0.55])
+        self.assertAlmostEqual(float(floor_curve(table)[0]), 0.55)
+
+    def test_the_cell_protocol_is_read_and_the_median_would_have_hidden_it(self) -> None:
+        """The point of the minimum. Three protocols agree at 0.66 and the cell reads 0.50;
+        a median of the four sits at 0.66 and reports a number no protocol achieved."""
+        table = curve([4], [0.66], [0.66], [0.66], [0.50])
+        self.assertAlmostEqual(float(floor_curve(table)[0]), 0.50)
+        self.assertGreater(float(consensus_curve(table)[0]), 0.60)
+
+    def test_it_works_on_a_curve_that_has_not_been_scored_on_every_protocol(self) -> None:
+        np.testing.assert_allclose(floor_curve(curve([2, 4], [0.5, 0.6], [0.4, 0.55])), [0.4, 0.55])
+
+    def test_it_refuses_a_curve_with_no_protocol_columns(self) -> None:
+        with self.assertRaises(ValueError):
+            floor_curve(pl.DataFrame({"n_terms": [2, 4]}))
+
+
+class TestProtocolSpread(unittest.TestCase):
+    """How far a length falls from its fit to its worst protocol."""
+
+    def test_it_measures_the_drop_from_the_fit_to_the_floor(self) -> None:
+        table = curve([4], [0.70], [0.65], [0.63], [0.60])
+        self.assertAlmostEqual(float(protocol_spread(table)[0]), 0.10)
+
+    def test_the_floor_alone_cannot_tell_two_equations_apart_and_this_can(self) -> None:
+        table = curve([4, 8], [0.66, 0.80], [0.64, 0.70], [0.63, 0.68], [0.60, 0.60])
+        np.testing.assert_allclose(floor_curve(table), [0.60, 0.60])
+        np.testing.assert_allclose(protocol_spread(table), [0.06, 0.20])
+
+    def test_it_refuses_a_curve_with_nothing_to_measure_the_drop_from(self) -> None:
+        with self.assertRaises(ValueError):
+            protocol_spread(pl.DataFrame({"n_terms": [2], "r2_loo_dataset": [0.5]}))
+
+
+class TestE3Selection(unittest.TestCase):
+    """The sole E3-Valid plateau rule and the independent E3-MAX bound."""
+
+    def test_plateau_index_stops_before_a_sustained_stall(self) -> None:
+        scores = np.array([0.2, 0.4, 0.6, 0.6002, 0.6004, 0.7])
+        self.assertEqual(plateau_index(scores, tolerance=0.001, window=2), 2)
+
+    def test_plateau_selection_compares_both_arities(self) -> None:
+        arity_two = [0.30, 0.50, 0.60, 0.6002, 0.6003]
+        arity_three = [0.31, 0.49, 0.59, 0.6001, 0.6003]
+        curves = {
+            2: curve([1, 2, 3, 4, 5], arity_two, arity_two, arity_two),
+            3: curve([1, 2, 3, 4, 5], arity_three, arity_three, arity_three),
+        }
+        self.assertEqual(plateau_configuration(curves, tolerance=0.001, window=2), (2, 3))
+
+    def test_most_capable_uses_the_four_protocol_floor(self) -> None:
+        curves = {
+            2: curve([5, 10], [0.50, 0.60], [0.50, 0.60], [0.50, 0.60], [0.50, 0.60]),
+            3: curve([5, 28], [0.50, 0.65], [0.50, 0.65], [0.50, 0.65], [0.50, 0.65]),
+        }
+        self.assertEqual(arity_candidates(curves), {2: 10, 3: 28})
+        self.assertEqual(most_capable(curves), (3, 28))
+
+    def test_complexity_charges_for_the_grammar(self) -> None:
+        self.assertEqual(complexity(2, 15), 30)
+        self.assertEqual(complexity(3, 15), 45)
 
 
 if __name__ == "__main__":
