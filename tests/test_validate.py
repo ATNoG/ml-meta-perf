@@ -3,11 +3,20 @@
 import itertools
 import unittest
 from dataclasses import replace
+from unittest import mock
 
 import numpy as np
 import polars as pl
 
-from ml_meta_perf.analysis import feature_reach, grammar_ceiling, redundancy_groups, saturated_fit, screen
+from ml_meta_perf.analysis import (
+    _minimum_norm_lstsq,
+    feature_reach,
+    grammar_ceiling,
+    redundancy_groups,
+    saturated_fit,
+    screen,
+)
+from ml_meta_perf.fit import Standardizer
 from ml_meta_perf.search import search
 from ml_meta_perf.stats import mae, r2_score
 from ml_meta_perf.terms import build_library
@@ -584,3 +593,26 @@ class TestSaturatedFit(unittest.TestCase):
     def test_it_transfers_worse_than_the_published_equation(self) -> None:
         published = float(corpus.published().cross_validated["loo_dataset"]["r2"])
         self.assertGreater(published, self.result["r2_loo_dataset_clipped"])
+
+
+class TestSaturatedFitSolver(unittest.TestCase):
+    """The saturated design is rank-deficient, which numpy's SVD solver cannot always converge on."""
+
+    def setUp(self) -> None:
+        self.columns, self.target, self.outer, _ = grid()
+        self.library = build_library(("f1", "f2"), ("g1", "g2"), self.columns)
+
+    def test_does_not_depend_on_numpys_svd_driver(self) -> None:
+        failure = np.linalg.LinAlgError("SVD did not converge in Linear Least Squares")
+        with mock.patch("ml_meta_perf.analysis.np.linalg.lstsq", side_effect=failure):
+            result = saturated_fit(self.library, self.target, self.outer)
+        self.assertTrue(all(np.isfinite(value) for value in result.values()))
+
+    def test_matches_the_minimum_norm_solution_on_a_rank_deficient_design(self) -> None:
+        matrix = np.column_stack([self.library.matrix, self.library.matrix[:, 0]])
+        design = Standardizer.fit(matrix).apply(matrix)
+        rhs = self.target - self.target.mean()
+        weights = _minimum_norm_lstsq(design, rhs)
+        reference = np.linalg.pinv(design) @ rhs
+        np.testing.assert_allclose(design @ weights, design @ reference, atol=1e-9)
+        np.testing.assert_allclose(np.linalg.norm(weights), np.linalg.norm(reference), rtol=1e-9)

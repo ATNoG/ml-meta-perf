@@ -33,6 +33,8 @@ dependencies = [
     # wheel, so it is a base dependency rather than an extra: an extra would leave the same
     # numbers unreproducible for anyone who did not know to ask for it.
     "scikit-learn>=1.5.0",
+    # `analysis.saturated_fit` needs its pivoted-QR least-squares driver (gelsy).
+    "scipy>=1.6.0",
     # `opaque` threads the DHO protocol's 476 estimator refits over it. It used to
     # arrive with the `search` extra, which meant a base-only install type-checked with an
     # unresolved import; it is a base dependency now because the study itself runs it.
