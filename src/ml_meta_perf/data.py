@@ -68,10 +68,13 @@ prose, with the figures.
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import numpy as np
 import polars as pl
+
+from ml_meta_perf.model import MCC_LOWER, MCC_UPPER
 
 DATASET_COLUMN = "Dataset"
 MODEL_COLUMN = "Model"
@@ -105,6 +108,27 @@ MODEL_FEATURES: tuple[str, ...] = (
     "Input Distribution Modelling",
     "Fitting Regime",
 )
+
+
+@dataclasses.dataclass(frozen=True)
+class Schema:
+    """Which columns a meta-dataset's rows, groups, features and target live in."""
+
+    dataset_column: str
+    model_column: str
+    dataset_features: tuple[str, ...]
+    model_features: tuple[str, ...]
+    target_column: str
+    bounds: tuple[float, float] | None
+    task_type: str | None = None
+
+    @property
+    def features(self) -> tuple[str, ...]:
+        return self.dataset_features + self.model_features
+
+    @property
+    def slug(self) -> str:
+        return self.target_column if self.task_type is None else f"{self.target_column}-{self.task_type}"
 
 
 #: Where each learner family sits on a capability ladder, low to high.
@@ -311,6 +335,79 @@ MODEL_ORDINALS: dict[str, dict[str, int]] = {
 }
 
 ALL_FEATURES: tuple[str, ...] = DATASET_FEATURES + MODEL_FEATURES
+MCC_SCHEMA = Schema(
+    DATASET_COLUMN, MODEL_COLUMN, DATASET_FEATURES, MODEL_FEATURES, TARGET_COLUMN, (MCC_LOWER, MCC_UPPER)
+)
+
+FLEXFL_DATASET_COLUMN = "dataset"
+FLEXFL_MODEL_COLUMN = "fl_algo"
+FLEXFL_TARGETS: tuple[str, ...] = ("performance", "total_time_s", "comm_bytes_total")
+TASK_TYPES: tuple[str, ...] = ("classification", "regression")
+FLEXFL_DATASET_FEATURES: tuple[str, ...] = (
+    "n_samples",
+    "n_features",
+    "n_classes",
+    "is_classification",
+    "is_categorical",
+    "total_parameters",
+    "n_layers",
+    "mean_layer_width",
+    "max_layer_width",
+    "weight_decay",
+)
+FLEXFL_MODEL_FEATURES: tuple[str, ...] = (
+    "fl_algo_CentralizedSync",
+    "fl_algo_CentralizedAsync",
+    "fl_algo_DecentralizedSync",
+    "fl_algo_DecentralizedAsync",
+    "strategy_iid",
+    "strategy_non_iid",
+    "strategy_dirichlet",
+    "learning_rate",
+    "batch_size",
+    "patience",
+    "delta",
+    "local_epochs",
+    "alpha",
+    "distribution_percentage",
+    "feat_entropy_mean",
+    "feat_entropy_min",
+    "feat_entropy_max",
+    "feat_entropy_std",
+    "num_workers",
+    "n_atnog_test1",
+    "n_hobbit",
+    "n_samwise",
+    "worker_rate_mean",
+    "worker_rate_min",
+    "worker_rate_max",
+    "worker_rate_std",
+    "worker_rate_cv",
+)
+FLEXFL_PERFORMANCE_BOUNDS: dict[str, tuple[float, float]] = {
+    "classification": (MCC_LOWER, MCC_UPPER),
+    "regression": (0.0, 2.0),
+}
+
+
+def flexfl_schema(target: str, task_type: str | None = None) -> Schema:
+    """The FlexFL per-run schema for one target, optionally restricted to one task type."""
+    if target not in FLEXFL_TARGETS:
+        raise ValueError(f"unknown FlexFL target {target!r}; expected one of {FLEXFL_TARGETS}")
+    if task_type is not None and task_type not in TASK_TYPES:
+        raise ValueError(f"unknown task type {task_type!r}; expected one of {TASK_TYPES}")
+    if target == "performance" and task_type is None:
+        raise ValueError("the performance target needs a task type: MCC and SMAPE do not share a scale")
+    bounds = FLEXFL_PERFORMANCE_BOUNDS[task_type] if target == "performance" and task_type is not None else None
+    return Schema(
+        FLEXFL_DATASET_COLUMN,
+        FLEXFL_MODEL_COLUMN,
+        FLEXFL_DATASET_FEATURES,
+        FLEXFL_MODEL_FEATURES,
+        target,
+        bounds,
+        task_type,
+    )
 
 #: Learner family for each model in the meta-dataset. Model *features* describe capacity
 #: and cost; they do not say what kind of learner a row refers to, and the tabular-ML
@@ -389,9 +486,10 @@ class SchemaError(ValueError):
     """The CSV does not carry the columns the meta-model needs."""
 
 
-def load(path: str | Path | None = None) -> pl.DataFrame:
+def load(path: str | Path | None = None, schema: Schema = MCC_SCHEMA) -> pl.DataFrame:
     """Read the meta-dataset and check it has the expected shape.
 
+    The schema selects the required columns and optional task type.
     Every feature is cast to Float64. The integer-valued columns (``nr_attr``,
     ``nr_class``, ...) are still continuous as far as the equations are concerned,
     and carrying two dtypes through the term library buys nothing.
@@ -401,13 +499,20 @@ def load(path: str | Path | None = None) -> pl.DataFrame:
         raise SchemaError(f"meta-dataset not found: {resolved}")
 
     frame = pl.read_csv(resolved)
-    expected = (DATASET_COLUMN, MODEL_COLUMN, *ALL_FEATURES, TARGET_COLUMN)
+    if schema.task_type is not None:
+        if "is_classification" not in frame.columns:
+            raise SchemaError("missing columns: ['is_classification']")
+        wanted = schema.task_type == "classification"
+        frame = frame.filter(pl.col("is_classification").cast(pl.Boolean) == wanted)
+        if frame.is_empty():
+            raise SchemaError(f"meta-dataset has no {schema.task_type} rows")
+    expected = (schema.dataset_column, schema.model_column, *schema.features, schema.target_column)
     missing = [column for column in expected if column not in frame.columns]
     if missing:
         raise SchemaError(f"missing columns: {missing}")
 
     frame = frame.select(expected).with_columns(
-        [pl.col(column).cast(pl.Float64) for column in (*ALL_FEATURES, TARGET_COLUMN)]
+        [pl.col(column).cast(pl.Float64) for column in (*schema.features, schema.target_column)]
     )
 
     nulls = sum(frame.null_count().row(0))
@@ -416,8 +521,8 @@ def load(path: str | Path | None = None) -> pl.DataFrame:
     return frame
 
 
-def aggregate_by_dataset(frame: pl.DataFrame) -> pl.DataFrame:
-    """Collapse to one row per dataset: the dataset features plus the mean MCC.
+def aggregate_by_dataset(frame: pl.DataFrame, schema: Schema = MCC_SCHEMA) -> pl.DataFrame:
+    """Collapse to one row per schema dataset: its features plus its mean target.
 
     **E1 is no longer fitted against this**, and the reason is worth recording. Least
     squares on a predictor that is constant within a group lands on that group's mean
@@ -430,15 +535,15 @@ def aggregate_by_dataset(frame: pl.DataFrame) -> pl.DataFrame:
     20 datasets, one row each -- and because chapter 6 quotes the comparison.
     """
     return (
-        frame.group_by(DATASET_COLUMN)
+        frame.group_by(schema.dataset_column)
         .agg(
-            [pl.col(column).first() for column in DATASET_FEATURES]
+            [pl.col(column).first() for column in schema.dataset_features]
             + [
-                pl.col(TARGET_COLUMN).mean().alias(TARGET_COLUMN),
+                pl.col(schema.target_column).mean().alias(schema.target_column),
                 pl.len().alias("n_models"),
             ]
         )
-        .sort(DATASET_COLUMN)
+        .sort(schema.dataset_column)
     )
 
 
@@ -447,14 +552,28 @@ def columns_as_arrays(frame: pl.DataFrame, features: tuple[str, ...]) -> dict[st
     return {name: frame[name].to_numpy().astype(np.float64) for name in features}
 
 
-def target(frame: pl.DataFrame) -> np.ndarray:
-    """The MCC column as a float array."""
-    return frame[TARGET_COLUMN].to_numpy().astype(np.float64)
+def target(frame: pl.DataFrame, schema: Schema = MCC_SCHEMA) -> np.ndarray:
+    """The schema's target column as a float array."""
+    return frame[schema.target_column].to_numpy().astype(np.float64)
 
 
 def groups(frame: pl.DataFrame, column: str) -> np.ndarray:
     """The grouping labels used by the leave-one-out splitters."""
     return frame[column].to_numpy()
+
+
+def drop_constant_features(frame: pl.DataFrame, schema: Schema) -> Schema:
+    """The schema without the features that take a single value in this frame.
+
+    A constant feature cannot explain anything, and a term dividing it by a varying one
+    survives the library's constant-term screen as a relabelled copy of that other feature.
+    """
+    constant = {name for name in schema.features if frame[name].n_unique() <= 1}
+    return dataclasses.replace(
+        schema,
+        dataset_features=tuple(name for name in schema.dataset_features if name not in constant),
+        model_features=tuple(name for name in schema.model_features if name not in constant),
+    )
 
 
 def corpus_summary(frame: pl.DataFrame) -> pl.DataFrame:

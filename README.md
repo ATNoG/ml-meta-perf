@@ -245,6 +245,10 @@ E3-Valid/E3-MAX pair for review. E3-Valid uses the retained Combined-R² plateau
 [the configuration-search guide](CONFIGURATION_SEARCH.md) for the complete grid, selection
 rule and cluster instructions.
 
+FlexFL targets are available in both CLIs; see [the configuration-search guide](CONFIGURATION_SEARCH.md)
+for the recalibration flags. The study CLI writes `equation.json`, `equation.txt`, `curve.csv`,
+`term_effects.csv` and `group_shares.csv` under `<output>/flexfl/<slug>/`.
+
 **One note on threading.** The inner loop is ~87k solves of matrices no larger than 32×32,
 far below the size where Basic Linear Algebra Subprograms (BLAS) parallelism pays: threading
 buys no wall time and burns 3.5× the central processing unit (CPU) spinning. Setting
@@ -266,6 +270,8 @@ PYTHONPATH=src venv/bin/python -m ml_meta_perf --data mine.csv \
 | flag | default | what it does |
 |---|---|---|
 | `--data` | the shipped corpus | the meta-dataset to fit |
+| `--target` | `mcc` | predict MCC or one FlexFL target |
+| `--task-type` | none | restrict a FlexFL target to classification or regression; required for performance |
 | `--output` | `results` | where the equations and comma-separated value (CSV) tables go |
 | `--figures` | `assets/figures` | where the figures go |
 | `--docs` | `assets/docs` | chapter directory whose generated sections are rewritten |
