@@ -5,6 +5,7 @@ The arithmetic each candidate is scored with is `tests/test_fit.py`.
 
 import itertools
 import unittest
+import warnings
 from dataclasses import replace
 
 import numpy as np
@@ -12,9 +13,11 @@ import numpy as np
 from ml_meta_perf.fit import Standardizer, Subset, ridge_solve
 from ml_meta_perf.model import Equation
 from ml_meta_perf.search import (
+    MIN_CONTRIBUTION,
     Selector,
     guided_screen,
     prune,
+    pruning_threshold,
     search,
     selected_terms,
     transform_gap,
@@ -25,6 +28,27 @@ from ml_meta_perf.terms import Term, build_library
 def synthetic_columns(n: int = 120, seed: int = 3) -> dict[str, np.ndarray]:
     rng = np.random.default_rng(seed)
     return {name: rng.uniform(1.0, 20.0, n) for name in ("f1", "f2", "f3", "f4")}
+
+
+class TestPruningThreshold(unittest.TestCase):
+    def test_bounded_targets_keep_the_absolute_threshold(self) -> None:
+        for bounds in ((-1.0, 1.0), (0.0, 2.0)):
+            self.assertEqual(pruning_threshold(bounds, np.linspace(0, 1e9, 101)), MIN_CONTRIBUTION)
+
+    def test_unbounded_threshold_scales_with_the_spread(self) -> None:
+        truth = np.linspace(-1.0, 1.0, 1001)
+        expected = MIN_CONTRIBUTION * (np.percentile(truth, 99) - np.percentile(truth, 1)) / 2.0
+        self.assertAlmostEqual(pruning_threshold(None, truth), expected, delta=1e-15)
+        self.assertAlmostEqual(
+            pruning_threshold(None, truth * 1000.0), expected * 1000.0, delta=abs(expected * 1000.0) * 1e-12
+        )
+
+    def test_degenerate_spread_falls_back(self) -> None:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            for truth in (np.full(10, 3.0), np.array([0.0, 1.0, np.inf]), np.array([0.0, np.nan, 1.0])):
+                with self.subTest(truth=truth):
+                    self.assertEqual(pruning_threshold(None, truth), MIN_CONTRIBUTION)
 
 
 class TestTransformGap(unittest.TestCase):

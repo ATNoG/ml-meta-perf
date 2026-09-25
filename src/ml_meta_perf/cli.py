@@ -29,6 +29,7 @@ import polars as pl
 from ml_meta_perf.data import (
     DATASET_FEATURES,
     DEFAULT_PATH,
+    FLEXFL_COST_TARGETS,
     FLEXFL_TARGETS,
     MODEL_FEATURES,
     TASK_TYPES,
@@ -261,6 +262,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="restrict a FlexFL target to one task type; required with --target performance",
     )
     data.add_argument(
+        "--log-target",
+        action="store_true",
+        help="fit log1p of a cost target (total_time_s or comm_bytes_total); metrics are then on the log scale",
+    )
+    data.add_argument(
         "--output",
         default="results",
         help="directory for the fitted equations, the CSV tables and the report",
@@ -329,18 +335,20 @@ def _check_target(parser: argparse.ArgumentParser, arguments: argparse.Namespace
         parser.error("--task-type is required with --target performance")
     if arguments.target != "mcc" and arguments.data is None:
         parser.error("--data is required with a FlexFL --target")
+    if arguments.log_target and arguments.target not in FLEXFL_COST_TARGETS:
+        parser.error("--log-target applies only to --target total_time_s or comm_bytes_total")
 
 
 def _run_flexfl_cli(arguments: argparse.Namespace) -> int:
     """Fit one FlexFL E3 equation and write its outputs."""
-    schema = flexfl_schema(arguments.target, arguments.task_type)
+    schema = flexfl_schema(arguments.target, arguments.task_type, arguments.log_target)
     config = configuration(arguments)
     started = time.perf_counter()
     report = run_flexfl(arguments.data, schema, config)
     elapsed = time.perf_counter() - started
     if not arguments.quiet:
-        _section(f"E3: {schema.target_column}")
-        print(equation_text(report.equation.equation, schema.target_column))
+        _section(f"E3: {schema.label}")
+        print(equation_text(report.equation.equation, schema.label))
         print(f"\nIS: {report.equation.in_sample}")
         for label, scores in report.equation.cross_validated.items():
             print(f"{PROTOCOL_LABELS.get(label, label)}: R2={scores['r2']:.3f}, MAE={scores['mae']:.3f}")
@@ -350,7 +358,7 @@ def _run_flexfl_cli(arguments: argparse.Namespace) -> int:
         destination.mkdir(parents=True, exist_ok=True)
         report.equation.equation.save(destination / "equation.json")
         (destination / "equation.txt").write_text(
-            equation_text(report.equation.equation, schema.target_column) + "\n", encoding="utf-8"
+            equation_text(report.equation.equation, schema.label) + "\n", encoding="utf-8"
         )
         report.equation.curve.write_csv(destination / "curve.csv")
         report.effects.write_csv(destination / "term_effects.csv")

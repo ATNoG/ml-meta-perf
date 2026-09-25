@@ -121,6 +121,7 @@ class Schema:
     target_column: str
     bounds: tuple[float, float] | None
     task_type: str | None = None
+    log_target: bool = False
 
     @property
     def features(self) -> tuple[str, ...]:
@@ -128,7 +129,12 @@ class Schema:
 
     @property
     def slug(self) -> str:
-        return self.target_column if self.task_type is None else f"{self.target_column}-{self.task_type}"
+        base = self.target_column if self.task_type is None else f"{self.target_column}-{self.task_type}"
+        return f"{base}-log1p" if self.log_target else base
+
+    @property
+    def label(self) -> str:
+        return f"log1p({self.target_column})" if self.log_target else self.target_column
 
 
 #: Where each learner family sits on a capability ladder, low to high.
@@ -347,6 +353,7 @@ MCC_SCHEMA = Schema(
 FLEXFL_DATASET_COLUMN = "dataset"
 FLEXFL_MODEL_COLUMN = "fl_algo"
 FLEXFL_TARGETS: tuple[str, ...] = ("performance", "total_time_s", "comm_bytes_total")
+FLEXFL_COST_TARGETS: tuple[str, ...] = ("total_time_s", "comm_bytes_total")
 TASK_TYPES: tuple[str, ...] = ("classification", "regression")
 FLEXFL_DATASET_FEATURES: tuple[str, ...] = (
     "n_samples",
@@ -397,14 +404,16 @@ FLEXFL_PERFORMANCE_BOUNDS: dict[str, tuple[float, float]] = {
 }
 
 
-def flexfl_schema(target: str, task_type: str | None = None) -> Schema:
-    """The FlexFL per-run schema for one target, optionally restricted to one task type."""
+def flexfl_schema(target: str, task_type: str | None = None, log_target: bool = False) -> Schema:
+    """The FlexFL per-run schema for one target, optionally restricted to one task type and fitted on ``log1p``."""
     if target not in FLEXFL_TARGETS:
         raise ValueError(f"unknown FlexFL target {target!r}; expected one of {FLEXFL_TARGETS}")
     if task_type is not None and task_type not in TASK_TYPES:
         raise ValueError(f"unknown task type {task_type!r}; expected one of {TASK_TYPES}")
     if target == "performance" and task_type is None:
         raise ValueError("the performance target needs a task type: MCC and SMAPE do not share a scale")
+    if log_target and target not in FLEXFL_COST_TARGETS:
+        raise ValueError(f"log1p applies only to the cost targets {FLEXFL_COST_TARGETS}")
     bounds = FLEXFL_PERFORMANCE_BOUNDS[task_type] if target == "performance" and task_type is not None else None
     return Schema(
         dataset_column=FLEXFL_DATASET_COLUMN,
@@ -414,6 +423,7 @@ def flexfl_schema(target: str, task_type: str | None = None) -> Schema:
         target_column=target,
         bounds=bounds,
         task_type=task_type,
+        log_target=log_target,
     )
 
 #: Learner family for each model in the meta-dataset. Model *features* describe capacity
@@ -560,8 +570,13 @@ def columns_as_arrays(frame: pl.DataFrame, features: tuple[str, ...]) -> dict[st
 
 
 def target(frame: pl.DataFrame, schema: Schema = MCC_SCHEMA) -> np.ndarray:
-    """The schema's target column as a float array."""
-    return frame[schema.target_column].to_numpy().astype(np.float64)
+    """The schema's target column as a float array, ``log1p`` of it when the schema asks."""
+    values = frame[schema.target_column].to_numpy().astype(np.float64)
+    if not schema.log_target:
+        return values
+    if not np.all(np.isfinite(values)) or np.any(values < 0.0):
+        raise SchemaError(f"{schema.target_column} has negative or non-finite values; log1p needs non-negative costs")
+    return np.log1p(values)
 
 
 def groups(frame: pl.DataFrame, column: str) -> np.ndarray:

@@ -7,16 +7,19 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 import polars as pl
 
 from ml_meta_perf import cli, configuration_search, experiment
-from ml_meta_perf.configuration_search import SearchSettings, _settings_payload, feature_subsets
+from ml_meta_perf.configuration_search import SearchSettings, _settings_payload, feature_subsets, library_points
 from ml_meta_perf.data import (
     ALL_FEATURES,
+    FLEXFL_COST_TARGETS,
     FLEXFL_MODEL_FEATURES,
     MCC_SCHEMA,
+    SchemaError,
     aggregate_by_dataset,
     columns_as_arrays,
     drop_constant_features,
@@ -27,8 +30,9 @@ from ml_meta_perf.data import (
 )
 from ml_meta_perf.experiment import DEFAULT
 from ml_meta_perf.model import Equation
-from ml_meta_perf.search import search
+from ml_meta_perf.search import MIN_CONTRIBUTION, pruning_threshold, search
 from ml_meta_perf.terms import build_library
+from ml_meta_perf.validate import score
 from tests.corpus import sample_path
 
 FIXTURE = Path(__file__).parent / "fixtures" / "flexfl_meta_dataset_sample.csv"
@@ -48,6 +52,213 @@ def search_argv(output: Path, target: str = "comm_bytes_total") -> list[str]:
 
 
 class FlexFLSchemaTests(unittest.TestCase):
+    def test_log_target_schema(self) -> None:
+        schema = flexfl_schema("comm_bytes_total", log_target=True)
+        self.assertEqual(schema.slug, "comm_bytes_total-log1p")
+        self.assertEqual(schema.label, "log1p(comm_bytes_total)")
+        self.assertIsNone(schema.bounds)
+        self.assertEqual(
+            flexfl_schema("total_time_s", "classification", True).slug, "total_time_s-classification-log1p"
+        )
+        with self.assertRaises(ValueError):
+            flexfl_schema("performance", "classification", True)
+        self.assertFalse(MCC_SCHEMA.log_target)
+        self.assertEqual(MCC_SCHEMA.label, "MCC")
+        self.assertEqual(flexfl_schema("comm_bytes_total").label, "comm_bytes_total")
+        self.assertEqual(FLEXFL_COST_TARGETS, ("total_time_s", "comm_bytes_total"))
+
+    def test_target_applies_log1p(self) -> None:
+        for name in ("total_time_s", "comm_bytes_total"):
+            with self.subTest(target=name):
+                frame = load(FIXTURE, flexfl_schema(name))
+                np.testing.assert_array_equal(
+                    target(frame, flexfl_schema(name, log_target=True)), np.log1p(target(frame, flexfl_schema(name)))
+                )
+
+    def test_log_target_rejects_negative_costs(self) -> None:
+        frame = load(FIXTURE, flexfl_schema("total_time_s"))
+        for value in (-1.0, float("nan"), float("inf")):
+            with self.subTest(value=value):
+                bad = frame.with_columns(pl.lit(value).alias("total_time_s"))
+                with self.assertRaises(SchemaError):
+                    target(bad, flexfl_schema("total_time_s", log_target=True))
+                if value == -1.0:
+                    np.testing.assert_array_equal(
+                        target(bad, flexfl_schema("total_time_s")), np.full(frame.height, -1.0)
+                    )
+
+    def test_run_equation_prunes_with_the_schema_threshold(self) -> None:
+        schemas = (
+            flexfl_schema("comm_bytes_total"),
+            flexfl_schema("comm_bytes_total", log_target=True),
+            flexfl_schema("performance", "classification"),
+        )
+        for schema in schemas:
+            with self.subTest(schema=schema), mock.patch.object(experiment, "prune", wraps=experiment.prune) as spy:
+                experiment.run_flexfl(FIXTURE, schema, TINY)
+                actual = spy.call_args.kwargs["min_contribution"]
+                truth = target(load(FIXTURE, schema), schema)
+                expected = pruning_threshold(schema.bounds, truth)
+                self.assertEqual(actual, expected)
+                if schema.bounds is None:
+                    self.assertNotEqual(actual, MIN_CONTRIBUTION)
+                else:
+                    self.assertEqual(actual, MIN_CONTRIBUTION)
+
+    def test_search_worker_prunes_with_the_schema_threshold(self) -> None:
+        settings = SearchSettings(
+            target="comm_bytes_total",
+            minimum_features=27,
+            maximum_features=27,
+            penalties=(20.0,),
+            zscores=(3.0,),
+            arities=(1,),
+            minimum_terms=1,
+            maximum_terms=2,
+            pool_size=20,
+            beam_width=1,
+            shortlist_top=1,
+        )
+        frame = load(FIXTURE, settings.schema())
+        for current in (settings, dataclasses.replace(settings, log_target=True)):
+            with self.subTest(log_target=current.log_target):
+                with mock.patch.object(configuration_search, "prune", wraps=configuration_search.prune) as spy:
+                    configuration_search._evaluate_library_point(library_points(current)[0], current, frame)
+                self.assertGreater(spy.call_count, 0)
+                expected = pruning_threshold(None, target(frame, current.schema()))
+                for call in spy.call_args_list:
+                    self.assertEqual(call.kwargs["min_contribution"], expected)
+
+    def test_finalist_worker_prunes_with_the_schema_threshold(self) -> None:
+        settings = SearchSettings(
+            target="comm_bytes_total",
+            minimum_features=27,
+            maximum_features=27,
+            penalties=(20.0,),
+            zscores=(3.0,),
+            arities=(1,),
+            minimum_terms=1,
+            maximum_terms=2,
+            pool_size=20,
+            beam_width=1,
+            shortlist_top=1,
+        )
+        frame = load(FIXTURE, settings.schema())
+        point = configuration_search.BasePoint(0, tuple(sorted(FLEXFL_MODEL_FEATURES)), 20.0, 3.0)
+        for current in (settings, dataclasses.replace(settings, log_target=True)):
+            with self.subTest(log_target=current.log_target):
+                with mock.patch.object(configuration_search, "prune", wraps=configuration_search.prune) as spy:
+                    configuration_search._evaluate_finalist(point, current, frame)
+                self.assertGreater(spy.call_count, 0)
+                expected = pruning_threshold(None, target(frame, current.schema()))
+                for call in spy.call_args_list:
+                    self.assertEqual(call.kwargs["min_contribution"], expected)
+
+    def test_run_flexfl_on_a_log_target(self) -> None:
+        schema = flexfl_schema("comm_bytes_total", log_target=True)
+        result = experiment.run_flexfl(FIXTURE, schema, TINY)
+        self.assertIsNone(result.equation.equation.bounds)
+        self.assertTrue(result.equation.equation.name.startswith("E3_log1p_k"))
+        frame = load(FIXTURE, schema)
+        columns = columns_as_arrays(frame, result.schema.features)
+        prediction = result.equation.equation.predict(columns)
+        self.assertAlmostEqual(
+            result.equation.in_sample["r2"],
+            score(np.log1p(frame["comm_bytes_total"].to_numpy()), prediction).r2,
+            delta=1e-12,
+        )
+        self.assertLess(np.abs(prediction).max(), 50.0)
+        for row in result.effects.iter_rows(named=True):
+            expected = "raises" if row["beta"] > 0 else "lowers"
+            self.assertEqual(row["direction"], f"{expected} log1p(comm_bytes_total)")
+
+    def test_log_target_argument_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            for entry, argv in (
+                (cli.main, ["--log-target"]),
+                (
+                    cli.main,
+                    [
+                        "--target",
+                        "performance",
+                        "--task-type",
+                        "classification",
+                        "--data",
+                        str(FIXTURE),
+                        "--log-target",
+                    ],
+                ),
+                (configuration_search.main, ["all", "--log-target", "--output", str(out)]),
+                (
+                    configuration_search.main,
+                    [*search_argv(out, "performance"), "--task-type", "classification", "--log-target"],
+                ),
+            ):
+                with self.subTest(argv=argv), self.assertRaises(SystemExit) as error:
+                    entry(argv)
+                self.assertEqual(error.exception.code, 2)
+        with self.assertRaises(ValueError):
+            SearchSettings(log_target=True).validate()
+
+    def test_study_cli_writes_log_target_outputs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            argv = [
+                "--target",
+                "comm_bytes_total",
+                "--data",
+                str(FIXTURE),
+                "--output",
+                str(out),
+                "--quiet",
+                "--max-terms",
+                "2",
+                "--pool",
+                "20",
+                "--beam",
+                "1",
+                "--arity",
+                "1",
+            ]
+            self.assertEqual(cli.main(argv), 0)
+            self.assertEqual(cli.main([*argv, "--log-target"]), 0)
+            folder = out / "flexfl" / "comm_bytes_total-log1p"
+            for name in ("equation.json", "equation.txt", "curve.csv", "term_effects.csv", "group_shares.csv"):
+                self.assertTrue((folder / name).is_file(), name)
+            self.assertTrue((folder / "equation.txt").read_text().startswith("log1p(comm_bytes_total) = "))
+            self.assertIsNone(Equation.load(folder / "equation.json").bounds)
+            self.assertTrue(
+                (out / "flexfl" / "comm_bytes_total" / "equation.txt").read_text().startswith("comm_bytes_total = ")
+            )
+
+    def test_search_cli_runs_a_log_target(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            self.assertEqual(configuration_search.main([*search_argv(out), "--log-target"]), 0)
+            for key in ("e3_valid", "e3_max"):
+                with self.subTest(key=key):
+                    self.assertTrue((out / f"{key}.txt").read_text().startswith("log1p(comm_bytes_total) = "))
+                    equation = Equation.load(out / f"{key}.json")
+                    self.assertIsNone(equation.bounds)
+                    self.assertTrue(equation.name.startswith("E3_log1p_k"))
+            self.assertIs(json.loads((out / "manifest.json").read_text())["settings"]["log_target"], True)
+            with self.assertRaises(RuntimeError):
+                configuration_search.main(search_argv(out))
+
+    def test_log_target_settings_payload(self) -> None:
+        self.assertNotIn("log_target", _settings_payload(SearchSettings()))
+        self.assertNotIn(
+            "log_target",
+            _settings_payload(SearchSettings(target="comm_bytes_total", minimum_features=27, maximum_features=27)),
+        )
+        self.assertIs(
+            _settings_payload(
+                SearchSettings(target="comm_bytes_total", minimum_features=27, maximum_features=27, log_target=True)
+            )["log_target"],
+            True,
+        )
+
     def test_load_accepts_each_target(self) -> None:
         for target_name, task_type, rows in (
             ("total_time_s", None, 24), ("comm_bytes_total", None, 24),
