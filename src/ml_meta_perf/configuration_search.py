@@ -32,23 +32,27 @@ from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass
 from importlib import metadata
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, NamedTuple, cast
 
 import numpy as np
 import polars as pl
 from joblib import Parallel, delayed
 
 from ml_meta_perf.data import (
-    DATASET_COLUMN,
-    DATASET_FEATURES,
     DEFAULT_PATH,
-    MODEL_COLUMN,
+    FLEXFL_TARGETS,
+    MCC_SCHEMA,
     MODEL_FEATURES,
+    TASK_TYPES,
+    Schema,
     columns_as_arrays,
+    drop_constant_features,
+    flexfl_schema,
     groups,
     load,
     target,
 )
+from ml_meta_perf.experiment import equation_text
 from ml_meta_perf.fit import Standardizer
 from ml_meta_perf.model import Equation
 from ml_meta_perf.search import Selector, guided_screen, prune, search
@@ -82,6 +86,7 @@ OBJECTIVE_WEIGHTS: dict[str, float] = {
     "stability": 0.15,
     "brevity": 0.05,
 }
+SCALE_FREE_COMPONENTS = ("in_sample_r2", "loo_dataset_r2", "loo_model_r2", "stability", "brevity")
 # Preserve the historical J scale: equations with one through six terms all receive the
 # maximum brevity component, while the search still records every length for curve methods.
 OBJECTIVE_MIN_TERMS = 6
@@ -105,15 +110,24 @@ class SearchSettings:
     beam_width: int = DEFAULT_BEAM_WIDTH
     shortlist_top: int = DEFAULT_SHORTLIST_TOP
     explicit_feature_sets: tuple[tuple[str, ...], ...] = ()
+    target: str = "mcc"
+    task_type: str | None = None
+
+    def schema(self) -> Schema:
+        """The column and target schema for this sweep."""
+        return MCC_SCHEMA if self.target == "mcc" else flexfl_schema(self.target, self.task_type)
 
     def validate(self) -> None:
+        if self.target == "mcc" and self.task_type is not None:
+            raise ValueError("task type applies only to a FlexFL target")
+        pool = self.schema().model_features
         if not self.penalties or any(value < 0.0 for value in self.penalties):
             raise ValueError("penalties must contain non-negative values")
         if not self.zscores or any(value <= 0.0 for value in self.zscores):
             raise ValueError("zscores must contain positive values")
         if not self.arities or any(value < 1 or value > 4 for value in self.arities):
             raise ValueError("arities must be between 1 and 4")
-        if not 1 <= self.minimum_features <= self.maximum_features <= len(MODEL_FEATURES):
+        if not 1 <= self.minimum_features <= self.maximum_features <= len(pool):
             raise ValueError("feature-count bounds must lie inside the model-feature schema")
         if not 1 <= self.minimum_terms <= self.maximum_terms:
             raise ValueError("term-count bounds must be positive and ordered")
@@ -121,7 +135,7 @@ class SearchSettings:
             raise ValueError("pool size must be at least the maximum equation length")
         if self.beam_width < 1 or self.shortlist_top < 1:
             raise ValueError("beam width and shortlist size must be positive")
-        allowed = set(MODEL_FEATURES)
+        allowed = set(pool)
         for feature_set in self.explicit_feature_sets:
             if len(feature_set) != len(set(feature_set)):
                 raise ValueError(f"feature set contains duplicates: {feature_set}")
@@ -166,6 +180,8 @@ def feature_subsets(settings: SearchSettings) -> list[tuple[str, ...]]:
     settings.validate()
     if settings.explicit_feature_sets:
         return sorted({_canonical_features(value) for value in settings.explicit_feature_sets})
+    if settings.target != "mcc":
+        return [_canonical_features(settings.schema().model_features)]
     subsets = [
         tuple(sorted(combination))
         for size in range(settings.minimum_features, settings.maximum_features + 1)
@@ -217,6 +233,26 @@ def historical_objective(row: dict[str, float | int]) -> float:
         "brevity": float(row["brevity"]),
     }
     return float(sum(OBJECTIVE_WEIGHTS[name] * value for name, value in parts.items()))
+
+
+def scale_free_objective(row: dict[str, float | int]) -> float:
+    """The renormalised objective for targets without binary or ranking scores."""
+    weights = sum(OBJECTIVE_WEIGHTS[name] for name in SCALE_FREE_COMPONENTS)
+    return float(
+        sum(
+            OBJECTIVE_WEIGHTS[name] * (max(float(row[name]), 0.0) if name.endswith("_r2") else float(row[name]))
+            for name in SCALE_FREE_COMPONENTS
+        )
+        / weights
+    )
+
+
+def _objective_weights(settings: SearchSettings) -> dict[str, float]:
+    """The objective weights recorded with this target's search."""
+    if settings.target == "mcc":
+        return OBJECTIVE_WEIGHTS
+    total = sum(OBJECTIVE_WEIGHTS[name] for name in SCALE_FREE_COMPONENTS)
+    return {name: OBJECTIVE_WEIGHTS[name] / total for name in SCALE_FREE_COMPONENTS}
 
 
 def sweep(
@@ -428,6 +464,7 @@ def select_equations(
     *,
     plateau_tolerance: float = DEFAULT_PLATEAU_TOLERANCE,
     plateau_window: int = DEFAULT_PLATEAU_WINDOW,
+    label: str = "MCC",
 ) -> dict[str, object]:
     """Select E3-MAX and the reproducible plateau-based E3-Valid equation."""
     if finalists.is_empty():
@@ -468,8 +505,8 @@ def select_equations(
     _write_json_atomic(output / "selected_configurations.json", payload)
 
     shards = output / "shards" / "finalists"
-    _write_equation_outputs(shards, output, "e3_valid", valid)
-    _write_equation_outputs(shards, output, "e3_max", maximum)
+    _write_equation_outputs(shards, output, "e3_valid", valid, label_text=label)
+    _write_equation_outputs(shards, output, "e3_max", maximum, label_text=label)
     return payload
 
 
@@ -532,10 +569,12 @@ def _write_equation_outputs(
     output: Path,
     label: str,
     candidate: dict[str, Any],
+    *,
+    label_text: str = "MCC",
 ) -> None:
     equation = _load_candidate_equation(shards, candidate)
     equation.save(output / f"{label}.json")
-    (output / f"{label}.txt").write_text(str(equation) + "\n", encoding="utf-8")
+    (output / f"{label}.txt").write_text(equation_text(equation, label_text) + "\n", encoding="utf-8")
 
 
 def initialise(
@@ -559,7 +598,7 @@ def initialise(
         "data_sha256": digest,
         "source_sha256": _source_hash(),
         "settings": _settings_payload(settings),
-        "objective_weights": OBJECTIVE_WEIGHTS,
+        "objective_weights": _objective_weights(settings),
         "objective_brevity_range": [OBJECTIVE_MIN_TERMS, OBJECTIVE_MAX_TERMS],
     }
     search_id = hashlib.sha256(_stable_json(identity).encode()).hexdigest()
@@ -596,18 +635,28 @@ def initialise(
 def settings_from_arguments(arguments: argparse.Namespace) -> SearchSettings:
     """Turn repeatable CLI arguments into one canonical settings object."""
     explicit = tuple(_parse_feature_set(value) for value in arguments.feature_set)
+    schema = MCC_SCHEMA if arguments.target == "mcc" else flexfl_schema(arguments.target, arguments.task_type)
+    if arguments.target == "mcc":
+        minimum_features = arguments.min_features if arguments.min_features is not None else DEFAULT_MIN_FEATURES
+        maximum_features = arguments.max_features if arguments.max_features is not None else DEFAULT_MAX_FEATURES
+    elif explicit:
+        minimum_features, maximum_features = 1, len(schema.model_features)
+    else:
+        minimum_features = maximum_features = len(schema.model_features)
     return SearchSettings(
         penalties=_unique(arguments.penalty or DEFAULT_PENALTIES),
         zscores=_unique(arguments.zscore or DEFAULT_ZSCORES),
         arities=_unique(arguments.arity or DEFAULT_ARITIES),
-        minimum_features=arguments.min_features,
-        maximum_features=arguments.max_features,
+        minimum_features=minimum_features,
+        maximum_features=maximum_features,
         minimum_terms=arguments.min_terms,
         maximum_terms=arguments.max_terms,
         pool_size=arguments.pool,
         beam_width=arguments.beam,
         shortlist_top=arguments.shortlist_top,
         explicit_feature_sets=explicit,
+        target=arguments.target,
+        task_type=arguments.task_type,
     )
 
 
@@ -617,7 +666,11 @@ def build_parser() -> argparse.ArgumentParser:
         description="Resumable two-stage Slurm search for E3-Valid and E3-MAX.",
     )
     parser.add_argument("stage", choices=("plan", "sweep", "merge", "shortlist", "validate", "select", "all"))
-    parser.add_argument("--data", type=Path, default=DEFAULT_PATH)
+    parser.add_argument(
+        "--data", type=Path, default=None, help="meta-dataset CSV (defaults to the shipped corpus for --target mcc)"
+    )
+    parser.add_argument("--target", choices=("mcc", *FLEXFL_TARGETS), default="mcc")
+    parser.add_argument("--task-type", choices=TASK_TYPES, default=None)
     parser.add_argument("--output", type=Path, default=Path("results/configuration_search"))
     parser.add_argument("--jobs", type=int, default=0, help="parallel workers; 0 uses every available CPU")
     parser.add_argument(
@@ -635,8 +688,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="comma-separated model features; repeat to replace the combinatorial subset grid",
     )
-    parser.add_argument("--min-features", type=int, default=DEFAULT_MIN_FEATURES)
-    parser.add_argument("--max-features", type=int, default=DEFAULT_MAX_FEATURES)
+    parser.add_argument("--min-features", type=int, default=None)
+    parser.add_argument("--max-features", type=int, default=None)
     parser.add_argument("--min-terms", type=int, default=DEFAULT_MIN_TERMS)
     parser.add_argument("--max-terms", type=int, default=DEFAULT_MAX_TERMS)
     parser.add_argument("--pool", type=int, default=DEFAULT_POOL_SIZE)
@@ -660,9 +713,20 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     started_unix = time.time()
     started = time.perf_counter()
-    arguments = build_parser().parse_args(argv)
+    parser = build_parser()
+    arguments = parser.parse_args(argv)
+    if arguments.target == "mcc" and arguments.task_type is not None:
+        parser.error("--task-type applies only to a FlexFL --target")
+    if arguments.target == "performance" and arguments.task_type is None:
+        parser.error("--task-type is required with --target performance")
+    if arguments.target != "mcc" and arguments.data is None:
+        parser.error("--data is required with a FlexFL --target")
+    if arguments.target != "mcc" and (arguments.min_features is not None or arguments.max_features is not None):
+        parser.error(
+            "--min-features and --max-features apply only to --target mcc; use --feature-set for FlexFL subsets"
+        )
     settings = settings_from_arguments(arguments)
-    data_path = Path(arguments.data).resolve()
+    data_path = Path(arguments.data or DEFAULT_PATH).resolve()
     output = Path(arguments.output).resolve()
     manifest = initialise(
         output,
@@ -685,6 +749,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             output,
             plateau_tolerance=arguments.plateau_tolerance,
             plateau_window=arguments.plateau_window,
+            label=settings.schema().target_column,
         )
         print(json.dumps(selected, indent=2), flush=True)
         _write_run_summary(output, arguments.stage, manifest, started_unix, started)
@@ -693,7 +758,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     sweep_table: pl.DataFrame | None = None
     shortlist: pl.DataFrame | None = None
     if arguments.stage in {"sweep", "validate", "all"}:
-        frame = load(data_path)
+        frame = load(data_path, settings.schema())
     if arguments.stage in {"sweep", "all"}:
         assert frame is not None
         sweep(frame, settings, output, jobs=arguments.jobs)
@@ -713,10 +778,36 @@ def main(argv: Sequence[str] | None = None) -> int:
             output,
             plateau_tolerance=arguments.plateau_tolerance,
             plateau_window=arguments.plateau_window,
+            label=settings.schema().target_column,
         )
         print(json.dumps(selected, indent=2), flush=True)
     _write_run_summary(output, arguments.stage, manifest, started_unix, started)
     return 0
+
+
+class _PreparedInputs(NamedTuple):
+    schema: Schema
+    features: tuple[str, ...]
+    truth: np.ndarray
+    datasets: np.ndarray
+    models: np.ndarray
+    columns: dict[str, np.ndarray]
+
+
+def _prepared_inputs(features: tuple[str, ...], settings: SearchSettings, frame: pl.DataFrame) -> _PreparedInputs:
+    """The schema, fitted model features, target, groups and columns for one grid point."""
+    schema = settings.schema()
+    if settings.target != "mcc":
+        schema = drop_constant_features(frame, schema)
+        features = tuple(name for name in features if name in schema.model_features)
+    return _PreparedInputs(
+        schema,
+        features,
+        target(frame, schema),
+        groups(frame, schema.dataset_column),
+        groups(frame, schema.model_column),
+        columns_as_arrays(frame, schema.dataset_features + features),
+    )
 
 
 def _safe_evaluate_library_point(
@@ -735,13 +826,10 @@ def _evaluate_library_point(
     settings: SearchSettings,
     frame: pl.DataFrame,
 ) -> list[dict[str, object]]:
-    truth = target(frame)
-    datasets = groups(frame, DATASET_COLUMN)
-    models = groups(frame, MODEL_COLUMN)
-    columns = columns_as_arrays(frame, DATASET_FEATURES + point.features)
+    schema, features, truth, datasets, models, columns = _prepared_inputs(point.features, settings, frame)
     library = build_library(
-        DATASET_FEATURES,
-        point.features,
+        schema.dataset_features,
+        features,
         columns,
         max_abs_zscore=point.max_abs_zscore,
         max_arity=point.max_arity,
@@ -756,6 +844,7 @@ def _evaluate_library_point(
             pool_size=settings.pool_size,
             beam_width=settings.beam_width,
             name="E3",
+            bounds=schema.bounds,
         )
         equations = _pruned_path(outcome.equations, columns, truth, penalty, settings.minimum_terms)
         validation_library = _equation_library(equations, columns)
@@ -775,12 +864,17 @@ def _evaluate_library_point(
                 continue
             prediction = equation.predict(columns)
             dataset_prediction = lodo[requested_terms].predictions
-            binary_accuracy, binary_f1, binary_map = _binary_scores(truth, dataset_prediction, datasets)
-            ranking_map, ranking_mrr, ranking_hit1, ranking_regret = _ranking_scores(
-                truth, dataset_prediction, datasets
-            )
-            binary = (binary_accuracy + binary_f1 + binary_map) / 3.0
-            ranking = (ranking_map + ranking_mrr + ranking_hit1 + (1.0 - min(ranking_regret, 1.0))) / 4.0
+            if settings.target == "mcc":
+                binary_accuracy, binary_f1, binary_map = _binary_scores(truth, dataset_prediction, datasets)
+                ranking_map, ranking_mrr, ranking_hit1, ranking_regret = _ranking_scores(
+                    truth, dataset_prediction, datasets
+                )
+                binary = (binary_accuracy + binary_f1 + binary_map) / 3.0
+                ranking = (ranking_map + ranking_mrr + ranking_hit1 + (1.0 - min(ranking_regret, 1.0))) / 4.0
+            else:
+                binary_accuracy = binary_f1 = binary_map = float("nan")
+                ranking_map = ranking_mrr = ranking_hit1 = ranking_regret = float("nan")
+                binary = ranking = float("nan")
             stability = _stability(equation, selections.get(requested_terms, []))
             brevity = float(
                 np.clip(
@@ -804,6 +898,7 @@ def _evaluate_library_point(
                     "library_point_id": point.point_id,
                     "features": _encode_features(point.features),
                     "n_features": len(point.features),
+                    **_fitted_columns(settings, features),
                     "penalty": penalty,
                     "max_abs_zscore": point.max_abs_zscore,
                     "max_arity": point.max_arity,
@@ -823,7 +918,9 @@ def _evaluate_library_point(
                         float(metrics["loo_dataset_r2"]),
                         float(metrics["loo_model_r2"]),
                     ),
-                    "objective": historical_objective(metrics),
+                    "objective": (
+                        historical_objective(metrics) if settings.target == "mcc" else scale_free_objective(metrics)
+                    ),
                     "median_fold_r2": dispersion["median_fold_r2"],
                     "worst_fold_r2": dispersion["worst_fold_r2"],
                     "median_fold_mae": dispersion["median_fold_mae"],
@@ -846,17 +943,14 @@ def _safe_evaluate_finalist(
 
 
 def _evaluate_finalist(point: BasePoint, settings: SearchSettings, frame: pl.DataFrame) -> WorkerResult:
-    truth = target(frame)
-    datasets = groups(frame, DATASET_COLUMN)
-    models = groups(frame, MODEL_COLUMN)
-    columns = columns_as_arrays(frame, DATASET_FEATURES + point.features)
+    schema, features, truth, datasets, models, columns = _prepared_inputs(point.features, settings, frame)
     rows: list[dict[str, object]] = []
     fold_errors: list[dict[str, object]] = []
     equations_payload: dict[str, dict[str, object]] = {}
     for arity in settings.arities:
         library = build_library(
-            DATASET_FEATURES,
-            point.features,
+            schema.dataset_features,
+            features,
             columns,
             max_abs_zscore=point.max_abs_zscore,
             max_arity=arity,
@@ -869,6 +963,7 @@ def _evaluate_finalist(point: BasePoint, settings: SearchSettings, frame: pl.Dat
             pool_size=settings.pool_size,
             beam_width=settings.beam_width,
             name="E3",
+            bounds=schema.bounds,
         )
         equations = _pruned_path(outcome.equations, columns, truth, point.penalty, settings.minimum_terms)
         validation_library = _equation_library(equations, columns)
@@ -905,6 +1000,7 @@ def _evaluate_finalist(point: BasePoint, settings: SearchSettings, frame: pl.Dat
                     {
                         "base_id": point.base_id,
                         "features": _encode_features(point.features),
+                        **_fitted_columns(settings, features),
                         "penalty": point.penalty,
                         "max_abs_zscore": point.max_abs_zscore,
                         "max_arity": arity,
@@ -1051,6 +1147,12 @@ def _average_precision(labels: np.ndarray, scores: np.ndarray) -> float:
     return float((precision * labels[order]).sum() / labels.sum())
 
 
+def _fitted_columns(settings: SearchSettings, features: tuple[str, ...]) -> dict[str, object]:
+    if settings.target == "mcc":
+        return {}
+    return {"fitted_features": _encode_features(features), "n_fitted_features": len(features)}
+
+
 def _public_candidate(candidate: dict[str, Any]) -> dict[str, object]:
     names = (
         "base_id",
@@ -1072,7 +1174,9 @@ def _public_candidate(candidate: dict[str, Any]) -> dict[str, object]:
         "stability",
         "terms",
     )
-    return {name: candidate[name] for name in names}
+    public = {name: candidate[name] for name in names}
+    public.update({name: candidate[name] for name in ("fitted_features", "n_fitted_features") if name in candidate})
+    return public
 
 
 def _load_candidate_equation(directory: Path, candidate: dict[str, Any]) -> Equation:
@@ -1115,6 +1219,9 @@ def _unique(values: Sequence[Any]) -> tuple[Any, ...]:
 
 def _settings_payload(settings: SearchSettings) -> dict[str, object]:
     payload = asdict(settings)
+    if settings.target == "mcc":
+        payload.pop("target")
+        payload.pop("task_type")
     payload["penalties"] = list(settings.penalties)
     payload["zscores"] = list(settings.zscores)
     payload["arities"] = list(settings.arities)

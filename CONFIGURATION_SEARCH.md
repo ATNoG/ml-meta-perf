@@ -34,6 +34,7 @@ E3-Valid selects the arity-2 equation with 18 terms. Its corresponding R² value
 ## Search and selection
 
 The default search evaluates every subset containing two to six of the six model descriptors.
+This 57-subset grid applies to `--target mcc`.
 It crosses those 57 subsets with:
 
 - ridge penalties `0.1, 0.3, 0.5, 1, 2, 3, 5, 8, 10, 15, 20, 25, 30, 40, 60, 80`;
@@ -45,6 +46,7 @@ The cheap stage ranks candidates with the historical composite objective `J`. It
 IS, LODO and LOMO R², threshold decisions, ranking,
 term stability and brevity. `J` produces a diverse shortlist and does not make the final
 selection.
+This historical objective applies to `--target mcc`.
 
 The expensive stage computes DHO validation for the shortlisted base settings:
 for each observed cell, it removes every row sharing that cell's dataset or model.
@@ -63,6 +65,29 @@ At every term count, the arity with the highest Combined R² is retained. The ru
 best Combined R² observed so far and selects the first point whose gain over the next three
 evaluated term counts is at most `0.001`. These values are exposed as `--plateau-window` and
 `--plateau-tolerance` and are recorded in `selected_configurations.json`.
+
+## FlexFL targets
+
+Use `--target performance`, `--target total_time_s`, or `--target comm_bytes_total` with a
+FlexFL CSV supplied by `--data`. Performance also requires `--task-type classification` or
+`--task-type regression`. A task type on a cost target filters the input rows as well.
+
+The default FlexFL grid uses one feature set containing every FlexFL model feature. Use
+`--feature-set` to request subsets. `--min-features` and `--max-features` apply only to MCC
+and are rejected for FlexFL targets. Features constant in the loaded frame are removed
+before the term library is built. FlexFL outputs add `fitted_features` and
+`n_fitted_features`, the features left after that removal, while `features` and
+`n_features` keep the requested set. MCC outputs have neither column.
+
+FlexFL uses a scale-free objective: in-sample R², LODO R², LOMO R², stability and brevity
+have weights 0.10, 0.20, 0.20, 0.15 and 0.05, renormalised by their sum of 0.70. The
+`binary`, `ranking`, `binary_*` and `ranking_*` columns are NaN.
+
+LOMO holds out one `fl_algo` value at a time, while the four `fl_algo_*` indicators are
+model features. In each held-out fold the held-out algorithm's indicator is zero on every
+training row, so its terms get no weight there. FlexFL LOMO R² therefore measures transfer
+to an unseen algorithm without per-algorithm offsets, and it is not comparable with the MCC
+study's LOMO, whose model features are descriptors shared across models.
 
 ## Copy with SFTP
 

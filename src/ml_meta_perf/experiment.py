@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 import polars as pl
@@ -29,9 +30,12 @@ from ml_meta_perf.attribution import group_shares, term_effects, variance_decomp
 from ml_meta_perf.data import (
     DATASET_COLUMN,
     DATASET_FEATURES,
+    MCC_SCHEMA,
     MODEL_COLUMN,
     MODEL_FEATURES,
+    Schema,
     columns_as_arrays,
+    drop_constant_features,
     groups,
     load,
     target,
@@ -282,6 +286,8 @@ def run_equation(
     name: str,
     sizes: tuple[int, ...] | None = None,
     selected_size: int | None = None,
+    *,
+    schema: Schema = MCC_SCHEMA,
 ) -> EquationReport:
     """Fit one equation and validate it. The three equations differ **only** in the
     features they may draw on, and this is the single code path that says so.
@@ -293,9 +299,9 @@ def run_equation(
     denominator of the R2.
     """
     columns = columns_as_arrays(frame, dataset_features + model_features)
-    truth = target(frame)
-    datasets = groups(frame, DATASET_COLUMN)
-    models = groups(frame, MODEL_COLUMN)
+    truth = target(frame, schema)
+    datasets = groups(frame, schema.dataset_column)
+    models = groups(frame, schema.model_column)
 
     library = build_library(
         dataset_features,
@@ -312,6 +318,7 @@ def run_equation(
         pool_size=config.pool_size,
         beam_width=config.beam_width,
         name=name,
+        bounds=schema.bounds,
     )
     # Fixed form: the terms are chosen once, here, and only the weights are refit in each
     # fold. See `validate.cross_validate_fixed_form` for why that is the reported protocol.
@@ -361,6 +368,38 @@ def run_equation(
         stability=term_stability(reselected),
         paths=paths,
     )
+
+
+@dataclass(frozen=True)
+class FlexFLReport:
+    """One E3 fit on a FlexFL target: the validated equation and what its terms are worth."""
+
+    schema: Schema
+    equation: EquationReport
+    effects: pl.DataFrame
+    shares: pl.DataFrame
+
+
+def run_flexfl(path: str | Path, schema: Schema, config: Configuration = DEFAULT, name: str = "E3") -> FlexFLReport:
+    """Load a FlexFL meta-dataset and run the single E3 fit, both feature groups at once.
+
+    One grammar, ``config.max_arity``; no E1, E2 or grammar search, and none of the MCC study's
+    baselines, practices or figures.
+    """
+    frame = load(path, schema)
+    schema = drop_constant_features(frame, schema)
+    report = run_equation(frame, schema.dataset_features, schema.model_features, config, name, schema=schema)
+    columns = columns_as_arrays(frame, schema.features)
+    effects = term_effects(report.equation, columns, schema.dataset_features, schema.model_features)
+    label = schema.target_column
+    effects = effects.with_columns(pl.col("direction").str.replace("MCC", label, literal=True))
+    shares = group_shares(report.equation, columns, schema.dataset_features, schema.model_features)
+    return FlexFLReport(schema, report, effects, shares)
+
+
+def equation_text(equation: Equation, label: str) -> str:
+    """Render an equation with the target label on its first line."""
+    return str(equation).replace("MCC = ", f"{label} = ", 1)
 
 
 def run_e1(frame: pl.DataFrame, config: Configuration = DEFAULT) -> EquationReport:

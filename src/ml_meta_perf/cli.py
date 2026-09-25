@@ -26,7 +26,17 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
-from ml_meta_perf.data import DATASET_FEATURES, DEFAULT_PATH, MODEL_FEATURES, columns_as_arrays, load, target
+from ml_meta_perf.data import (
+    DATASET_FEATURES,
+    DEFAULT_PATH,
+    FLEXFL_TARGETS,
+    MODEL_FEATURES,
+    TASK_TYPES,
+    columns_as_arrays,
+    flexfl_schema,
+    load,
+    target,
+)
 from ml_meta_perf.experiment import (
     ARITIES,
     BEAM_WIDTH,
@@ -37,7 +47,9 @@ from ml_meta_perf.experiment import (
     POOL_SIZE,
     Configuration,
     Report,
+    equation_text,
     run,
+    run_flexfl,
 )
 from ml_meta_perf.practices import render as render_practices
 from ml_meta_perf.report import term_importance, write_into_chapters
@@ -234,6 +246,21 @@ def build_parser() -> argparse.ArgumentParser:
     data = parser.add_argument_group("data and output")
     data.add_argument("--data", default=None, help="meta-dataset CSV (defaults to the shipped corpus)")
     data.add_argument(
+        "--target",
+        choices=("mcc", *FLEXFL_TARGETS),
+        default="mcc",
+        help=(
+            "what the equation predicts: MCC runs the study; a FlexFL per-run outcome runs one E3 fit "
+            "and ignores --figures, --docs, --phase and the --no-* flags"
+        ),
+    )
+    data.add_argument(
+        "--task-type",
+        choices=TASK_TYPES,
+        default=None,
+        help="restrict a FlexFL target to one task type; required with --target performance",
+    )
+    data.add_argument(
         "--output",
         default="results",
         help="directory for the fitted equations, the CSV tables and the report",
@@ -294,9 +321,52 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _check_target(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> None:
+    """Reject incompatible target and task type arguments."""
+    if arguments.target == "mcc" and arguments.task_type is not None:
+        parser.error("--task-type applies only to a FlexFL --target")
+    if arguments.target == "performance" and arguments.task_type is None:
+        parser.error("--task-type is required with --target performance")
+    if arguments.target != "mcc" and arguments.data is None:
+        parser.error("--data is required with a FlexFL --target")
+
+
+def _run_flexfl_cli(arguments: argparse.Namespace) -> int:
+    """Fit one FlexFL E3 equation and write its outputs."""
+    schema = flexfl_schema(arguments.target, arguments.task_type)
+    config = configuration(arguments)
+    started = time.perf_counter()
+    report = run_flexfl(arguments.data, schema, config)
+    elapsed = time.perf_counter() - started
+    if not arguments.quiet:
+        _section(f"E3: {schema.target_column}")
+        print(equation_text(report.equation.equation, schema.target_column))
+        print(f"\nIS: {report.equation.in_sample}")
+        for label, scores in report.equation.cross_validated.items():
+            print(f"{PROTOCOL_LABELS.get(label, label)}: R2={scores['r2']:.3f}, MAE={scores['mae']:.3f}")
+        _show(report.shares)
+    if arguments.output:
+        destination = Path(arguments.output) / "flexfl" / schema.slug
+        destination.mkdir(parents=True, exist_ok=True)
+        report.equation.equation.save(destination / "equation.json")
+        (destination / "equation.txt").write_text(
+            equation_text(report.equation.equation, schema.target_column) + "\n", encoding="utf-8"
+        )
+        report.equation.curve.write_csv(destination / "curve.csv")
+        report.effects.write_csv(destination / "term_effects.csv")
+        report.shares.write_csv(destination / "group_shares.csv")
+        print(f"\nequation written to {destination}")
+    print(f"\ncompleted in {elapsed:.1f}s")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     _configure_windows_output()
-    arguments = build_parser().parse_args(argv)
+    parser = build_parser()
+    arguments = parser.parse_args(argv)
+    _check_target(parser, arguments)
+    if arguments.target != "mcc":
+        return _run_flexfl_cli(arguments)
     phases = frozenset(PHASES) if not arguments.phase or "all" in arguments.phase else frozenset(arguments.phase)
 
     config = configuration(arguments)

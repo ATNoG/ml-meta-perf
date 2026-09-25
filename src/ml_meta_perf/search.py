@@ -56,7 +56,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from ml_meta_perf.fit import RIDGE_DEFAULT, Standardizer, Subset, to_equation
-from ml_meta_perf.model import Equation
+from ml_meta_perf.model import MCC_LOWER, MCC_UPPER, Equation
 from ml_meta_perf.stats import pearson, pearson_columns, rank_columns, rankdata, spearman
 from ml_meta_perf.terms import Library, Term, is_trivial, simplify
 
@@ -431,11 +431,13 @@ def search(
     candidates: int = CANDIDATE_POOL_DEFAULT,
     refine_rounds: int = REFINE_ROUNDS_DEFAULT,
     name: str = "equation",
+    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
 ) -> SearchResult:
     """Search for the best subset of every size up to ``max_terms`` over the given library.
 
     Screen, then beam, then fold the standardisation back out. The weights each returned
     equation carries come from `fit`; what this function decides is which terms carry them.
+    Bounds clip every returned equation's prediction; None leaves the target unbounded.
     """
     standardizer = Standardizer.fit(library.matrix)
     design = standardizer.apply(library.matrix)
@@ -449,7 +451,7 @@ def search(
         refine_rounds=refine_rounds,
     )
     equations = {
-        size: to_equation(library, subset, standardizer, selector.offset, f"{name}_k{size}")
+        size: to_equation(library, subset, standardizer, selector.offset, f"{name}_k{size}", bounds=bounds)
         for size, subset in subsets.items()
     }
     return SearchResult(equations=equations, pool_size=len(pool))
