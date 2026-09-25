@@ -264,7 +264,7 @@ def build_parser() -> argparse.ArgumentParser:
     data.add_argument(
         "--log-target",
         action="store_true",
-        help="fit log1p of a cost target (total_time_s or comm_bytes_total); metrics are then on the log scale",
+        help="fit log1p of a cost target; metrics are then on the log scale",
     )
     data.add_argument(
         "--output",

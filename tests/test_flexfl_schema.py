@@ -67,6 +67,15 @@ class FlexFLSchemaTests(unittest.TestCase):
         self.assertEqual(flexfl_schema("comm_bytes_total").label, "comm_bytes_total")
         self.assertEqual(FLEXFL_COST_TARGETS, ("total_time_s", "comm_bytes_total"))
 
+    def test_log_target_schema_requires_unbounded_target(self) -> None:
+        with self.assertRaises(ValueError):
+            dataclasses.replace(flexfl_schema("performance", "classification"), log_target=True)
+        dataclasses.replace(flexfl_schema("comm_bytes_total"), log_target=True)
+
+    def test_search_schema_rejects_log_mcc(self) -> None:
+        with self.assertRaises(ValueError):
+            SearchSettings(target="mcc", log_target=True).schema()
+
     def test_target_applies_log1p(self) -> None:
         for name in ("total_time_s", "comm_bytes_total"):
             with self.subTest(target=name):
@@ -86,6 +95,10 @@ class FlexFLSchemaTests(unittest.TestCase):
                     np.testing.assert_array_equal(
                         target(bad, flexfl_schema("total_time_s")), np.full(frame.height, -1.0)
                     )
+        zero = frame.with_columns(pl.lit(0.0).alias("total_time_s"))
+        np.testing.assert_array_equal(
+            target(zero, flexfl_schema("total_time_s", log_target=True)), np.zeros(frame.height)
+        )
 
     def test_run_equation_prunes_with_the_schema_threshold(self) -> None:
         schemas = (
@@ -172,6 +185,15 @@ class FlexFLSchemaTests(unittest.TestCase):
             expected = "raises" if row["beta"] > 0 else "lowers"
             self.assertEqual(row["direction"], f"{expected} log1p(comm_bytes_total)")
 
+    def test_run_flexfl_on_a_log_target_with_task_type(self) -> None:
+        schema = flexfl_schema("total_time_s", "classification", log_target=True)
+        result = experiment.run_flexfl(FIXTURE, schema, TINY)
+        self.assertIsNone(result.equation.equation.bounds)
+        self.assertTrue(result.equation.equation.name.startswith("E3_log1p_k"))
+        for row in result.effects.iter_rows(named=True):
+            expected = "raises" if row["beta"] > 0 else "lowers"
+            self.assertEqual(row["direction"], f"{expected} log1p(total_time_s)")
+
     def test_log_target_argument_errors(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory)
@@ -245,6 +267,18 @@ class FlexFLSchemaTests(unittest.TestCase):
             self.assertIs(json.loads((out / "manifest.json").read_text())["settings"]["log_target"], True)
             with self.assertRaises(RuntimeError):
                 configuration_search.main(search_argv(out))
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            self.assertEqual(configuration_search.main(search_argv(out)), 0)
+            with self.assertRaises(RuntimeError):
+                configuration_search.main([*search_argv(out), "--log-target"])
+
+    def test_mcc_schema_does_not_transform_target(self) -> None:
+        self.assertEqual(MCC_SCHEMA.label, MCC_SCHEMA.target_column)
+        self.assertEqual(MCC_SCHEMA.slug, MCC_SCHEMA.target_column)
+        with mock.patch.object(np, "log1p", wraps=np.log1p) as spy:
+            target(load(None, MCC_SCHEMA), MCC_SCHEMA)
+        self.assertEqual(spy.call_count, 0)
 
     def test_log_target_settings_payload(self) -> None:
         self.assertNotIn("log_target", _settings_payload(SearchSettings()))

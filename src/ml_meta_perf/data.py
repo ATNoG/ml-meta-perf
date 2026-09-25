@@ -123,6 +123,10 @@ class Schema:
     task_type: str | None = None
     log_target: bool = False
 
+    def __post_init__(self) -> None:
+        if self.log_target and self.bounds is not None:
+            raise ValueError("log1p requires bounds=None; only the unbounded FlexFL cost targets support it")
+
     @property
     def features(self) -> tuple[str, ...]:
         return self.dataset_features + self.model_features
@@ -135,6 +139,10 @@ class Schema:
     @property
     def label(self) -> str:
         return f"log1p({self.target_column})" if self.log_target else self.target_column
+
+    def tag(self, name: str) -> str:
+        """``name`` with a ``_log1p`` suffix when this schema fits a log-transformed target."""
+        return f"{name}_log1p" if self.log_target else name
 
 
 #: Where each learner family sits on a capability ladder, low to high.
@@ -500,7 +508,7 @@ DEFAULT_PATH = Path(__file__).resolve().parent / "meta_dataset.csv"
 
 
 class SchemaError(ValueError):
-    """The CSV does not carry the columns the meta-model needs."""
+    """The CSV does not carry the columns the meta-model needs, or a value is out of domain for its transform."""
 
 
 def load(path: str | Path | None = None, schema: Schema = MCC_SCHEMA) -> pl.DataFrame:

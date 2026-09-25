@@ -460,12 +460,12 @@ def search(
 #: A term whose contribution never moves predicted MCC by this much across the data is
 #: not doing work worth printing. The default is deliberately well below the resolution
 #: anyone reads MCC at.
-#: Unbounded targets scale it by their spread; see `pruning_threshold`.
+#: Unbounded targets scale it by their spread; see ``pruning_threshold``.
 MIN_CONTRIBUTION = 0.002
 
 
 def pruning_threshold(bounds: tuple[float, float] | None, target: np.ndarray) -> float:
-    """The ``min_contribution`` `prune` should use for a target with these bounds.
+    """The ``min_contribution`` ``prune`` should use for a target with these bounds.
 
     A bounded target keeps ``MIN_CONTRIBUTION``. An unbounded one scales it by the target's
     1st-to-99th percentile spread over the MCC span, so a term has to move the prediction by

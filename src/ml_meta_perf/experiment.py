@@ -400,7 +400,7 @@ def run_flexfl(path: str | Path, schema: Schema, config: Configuration = DEFAULT
         schema.dataset_features,
         schema.model_features,
         config,
-        f"{name}_log1p" if schema.log_target else name,
+        schema.tag(name),
         schema=schema,
     )
     columns = columns_as_arrays(frame, schema.features)

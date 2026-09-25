@@ -117,6 +117,8 @@ class SearchSettings:
 
     def schema(self) -> Schema:
         """The column and target schema for this sweep."""
+        if self.target == "mcc" and self.log_target:
+            raise ValueError("log1p applies only to a FlexFL cost target")
         return MCC_SCHEMA if self.target == "mcc" else flexfl_schema(self.target, self.task_type, self.log_target)
 
     def validate(self) -> None:
@@ -639,7 +641,11 @@ def initialise(
 def settings_from_arguments(arguments: argparse.Namespace) -> SearchSettings:
     """Turn repeatable CLI arguments into one canonical settings object."""
     explicit = tuple(_parse_feature_set(value) for value in arguments.feature_set)
-    schema = MCC_SCHEMA if arguments.target == "mcc" else flexfl_schema(arguments.target, arguments.task_type)
+    schema = (
+        MCC_SCHEMA
+        if arguments.target == "mcc"
+        else flexfl_schema(arguments.target, arguments.task_type, arguments.log_target)
+    )
     if arguments.target == "mcc":
         minimum_features = arguments.min_features if arguments.min_features is not None else DEFAULT_MIN_FEATURES
         maximum_features = arguments.max_features if arguments.max_features is not None else DEFAULT_MAX_FEATURES
@@ -845,6 +851,7 @@ def _evaluate_library_point(
         max_arity=point.max_arity,
     )
     rows: list[dict[str, object]] = []
+    min_contribution = pruning_threshold(schema.bounds, truth)
     for penalty in settings.penalties:
         outcome = search(
             library,
@@ -853,7 +860,7 @@ def _evaluate_library_point(
             penalty=penalty,
             pool_size=settings.pool_size,
             beam_width=settings.beam_width,
-            name="E3_log1p" if schema.log_target else "E3",
+            name=schema.tag("E3"),
             bounds=schema.bounds,
         )
         equations = _pruned_path(
@@ -862,7 +869,7 @@ def _evaluate_library_point(
             truth,
             penalty,
             settings.minimum_terms,
-            min_contribution=pruning_threshold(schema.bounds, truth),
+            min_contribution=min_contribution,
         )
         validation_library = _equation_library(equations, columns)
         lodo = cross_validate_fixed_form(validation_library, columns, truth, datasets, equations, penalty=penalty)
@@ -964,6 +971,7 @@ def _evaluate_finalist(point: BasePoint, settings: SearchSettings, frame: pl.Dat
     rows: list[dict[str, object]] = []
     fold_errors: list[dict[str, object]] = []
     equations_payload: dict[str, dict[str, object]] = {}
+    min_contribution = pruning_threshold(schema.bounds, truth)
     for arity in settings.arities:
         library = build_library(
             schema.dataset_features,
@@ -979,7 +987,7 @@ def _evaluate_finalist(point: BasePoint, settings: SearchSettings, frame: pl.Dat
             penalty=point.penalty,
             pool_size=settings.pool_size,
             beam_width=settings.beam_width,
-            name="E3_log1p" if schema.log_target else "E3",
+            name=schema.tag("E3"),
             bounds=schema.bounds,
         )
         equations = _pruned_path(
@@ -988,7 +996,7 @@ def _evaluate_finalist(point: BasePoint, settings: SearchSettings, frame: pl.Dat
             truth,
             point.penalty,
             settings.minimum_terms,
-            min_contribution=pruning_threshold(schema.bounds, truth),
+            min_contribution=min_contribution,
         )
         validation_library = _equation_library(equations, columns)
         cell = cross_validate_doubly_held_out(
