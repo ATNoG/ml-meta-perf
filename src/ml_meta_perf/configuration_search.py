@@ -40,6 +40,7 @@ from joblib import Parallel, delayed
 
 from ml_meta_perf.data import (
     DEFAULT_PATH,
+    FLEXFL_COST_TARGETS,
     FLEXFL_TARGETS,
     MCC_SCHEMA,
     MODEL_FEATURES,
@@ -55,7 +56,7 @@ from ml_meta_perf.data import (
 from ml_meta_perf.experiment import equation_text
 from ml_meta_perf.fit import Standardizer
 from ml_meta_perf.model import Equation
-from ml_meta_perf.search import Selector, guided_screen, prune, search
+from ml_meta_perf.search import Selector, guided_screen, prune, pruning_threshold, search
 from ml_meta_perf.selection import PLATEAU_TOLERANCE, PLATEAU_WINDOW, complexity, plateau_index
 from ml_meta_perf.stats import r2_score
 from ml_meta_perf.terms import Library, build_library
@@ -112,14 +113,19 @@ class SearchSettings:
     explicit_feature_sets: tuple[tuple[str, ...], ...] = ()
     target: str = "mcc"
     task_type: str | None = None
+    log_target: bool = False
 
     def schema(self) -> Schema:
         """The column and target schema for this sweep."""
-        return MCC_SCHEMA if self.target == "mcc" else flexfl_schema(self.target, self.task_type)
+        if self.target == "mcc" and self.log_target:
+            raise ValueError("log1p applies only to a FlexFL cost target")
+        return MCC_SCHEMA if self.target == "mcc" else flexfl_schema(self.target, self.task_type, self.log_target)
 
     def validate(self) -> None:
         if self.target == "mcc" and self.task_type is not None:
             raise ValueError("task type applies only to a FlexFL target")
+        if self.target == "mcc" and self.log_target:
+            raise ValueError("log1p applies only to a FlexFL cost target")
         pool = self.schema().model_features
         if not self.penalties or any(value < 0.0 for value in self.penalties):
             raise ValueError("penalties must contain non-negative values")
@@ -635,7 +641,11 @@ def initialise(
 def settings_from_arguments(arguments: argparse.Namespace) -> SearchSettings:
     """Turn repeatable CLI arguments into one canonical settings object."""
     explicit = tuple(_parse_feature_set(value) for value in arguments.feature_set)
-    schema = MCC_SCHEMA if arguments.target == "mcc" else flexfl_schema(arguments.target, arguments.task_type)
+    schema = (
+        MCC_SCHEMA
+        if arguments.target == "mcc"
+        else flexfl_schema(arguments.target, arguments.task_type, arguments.log_target)
+    )
     if arguments.target == "mcc":
         minimum_features = arguments.min_features if arguments.min_features is not None else DEFAULT_MIN_FEATURES
         maximum_features = arguments.max_features if arguments.max_features is not None else DEFAULT_MAX_FEATURES
@@ -657,6 +667,7 @@ def settings_from_arguments(arguments: argparse.Namespace) -> SearchSettings:
         explicit_feature_sets=explicit,
         target=arguments.target,
         task_type=arguments.task_type,
+        log_target=arguments.log_target,
     )
 
 
@@ -671,6 +682,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--target", choices=("mcc", *FLEXFL_TARGETS), default="mcc")
     parser.add_argument("--task-type", choices=TASK_TYPES, default=None)
+    parser.add_argument(
+        "--log-target", action="store_true", help="fit log1p of a cost target; metrics are then on the log scale"
+    )
     parser.add_argument("--output", type=Path, default=Path("results/configuration_search"))
     parser.add_argument("--jobs", type=int, default=0, help="parallel workers; 0 uses every available CPU")
     parser.add_argument(
@@ -721,6 +735,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--task-type is required with --target performance")
     if arguments.target != "mcc" and arguments.data is None:
         parser.error("--data is required with a FlexFL --target")
+    if arguments.log_target and arguments.target not in FLEXFL_COST_TARGETS:
+        parser.error("--log-target applies only to --target total_time_s or comm_bytes_total")
     if arguments.target != "mcc" and (arguments.min_features is not None or arguments.max_features is not None):
         parser.error(
             "--min-features and --max-features apply only to --target mcc; use --feature-set for FlexFL subsets"
@@ -749,7 +765,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             output,
             plateau_tolerance=arguments.plateau_tolerance,
             plateau_window=arguments.plateau_window,
-            label=settings.schema().target_column,
+            label=settings.schema().label,
         )
         print(json.dumps(selected, indent=2), flush=True)
         _write_run_summary(output, arguments.stage, manifest, started_unix, started)
@@ -778,7 +794,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             output,
             plateau_tolerance=arguments.plateau_tolerance,
             plateau_window=arguments.plateau_window,
-            label=settings.schema().target_column,
+            label=settings.schema().label,
         )
         print(json.dumps(selected, indent=2), flush=True)
     _write_run_summary(output, arguments.stage, manifest, started_unix, started)
@@ -835,6 +851,7 @@ def _evaluate_library_point(
         max_arity=point.max_arity,
     )
     rows: list[dict[str, object]] = []
+    min_contribution = pruning_threshold(schema.bounds, truth)
     for penalty in settings.penalties:
         outcome = search(
             library,
@@ -843,10 +860,17 @@ def _evaluate_library_point(
             penalty=penalty,
             pool_size=settings.pool_size,
             beam_width=settings.beam_width,
-            name="E3",
+            name=schema.tag("E3"),
             bounds=schema.bounds,
         )
-        equations = _pruned_path(outcome.equations, columns, truth, penalty, settings.minimum_terms)
+        equations = _pruned_path(
+            outcome.equations,
+            columns,
+            truth,
+            penalty,
+            settings.minimum_terms,
+            min_contribution=min_contribution,
+        )
         validation_library = _equation_library(equations, columns)
         lodo = cross_validate_fixed_form(validation_library, columns, truth, datasets, equations, penalty=penalty)
         lomo = cross_validate_fixed_form(validation_library, columns, truth, models, equations, penalty=penalty)
@@ -947,6 +971,7 @@ def _evaluate_finalist(point: BasePoint, settings: SearchSettings, frame: pl.Dat
     rows: list[dict[str, object]] = []
     fold_errors: list[dict[str, object]] = []
     equations_payload: dict[str, dict[str, object]] = {}
+    min_contribution = pruning_threshold(schema.bounds, truth)
     for arity in settings.arities:
         library = build_library(
             schema.dataset_features,
@@ -962,10 +987,17 @@ def _evaluate_finalist(point: BasePoint, settings: SearchSettings, frame: pl.Dat
             penalty=point.penalty,
             pool_size=settings.pool_size,
             beam_width=settings.beam_width,
-            name="E3",
+            name=schema.tag("E3"),
             bounds=schema.bounds,
         )
-        equations = _pruned_path(outcome.equations, columns, truth, point.penalty, settings.minimum_terms)
+        equations = _pruned_path(
+            outcome.equations,
+            columns,
+            truth,
+            point.penalty,
+            settings.minimum_terms,
+            min_contribution=min_contribution,
+        )
         validation_library = _equation_library(equations, columns)
         cell = cross_validate_doubly_held_out(
             validation_library,
@@ -1018,9 +1050,11 @@ def _pruned_path(
     truth: np.ndarray,
     penalty: float,
     minimum_terms: int,
+    *,
+    min_contribution: float,
 ) -> dict[int, Equation]:
     path = {
-        size: prune(equation, columns, truth, penalty=penalty)
+        size: prune(equation, columns, truth, penalty=penalty, min_contribution=min_contribution)
         for size, equation in equations.items()
         if size >= minimum_terms
     }
@@ -1222,6 +1256,8 @@ def _settings_payload(settings: SearchSettings) -> dict[str, object]:
     if settings.target == "mcc":
         payload.pop("target")
         payload.pop("task_type")
+    if not settings.log_target:
+        payload.pop("log_target")
     payload["penalties"] = list(settings.penalties)
     payload["zscores"] = list(settings.zscores)
     payload["arities"] = list(settings.arities)

@@ -72,6 +72,16 @@ Use `--target performance`, `--target total_time_s`, or `--target comm_bytes_tot
 FlexFL CSV supplied by `--data`. Performance also requires `--task-type classification` or
 `--task-type regression`. A task type on a cost target filters the input rows as well.
 
+`--log-target` with `total_time_s` or `comm_bytes_total` fits `log1p` of the target,
+so R², MAE and the objective are on the log scale. It is rejected for `mcc` and
+`performance`. Outputs stay in `--output`, with `e3_valid.txt` and `e3_max.txt`
+labelled `log1p(<target>)`, equations named `E3_log1p_k<n>`, and
+`settings.log_target` in `manifest.json`. A directory holding a raw search cannot be
+reused for a log search.
+
+Unbounded cost targets prune terms whose contribution spans less than 0.002 times the
+target's 1st-to-99th percentile spread divided by 2, while bounded targets keep 0.002.
+
 The default FlexFL grid uses one feature set containing every FlexFL model feature. Use
 `--feature-set` to request subsets. `--min-features` and `--max-features` apply only to MCC
 and are rejected for FlexFL targets. Features constant in the loaded frame are removed

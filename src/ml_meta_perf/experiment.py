@@ -46,7 +46,7 @@ from ml_meta_perf.opaque import Builder as OpaqueBuilder
 from ml_meta_perf.opaque import OpaqueRun
 from ml_meta_perf.opaque import evaluate as opaque_evaluate
 from ml_meta_perf.practices import best_practices
-from ml_meta_perf.search import prune, search
+from ml_meta_perf.search import prune, pruning_threshold, search
 from ml_meta_perf.selection import (
     PLATEAU_TOLERANCE,
     PLATEAU_WINDOW,
@@ -354,7 +354,13 @@ def run_equation(
         pool_size=config.pool_size,
         beam_width=config.beam_width,
     )
-    equation = prune(result.equations[size], columns, truth, penalty=config.penalty)
+    equation = prune(
+        result.equations[size],
+        columns,
+        truth,
+        penalty=config.penalty,
+        min_contribution=pruning_threshold(schema.bounds, truth),
+    )
 
     return EquationReport(
         equation=equation,
@@ -385,13 +391,21 @@ def run_flexfl(path: str | Path, schema: Schema, config: Configuration = DEFAULT
 
     One grammar, ``config.max_arity``; no E1, E2 or grammar search, and none of the MCC study's
     baselines, practices or figures.
+    A ``log_target`` schema fits and scores ``log1p`` of the target.
     """
     frame = load(path, schema)
     schema = drop_constant_features(frame, schema)
-    report = run_equation(frame, schema.dataset_features, schema.model_features, config, name, schema=schema)
+    report = run_equation(
+        frame,
+        schema.dataset_features,
+        schema.model_features,
+        config,
+        schema.tag(name),
+        schema=schema,
+    )
     columns = columns_as_arrays(frame, schema.features)
     effects = term_effects(report.equation, columns, schema.dataset_features, schema.model_features)
-    label = schema.target_column
+    label = schema.label
     effects = effects.with_columns(pl.col("direction").str.replace("MCC", label, literal=True))
     shares = group_shares(report.equation, columns, schema.dataset_features, schema.model_features)
     return FlexFLReport(schema, report, effects, shares)
