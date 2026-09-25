@@ -4,7 +4,17 @@ import unittest
 
 import numpy as np
 
-from ml_meta_perf.stats import mae, pearson, r2_score, rank_columns, rankdata, rmse, smape, spearman
+from ml_meta_perf.stats import (
+    mae,
+    pearson,
+    pearson_columns,
+    r2_score,
+    rank_columns,
+    rankdata,
+    rmse,
+    smape,
+    spearman,
+)
 
 
 class TestRankdata(unittest.TestCase):
@@ -124,6 +134,42 @@ class TestRankColumns(unittest.TestCase):
 
     def test_a_single_row_is_rank_one(self) -> None:
         np.testing.assert_allclose(rank_columns(np.array([[3.0, -1.0]])), [[1.0, 1.0]])
+
+
+class TestPearsonColumns(unittest.TestCase):
+    """`pearson_columns` is a restatement of `pearson`, and has to stay one.
+
+    `fit.guided_screen` ranks the whole term library on it, so a disagreement in the last
+    place would not raise -- it would quietly reorder the pool and change which equation the
+    study publishes. These pin it against the definition rather than against a recorded value.
+    """
+
+    def test_matches_pearson_column_by_column(self) -> None:
+        rng = np.random.default_rng(0)
+        matrix = rng.normal(size=(50, 12))
+        target = rng.normal(size=50)
+        expected = [pearson(matrix[:, j], target) for j in range(matrix.shape[1])]
+        np.testing.assert_allclose(pearson_columns(matrix, target), expected)
+
+    def test_matches_pearson_on_ranks(self) -> None:
+        # The second of the two calls `guided_screen` makes: heavy ties, which is the shape
+        # the meta-dataset's target actually has.
+        rng = np.random.default_rng(7)
+        matrix = rng.integers(0, 4, size=(60, 9)).astype(np.float64)
+        target = rng.integers(0, 3, size=60).astype(np.float64)
+        ranked = rank_columns(matrix)
+        ranked_target = rankdata(target)
+        expected = [pearson(ranked[:, j], ranked_target) for j in range(matrix.shape[1])]
+        np.testing.assert_allclose(pearson_columns(ranked, ranked_target), expected)
+
+    def test_a_constant_column_scores_zero_as_pearson_does(self) -> None:
+        matrix = np.column_stack([np.ones(8), np.arange(8.0)])
+        target = np.arange(8.0)
+        np.testing.assert_allclose(pearson_columns(matrix, target), [0.0, 1.0])
+
+    def test_a_constant_target_scores_zero_everywhere(self) -> None:
+        matrix = np.column_stack([np.arange(6.0), np.arange(6.0) ** 2])
+        np.testing.assert_allclose(pearson_columns(matrix, np.full(6, 2.0)), [0.0, 0.0])
 
 
 if __name__ == "__main__":

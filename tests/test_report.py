@@ -13,12 +13,16 @@ import polars as pl
 from ml_meta_perf.model import Equation
 from ml_meta_perf.report import (
     MAJOR_MASS,
+    _baseline_centre_note,
+    _ranking_verdict,
+    _table,
     coverage,
     feature_usage,
     glossary,
     group_sentences,
     marginal_versus_conditional,
     operation_usage,
+    single_prediction,
     term_groups,
     term_importance,
     term_sentences,
@@ -28,6 +32,59 @@ from ml_meta_perf.terms import Atom, Term
 
 DATASET = ("a", "b")
 MODEL = ("m",)
+
+
+class TestPublishedProtocolLabels(unittest.TestCase):
+    def test_table_uses_the_published_protocol_acronyms(self) -> None:
+        frame = pl.DataFrame(
+            {
+                "protocol": [
+                    "in-sample",
+                    "leave-one-dataset-out",
+                    "leave-one-model-out",
+                    "doubly held out",
+                ],
+                "r2_loo_dataset": [0.1, 0.2, 0.3, 0.4],
+            }
+        )
+
+        rendered = _table(frame)
+
+        self.assertIn("| IS |", rendered)
+        self.assertIn("| LODO |", rendered)
+        self.assertIn("| LOMO |", rendered)
+        self.assertIn("| DHO |", rendered)
+        self.assertIn("r2_LODO", rendered)
+        self.assertNotIn("leave-one-", rendered)
+        self.assertNotIn("loo_dataset", rendered)
+
+    def test_baseline_summary_translates_internal_protocol_names(self) -> None:
+        frame = pl.DataFrame(
+            {
+                "baseline": ["per-dataset mean (loo-model)", "per-dataset median (loo-model)"],
+                "r2": [0.3, 0.2],
+                "mae": [0.2, 0.1],
+                "smape": [40.0, 35.0],
+            }
+        )
+
+        rendered = _baseline_centre_note(frame)
+
+        self.assertIn("(LOMO)", rendered)
+        self.assertNotIn("loo-model", rendered)
+
+    def test_ranking_verdict_translates_internal_protocol_names(self) -> None:
+        frame = pl.DataFrame(
+            {
+                "predictor": ["per-model mean (loo-dataset)", "equation (loo-cell: both held out)"],
+                "ap_vs_e3_significant": [True, False],
+            }
+        )
+
+        rendered = _ranking_verdict(frame)
+
+        self.assertIn("per-model mean (LODO)", rendered)
+        self.assertNotIn("loo-", rendered)
 
 
 def _columns(rows: int = 40) -> dict[str, np.ndarray]:
@@ -61,10 +118,7 @@ def _equation(columns: dict[str, np.ndarray] | None = None) -> Equation:
         Term("product", (Atom("b"), Atom("m"))),
         Term("atom", (Atom("m"),)),
     )
-    betas = tuple(
-        weight * float(term.evaluate(columns).std())
-        for term, weight in zip(terms, _WEIGHTS, strict=True)
-    )
+    betas = tuple(weight * float(term.evaluate(columns).std()) for term, weight in zip(terms, _WEIGHTS, strict=True))
     return Equation(
         intercept=0.5,
         terms=terms,
@@ -189,9 +243,7 @@ class TestCoverage(unittest.TestCase):
 class TestUnstableMajors(unittest.TestCase):
     def _table(self, frequencies: list[float]) -> pl.DataFrame:
         columns = _columns()
-        stability = pl.DataFrame(
-            {"term": ["a", "[b] * [m]", "m"], "frequency": frequencies}
-        )
+        stability = pl.DataFrame({"term": ["a", "[b] * [m]", "m"], "frequency": frequencies})
         return term_importance(_equation(columns), columns, DATASET, MODEL, stability)
 
     def test_flags_terms_with_a_large_weight_and_few_folds(self) -> None:
@@ -241,9 +293,7 @@ class TestFeatureUsage(unittest.TestCase):
         # A transform buried inside a nested term still has to be found, or the coverage
         # table would understate what the equation used.
         nested = Term("ratio", (Term("product", (Atom("a", "log"), Atom("b"))), Atom("m")))
-        equation = Equation(
-            intercept=0.0, terms=(nested,), weights=(1.0,), standardized_weights=(1.0,)
-        )
+        equation = Equation(intercept=0.0, terms=(nested,), weights=(1.0,), standardized_weights=(1.0,))
         importance = term_importance(equation, self.columns, DATASET, MODEL)
         table = feature_usage(equation, importance, (*DATASET, *MODEL))
         self.assertEqual(table.filter(pl.col("feature") == "a")["transforms"][0], "log")
@@ -347,9 +397,7 @@ class TestTermGroups(unittest.TestCase):
 
 class TestMarginalVersusConditional(unittest.TestCase):
     def _practices(self, direction: float) -> pl.DataFrame:
-        return pl.DataFrame(
-            {"feature": ["a"], "meaning": ["feature a"], "direction": [direction]}
-        )
+        return pl.DataFrame({"feature": ["a"], "meaning": ["feature a"], "direction": [direction]})
 
     def test_flags_agreement_when_the_signs_match(self) -> None:
         columns = _columns()
@@ -379,6 +427,67 @@ class TestGlossary(unittest.TestCase):
 
         table = glossary()
         self.assertEqual(set(table["feature"].to_list()), set(ALL_FEATURES))
+
+
+class TestSinglePrediction(unittest.TestCase):
+    """The worked example is generated, and has to stay tied to the row it names.
+
+    The block this replaced was hand-written and every figure in it had gone stale --
+    including the intercept, in the chapter whose argument is that the analysis is generated
+    rather than authored. These pin the three properties that make the generated one safe:
+    it names a real row, it reports that row's own numbers, and it picks the row by a rule.
+    """
+
+    def setUp(self) -> None:
+        self.columns = _columns()
+        self.equation = _equation(self.columns)
+        self.truth = self.equation.predict(self.columns) + np.linspace(-0.2, 0.2, 40)
+        self.frame = pl.DataFrame(
+            {"Dataset": [f"d{i // 8}" for i in range(40)], "Model": [f"m{i % 8}" for i in range(40)]}
+        )
+        self.block = single_prediction(self.equation, self.columns, self.truth, self.frame)
+
+    def test_names_a_row_that_exists(self) -> None:
+        lines = self.block.split("\n")
+        named = [line.split(":", 1)[1].strip() for line in lines if line.startswith(("dataset", "model "))]
+        self.assertIn(named[0], self.frame["Dataset"].to_list())
+        self.assertIn(named[1], self.frame["Model"].to_list())
+
+    def test_picks_the_row_at_the_median_absolute_error(self) -> None:
+        errors = np.abs(self.truth - self.equation.predict(self.columns))
+        expected = int(np.argmin(np.abs(errors - float(np.median(errors)))))
+        self.assertIn(f"{self.truth[expected]:+.4f}", self.block)
+
+    def test_reports_the_intercept_the_equation_actually_has(self) -> None:
+        self.assertIn(f"{self.equation.intercept:+.4f}   intercept", self.block)
+
+    def test_the_contributions_add_up_to_the_printed_sum(self) -> None:
+        """The whole point of printing the breakdown: a reader can check the arithmetic."""
+        printed = [
+            float(line.strip().split()[0])
+            for line in self.block.split("\n")
+            if line.startswith("    ") and line.strip().startswith(("+", "-"))
+        ]
+        stated = next(line for line in self.block.split("\n") if line.strip().endswith("sum"))
+        self.assertAlmostEqual(sum(printed), float(stated.strip().split()[1]), places=3)
+
+    def test_says_so_when_the_clip_fires(self) -> None:
+        """`Equation.predict` clips to MCC's range, and on a clipped row the column does not
+        add up to the prediction. A breakdown a reader cannot add up has to explain itself."""
+        self.assertIn("clipped to", self.block)
+
+    def test_stays_silent_about_the_clip_when_it_does_not_fire(self) -> None:
+        columns = _columns()
+        equation = Equation(intercept=0.5, terms=(), weights=(), standardized_weights=(), name="flat")
+        frame = pl.DataFrame({"Dataset": ["d"] * 40, "Model": ["m"] * 40})
+        self.assertNotIn("clipped to", single_prediction(equation, columns, np.full(40, 0.5), frame))
+
+    def test_folds_the_tail_into_one_remainder_line(self) -> None:
+        block = single_prediction(self.equation, self.columns, self.truth, self.frame, limit=1)
+        self.assertIn("the remaining 2 terms", block)
+
+    def test_is_deterministic(self) -> None:
+        self.assertEqual(self.block, single_prediction(self.equation, self.columns, self.truth, self.frame))
 
 
 if __name__ == "__main__":

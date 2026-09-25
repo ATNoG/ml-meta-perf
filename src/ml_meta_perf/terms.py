@@ -24,8 +24,10 @@ it contributes a level to every row, while inside a product it zeroes the term e
 the rows where it is off, which is a per-group slope rather than a relationship. Prefer a
 continuous descriptor that grades the same distinction.
 
-Study chapter: [2. Equation form and term vocabulary](../../assets/docs/02-equation-form.md) -- the rationale, in
+Study chapter: [2. The additive model][study-chapter] -- the rationale, in
 prose, with the figures.
+
+[study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/02-additive-model.md
 """
 
 from __future__ import annotations
@@ -192,7 +194,7 @@ def simplify(term: Term) -> Term:
 
     Only exact identities are applied -- cancellation of a matching factor against a
     matching divisor, and division of a term by itself. Nothing is dropped on numerical
-    grounds here; that is ``fit.prune``'s job, and keeping the two separate means this
+    grounds here; that is ``search.prune``'s job, and keeping the two separate means this
     function never changes what a term computes.
     """
     operands = tuple(simplify(operand) if isinstance(operand, Term) else operand for operand in term.operands)
@@ -464,13 +466,13 @@ class Library:
     That last check cannot be done on names. ``inst_to_attr`` is ``nr_inst / nr_attr`` in
     this meta-dataset, so ``[log(inst_to_attr)] + [log(nr_attr)]`` **is**
     ``log(nr_inst)``, exactly, and the grammar generates both. Three such pairs exist in
-    the published 281-term library. A binary feature produces them too and more bluntly:
+    the published 206-term library. A binary feature produces them too and more bluntly:
     ``log``, ``sqrt`` and ``1/f`` are all undefined at zero, leaving only ``f`` and
     ``f^2``, which for a 0/1 column are the same numbers under two names.
 
     Keeping both members of a pair is wasteful rather than dangerous, and the distinction
     is worth being precise about. The beam search already refuses a candidate whose
-    correlation with a selected term exceeds ``ml_meta_perf.fit.COLLINEARITY_LIMIT`` (0.95), so
+    correlation with a selected term exceeds ``ml_meta_perf.search.COLLINEARITY_LIMIT`` (0.95), so
     a duplicate pair cannot both be selected on that path and no singular system arises
     there. What the duplicates cost is candidate-pool slots, search time, and a place in
     the reported term rankings, where they appear as two independent findings. The check
@@ -478,8 +480,8 @@ class Library:
     any consumer reading `terms` or `matrix` directly.
 
     The first term of a pair wins. Generation order runs simple to complex, so the survivor
-    is the shorter form: ``[log(nr_inst)] / [log(Training Operations)]`` is kept and
-    ``([log(inst_to_attr)] + [log(nr_attr)]) / [log(Training Operations)]`` is dropped.
+    is the shorter form: ``[log(nr_inst)] / [log(Processing Units Number)]`` is kept and
+    ``([log(inst_to_attr)] + [log(nr_attr)]) / [log(Processing Units Number)]`` is dropped.
     """
 
     def __init__(
@@ -491,8 +493,13 @@ class Library:
     ) -> None:
         kept: list[Term] = []
         vectors: list[np.ndarray] = []
-        units: list[np.ndarray] = []
         seen: set[str] = set()
+        # The survivors' unit vectors as one growing array rather than a list, so the
+        # duplicate test is a single matrix-vector product against everything kept so far
+        # instead of a Python loop of dot products over it. Identical arithmetic and
+        # identical order -- the first term of a pair still wins -- but the loop form ran
+        # 590k times per study and `search.guided_screen` already does it this way.
+        accepted: np.ndarray | None = None
         for term in terms:
             if term.name in seen:
                 continue
@@ -501,12 +508,14 @@ class Library:
             if not is_admissible(values, max_abs_zscore):
                 continue
             unit = _unit(values)
-            if any(abs(float(other @ unit)) > COLLINEARITY_TOLERANCE for other in units):
+            if accepted is None:
+                accepted = np.empty((len(terms), values.shape[0]))
+            elif float(np.abs(accepted[: len(kept)] @ unit).max()) > COLLINEARITY_TOLERANCE:
                 continue
+            accepted[len(kept)] = unit
             seen.add(term.name)
             kept.append(term)
             vectors.append(values)
-            units.append(unit)
         if not kept:
             raise ValueError("term library is empty after filtering")
         self.terms: list[Term] = kept
@@ -515,6 +524,45 @@ class Library:
     @property
     def names(self) -> list[str]:
         return [term.name for term in self.terms]
+
+    @property
+    def feature_groups(self) -> np.ndarray:
+        """Which terms describe the *same combination of raw features*, as group ids.
+
+        One id per term, ``-1`` for a term over a single feature. Two terms share an id
+        when their feature multisets reduce to the same set, however differently they
+        arrange it: ``[log(a)] / [log(b)]`` and ``[log(b)] / [log(a)]`` are one group, and
+        so are ``[a] * [log(b)]`` and ``[a] / [log(b)]``.
+
+        `ml_meta_perf.search.Selector` refuses to place two terms of one group in the same
+        equation. That is a **readability** rule, not a numerical one, and the distinction
+        matters because the numerical guard already passes: the two mirrored pairs this
+        removed from the previous 16-term equation correlated at 0.891 and 0.786, both
+        under ``search.COLLINEARITY_LIMIT``, in a design conditioned at 7.8. Nothing was
+        ill-posed. What was wrong is that the equation spent two of its sixteen slots
+        writing one relationship both ways up -- ``log(PUN)/log(nr_class)`` beside
+        ``log(nr_class)/log(PUN)``, *both* carrying negative weight -- and the term table
+        then reported them as two independent findings, each reading "lowers MCC". Jointly
+        they encode a curvature in one ratio; separately neither sentence is true.
+
+        An equation this study cannot reason about term by term has failed its purpose,
+        so the constraint is part of the protocol rather than an option. It costs nothing
+        measurable: paired over the twenty leave-one-dataset-out (LODO) folds it moves mean
+        absolute error by +0.0018 at twenty terms, worse on ten of twenty datasets, sign
+        test p = 1.000 and a bootstrap interval of [-0.0039, +0.0084] that spans zero.
+
+        A term over one feature is left ungrouped, so ``1/f`` may still sit beside
+        ``f^2``. Those are two points of one curve over one feature, which reads as a
+        shape; the constraint is about a *relationship* being stated twice.
+        """
+        identifiers: dict[frozenset[str], int] = {}
+        groups = np.full(len(self.terms), -1, dtype=np.int64)
+        for index, term in enumerate(self.terms):
+            features = frozenset(term.features)
+            if len(features) < 2:
+                continue
+            groups[index] = identifiers.setdefault(features, len(identifiers))
+        return groups
 
     def __len__(self) -> int:
         return len(self.terms)
@@ -546,6 +594,18 @@ def build_library(
     a parameter rather than a constant because "three is enough" is a claim that has to be
     measured, and measuring it means being able to build the alternatives.
     """
+    # Sorted, so the library is a function of the feature *sets* and not of the order the
+    # caller happened to pass them in. It was not, and the consequence was not cosmetic:
+    # `pairwise_terms` names a product after whichever operand it sees first, so `A * B` and
+    # `B * A` -- the same column, multiplication being commutative -- entered under two names
+    # depending on declaration order. `Library` then de-duplicated by *correlation with terms
+    # already kept*, so which of a near-collinear pair survived also depended on order, and
+    # across five orderings of one six-feature set the library came out at 270, 270, 272, 270
+    # and 271 terms with 24 of 257 pool slots differing. That is the whole of the
+    # LODO ordering band recorded in the branch notes;
+    # it was never the beam's tie-breaking.
+    dataset_features = tuple(sorted(dataset_features))
+    model_features = tuple(sorted(model_features))
     features = dataset_features + model_features
     terms = unary_terms(features, columns)
     terms += pairwise_terms(dataset_features, dataset_features, columns, both_directions=False)

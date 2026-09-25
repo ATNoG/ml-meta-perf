@@ -5,11 +5,53 @@ and they behave very differently, which is why they are named separately here:
 
 * dataset features are constant across every row of a given dataset, so on their own
   they can only ever predict a per-dataset constant;
-* model features vary with the model, and three of them (the operation counts) also
-  vary with the dataset, since they are functions of the dataset size.
+* model features vary with the model, and one of them -- ``Processing Units Number`` --
+  also varies with the dataset, since it is a function of the dataset's shape. The
+  meta-dataset pipeline is the source of this schema; this module loads the generated
+  corpus and keeps the package-level column contract explicit.
 
 That asymmetry is the whole point of the two-equation comparison, so the split is
 part of the public API rather than something each caller re-derives.
+
+**Why there are eighteen features when the equation uses twelve.**
+
+The two numbers answer different questions, asked at different stages, and reading the
+second as a criticism of the first is the most natural mistake to make about this study.
+
+*Designing the corpus* comes first, before any equation exists and before anyone knows
+which terms will be worth having. The requirement there is **identification**: the
+features must name every dataset and every learner the corpus contains, because two rows
+sharing a feature vector are two rows no equation over those features can ever tell
+apart, and a difference between them is then unexplainable rather than merely
+unexplained. The right move at that stage is a wide feature set chosen for coverage. This
+corpus meets the requirement exactly -- the twelve dataset features give twenty distinct
+vectors for twenty datasets, and the six model features separate all twenty-five learners
+on every dataset, with zero ambiguous rows of 476. ``tests/test_model_features.py`` pins
+both.
+
+Two caveats belong with that claim rather than after it. The model side is **joint**, not
+standalone: five of the six are constant per model and separate only 19 of the 25 on their
+own -- ``FT-Transformer``/``TabNet``/``TabTransformer``, ``LightGBM_RF``/``XGBoost``,
+``DNN``/``MLP``, ``TabICL``/``TabPFN`` and ``BernoulliNB``/``GaussianNB`` collide -- and it
+is ``Processing Units Number``, which varies with the dataset, that breaks those ties. So
+the six identify a learner *on a given dataset*. And identification was bought with
+redundancy: ``nr_attr`` and ``nr_outliers`` correlate at 0.9995, and
+``log(inst_to_attr) + log(nr_attr)`` **is** ``log(nr_inst)`` to 2e-15, because
+``inst_to_attr`` is defined as their ratio.
+
+*Fitting the equation* comes second, and its criterion is not coverage but **compression**.
+An equation is a statement about families of datasets and families of learners, not about
+individuals, so it is expected to need fewer features as it gets better -- and the
+redundancy above is part of what it is compressing away. E3 uses twelve of the eighteen.
+That is the mechanism working, not a shortfall in the corpus, and an equation that used all
+eighteen would be one that had failed to generalise.
+
+So a column may earn its place at either stage. ``Solution Stochasticity`` and
+``Input Distribution Modelling`` remain in the six-column corpus because the complete
+descriptor tuple is used for learner identification. **Do not read absence from the equation
+as evidence against a feature.** The corrected-corpus sweep selected a four-feature
+model-side subset for E3, while the full schema remains available for identification and
+future analyses.
 
 **``nr_inst`` describes the source dataset, not the training set.** Every model was
 trained on a stratified sample capped at 100,000 rows, and ten of the twenty datasets are
@@ -18,8 +60,10 @@ because it is the same cap for every dataset above it. So ``nr_inst`` and
 ``inst_to_attr`` are properties of the corpus a dataset was drawn from, and no statement
 about "more training data" can be tested against them.
 
-Study chapter: [1. The problem and the data](../../assets/docs/01-problem.md) -- the rationale, in
+Study chapter: [1. The dataset][study-chapter] -- the rationale, in
 prose, with the figures.
+
+[study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/01-dataset.md
 """
 
 from __future__ import annotations
@@ -48,14 +92,20 @@ DATASET_FEATURES: tuple[str, ...] = (
     "ns_ratio",
 )
 
+#: The six generated columns an equation may use to describe a *learner*.
+#:
+#: This is the package-level schema expected in ``meta_dataset.csv``. The generation logic
+#: lives in ``meta_dataset_pipeline``; the package keeps only the validated feature contract
+#: used by loading, fitting, plotting and reporting.
 MODEL_FEATURES: tuple[str, ...] = (
     "Processing Units Number",
-    "Training Operations",
-    "Prediction Operations",
-    "Active Regularization Mechanisms",
-    "Robust to Outliers",
     "Model Capability",
+    "Solution Stochasticity",
+    "Loss Margin Behaviour",
+    "Input Distribution Modelling",
+    "Fitting Regime",
 )
+
 
 #: Where each learner family sits on a capability ladder, low to high.
 #:
@@ -86,6 +136,178 @@ MODEL_CAPABILITY: dict[str, int] = {
     "bagged trees": 8,
     "boosted trees": 9,
     "tabular foundation": 10,
+}
+
+#: The four asserted mechanism ordinals, by learner.
+#:
+#: These are the **provenance** of four columns the CSV carries like any other feature. They
+#: live here, and are checked against the CSV by ``test_data``, so the columns can be
+#: regenerated and a reader can see where the numbers came from.
+#:
+#: Each is defined for all twenty-five learners, so none carries a "this learner has no such
+#: thing" sentinel, and every rung is occupied and positive, so the whole grammar is defined
+#: on all of them. That is what distinguishes them from the sixty-one hyperparameter
+#: descriptors measured and rejected during corpus design: a hyperparameter a learner does not have
+#: has no value, and encoding that absence as zero collapses applicability into magnitude.
+#:
+#: **They are asserted, not measured**, and carry chapter 4's caveat in full: a term over one
+#: of them is evidence about the ordering claimed here, not about a quantity anyone observed.
+
+#: How deep randomisation reaches into the fitted solution, low to high.
+#:
+#: 1 deterministic given the data | 2 stochastic optimisation (random init or shuffling) |
+#: 3 randomised over training examples (bootstrap) | 4 randomised over features (subspace or
+#: column subsampling) | 5 randomised over the split or parameter values themselves.
+#:
+#: Asserted from published descriptions of the learners: Breiman (1996) on bagging, Ho (1998)
+#: on the random subspace method, Breiman (2001) on random forests, and Geurts, Ernst &
+#: Wehenkel (2006) on extremely randomized trees. The top two rungs are what separate ``DT``
+#: from ``ExtraTree`` and ``LightGBM_RF`` from ``LightGBM_ExtraTrees`` -- pairs that no
+#: measured descriptor in this corpus, and none of sixty-one proposed ones, can tell apart.
+SOLUTION_STOCHASTICITY: dict[str, int] = {
+    "BernoulliNB": 1,
+    "DT": 1,
+    "GaussianNB": 1,
+    "KNN": 1,
+    "LDA": 1,
+    "LR": 1,
+    "LinearSVC": 1,
+    "QDA": 1,
+    "Ridge": 1,
+    "DNN": 2,
+    "FT-Transformer": 2,
+    "MLP": 2,
+    "PassiveAggressive": 2,
+    "Perceptron": 2,
+    "SGD": 2,
+    "TabICL": 2,
+    "TabNet": 2,
+    "TabPFN": 2,
+    "TabTransformer": 2,
+    "AdaBoost": 3,
+    "Bagging": 3,
+    "LightGBM_RF": 4,
+    "XGBoost": 4,
+    "ExtraTree": 5,
+    "LightGBM_ExtraTrees": 5,
+}
+
+
+#: How hard the objective penalises points far from the decision boundary.
+#:
+#: 1 squared error or an impurity criterion | 2 logistic / cross-entropy | 3 exponential |
+#: 4 hinge | 5 the perceptron criterion.
+#:
+#: The standard robustness ordering over losses. This is the weakest claim of the four --
+#: placing the perceptron criterion above hinge is a choice rather than a consensus -- and
+#: chapter 4's caveat about ``Model Capability`` applies here with more force.
+LOSS_MARGIN_BEHAVIOUR: dict[str, int] = {
+    "Bagging": 1,
+    "DT": 1,
+    "ExtraTree": 1,
+    "KNN": 1,
+    "LDA": 1,
+    "QDA": 1,
+    "Ridge": 1,
+    "BernoulliNB": 2,
+    "DNN": 2,
+    "FT-Transformer": 2,
+    "GaussianNB": 2,
+    "LR": 2,
+    "LightGBM_ExtraTrees": 2,
+    "LightGBM_RF": 2,
+    "MLP": 2,
+    "TabICL": 2,
+    "TabNet": 2,
+    "TabPFN": 2,
+    "TabTransformer": 2,
+    "XGBoost": 2,
+    "AdaBoost": 3,
+    "LinearSVC": 4,
+    "PassiveAggressive": 4,
+    "SGD": 4,
+    "Perceptron": 5,
+}
+
+
+#: How much of P(x) the learner commits to modelling.
+#:
+#: 1 discriminative, models P(y|x) only | 2 instance-based, retains the sample and models no
+#: density | 3 generative assuming conditional independence | 4 generative with a shared
+#: covariance | 5 generative with a per-class covariance.
+#:
+#: Ng & Jordan (2001) on discriminative versus generative classifiers, and the classical
+#: LDA/QDA covariance hierarchy. **Lopsided**: rung 1 holds 376 of 476 rows and the other four
+#: hold 20-40 each, so three of its five rungs sit below the ten-percent-of-rows floor the
+#: z-score cap imposes elsewhere. Every value is a real reading -- there is no
+#: not-applicable sentinel -- but a term over this column speaks mostly about one rung.
+INPUT_DISTRIBUTION_MODELLING: dict[str, int] = {
+    "AdaBoost": 1,
+    "Bagging": 1,
+    "DNN": 1,
+    "DT": 1,
+    "ExtraTree": 1,
+    "FT-Transformer": 1,
+    "LR": 1,
+    "LightGBM_ExtraTrees": 1,
+    "LightGBM_RF": 1,
+    "LinearSVC": 1,
+    "MLP": 1,
+    "PassiveAggressive": 1,
+    "Perceptron": 1,
+    "Ridge": 1,
+    "SGD": 1,
+    "TabICL": 1,
+    "TabNet": 1,
+    "TabPFN": 1,
+    "TabTransformer": 1,
+    "XGBoost": 1,
+    "KNN": 2,
+    "BernoulliNB": 3,
+    "GaussianNB": 3,
+    "LDA": 4,
+    "QDA": 5,
+}
+
+
+#: How the parameters are reached.
+#:
+#: 1 closed form | 2 batch iterative | 3 mini-batch stochastic | 4 per-sample online |
+#: 5 amortised, fitted in-context at prediction time.
+FITTING_REGIME: dict[str, int] = {
+    "BernoulliNB": 1,
+    "GaussianNB": 1,
+    "KNN": 1,
+    "LDA": 1,
+    "QDA": 1,
+    "Ridge": 1,
+    "AdaBoost": 2,
+    "Bagging": 2,
+    "DT": 2,
+    "ExtraTree": 2,
+    "LR": 2,
+    "LightGBM_ExtraTrees": 2,
+    "LightGBM_RF": 2,
+    "LinearSVC": 2,
+    "XGBoost": 2,
+    "DNN": 3,
+    "FT-Transformer": 3,
+    "MLP": 3,
+    "SGD": 3,
+    "TabNet": 3,
+    "TabTransformer": 3,
+    "PassiveAggressive": 4,
+    "Perceptron": 4,
+    "TabICL": 5,
+    "TabPFN": 5,
+}
+
+#: The four ordinals by name, for regeneration and for the test that checks them.
+MODEL_ORDINALS: dict[str, dict[str, int]] = {
+    "Solution Stochasticity": SOLUTION_STOCHASTICITY,
+    "Loss Margin Behaviour": LOSS_MARGIN_BEHAVIOUR,
+    "Input Distribution Modelling": INPUT_DISTRIBUTION_MODELLING,
+    "Fitting Regime": FITTING_REGIME,
 }
 
 ALL_FEATURES: tuple[str, ...] = DATASET_FEATURES + MODEL_FEATURES
@@ -149,12 +371,12 @@ FEATURE_GLOSSARY: dict[str, str] = {
     "nr_norm": "number of normally distributed attributes",
     "nr_outliers": "number of attributes containing outliers",
     "ns_ratio": "noise-to-signal ratio",
-    "Processing Units Number": "model capacity (log processing units)",
-    "Training Operations": "training cost (log operations)",
-    "Prediction Operations": "inference cost (log operations)",
-    "Active Regularization Mechanisms": "number of active regularisation mechanisms",
-    "Robust to Outliers": "built-in robustness to outliers",
+    "Processing Units Number": "model capacity (number of fitted processing units)",
     "Model Capability": "learner family's capability rank in the tabular-ML literature (1-10)",
+    "Solution Stochasticity": "how deep randomisation reaches into the fit (1-5)",
+    "Loss Margin Behaviour": "how hard the loss penalises points far from the boundary (1-5)",
+    "Input Distribution Modelling": "how much of the input distribution the learner models (1-5)",
+    "Fitting Regime": "how the parameters are reached, closed form to in-context (1-5)",
 }
 
 #: The shipped corpus, resolved next to this module rather than relative to a source
@@ -233,3 +455,70 @@ def target(frame: pl.DataFrame) -> np.ndarray:
 def groups(frame: pl.DataFrame, column: str) -> np.ndarray:
     """The grouping labels used by the leave-one-out splitters."""
     return frame[column].to_numpy()
+
+
+def corpus_summary(frame: pl.DataFrame) -> pl.DataFrame:
+    """The shape of the corpus: how many rows, groups, features, and how many cells absent.
+
+    Every fact a chapter would otherwise state about the size of the meta-dataset, computed
+    from the file rather than transcribed from it. Counts only -- the distribution of the
+    target is `target_summary`, kept separate so each table can print at its own precision
+    and neither has to render a count as ``476.0000``.
+    """
+    datasets = int(frame[DATASET_COLUMN].n_unique())
+    models = int(frame[MODEL_COLUMN].n_unique())
+    return pl.DataFrame(
+        [
+            {"quantity": "rows", "count": frame.height},
+            {"quantity": "datasets", "count": datasets},
+            {"quantity": "models", "count": models},
+            {"quantity": "cells absent from the dataset-by-model grid", "count": datasets * models - frame.height},
+            {"quantity": "dataset features", "count": len(DATASET_FEATURES)},
+            {"quantity": "model features", "count": len(MODEL_FEATURES)},
+        ],
+        schema={"quantity": pl.String, "count": pl.Int64},
+    )
+
+
+def target_summary(frame: pl.DataFrame) -> pl.DataFrame:
+    """How MCC is distributed across the corpus, including how much of it is pinned.
+
+    The counts at exactly 0 and exactly 1 are here because they are the reason MAE and not
+    SMAPE is the reported error, and a reader checking that argument should be able to see
+    the counts it rests on. Together they are one fifth of the corpus; the single negative
+    row is reported separately.
+
+    Not included, because it cannot be: the variation across the five seeds from which each
+    row's maximum was selected. That lives upstream, in the corpus builder, and chapter 1
+    cites it as an external audit rather than pretending this file can recompute it.
+    """
+    values = target(frame)
+    pinned = [("at exactly 1", values == 1.0), ("at exactly 0", values == 0.0), ("below 0", values < 0.0)]
+    rows: list[dict[str, object]] = [
+        {"quantity": "mean", "MCC": float(values.mean()), "rows": frame.height},
+        {"quantity": "standard deviation", "MCC": float(values.std()), "rows": frame.height},
+        {"quantity": "minimum", "MCC": float(values.min()), "rows": int((values == values.min()).sum())},
+        {"quantity": "maximum", "MCC": float(values.max()), "rows": int((values == values.max()).sum())},
+    ]
+    rows += [{"quantity": label, "MCC": float("nan"), "rows": int(mask.sum())} for label, mask in pinned]
+    return pl.DataFrame(rows, schema={"quantity": pl.String, "MCC": pl.Float64, "rows": pl.Int64})
+
+
+def missing_cells(frame: pl.DataFrame) -> pl.DataFrame:
+    """Which datasets are short of models, and how large those datasets are.
+
+    The 24 absent cells are **not** missing at random, and the table says so on its face
+    rather than in a sentence beside it: the datasets with models missing are the smallest
+    ones in the corpus. Reported per dataset with its instance count, so a reader can see the
+    pattern instead of being told about it.
+    """
+    models = int(frame[MODEL_COLUMN].n_unique())
+    counts = (
+        frame.group_by(DATASET_COLUMN)
+        .agg(pl.len().alias("models_present"), pl.col("nr_inst").first().alias("nr_inst"))
+        .filter(pl.col("models_present") < models)
+        .sort("nr_inst")
+    )
+    return counts.with_columns((models - pl.col("models_present")).alias("models_absent")).select(
+        pl.col(DATASET_COLUMN).alias("dataset"), "nr_inst", "models_absent"
+    )
