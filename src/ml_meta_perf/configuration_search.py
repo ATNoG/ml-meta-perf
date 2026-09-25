@@ -32,7 +32,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass
 from importlib import metadata
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, NamedTuple, cast
 
 import numpy as np
 import polars as pl
@@ -785,17 +785,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0
 
 
-def _prepared_inputs(
-    features: tuple[str, ...],
-    settings: SearchSettings,
-    frame: pl.DataFrame,
-) -> tuple[Schema, tuple[str, ...], np.ndarray, np.ndarray, np.ndarray, dict[str, np.ndarray]]:
+class _PreparedInputs(NamedTuple):
+    schema: Schema
+    features: tuple[str, ...]
+    truth: np.ndarray
+    datasets: np.ndarray
+    models: np.ndarray
+    columns: dict[str, np.ndarray]
+
+
+def _prepared_inputs(features: tuple[str, ...], settings: SearchSettings, frame: pl.DataFrame) -> _PreparedInputs:
     """The schema, fitted model features, target, groups and columns for one grid point."""
     schema = settings.schema()
     if settings.target != "mcc":
         schema = drop_constant_features(frame, schema)
         features = tuple(name for name in features if name in schema.model_features)
-    return (
+    return _PreparedInputs(
         schema,
         features,
         target(frame, schema),
@@ -1170,9 +1175,7 @@ def _public_candidate(candidate: dict[str, Any]) -> dict[str, object]:
         "terms",
     )
     public = {name: candidate[name] for name in names}
-    if "fitted_features" in candidate:
-        public["fitted_features"] = candidate["fitted_features"]
-        public["n_fitted_features"] = candidate["n_fitted_features"]
+    public.update({name: candidate[name] for name in ("fitted_features", "n_fitted_features") if name in candidate})
     return public
 
 

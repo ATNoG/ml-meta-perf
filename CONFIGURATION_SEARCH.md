@@ -75,7 +75,9 @@ FlexFL CSV supplied by `--data`. Performance also requires `--task-type classifi
 The default FlexFL grid uses one feature set containing every FlexFL model feature. Use
 `--feature-set` to request subsets. `--min-features` and `--max-features` apply only to MCC
 and are rejected for FlexFL targets. Features constant in the loaded frame are removed
-before the term library is built.
+before the term library is built. FlexFL outputs add `fitted_features` and
+`n_fitted_features`, the features left after that removal, while `features` and
+`n_features` keep the requested set. MCC outputs have neither column.
 
 FlexFL uses a scale-free objective: in-sample R², LODO R², LOMO R², stability and brevity
 have weights 0.10, 0.20, 0.20, 0.15 and 0.05, renormalised by their sum of 0.70. The

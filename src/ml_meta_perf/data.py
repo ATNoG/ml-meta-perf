@@ -389,7 +389,8 @@ FLEXFL_MODEL_FEATURES: tuple[str, ...] = (
     "worker_rate_std",
     "worker_rate_cv",
 )
-SMAPE_LOWER, SMAPE_UPPER = 0.0, 2.0
+SMAPE_LOWER = 0.0
+SMAPE_UPPER = 2.0
 FLEXFL_PERFORMANCE_BOUNDS: dict[str, tuple[float, float]] = {
     "classification": (MCC_LOWER, MCC_UPPER),
     "regression": (SMAPE_LOWER, SMAPE_UPPER),

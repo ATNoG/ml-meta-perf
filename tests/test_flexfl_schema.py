@@ -29,6 +29,7 @@ from ml_meta_perf.experiment import DEFAULT
 from ml_meta_perf.model import Equation
 from ml_meta_perf.search import search
 from ml_meta_perf.terms import build_library
+from tests.corpus import sample_path
 
 FIXTURE = Path(__file__).parent / "fixtures" / "flexfl_meta_dataset_sample.csv"
 TINY = dataclasses.replace(DEFAULT, max_terms=2, pool_size=20, beam_width=1, max_arity=1)
@@ -122,8 +123,9 @@ class FlexFLSchemaTests(unittest.TestCase):
         for term in result.equation.equation.terms:
             self.assertTrue(set(term.features).isdisjoint(DROPPED))
         self.assertGreater(result.effects.height, 0)
-        labels = {"raises comm_bytes_total", "lowers comm_bytes_total"}
-        self.assertTrue(all(value in labels for value in result.effects["direction"]))
+        for row in result.effects.iter_rows(named=True):
+            expected = "raises" if row["beta"] > 0 else "lowers"
+            self.assertEqual(row["direction"], f"{expected} comm_bytes_total")
         shares = result.shares["share"]
         self.assertTrue(abs(shares.sum() - 1) < 1e-9 or all(value == 0 for value in shares))
 
@@ -195,14 +197,34 @@ class FlexFLSchemaTests(unittest.TestCase):
                         requested_set, fitted_set = set(json.loads(requested)), set(json.loads(fitted))
                         self.assertEqual(fitted_set, requested_set - DROPPED)
                         self.assertLess(len(fitted_set), len(requested_set))
-            selected = json.loads((out / "selected_configurations.json").read_text())["e3_valid"]
-            fitted = json.loads(selected["fitted_features"])
-            self.assertEqual(selected["n_fitted_features"], len(fitted))
-            self.assertTrue(set(fitted).isdisjoint(DROPPED))
-            self.assertEqual(selected["n_features"], len(FLEXFL_MODEL_FEATURES))
+            finalists = pl.read_csv(out / "finalists.csv")
+            self.assertFalse([column for column in finalists.columns if column.endswith("_right")])
+            selected = json.loads((out / "selected_configurations.json").read_text())
+            for key in ("e3_valid", "e3_max"):
+                with self.subTest(candidate=key):
+                    fitted = json.loads(selected[key]["fitted_features"])
+                    self.assertEqual(selected[key]["n_fitted_features"], len(fitted))
+                    self.assertTrue(set(fitted).isdisjoint(DROPPED))
+                    self.assertEqual(selected[key]["n_features"], len(FLEXFL_MODEL_FEATURES))
 
     def test_mcc_rows_carry_no_fitted_columns(self) -> None:
         self.assertEqual(configuration_search._fitted_columns(SearchSettings(), ("Model Capability",)), {})
+
+    def test_mcc_search_outputs_carry_no_fitted_columns(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            argv = [
+                "all", "--data", str(sample_path()), "--output", str(out), "--jobs", "1", "--penalty", "20",
+                "--zscore", "3", "--arity", "1", "--feature-set", "Model Capability,Processing Units Number",
+                "--min-terms", "1", "--max-terms", "2", "--pool", "20", "--beam", "1", "--shortlist-top", "1",
+            ]
+            self.assertEqual(configuration_search.main(argv), 0)
+            fitted = {"fitted_features", "n_fitted_features"}
+            for name in ("equation_search.csv", "finalists.csv", "finalist_fold_errors.csv"):
+                self.assertTrue(fitted.isdisjoint(pl.read_csv(out / name).columns), name)
+            selected = json.loads((out / "selected_configurations.json").read_text())
+            for key in ("e3_valid", "e3_max"):
+                self.assertTrue(fitted.isdisjoint(selected[key]), key)
 
     def test_search_cli_runs_performance(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
