@@ -121,7 +121,9 @@ class FlexFLSchemaTests(unittest.TestCase):
         self.assertNotIn("alpha", result.schema.features)
         for term in result.equation.equation.terms:
             self.assertTrue(set(term.features).isdisjoint(DROPPED))
-        self.assertTrue(all("MCC" not in value for value in result.effects["direction"]))
+        self.assertGreater(result.effects.height, 0)
+        labels = {"raises comm_bytes_total", "lowers comm_bytes_total"}
+        self.assertTrue(all(value in labels for value in result.effects["direction"]))
         shares = result.shares["share"]
         self.assertTrue(abs(shares.sum() - 1) < 1e-9 or all(value == 0 for value in shares))
 
@@ -174,9 +176,33 @@ class FlexFLSchemaTests(unittest.TestCase):
             self.assertIsNone(Equation.load(out / "e3_valid.json").bounds)
             self.assertTrue((out / "e3_valid.txt").read_text().startswith("comm_bytes_total = "))
             table = pl.read_csv(out / "equation_search.csv")
-            self.assertTrue(table["binary"].is_nan().all())
+            for column in (
+                "binary", "ranking", "binary_accuracy", "binary_f1", "binary_map",
+                "ranking_map", "ranking_mrr", "ranking_hit1", "ranking_regret1",
+            ):
+                self.assertTrue(table[column].is_nan().all(), column)
             self.assertTrue(np.isfinite(table["objective"].to_numpy()).all())
             self.assertEqual(json.loads((out / "manifest.json").read_text())["settings"]["target"], "comm_bytes_total")
+
+    def test_search_records_the_fitted_features(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            self.assertEqual(configuration_search.main(search_argv(out)), 0)
+            for name in ("equation_search.csv", "finalists.csv", "finalist_fold_errors.csv"):
+                table = pl.read_csv(out / name)
+                with self.subTest(name=name):
+                    for requested, fitted in zip(table["features"], table["fitted_features"], strict=True):
+                        requested_set, fitted_set = set(json.loads(requested)), set(json.loads(fitted))
+                        self.assertEqual(fitted_set, requested_set - DROPPED)
+                        self.assertLess(len(fitted_set), len(requested_set))
+            selected = json.loads((out / "selected_configurations.json").read_text())["e3_valid"]
+            fitted = json.loads(selected["fitted_features"])
+            self.assertEqual(selected["n_fitted_features"], len(fitted))
+            self.assertTrue(set(fitted).isdisjoint(DROPPED))
+            self.assertEqual(selected["n_features"], len(FLEXFL_MODEL_FEATURES))
+
+    def test_mcc_rows_carry_no_fitted_columns(self) -> None:
+        self.assertEqual(configuration_search._fitted_columns(SearchSettings(), ("Model Capability",)), {})
 
     def test_search_cli_runs_performance(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -197,6 +223,7 @@ class FlexFLSchemaTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             SearchSettings(task_type="regression").validate()
         self.assertNotIn("target", _settings_payload(SearchSettings()))
+        self.assertNotIn("task_type", _settings_payload(SearchSettings()))
 
     def test_search_cli_feature_set(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

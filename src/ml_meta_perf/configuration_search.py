@@ -785,6 +785,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0
 
 
+def _prepared_inputs(
+    features: tuple[str, ...],
+    settings: SearchSettings,
+    frame: pl.DataFrame,
+) -> tuple[Schema, tuple[str, ...], np.ndarray, np.ndarray, np.ndarray, dict[str, np.ndarray]]:
+    """The schema, fitted model features, target, groups and columns for one grid point."""
+    schema = settings.schema()
+    if settings.target != "mcc":
+        schema = drop_constant_features(frame, schema)
+        features = tuple(name for name in features if name in schema.model_features)
+    return (
+        schema,
+        features,
+        target(frame, schema),
+        groups(frame, schema.dataset_column),
+        groups(frame, schema.model_column),
+        columns_as_arrays(frame, schema.dataset_features + features),
+    )
+
+
 def _safe_evaluate_library_point(
     point: LibraryPoint,
     settings: SearchSettings,
@@ -801,16 +821,7 @@ def _evaluate_library_point(
     settings: SearchSettings,
     frame: pl.DataFrame,
 ) -> list[dict[str, object]]:
-    schema = settings.schema()
-    if settings.target != "mcc":
-        schema = drop_constant_features(frame, schema)
-        features = tuple(name for name in point.features if name in schema.model_features)
-    else:
-        features = point.features
-    truth = target(frame, schema)
-    datasets = groups(frame, schema.dataset_column)
-    models = groups(frame, schema.model_column)
-    columns = columns_as_arrays(frame, schema.dataset_features + features)
+    schema, features, truth, datasets, models, columns = _prepared_inputs(point.features, settings, frame)
     library = build_library(
         schema.dataset_features,
         features,
@@ -882,6 +893,7 @@ def _evaluate_library_point(
                     "library_point_id": point.point_id,
                     "features": _encode_features(point.features),
                     "n_features": len(point.features),
+                    **_fitted_columns(settings, features),
                     "penalty": penalty,
                     "max_abs_zscore": point.max_abs_zscore,
                     "max_arity": point.max_arity,
@@ -926,16 +938,7 @@ def _safe_evaluate_finalist(
 
 
 def _evaluate_finalist(point: BasePoint, settings: SearchSettings, frame: pl.DataFrame) -> WorkerResult:
-    schema = settings.schema()
-    if settings.target != "mcc":
-        schema = drop_constant_features(frame, schema)
-        features = tuple(name for name in point.features if name in schema.model_features)
-    else:
-        features = point.features
-    truth = target(frame, schema)
-    datasets = groups(frame, schema.dataset_column)
-    models = groups(frame, schema.model_column)
-    columns = columns_as_arrays(frame, schema.dataset_features + features)
+    schema, features, truth, datasets, models, columns = _prepared_inputs(point.features, settings, frame)
     rows: list[dict[str, object]] = []
     fold_errors: list[dict[str, object]] = []
     equations_payload: dict[str, dict[str, object]] = {}
@@ -992,6 +995,7 @@ def _evaluate_finalist(point: BasePoint, settings: SearchSettings, frame: pl.Dat
                     {
                         "base_id": point.base_id,
                         "features": _encode_features(point.features),
+                        **_fitted_columns(settings, features),
                         "penalty": point.penalty,
                         "max_abs_zscore": point.max_abs_zscore,
                         "max_arity": arity,
@@ -1138,6 +1142,12 @@ def _average_precision(labels: np.ndarray, scores: np.ndarray) -> float:
     return float((precision * labels[order]).sum() / labels.sum())
 
 
+def _fitted_columns(settings: SearchSettings, features: tuple[str, ...]) -> dict[str, object]:
+    if settings.target == "mcc":
+        return {}
+    return {"fitted_features": _encode_features(features), "n_fitted_features": len(features)}
+
+
 def _public_candidate(candidate: dict[str, Any]) -> dict[str, object]:
     names = (
         "base_id",
@@ -1159,7 +1169,11 @@ def _public_candidate(candidate: dict[str, Any]) -> dict[str, object]:
         "stability",
         "terms",
     )
-    return {name: candidate[name] for name in names}
+    public = {name: candidate[name] for name in names}
+    if "fitted_features" in candidate:
+        public["fitted_features"] = candidate["fitted_features"]
+        public["n_fitted_features"] = candidate["n_fitted_features"]
+    return public
 
 
 def _load_candidate_equation(directory: Path, candidate: dict[str, Any]) -> Equation:

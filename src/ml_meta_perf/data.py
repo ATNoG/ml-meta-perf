@@ -336,7 +336,12 @@ MODEL_ORDINALS: dict[str, dict[str, int]] = {
 
 ALL_FEATURES: tuple[str, ...] = DATASET_FEATURES + MODEL_FEATURES
 MCC_SCHEMA = Schema(
-    DATASET_COLUMN, MODEL_COLUMN, DATASET_FEATURES, MODEL_FEATURES, TARGET_COLUMN, (MCC_LOWER, MCC_UPPER)
+    dataset_column=DATASET_COLUMN,
+    model_column=MODEL_COLUMN,
+    dataset_features=DATASET_FEATURES,
+    model_features=MODEL_FEATURES,
+    target_column=TARGET_COLUMN,
+    bounds=(MCC_LOWER, MCC_UPPER),
 )
 
 FLEXFL_DATASET_COLUMN = "dataset"
@@ -384,9 +389,10 @@ FLEXFL_MODEL_FEATURES: tuple[str, ...] = (
     "worker_rate_std",
     "worker_rate_cv",
 )
+SMAPE_LOWER, SMAPE_UPPER = 0.0, 2.0
 FLEXFL_PERFORMANCE_BOUNDS: dict[str, tuple[float, float]] = {
     "classification": (MCC_LOWER, MCC_UPPER),
-    "regression": (0.0, 2.0),
+    "regression": (SMAPE_LOWER, SMAPE_UPPER),
 }
 
 
@@ -400,13 +406,13 @@ def flexfl_schema(target: str, task_type: str | None = None) -> Schema:
         raise ValueError("the performance target needs a task type: MCC and SMAPE do not share a scale")
     bounds = FLEXFL_PERFORMANCE_BOUNDS[task_type] if target == "performance" and task_type is not None else None
     return Schema(
-        FLEXFL_DATASET_COLUMN,
-        FLEXFL_MODEL_COLUMN,
-        FLEXFL_DATASET_FEATURES,
-        FLEXFL_MODEL_FEATURES,
-        target,
-        bounds,
-        task_type,
+        dataset_column=FLEXFL_DATASET_COLUMN,
+        model_column=FLEXFL_MODEL_COLUMN,
+        dataset_features=FLEXFL_DATASET_FEATURES,
+        model_features=FLEXFL_MODEL_FEATURES,
+        target_column=target,
+        bounds=bounds,
+        task_type=task_type,
     )
 
 #: Learner family for each model in the meta-dataset. Model *features* describe capacity
