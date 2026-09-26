@@ -121,8 +121,8 @@ def captions(report: Report, data: str | Path | None = None) -> dict[str, str]:
         figure_name("term_count_curve"): (
             "Accuracy against equation length for E3 under in-sample (IS), "
             "leave-one-dataset-out (LODO), and leave-one-model-out (LOMO) evaluation. "
-            "The vertical line is the published length, chosen by "
-            "the retained Combined-R2 plateau rule across the searched arities. "
+            "The vertical line is the published length, chosen as the first knee of the "
+            "smoothed worst-protocol curve followed by a sustained plateau. "
             "The additive mean-based reference is the best score reachable by an equation additive in "
             "dataset and model effects; an equation passes it only by representing the "
             "dataset-by-model interaction the additive reference cannot."

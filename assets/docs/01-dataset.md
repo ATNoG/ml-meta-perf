@@ -48,7 +48,7 @@ Three properties of this target shape every downstream decision:
 
 ## The meta-dataset
 
-`src/ml_meta_perf/meta_dataset.csv` — one row per (dataset, model) pair, no missing values.
+`dataset/meta_dataset.csv` — one row per (dataset, model) pair, no missing values.
 Its shape, and which pairs are absent, are in the generated section below.
 
 ### Each row is the best of five seeds, not their mean
@@ -277,8 +277,9 @@ Two things these tables cannot say, both of which bound every number in the stud
   should be read, never a single cell.
 - E1's cross-validated result rests on only 20 folds; its per-fold errors and dispersion must
   be read alongside the pooled R².
-- E3-Valid operates on a curve whose points carry that much noise. Its sustained-plateau rule
-  therefore reads a forward window of term counts rather than reacting to one adjacent point.
+- Every equation's length is read off a curve whose points carry that much noise. The length
+  rule therefore smooths the curve with a running median and asks for a plateau over a forward
+  window of lengths, rather than reacting to one adjacent point.
 
 Twenty-five models is more comfortable but still small for the LOMO protocol.
 

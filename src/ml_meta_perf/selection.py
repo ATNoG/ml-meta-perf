@@ -1,122 +1,58 @@
-"""The retained E3 equation-selection rules.
+"""How long an equation should be: one rule for E1, E2 and E3-Valid, and a bound for E3-MAX.
 
-E3-Valid follows the first sustained plateau in the median of in-sample (IS),
-leave-one-dataset-out (LODO), and leave-one-model-out (LOMO) R². E3-MAX independently
-maximises the worst of those protocols and doubly held-out (DHO) evaluation.
+Every equation is searched once up to a horizon and cross-validated at every length, so the
+choice of length is a reading of a complete curve. The curve read is the **floor**: the worst
+R2 over in-sample (IS), leave-one-dataset-out (LODO), leave-one-model-out (LOMO) and doubly
+held-out (DHO) validation, so a length is only as good as the protocol it does worst on.
+
+Adjacent lengths on that curve differ by 0.03 to 0.05 for reasons that belong to one fold, not
+to the length, so any argmax over it -- or any threshold on its raw steps -- chooses noise.
+`plateau_knee` therefore reads a smoothed curve and asks where the returns stop:
+
+1. **smooth** the floor with a running median, so no single length can choose or block;
+2. **propose** lengths with multi-Kneedle (the `kneeliverse` library) on the smoothed curve's
+   Pareto front -- the lengths where the rate of improvement bends -- plus the smoothed
+   maximum itself, after which by definition nothing improves;
+3. **choose** the first proposed length after which the smoothed floor gains at most ``delta``
+   over the next ``window`` lengths.
+
+A knee alone lands where the *rate* of improvement first bends, five to nine terms in, well
+before the curve levels off; a threshold alone reads noise. Together they choose the start of
+the first sustained plateau, which is the shortest equation that has stopped improving. When
+every knee is still followed by real gains, that start is the smoothed maximum.
+
+E3-MAX is not put forward as an equation to read: it is the same configuration under the wider
+grammar, at the raw maximum of its floor (`floor_argmax`), bounding what the additive form can
+reach.
+
+Study chapter: [3. Term generation and selection][study-chapter] -- the rationale, in prose.
+
+[study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/03-term-selection.md
 """
 
 from __future__ import annotations
 
+import kneeliverse.kneedle as kneedle
+import kneeliverse.multi_knee as multi_knee
 import numpy as np
 import polars as pl
 
-#: The three protocols a length can be judged on, in the order `consensus_curve` combines them.
-PROTOCOLS = ("r2_in_sample", "r2_loo_dataset", "r2_loo_model")
-PLATEAU_TOLERANCE = 0.001
-PLATEAU_WINDOW = 3
+#: Every protocol a length is judged on; `floor_curve` takes the minimum over those present.
+JUDGED_PROTOCOLS = ("r2_in_sample", "r2_loo_dataset", "r2_loo_model", "r2_loo_cell")
 
-#: Every protocol a *configuration* is judged on, which is `PROTOCOLS` plus DHO
-#: one. `floor_curve` takes the minimum over these and E3-MAX selects on it.
-#:
-#: DHO is in this set and not in `PROTOCOLS` deliberately. `consensus_curve` is
-#: the per-length reading used by E3-Valid and stays on the three single-group protocols. The E3-MAX rule
-#: is the one that publishes a headline about an unseen (dataset, model) cell, so it is the one
-#: that has to select on that protocol rather than on three looser ones.
-JUDGED_PROTOCOLS = (*PROTOCOLS, "r2_loo_cell")
-
-
-def consensus_curve(curve: pl.DataFrame, how: str = "median") -> np.ndarray:
-    """One score per length, combining every protocol present.
-
-    **A length must not be chosen on IS R² alone.** IS is monotone in the number
-    of terms, so it can only ever say "more", and a length picked on it is picked on the one
-    curve that cannot express the trade the choice is about. But the cross-validated curves
-    cannot be used alone either: on twenty groups they wander, and LODO has
-    genuine craters -- a held-out dataset lying outside the convex hull of the other nineteen
-    is extrapolated far outside MCC's range and then clipped, which at one length drops the
-    pooled figure from 0.63 to 0.39.
-
-    ``median`` is the default and is what makes this robust: a crater in one protocol moves the
-    median to the middle value rather than dragging an average down with it. At the length
-    above the three protocols read 0.667 / 0.399 / 0.616 and the median is 0.616 -- the crater
-    is ignored, which is correct, because one fold's extrapolation is a property of that fold
-    and not of the length.
-
-    ``mean`` is offered for comparison and is *not* robust to that. ``min`` is the conservative
-    reading: a length is only as good as its worst protocol.
-    """
-    columns = [name for name in PROTOCOLS if name in curve.columns]
-    if not columns:
-        raise ValueError("curve carries none of the protocol columns")
-    stacked = np.column_stack([curve[name].to_numpy() for name in columns])
-    if how == "mean":
-        return stacked.mean(axis=1)
-    if how == "min":
-        return stacked.min(axis=1)
-    return np.median(stacked, axis=1)
-
-
-def plateau_index(
-    scores: np.ndarray,
-    *,
-    tolerance: float = PLATEAU_TOLERANCE,
-    window: int = PLATEAU_WINDOW,
-) -> int:
-    """Return the best point immediately before a sustained performance plateau.
-
-    The input order is the increasing equation length. The rule follows the best score seen
-    so far and selects the first point whose best-so-far gain over the next ``window`` points
-    does not exceed ``tolerance``. If no plateau is found, it returns the first global maximum.
-    """
-    values = np.asarray(scores, dtype=np.float64)
-    if values.ndim != 1 or values.size == 0:
-        raise ValueError("plateau selection needs a non-empty one-dimensional score curve")
-    if tolerance < 0.0:
-        raise ValueError("plateau tolerance must be non-negative")
-    if window < 1:
-        raise ValueError("plateau window must be positive")
-    envelope = np.maximum.accumulate(values)
-    for index in range(max(len(values) - window, 0)):
-        if float(envelope[index + window] - envelope[index]) <= tolerance:
-            return index
-    return int(np.argmax(values))
-
-
-def plateau_configuration(
-    curves: dict[int, pl.DataFrame],
-    *,
-    tolerance: float = PLATEAU_TOLERANCE,
-    window: int = PLATEAU_WINDOW,
-) -> tuple[int, int]:
-    """Select E3-Valid across arities with the retained plateau rule."""
-    candidates: dict[int, tuple[float, int]] = {}
-    for arity, curve in sorted(curves.items()):
-        for size, score in zip(curve["n_terms"], consensus_curve(curve), strict=True):
-            key = int(size)
-            value = float(score)
-            incumbent = candidates.get(key)
-            if incumbent is None or (-value, complexity(arity, key), arity) < (
-                -incumbent[0],
-                complexity(incumbent[1], key),
-                incumbent[1],
-            ):
-                candidates[key] = (value, arity)
-    if not candidates:
-        raise ValueError("no E3 curves are available for plateau selection")
-    sizes = sorted(candidates)
-    scores = np.asarray([candidates[size][0] for size in sizes], dtype=np.float64)
-    index = plateau_index(scores, tolerance=tolerance, window=window)
-    best_index = int(np.argmax(scores[: index + 1]))
-    size = sizes[best_index]
-    return candidates[size][1], size
+#: multi-Kneedle's recursion settings: stop splitting a segment once a straight line explains
+#: it to this coefficient of determination ...
+KNEE_FIT_THRESHOLD = 0.001
+#: ... or once it has fewer points than this.
+KNEE_MIN_POINTS = 3
 
 
 def complexity(arity: int, n_terms: int) -> int:
     """Feature slots an equation spends: a term of arity ``a`` names ``a`` raw features.
 
     **Not a count of fitted coefficients** -- those number ``n_terms + 1``. This charges for how
-    much of the *grammar* an equation uses, which is what lets it tell the same term count at
-    arity 2 apart from arity 3. A coefficient count cannot make that distinction.
+    much of the *grammar* an equation uses, which is what tells the same term count at arity 2
+    apart from arity 3.
     """
     return arity * n_terms
 
@@ -124,23 +60,11 @@ def complexity(arity: int, n_terms: int) -> int:
 def floor_curve(curve: pl.DataFrame) -> np.ndarray:
     """The **worst** of every protocol present, per length. This is what a length is judged on.
 
-    A length is only as good as the protocol it does worst on. That is the conservative
-    reading `consensus_curve` offers as ``how="min"``, taken here as the criterion rather than
-    as an option, and taken over **four** protocols rather than three: IS, LODO, LOMO, and DHO.
-
-    Two reasons the minimum rather than the median, and both are about what the study claims.
-    The median lets a length hide its weakest protocol behind its other two, and the weakest
-    protocol here is always `r2_loo_cell` -- the one the study's headline is actually about,
-    the cell where neither the dataset nor the model has been seen. A rule that reports the
-    strictest protocol and then selects on a median of looser ones is selecting on a different
-    quantity from the one it publishes. And the median of four is an average of the middle two,
-    which is neither a protocol nor a bound; the minimum is always some protocol's own number.
-
-    The craters `consensus_curve` was made robust against are still handled, because they are
-    *shared*: a held-out dataset outside the convex hull of the other nineteen is extrapolated
-    under LODO and DHO alike, so at those lengths the
-    minimum drops with the median rather than instead of it. On this corpus the two agree on
-    where the arity-2 curve peaks to within the lengths that crater.
+    The minimum rather than a median, because the weakest protocol is almost always DHO -- the
+    cell where neither the dataset nor the model has been seen, which is what the study's
+    headline is about -- and a rule that reports the strictest protocol but selects on a looser
+    summary selects on a different quantity from the one it publishes. The minimum is always
+    some protocol's own number.
     """
     columns = [name for name in JUDGED_PROTOCOLS if name in curve.columns]
     if not columns:
@@ -148,27 +72,78 @@ def floor_curve(curve: pl.DataFrame) -> np.ndarray:
     return np.column_stack([curve[name].to_numpy() for name in columns]).min(axis=1)
 
 
+def smoothed(values: np.ndarray, width: int) -> np.ndarray:
+    """A centred running median of ``width`` points, shrinking at the ends.
+
+    A median rather than a mean because the noise here is spiky: one held-out dataset outside
+    the convex hull of the other nineteen craters a single length, and a mean would spread that
+    crater onto its neighbours where a median ignores it. The same holds for a single lucky
+    length, which is what a raw argmax picks.
+    """
+    if width < 1:
+        raise ValueError("the smoothing width must be positive")
+    half = width // 2
+    return np.array([np.median(values[max(index - half, 0) : index + half + 1]) for index in range(len(values))])
+
+
+def knee_lengths(curve: pl.DataFrame, smoothing: int) -> list[int]:
+    """The lengths multi-Kneedle proposes on the smoothed floor's Pareto front, ascending.
+
+    The front keeps only lengths that improve on every shorter one, so a knee is always a
+    length worth its terms; the knees are where the front's rate of improvement bends.
+    """
+    lengths = curve["n_terms"].to_numpy()
+    floor = smoothed(floor_curve(curve), smoothing)
+    front = [index for index in range(len(floor)) if index == 0 or floor[index] > floor[:index].max()]
+    if len(front) < KNEE_MIN_POINTS + 1:
+        return []
+    points = np.column_stack([lengths[front], floor[front]]).astype(np.float64)
+    found = multi_knee.multi_knee(kneedle.knee, points, t1=KNEE_FIT_THRESHOLD, t2=KNEE_MIN_POINTS)
+    return sorted({int(lengths[front[int(index)]]) for index in found})
+
+
+def plateau_start(curve: pl.DataFrame, *, delta: float, window: int, smoothing: int) -> tuple[int, str]:
+    """The equation length and how it was reached: ``"knee"`` or ``"maximum"``.
+
+    Candidates are the lengths `knee_lengths` proposes and the smoothed maximum. The chosen one
+    is the first, in increasing length, whose smoothed floor gains at most ``delta`` over the
+    next ``window`` lengths. The maximum always qualifies -- nothing after it gains -- so the
+    rule always returns; a maximum closer to the horizon than ``window`` is still returned,
+    and `experiment.selection_summary` flags a length that sits at the horizon.
+    """
+    if delta < 0.0 or window < 1:
+        raise ValueError("delta must be non-negative and the window positive")
+    lengths = curve["n_terms"].to_numpy()
+    floor = smoothed(floor_curve(curve), smoothing)
+    peak = int(lengths[int(np.argmax(floor))])
+    position = {int(length): index for index, length in enumerate(lengths)}
+    for candidate in sorted({*knee_lengths(curve, smoothing), peak}):
+        if candidate == peak:
+            return peak, "maximum"
+        index = position[candidate]
+        ahead = floor[index + 1 : index + 1 + window]
+        if len(ahead) == window and float(ahead.max() - floor[index]) <= delta:
+            return candidate, "knee"
+    return peak, "maximum"  # unreachable: the peak is always a candidate
+
+
+def plateau_knee(curve: pl.DataFrame, *, delta: float, window: int, smoothing: int) -> int:
+    """The equation length: the start of the first sustained plateau. **The length rule.**
+
+    See `plateau_start`, which also says whether the length is a knee or the smoothed maximum.
+    """
+    return plateau_start(curve, delta=delta, window=window, smoothing=smoothing)[0]
+
+
 def protocol_spread(curve: pl.DataFrame) -> np.ndarray:
     """How far a length falls from its fit to its worst protocol: ``IS - floor``.
 
-    **Reported, not selected on** -- E3-Valid uses `plateau_configuration` -- and reported because the
-    claim it measures would otherwise be asserted. An equation that fits well and transfers
-    badly is a different object from one that does both moderately, and the floor alone cannot
-    tell them apart: two lengths reaching the same worst protocol from a different fit are the
-    same number to `floor_curve` and are not the same equation.
-
-    On the corrected corpus, arity-3 E3-MAX has a spread of 0.0640. Arity-2 E3-Valid has a
-    spread of 0.0684 and its worst-protocol R² is lower by 0.0451. This is the same quantity
-    the beam negatives record: a policy that fits well and then collapses under validation
-    has a large spread.
-
-    This is deliberately *not* folded into the selection score. Combining a level and a spread
-    needs a weight between them, a weight is a free parameter, and a free parameter is what
-    this rule was revised to remove. The two are reported side by side and the argument is made
-    in the chapter instead.
+    **Reported, not selected on.** An equation that fits well and transfers badly is a
+    different object from one that does both moderately, and the floor alone cannot tell them
+    apart. Folding the spread into the selection would need a weight between level and spread,
+    which is a free parameter; the two are reported side by side instead.
     """
-    columns = [name for name in JUDGED_PROTOCOLS if name in curve.columns]
-    if "r2_in_sample" not in columns:
+    if "r2_in_sample" not in curve.columns:
         raise ValueError("a spread needs the IS column to measure the drop from")
     return curve["r2_in_sample"].to_numpy() - floor_curve(curve)
 
@@ -179,37 +154,11 @@ def floor_argmax_index(curve: pl.DataFrame) -> int:
 
 
 def floor_argmax(curve: pl.DataFrame) -> int:
-    """The length maximising `floor_curve`. **This is the length rule, for one grammar.**
+    """The length maximising the raw floor: **E3-MAX's rule**, a capability bound.
 
-    `experiment.run_equation` uses it for equations without the E3 plateau selection, and
-    `arity_candidates` uses it to build the E3-MAX candidate set.
-
-    An argmax, so there is no threshold, no smoothing window, no sensitivity parameter and no
-    corpus size in it.
+    No smoothing and no complexity penalty, because this equation is not put forward to be
+    read -- it bounds what the additive form can reach, and a bound should not be discounted
+    for being long. Ties go to the shorter equation. A result at the horizon means the bound
+    is the horizon's, not the data's; `experiment` reports that.
     """
     return int(curve["n_terms"].to_numpy()[floor_argmax_index(curve)])
-
-
-def arity_candidates(curves: dict[int, pl.DataFrame]) -> dict[int, int]:
-    """One length per arity: the argmax of that arity's `floor_curve`.
-
-    **The candidate set is one length per grammar, and that is what keeps the rule honest.**
-    This is the capability candidate for each grammar. It remains separate from E3-Valid,
-    whose plateau rule reads the three-protocol Combined R2 curve.
-    """
-    return {arity: floor_argmax(curve) for arity, curve in curves.items()}
-
-
-def most_capable(curves: dict[int, pl.DataFrame]) -> tuple[int, int]:
-    """``(arity, n_terms)`` with the best floor: how far the additive form reaches.
-
-    No complexity penalty, because this one is not put forward as an equation to read -- it
-    exists to bound what the form can do, and a bound should not be discounted for being long.
-    Ties go to the shorter equation.
-    """
-    ranked = [
-        (float(floor_curve(curves[arity]).max()), -size, arity, size)
-        for arity, size in arity_candidates(curves).items()
-    ]
-    _, _, arity, size = max(ranked)
-    return arity, size

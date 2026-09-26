@@ -1,4 +1,0 @@
-# Dependencies for regenerating src/ml_meta_perf/meta_dataset.csv from raw datasets.
-# The package/runtime requirements in pyproject.toml are enough to consume the shipped
-# corpus; this file is for meta_dataset_pipeline/.
--e .[meta-dataset]

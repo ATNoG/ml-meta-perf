@@ -37,9 +37,53 @@ dependencies = [
     # arrive with the `search` extra, which meant a base-only install type-checked with an
     # unresolved import; it is a base dependency now because the study itself runs it.
     "joblib>=1.4.0",
+    # Reads `config/study.json` -- the one file holding every tuned hyperparameter -- into the
+    # typed configuration dataclasses, and lets a command line override any field of it.
+    "jsonargparse>=4.40.0",
+    # Knee detection (Kneedle, multi-knee) for the equation-length rule, `selection.plateau_knee`.
+    "kneeliverse>=1.2.0",
 ]
 
 [project.optional-dependencies]
+# The development and CI tooling. The versions are pinned because an unpinned linter release
+# that enables new rules by default fails a change that touched none of the code it flags;
+# `.pre-commit-config.yaml` and `.github/workflows/main.yml` install exactly these.
+dev = [
+    "ruff==0.16.9",
+    "basedpyright==1.40.1",
+    "vulture==2.16",
+    "pre-commit==4.6.2",
+]
+# The exact runtime of the reference reproduction (Python 3.12). The ranges in `dependencies`
+# are what the package supports; these pins are what the published numbers and figures were
+# produced with, including the transitive packages that can move a result.
+reproducibility = [
+    "cloudpickle==3.1.2",
+    "contourpy==1.4.0",
+    "cycler==0.12.1",
+    "fonttools==4.66.0",
+    "jsonargparse==4.52.0",
+    "joblib==1.6.0",
+    "kiwisolver==1.5.1",
+    "kneeliverse==1.2.0",
+    "matplotlib==3.11.2",
+    "narwhals==2.26.0",
+    "numpy==2.5.3",
+    "packaging==26.3",
+    "pillow==12.3.0",
+    "polars==1.44.2",
+    "polars-runtime-32==1.44.2",
+    "pyparsing==3.3.3",
+    "python-dateutil==2.9.0.post0",
+    "pyUTSAlgorithms==0.2.1",
+    "PyYAML==6.0.3",
+    "scikit-learn==1.9.1",
+    "scipy==1.18.1",
+    "six==1.17.0",
+    "threadpoolctl==3.7.0",
+]
+# Regenerating `dataset/meta_dataset.csv` from the raw datasets (`meta_dataset_pipeline/`).
+# Consuming the corpus needs none of this.
 meta-dataset = [
     "pandas>=2.2.0",
     "pymfe==0.4.4",
@@ -61,10 +105,10 @@ meta-dataset = [
 # The pipeline entry point. `ml-meta-perf --help` documents every input; the study is
 # the default with no arguments.
 ml-meta-perf = "ml_meta_perf.cli:main"
-# The exhaustive recalibration is intentionally separate from the study's ordinary entry
-# point: a bare `ml-meta-perf` run reproduces one retained configuration, while this command
-# creates thousands of configurations and belongs on a Slurm node.
-ml-meta-perf-search = "ml_meta_perf.configuration_search:main"
+# The configuration sweep is separate from the study's ordinary entry point: a bare
+# `ml-meta-perf` run reproduces the configuration in `config/study.json`, while this command
+# fits every point of its grid and proposes a replacement file.
+ml-meta-perf-search = "ml_meta_perf.sweep:main"
 
 [project.urls]
 Repository = "https://github.com/mariolpantunes/ml-meta-perf"
@@ -73,21 +117,20 @@ Issues = "https://github.com/mariolpantunes/ml-meta-perf/issues"
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.setuptools.package-data]
-# The corpus ships with the package: `pip install ml-meta-perf && ml-meta-perf` has no repository
-# around it to find a top-level data/ directory in.
-ml_meta_perf = ["meta_dataset.csv"]
 
 [tool.ruff]
 line-length = 120
-src = ["src", "tests", "scripts"]
+src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.basedpyright]
 typeCheckingMode = "standard"
-include = ["src/ml_meta_perf", "tests", "scripts"]
+include = ["src/ml_meta_perf", "tests"]
+# The source tree, so the type check reads the working copy without the package installed --
+# which is how the pre-commit hook runs it.
+extraPaths = ["src"]
 # No `venvPath`/`venv` here. basedpyright exits 3 when the configured venv is absent, which
 # is every CI runner, and without it the tool does not infer one from the interpreter that
 # launched it. Both call sites pass `--pythonpath` instead, which says the same thing
@@ -95,7 +138,7 @@ include = ["src/ml_meta_perf", "tests", "scripts"]
 reportImportCycles = "none"
 
 [tool.vulture]
-paths = ["src/ml_meta_perf", "tests", "scripts"]
+paths = ["src/ml_meta_perf", "tests"]
 min_confidence = 80
 
 [tool.coverage.run]

@@ -28,51 +28,52 @@ can inspect, challenge, and use to derive guidance.
 ## Headline results
 
 The equation labels are **E1** (dataset features only), **E2** (model features only),
-**E3-Valid** (the plateau-selected equation using both feature groups), and **E3-MAX**
-(the maximum-capability equation using both feature groups).
+**E3-Valid** (the published equation, using both feature groups), and **E3-MAX** (the same
+configuration under a wider grammar, a capability bound rather than an equation to read).
 
-| | IS | LODO | LOMO |
-|---|---|---|---|
-| E1 — dataset features only, 16 terms | 0.354 | 0.349 | 0.300 |
-| E2 — model features only, 6 terms | 0.259 | 0.197 | 0.237 |
-| **E3-Valid — both, 18 terms** | **0.679** | **0.652** | **0.615** |
-| E3-MAX — capability bound, 25 terms | 0.719 | 0.691 | 0.655 |
+The table below is **generated**: `ml-meta-perf` rewrites it on every run, like the result
+sections of the chapters, so it cannot drift from the code.
+
+<!-- generated: do not edit below -->
+
+## The headline
+
+The one table the study is summarised by, so that the summary cannot drift from the chapters. Every row is scored on the same 476 rows under the same protocols. E1, E2, and E3-Valid share the retained base configuration; E3-MAX uses the wider retained grammar as a capability bound.
+
+| equation | features | terms | IS R2 | LODO R2 | LOMO R2 | DHO R2 | own ceiling | reached |
+|---|---|---|---|---|---|---|---|---|
+| E1 | dataset | 5 | 0.3394 | 0.3211 | 0.3022 | 0.2918 | 0.3539 | 0.9591 |
+| E2 | model | 5 | 0.2537 | 0.1936 | 0.2312 | 0.1794 | 0.2821 | 0.8991 |
+| E3-Valid | both | 17 | 0.6815 | 0.6513 | 0.6261 | 0.6151 |  |  |
+| E3-MAX | both | 29 | 0.7271 | 0.6894 | 0.6538 | 0.6482 |  |  |
+
+**Do not read these R² values as achievements against each other.** They share a scale but not a ceiling: E1 sees only dataset features, every row of a dataset shares one feature vector, and so E1 can predict nothing but a per-dataset constant. Its structural maximum is the `true dataset means` row, and reaching it means E1 is *done* rather than weak. The comparable quantity is the fraction of each equation's own ceiling, which the last column gives.
+
+**E3-Valid and E3-MAX have blank ceiling cells because neither has a structural group-identity ceiling.** Nothing in the feature set stops an equation over both halves of the meta-data from predicting every cell, so there is no group-identity bound to divide by. The reference shown instead is the additive mean-based reference, in the comparison table of chapter 5. That reference bounds only an equation additive in dataset effect plus model effect; E3-Valid's mixed terms can represent interactions beyond it. The comparison table reports whether the current equation reaches or exceeds that reference.
+
+<!-- end generated -->
 
 The three primary equations differ only in which features they may draw on. All three are
-fitted on the same 476 rows by the same function, from one configuration, and scored on the
-same 476 rows under the same four protocols, so the gaps between them measure the features
-and nothing else.
+fitted on the same 476 rows by the same function, under **one** hyperparameter configuration
+(`config/study.json`), have their length chosen by **one** rule, and are scored on the same
+476 rows under the same four protocols, so the gaps between them measure the features and
+nothing else.
 
 **Their coefficient of determination (R²) values share a scale but not a ceiling, and this
-is the most common way to misread the table.** E1 predicts one value per dataset, so 0.354 —
-the variance of the true per-dataset means — is the most it could *ever* reach, however good
-its terms were. E1 at
-0.354 is not "much worse than E3"; it is finished. The comparable quantity is the fraction
-of its own ceiling each equation attains:
+is the most common way to misread the table.** E1 predicts one value per dataset, so the
+variance of the true per-dataset means is the most it could *ever* reach, however good its
+terms were. E1 near that ceiling is not "much worse than E3"; it is finished. The comparable
+quantity is the fraction of its own ceiling each equation attains — the `reached` column.
+E3-Valid has no ceiling of that kind, because it is not constant within either group; it is
+read instead against the best sum of per-feature functions and the best per-dataset value
+plus per-model value, both of which it passes ([chapter 4](assets/docs/04-equation.md)).
 
-| | reached | its ceiling | fraction |
-|---|---|---|---|
-| E1 (dataset features) | 0.354 | 0.354 | **100%** |
-| E2 (model features) | 0.259 | 0.282 | **92%** |
-| E3-Valid (both) | 0.679 | *see below* | — |
-
-E3-Valid has no ceiling of that kind, because it is not constant within either group. The two
-levels it can be read against are both reached or passed, and that is the result:
-
-| level | R² | what it bounds |
-|---|---|---|
-| all 73 single-feature terms | 0.6321 | the best a sum of per-feature functions can do |
-| additive mean-based reference | 0.6605 | the best a per-dataset value **plus** a per-model value can do |
-| **E3-Valid, 18 terms** | **0.6787** | — |
-| E3-MAX, 25 terms | 0.7194 | capability bound |
-
-Both reference levels describe predictors that never combine a dataset feature with a model
-one. E3-Valid passes both references. Its mixed terms are evidence that dataset×model
-*interaction* is what the equation captures.
-
-**E3-Valid and E3-MAX have separate roles.** E3-Valid is the readable 18-term equation selected
-immediately before the Combined-R² curve reaches a sustained plateau. E3-MAX is the 25-term
-capability bound selected by the best four-protocol R² floor.
+**E3-Valid and E3-MAX have separate roles.** E3-Valid's length is the start of the first
+sustained plateau of its worst-protocol curve: the first knee (found by multi-Kneedle,
+[`kneeliverse`](https://github.com/mariolpantunes/knee)) of the smoothed curve after which it
+stops improving, or its smoothed maximum when every knee is still followed by real gains.
+E3-MAX takes the raw maximum of the same curve under the wider grammar
+([chapter 3](assets/docs/03-term-selection.md)).
 
 ![Equations against the levels they are read against](assets/figures/01_equation_comparison.png)
 
@@ -80,38 +81,27 @@ capability bound selected by the best four-protocol R² floor.
 
 - **One equation, refit — not one search per fold.** The equation's form is the claim; the
   folds recalibrate its constants and test whether the claim survives unseen data. Re-running
-  term selection inside every fold answers a different question, and answering it as the
-  first made transfer swing by 0.3 when the length changed by two.
-  [Chapter 5](assets/docs/05-evaluation.md).
-- **The corpus describes datasets far better than models.** As collected, its model
-  descriptors reached 63% of their ceiling against the dataset side's 99%. Replacing them
-  with a capability ordinal over the ten learner families and four mechanism gradings —
-  all *asserted*, read from published descriptions rather than observed in a training run —
-  takes the model side to 92%. What they cannot do is describe a method nobody has
-  classified. [chapter 1](assets/docs/01-dataset.md).
-- **Mixed dataset×model terms carry the equation.** 10 of 18 terms use features from both
-  groups and carry **36.7%** of the absolute standardised weight mass; dataset-only terms carry
-  56.1% and model-only terms 7.2%. "Which model suits which data" is where the signal is, not "how hard
-  is this data" or "how good is this model". [Chapter 6](assets/docs/06-practices.md).
-- **No single meta-feature carries it either.** The strongest, `eq_num_attr`, reaches
-  R² 0.142 alone; taking one best admissible term per feature is worth about +0.085 over the
-  admissible raw-term fit. There is no headline driver to quote, which is why the equation needs many
-  terms rather than two. [Chapter 4](assets/docs/04-equation.md).
-- **One interaction component is worth +0.122 R², and the equation reaches about a third of
-  it** — alignment 0.37 under IS and 0.33 out of fold, measured by stripping the additive
-  part from both the truth and the prediction and correlating what is left. A free per-model
-  level and slope raise LODO R² from 0.652 to 0.707, locating the remaining
-  headroom on the model side. [Chapter 4](assets/docs/04-equation.md).
-- **Ten best practices from the literature, weighed against the corpus** — 8 supported,
-  1 qualified, 1 untestable here. The strongest: tree-based families average MCC **0.927**
-  against **0.660** for neural ones on the datasets where every model ran, with plain MLPs
-  and DNNs last of ten families at 0.454. [chapter 6](assets/docs/06-practices.md).
-
-> **Status:** research prototype for an academic study. With only 476 rows, the headline
-> equation scores are reported both under IS and under held-out cross-validation because the
-> two differ substantially. The search settings were recalibrated after correcting the processing-unit
-> column; the retained parameters, descriptor subset, equation length and grammar all come
-> from that corrected-corpus sweep.
+  term selection inside every fold answers a different question about the search, and much
+  of the transfer it reports belongs to choosing the terms on all rows — see the limitations
+  of [chapter 3](assets/docs/03-term-selection.md) and [chapter 5](assets/docs/05-evaluation.md).
+- **One configuration, chosen by the published equation's own criterion.** The shared
+  hyperparameters come from a sweep (`ml-meta-perf-search`) that applies the study's length
+  rule to every configuration and, among those tied on R², proposes the one whose
+  doubly-held-out predictions rank the models best. Each equation searches every feature it
+  may use; the configuration holds hyperparameters only.
+- **The corpus describes datasets far better than models.** The model side's descriptors are
+  a capability ordinal over the ten learner families and four mechanism gradings — all
+  *asserted*, read from published descriptions rather than observed in a training run.
+  What they cannot do is describe a method nobody has classified.
+  [Chapter 1](assets/docs/01-dataset.md).
+- **Mixed dataset×model terms carry a large share of the equation**, which is where "which
+  model suits which data" lives; the shares by feature group are generated in
+  [chapter 4](assets/docs/04-equation.md).
+- **No single meta-feature carries it**, which is why the equation needs many terms rather
+  than two, and **one interaction component is worth a measurable R², of which the equation
+  reaches part** — both measured in [chapter 4](assets/docs/04-equation.md).
+- **Ten best practices from the literature, weighed against the corpus** — which are
+  supported, qualified or untestable here is generated in [chapter 6](assets/docs/06-practices.md).
 
 ## Documentation
 
@@ -141,7 +131,9 @@ covering it.
 ## Installation
 
 Python 3.12+. Runtime dependencies are **Polars**, **NumPy**, **Matplotlib**,
-**scikit-learn**, and **joblib**.
+**scikit-learn**, **joblib**, **jsonargparse** (reads `config/study.json`), and
+**[kneeliverse](https://github.com/mariolpantunes/knee)** (knee detection for the
+equation-length rule).
 
 scikit-learn is there for one thing: the opaque-regressor comparison in
 [chapter 5](assets/docs/05-evaluation.md), which prices the other side of the trade this
@@ -153,21 +145,23 @@ unreproducible headline is a worse cost than a large wheel.
 
 ```bash
 python3.12 -m venv venv
-venv/bin/python -m pip install -r requirements-reproducibility.txt
+venv/bin/python -m pip install -e ".[reproducibility]"
 ```
 
 On Windows PowerShell, create the environment with `py -3.12 -m venv venv` and use
 `venv\Scripts\python.exe` or `venv\Scripts\pre-commit.exe` in place of the corresponding
 `venv/bin/` command.
 
-`requirements-reproducibility.txt` freezes the complete runtime used for the reference run.
-For normal development, `venv/bin/python -m pip install -e .` installs the supported dependency
-ranges declared by the package.
+`pyproject.toml` is the only dependency manifest. The `reproducibility` extra freezes the
+complete runtime used for the reference run; a plain `venv/bin/python -m pip install -e .`
+installs the supported dependency ranges declared by the package instead.
 
 ## Meta-Dataset Generation
 
-The package ships the generated corpus at
-[`src/ml_meta_perf/meta_dataset.csv`](src/ml_meta_perf/meta_dataset.csv). The scripts and
+The generated corpus is versioned at
+[`dataset/meta_dataset.csv`](dataset/meta_dataset.csv), outside the package. The study finds
+it from a source checkout, or under the working directory when the package is installed and
+run from a clone; anywhere else, pass `--data`. The scripts and
 configuration needed to rebuild that corpus live in
 [`meta_dataset_pipeline/`](meta_dataset_pipeline/).
 
@@ -175,13 +169,13 @@ The meta-dataset pipeline has additional dependencies, including `pymfe` and the
 model libraries used during the original model-evaluation stages. Install them explicitly:
 
 ```bash
-venv/bin/python -m pip install -r requirements-meta-dataset.txt
+venv/bin/python -m pip install -e ".[meta-dataset]"
 ```
 
 On Windows PowerShell:
 
 ```powershell
-venv\Scripts\python.exe -m pip install -r requirements-meta-dataset.txt
+venv\Scripts\python.exe -m pip install -e ".[meta-dataset]"
 ```
 
 That folder is intentionally separate from the package code:
@@ -189,7 +183,7 @@ That folder is intentionally separate from the package code:
 - `meta_dataset_pipeline/` contains the raw-corpus stages and can regenerate a candidate
   corpus at `meta_dataset_pipeline/results/meta_dataset.csv`;
 - `src/ml_meta_perf/data.py` loads and validates the published corpus schema;
-- `src/ml_meta_perf/meta_dataset.csv` is the versioned corpus consumed by the library and
+- `dataset/meta_dataset.csv` is the versioned corpus consumed by the library and
   command-line tool, and is updated only when the regenerated corpus is accepted.
 
 See [`meta_dataset_pipeline/README.md`](meta_dataset_pipeline/README.md) for the stage
@@ -198,8 +192,7 @@ or publishing a regenerated corpus.
 
 ## Running it
 
-**One command runs every phase**: screening, searching the grammars, fitting E1, E2 and both
-E3s, cross-validating under all four protocols, pricing the opaque comparison, extracting the
+**One command runs every phase**: screening, fitting E1, E2, E3-Valid and E3-MAX, cross-validating under all four protocols, pricing the opaque comparison, extracting the
 practices, writing the figures, and splicing the generated sections into the chapters.
 
 ```bash
@@ -213,7 +206,7 @@ It reproduces every number in this README, and writes:
 
 | | |
 |---|---|
-| [`assets/docs/`](assets/docs/index.md) | the index and chapters 1, 3, 4, 5 and 6 — their generated sections rewritten in place |
+| [`assets/docs/`](assets/docs/index.md), `README.md` | the index, chapters 1, 3, 4, 5 and 6, and this README's headline — their generated sections rewritten in place |
 | `results/e1.json`, `e2.json`, `e3.json` | the fitted equations, reloadable |
 | `results/*.csv` | the study's tables — curves, baselines, oracles, stability, practices |
 | `assets/figures/*.png`, `*.pdf` | the figure set, raster and vector, numbered in the order the study presents it |
@@ -238,12 +231,11 @@ of three flags that already exist, and it quietly reached two things they did no
 how it came to advertise "seconds" while still paying for the full opaque comparison. The
 wiring check is `python -m unittest discover -s tests`, which takes about a minute and checks more.
 
-The retained E3 settings can be recalibrated with a separate, resumable Slurm search. It
-reuses the historical composite objective for the broad sweep, applies the expensive
-DHO protocol only to a diverse shortlist, and produces a shared-base
-E3-Valid/E3-MAX pair for review. E3-Valid uses the retained Combined-R² plateau rule. See
-[the configuration-search guide](CONFIGURATION_SEARCH.md) for the complete grid, selection
-rule and cluster instructions.
+The shared configuration is chosen by a separate command, `ml-meta-perf-search`: it fits every
+point of the grid in `config/study.json`'s `sweep` section once, applies the study's own length
+rule to each, and among the configurations tied on R² at a readable length proposes the one
+whose doubly-held-out predictions rank the models best. It writes `proposed_study.json`;
+adopting it is a reviewed edit to `config/study.json`.
 
 **One note on threading.** The inner loop is ~87k solves of matrices no larger than 32×32,
 far below the size where Basic Linear Algebra Subprograms (BLAS) parallelism pays: threading
@@ -251,59 +243,75 @@ buys no wall time and burns 3.5× the central processing unit (CPU) spinning. Se
 `OPENBLAS_NUM_THREADS=1` costs nothing and saves the CPU; it is
 left to the caller rather than forced from inside a library.
 
-### Parameters
+### Configuration
 
-The ordinary experiment exposes its general search controls as flags. The defaults retain
-the sweep's shared numerical settings, while the selected descriptor subset and E3-Valid
-plateau rule are pinned in the study configuration. The separate recalibration command
-exposes those choices; see the [configuration-search guide](CONFIGURATION_SEARCH.md).
+Every tuned value lives in **`config/study.json`** and nowhere else: the command line has no
+defaults of its own for them. The file is read with `jsonargparse`, so `--config other.json`
+replaces it, any field can be overridden as a dotted flag, and `--print_config` prints the
+effective configuration. E1, E2 and E3 share every one of these values.
 
-```bash
-PYTHONPATH=src venv/bin/python -m ml_meta_perf --data mine.csv \
-  --output runs/mine --figures runs/mine/figures --no-report
-```
+| setting | value | what it does |
+|---|---|---|
+| `search.max_abs_zscore` | 4.0 | largest standard score a term may reach before it is rejected as a spike |
+| `search.penalty` | 0.3 | ridge penalty on standardised terms |
+| `search.pool_size` | 600 | terms surviving screening into the beam |
+| `search.max_terms` | 30 | longest equation the search explores (the curve's horizon, not the published length) |
+| `search.beam_width` | 6 | beam width |
+| `search.max_arity` | 2 | raw features per term — see [chapter 2](assets/docs/02-additive-model.md) |
+| `selection.delta` | 0.01 | largest smoothed-floor gain over the window that still counts as a plateau |
+| `selection.window` | 4 | lengths after a candidate that must stay within `delta` |
+| `selection.smoothing` | 3 | width of the running median applied to the worst-protocol curve |
+| `selection.capability_arity` | 3 | the wider grammar E3-MAX is fitted under |
+| `opaque.forest_trees` | 100 | random forest size |
+| `opaque.forest_max_features` | 0.33 | share of features considered at each forest split |
+| `opaque.boosting_stages` | 50 | gradient boosting stages |
+| `opaque.boosting_learning_rate` | 0.1 | gradient boosting learning rate |
+| `opaque.boosting_max_depth` | 3 | gradient boosting tree depth |
+
+The file's `sweep` section is the grid `ml-meta-perf-search` explores and how it chooses among
+close candidates. A test checks this table against the file.
+
+Run options are ordinary flags:
 
 | flag | default | what it does |
 |---|---|---|
-| `--data` | the shipped corpus | the meta-dataset to fit |
+| `--config` | `config/study.json` | the study configuration |
+| `--data` | `dataset/meta_dataset.csv` | the meta-dataset to fit |
 | `--output` | `results` | where the equations and comma-separated value (CSV) tables go |
 | `--figures` | `assets/figures` | where the figures go |
 | `--docs` | `assets/docs` | chapter directory whose generated sections are rewritten |
-| `--max-terms` | 25 | longest equation the search explores (drives the curve) |
-| `--penalty` | 1.0 | ridge penalty on standardised terms |
-| `--arity` | 2 and 3 | raw features allowed per term; **repeatable**, and the set given is searched — see [chapter 2](assets/docs/02-additive-model.md#the-arity-is-searched-not-set) |
-| `--pool` | 600 | terms surviving screening into the beam |
-| `--beam` | 6 | beam width |
-| `--zscore` | 5.0 | largest standard score a term may reach before it is rejected as a spike |
-| `--phase` | all | `screen`, `equations`, `validation`, `practices`, `figures`, `report`; repeatable |
+| `--readme` | `README.md` | README whose generated headline is rewritten |
+| `--phase` | all | comma-separated subset of `screen`, `equations`, `validation`, `practices`, `figures`, `report` |
 | `--no-figures`, `--no-tables`, `--no-report`, `--quiet` | off | skip an output |
 
 ```bash
-# a shorter search and a heavier ridge, no figures. The published length is not a flag:
-# it is derived from the equation's own curve, so shortening the search is how you bound it
-PYTHONPATH=src venv/bin/python -m ml_meta_perf --max-terms 8 --penalty 50 \
-  --output runs/short --no-figures --no-report
+# a shorter horizon and a heavier ridge, no figures. The published length is not a flag:
+# it is derived from each equation's own curve
+ml-meta-perf --search.max_terms 12 --search.penalty 10 --output runs/short --no-figures --no-report
 
-# search one grammar instead of two, and a recorded negative: four-feature terms fit better
-# and transfer much worse (chapter 2 measures this)
-PYTHONPATH=src venv/bin/python -m ml_meta_perf --arity 4 --pool 2000 \
-  --output runs/arity4 --figures runs/arity4/figures --no-report
+# the wider grammar for every equation -- ratio-of-sums terms, harder to read
+ml-meta-perf --search.max_arity 3 --output runs/arity3 --figures runs/arity3/figures --no-report
 
 # just the screening table
-PYTHONPATH=src venv/bin/python -m ml_meta_perf --phase screen \
-  --output runs/screen --no-figures --no-report
+ml-meta-perf --phase screen --output runs/screen --no-figures --no-report
+
+# re-run the configuration sweep; writes results/sweep/proposed_study.json for review
+ml-meta-perf-search --output results/sweep
 ```
 
 ## Using it as a library
 
 ```python
-from ml_meta_perf import DATASET_FEATURES, MODEL_FEATURES, build_library, columns_as_arrays, load, search, target
+from ml_meta_perf import (
+    DATASET_FEATURES, MODEL_FEATURES, build_library, columns_as_arrays, load, load_config, search, target,
+)
 
 frame = load()
 columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
-library = build_library(DATASET_FEATURES, MODEL_FEATURES, columns)
+library = build_library(DATASET_FEATURES, MODEL_FEATURES, columns, max_arity=2, max_abs_zscore=4.0)
 
-equation = search(library, target(frame), max_terms=25, penalty=1.0).best()
+config = load_config().search
+equation = search(library, target(frame), max_terms=config.max_terms, penalty=config.penalty).best()
 
 print(equation)                    # human-readable, with standardised betas
 print(equation.to_latex())         # for the paper
@@ -350,7 +358,8 @@ src/ml_meta_perf/
     fit.py          standardisation, the ridge solve, and reading weights back out
     model.py        the Equation object: predict, render, serialise
     validate.py     leave-one-group-out protocols, baselines, oracles
-    selection.py    E3 plateau selection and equation-length diagnostics
+    selection.py    the equation-length rule (smoothed worst-protocol curve, multi-Kneedle,
+                    first sustained plateau) and the E3-MAX bound
     attribution.py  per-term effects, group shares, variance decomposition
     practices.py    per-feature associations measured from a fitted equation
     guidance.py     literature best practices, weighed against what the study measured
@@ -358,18 +367,20 @@ src/ml_meta_perf/
     figures.py      the figure set and suggested LaTeX captions
     report.py       the generated report: term importance and written analysis
     identity.py     per-model effects, measuring the ceiling on model descriptors
-    experiment.py   the end-to-end study and its retained search configuration
-    cli.py          the argparse pipeline: `ml-meta-perf`, `python -m ml_meta_perf`
-    meta_dataset.csv  the corpus, shipped with the package
+    experiment.py   the end-to-end study: one configuration, one length rule, E1/E2/E3/E3-MAX
+    config.py       the typed schema of config/study.json and its loader
+    sweep.py        `ml-meta-perf-search`: the configuration sweep that proposes study.json
+    cli.py          the jsonargparse pipeline: `ml-meta-perf`, `python -m ml_meta_perf`
+config/             study.json, every tuned hyperparameter
+dataset/            meta_dataset.csv, the versioned corpus
 assets/docs/        the study chapters, hand-written with generated sections spliced in
 assets/figures/     generated figures
 results/            generated equations and tables
-scripts/            Slurm jobs and reproducible search-report utilities
 meta_dataset_pipeline/  raw-corpus pipeline used to regenerate meta_dataset.csv
 tests/              unittest suite
 .github/workflows/  continuous integration (CI) on 3.12 and 3.14, and the published API reference
-requirements-reproducibility.txt  exact reference runtime
-requirements-meta-dataset.txt     dependencies for regenerating the shipped corpus
+pyproject.toml      the package, its dependency ranges, and the extras: `dev` (pinned
+                    tooling), `reproducibility` (exact reference runtime), `meta-dataset`
 ```
 
 ## Development
@@ -380,16 +391,15 @@ a pre-commit-managed environment, so the installed Git hook runs on both Windows
 
 ```bash
 python3 -m venv venv
-venv/bin/pip install -r requirements.txt
+venv/bin/pip install -e ".[dev]"
 venv/bin/pre-commit install
 venv/bin/pre-commit run --all-files   # ruff, basedpyright, vulture, unittest
 ```
 
-`requirements.txt` installs the project editable and pins pre-commit plus the three static-analysis
-tools; the latter match the versions that continuous integration (CI) installs. `pyproject.toml`
-defines the supported runtime dependency ranges;
-`requirements-reproducibility.txt` freezes the complete environment used for the reference
-experiment.
+The `dev` extra installs the project editable and pins pre-commit plus the three
+static-analysis tools, at the versions continuous integration (CI) installs. `pyproject.toml`
+defines the supported runtime dependency ranges; its `reproducibility` extra freezes the
+complete environment used for the reference experiment.
 
 ## Citation
 

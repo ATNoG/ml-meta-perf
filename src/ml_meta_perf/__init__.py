@@ -8,6 +8,7 @@ and doubly held-out (DHO) evaluation.
 
 from ml_meta_perf.analysis import redundancy_groups, screen
 from ml_meta_perf.attribution import group_shares, term_effects, variance_decomposition
+from ml_meta_perf.config import Configuration, OpaqueConfig, SelectionConfig, StudyConfig, load_config
 from ml_meta_perf.data import (
     ALL_FEATURES,
     DATASET_COLUMN,
@@ -39,14 +40,12 @@ from ml_meta_perf.report import (
 )
 from ml_meta_perf.search import SearchResult, prune, search
 from ml_meta_perf.selection import (
-    arity_candidates,
-    consensus_curve,
     floor_argmax,
     floor_curve,
-    most_capable,
-    plateau_configuration,
-    plateau_index,
+    knee_lengths,
+    plateau_knee,
     protocol_spread,
+    smoothed,
 )
 from ml_meta_perf.terms import Atom, Library, Term, build_library, ratio_of_sums_terms, simplify
 from ml_meta_perf.validate import (
@@ -74,19 +73,22 @@ __all__ = [
     "MODEL_FEATURES",
     "TARGET_COLUMN",
     "Atom",
+    "Configuration",
     "CrossValidation",
     "Equation",
     "Library",
     "ModelEffects",
+    "OpaqueConfig",
     "Practice",
     "Scores",
     "SearchResult",
+    "SelectionConfig",
+    "StudyConfig",
     "Term",
     "Verdict",
     "__version__",
     "additive_mean_reference",
     "aggregate_by_dataset",
-    "arity_candidates",
     "assess",
     "baseline_group_centre",
     "baseline_group_mean",
@@ -95,7 +97,6 @@ __all__ = [
     "columns_as_arrays",
     "concordance",
     "concordance_summary",
-    "consensus_curve",
     "correct_out_of_fold",
     "coverage",
     "cross_validate_fixed_form",
@@ -108,12 +109,12 @@ __all__ = [
     "fold_selections",
     "group_shares",
     "groups",
+    "knee_lengths",
     "load",
+    "load_config",
     "marginal_versus_conditional",
-    "most_capable",
     "operation_usage",
-    "plateau_configuration",
-    "plateau_index",
+    "plateau_knee",
     "protocol_spread",
     "prune",
     "ranking_report",
@@ -122,6 +123,7 @@ __all__ = [
     "screen",
     "search",
     "simplify",
+    "smoothed",
     "target",
     "term_effects",
     "term_groups",

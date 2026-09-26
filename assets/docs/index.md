@@ -89,12 +89,12 @@ check no forest of the same accuracy admits.
 
 The one table the study is summarised by, so that the summary cannot drift from the chapters. Every row is scored on the same 476 rows under the same protocols. E1, E2, and E3-Valid share the retained base configuration; E3-MAX uses the wider retained grammar as a capability bound.
 
-| equation | features | terms | IS R2 | LODO R2 | LOMO R2 | own ceiling | reached |
-|---|---|---|---|---|---|---|---|
-| E1 | dataset | 16 | 0.3538 | 0.3487 | 0.2996 | 0.3539 | 0.9998 |
-| E2 | model | 6 | 0.2588 | 0.1972 | 0.2367 | 0.2821 | 0.9173 |
-| E3-Valid | both | 18 | 0.6787 | 0.6517 | 0.6149 |  |  |
-| E3-MAX | both | 25 | 0.7194 | 0.6911 | 0.6554 |  |  |
+| equation | features | terms | IS R2 | LODO R2 | LOMO R2 | DHO R2 | own ceiling | reached |
+|---|---|---|---|---|---|---|---|---|
+| E1 | dataset | 5 | 0.3394 | 0.3211 | 0.3022 | 0.2918 | 0.3539 | 0.9591 |
+| E2 | model | 5 | 0.2537 | 0.1936 | 0.2312 | 0.1794 | 0.2821 | 0.8991 |
+| E3-Valid | both | 17 | 0.6815 | 0.6513 | 0.6261 | 0.6151 |  |  |
+| E3-MAX | both | 29 | 0.7271 | 0.6894 | 0.6538 | 0.6482 |  |  |
 
 **Do not read these R² values as achievements against each other.** They share a scale but not a ceiling: E1 sees only dataset features, every row of a dataset shares one feature vector, and so E1 can predict nothing but a per-dataset constant. Its structural maximum is the `true dataset means` row, and reaching it means E1 is *done* rather than weak. The comparable quantity is the fraction of each equation's own ceiling, which the last column gives.
 

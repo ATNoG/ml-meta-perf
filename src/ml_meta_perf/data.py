@@ -13,7 +13,7 @@ and they behave very differently, which is why they are named separately here:
 That asymmetry is the whole point of the two-equation comparison, so the split is
 part of the public API rather than something each caller re-derives.
 
-**Why there are eighteen features when the equation uses twelve.**
+**Why there are eighteen features when the equation uses fewer.**
 
 The two numbers answer different questions, asked at different stages, and reading the
 second as a criticism of the first is the most natural mistake to make about this study.
@@ -42,16 +42,17 @@ redundancy: ``nr_attr`` and ``nr_outliers`` correlate at 0.9995, and
 *Fitting the equation* comes second, and its criterion is not coverage but **compression**.
 An equation is a statement about families of datasets and families of learners, not about
 individuals, so it is expected to need fewer features as it gets better -- and the
-redundancy above is part of what it is compressing away. E3 uses twelve of the eighteen.
-That is the mechanism working, not a shortfall in the corpus, and an equation that used all
-eighteen would be one that had failed to generalise.
+redundancy above is part of what it is compressing away. E3 searches all eighteen and keeps
+fewer (``tests/test_model_features.py`` pins that it does). That is the mechanism working,
+not a shortfall in the corpus, and an equation that used all eighteen would be one that had
+failed to generalise.
 
-So a column may earn its place at either stage. ``Solution Stochasticity`` and
-``Input Distribution Modelling`` remain in the six-column corpus because the complete
-descriptor tuple is used for learner identification. **Do not read absence from the equation
-as evidence against a feature.** The corrected-corpus sweep selected a four-feature
-model-side subset for E3, while the full schema remains available for identification and
-future analyses.
+So a column may earn its place at either stage: a descriptor that adds little to a fit can
+still be what keeps two learners distinguishable. **Do not read absence from the equation as
+evidence against a feature**, and do not read presence as robust either -- which features an
+equation keeps is a property of one configuration and one length. The search, not the
+configuration, decides which features an equation uses: every equation is offered every
+feature it is allowed.
 
 **``nr_inst`` describes the source dataset, not the training set.** Every model was
 trained on a stratified sample capped at 100,000 rows, and ten of the twenty datasets are
@@ -379,10 +380,26 @@ FEATURE_GLOSSARY: dict[str, str] = {
     "Fitting Regime": "how the parameters are reached, closed form to in-context (1-5)",
 }
 
-#: The shipped corpus, resolved next to this module rather than relative to a source
-#: checkout. `pip install ml-meta-perf && ml-meta-perf` has no repository around it, and the previous
-#: form -- ``parents[2] / "data"`` -- pointed inside `site-packages` and failed there.
-DEFAULT_PATH = Path(__file__).resolve().parent / "meta_dataset.csv"
+#: The corpus, relative to the repository root. It lives in ``dataset/`` beside the pipeline that
+#: regenerates it, not inside the package: it is the study's data, versioned on its own.
+DATASET_RELATIVE_PATH = Path("dataset") / "meta_dataset.csv"
+
+
+def _default_path() -> Path:
+    """The corpus in the source checkout this module runs from, else under the working directory.
+
+    The first covers an editable install and ``PYTHONPATH=src``. The second covers a regular
+    install, whose module sits in `site-packages` with no repository around it -- which is why
+    a path derived from this file alone failed there -- run from a clone, as CI does. Anywhere
+    else, pass ``--data``. When neither exists the checkout path is returned, so the error
+    `load` raises names where the file was expected.
+    """
+    checkout = Path(__file__).resolve().parents[2] / DATASET_RELATIVE_PATH
+    working = Path.cwd() / DATASET_RELATIVE_PATH
+    return next((path for path in (checkout, working) if path.is_file()), checkout)
+
+
+DEFAULT_PATH = _default_path()
 
 
 class SchemaError(ValueError):

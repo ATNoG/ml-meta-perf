@@ -39,21 +39,25 @@ import numpy as np
 import polars as pl
 
 from ml_meta_perf.attribution import classify, contributions
+from ml_meta_perf.config import Configuration, SelectionConfig, load_config
 from ml_meta_perf.data import (
     ALL_FEATURES,
     DATASET_COLUMN,
+    DATASET_FEATURES,
     FEATURE_GLOSSARY,
     MODEL_COLUMN,
+    MODEL_FEATURES,
     corpus_summary,
     missing_cells,
     target_summary,
 )
-from ml_meta_perf.experiment import Configuration, Report
+from ml_meta_perf.experiment import EquationReport, Report
 from ml_meta_perf.guidance import as_table as as_guidance_table
 from ml_meta_perf.guidance import assess, equation_coverage, equation_evidence
 from ml_meta_perf.guidance import render as render_guidance
 from ml_meta_perf.model import Equation, direction
 from ml_meta_perf.practices import render as render_practices
+from ml_meta_perf.selection import floor_curve, knee_lengths, plateau_start, smoothed
 from ml_meta_perf.stats import spearman
 from ml_meta_perf.terms import TRANSFORMS, Atom, Term
 
@@ -627,6 +631,7 @@ def _headline(report: Report) -> pl.DataFrame:
                 "IS R2": in_sample,
                 "LODO R2": float(equation.cross_validated["loo_dataset"]["r2"]),
                 "LOMO R2": float(equation.cross_validated["loo_model"]["r2"]),
+                "DHO R2": float(equation.cross_validated["loo_cell"]["r2"]),
                 "own ceiling": float(ceiling) if ceiling is not None else float("nan"),
                 "reached": in_sample / float(ceiling) if ceiling else float("nan"),
             }
@@ -641,43 +646,81 @@ def _scores(label: str, scores: dict[str, float | int]) -> str:
     )
 
 
-def _crater_note(report: Report) -> str:
-    """The deepest leave-one-dataset-out (LODO) crater, and what it costs a mean.
+def _crater_note(report: Report, selection: SelectionConfig) -> str:
+    """The deepest single-length crater on the worst-protocol curve, and what smoothing does to it.
 
-    The consensus curve takes a **median** across the three protocols rather than a mean, and
-    the argument for that is only convincing next to a length where the two disagree. Which
-    length that is moves whenever the configuration does -- chapter 3 named one in prose and
-    it had drifted onto the published length by the time anyone reread it, which turned the
-    illustration into a claim that the equation the study ships sits in a crater.
+    The length rule reads the floor through a running median, and the argument for that is
+    only convincing next to a length where one fold dragged the curve down. Which length that
+    is moves whenever the configuration does, so it is found here rather than named in prose.
 
     Deepest is measured against the neighbouring lengths, not against the curve's own mean: a
     crater is a local collapse, and a length at the end of a declining run is not one.
     """
     curve = report.e3.curve
-    if curve.height < 3 or "r2_loo_dataset" not in curve.columns:
+    if curve.height < 3:
         return ""
-    protocols = ["r2_in_sample", "r2_loo_dataset", "r2_loo_model"]
-    if any(name not in curve.columns for name in protocols):
-        return ""
-    values = np.column_stack([curve[name].to_numpy() for name in protocols])
-    held = curve["r2_loo_dataset"].to_numpy()
+    floor = floor_curve(curve)
     lengths = curve["n_terms"].to_numpy()
-    neighbours = (held[:-2] + held[2:]) / 2.0
-    index = int(np.argmax(neighbours - held[1:-1])) + 1
-    depth = float(neighbours[index - 1] - held[index])
+    neighbours = (floor[:-2] + floor[2:]) / 2.0
+    index = int(np.argmax(neighbours - floor[1:-1])) + 1
+    depth = float(neighbours[index - 1] - floor[index])
     if depth <= 0.0:
         return ""
-    row = values[index]
+    smooth = smoothed(floor, selection.smoothing)
     return (
-        f"**Why the consensus is a median and not a mean.** The deepest crater on this curve "
-        f"is at **{int(lengths[index])} terms**, where the three protocols read "
-        f"{row[0]:.3f} / {row[1]:.3f} / {row[2]:.3f}. The median takes {float(np.median(row)):.3f} "
-        f"and ignores it; a mean would be dragged to {float(row.mean()):.3f}. The crater is "
-        f"{depth:.3f} below the neighbouring lengths and is not a property of the length at "
-        "all -- it is one held-out dataset sitting outside the convex hull of the other "
-        "nineteen in term space, where a linear equation extrapolates without limit and "
-        "`validate._clip_to_training` pins the fold to its training floor. One fold's "
-        "extrapolation should not choose the published length.\n"
+        f"**Why the curve is smoothed before a length is chosen.** The deepest crater on this "
+        f"curve is at **{int(lengths[index])} terms**, where the worst protocol reads "
+        f"{float(floor[index]):.3f}, {depth:.3f} below the neighbouring lengths. The running median "
+        f"of {selection.smoothing} lengths reads {float(smooth[index]):.3f} there. A crater like this "
+        "is not a property of the length -- it is one held-out dataset sitting outside the convex "
+        "hull of the other nineteen in term space, where a linear equation extrapolates without "
+        "limit and `validate._clip_to_training` pins the fold to its training floor -- and the "
+        "same holds for a single lucky length. Neither should choose the published length.\n"
+    )
+
+
+def _shared_terms_note(report: Report) -> str:
+    """How many of each control's terms E3-Valid uses exactly, and how many of E3's are mixed."""
+    published = {term.name for term in report.e3.equation.terms}
+    rows = []
+    for label, control in (("E2 → E3", report.e2), ("E1 → E3", report.e1)):
+        names = [term.name for term in control.equation.terms]
+        shared = [name for name in names if name in published]
+        rows.append(
+            f"| {label} | **{len(shared)} of {len(names)}** | "
+            + ("; ".join(f"`{name}`" for name in shared) or "—")
+            + " |"
+        )
+    mixed = sum(
+        1 for term in report.e3.equation.terms if classify(term.features, DATASET_FEATURES, MODEL_FEATURES) == "mixed"
+    )
+    return (
+        "How much of each control survives into E3-Valid, counting terms shared *exactly*:\n\n"
+        "| | shared with E3 | which |\n|---|---|---|\n"
+        + "\n".join(rows)
+        + f"\n\n{mixed} of E3-Valid's {report.e3.equation.n_terms} terms mix dataset and model "
+        "features, and a mixed term is available to neither control by construction.\n"
+    )
+
+
+def _optimism_note(report: Report) -> str:
+    """The fixed-form LODO against LODO with the form re-chosen per fold, and the gap."""
+    if report.optimism.height < 2:
+        return ""
+    reported, nested = (float(value) for value in report.optimism["r2"].to_list()[:2])
+    return (
+        "Every reported held-out number fixes the equation's form -- chosen once, on all 476 "
+        "rows -- and refits only its weights in each fold. The form was therefore chosen with "
+        "the held-out dataset in view. The second row repeats the *selection* inside every "
+        f"LODO fold, at E3-Valid's {report.e3.n_terms} terms and configuration, and scores those "
+        "predictions instead:\n\n"
+        + _table(report.optimism.select("LODO", "r2", "mae", "spearman"))
+        + f"\n\n**{reported - nested:.3f} of the reported LODO R² ({reported:.3f}) belongs to choosing "
+        f"the form on all rows**; with the terms re-chosen blind, LODO R² is {nested:.3f}. The nested "
+        "row describes the discovery procedure -- twenty folds fit twenty different equations -- "
+        "not the published equation, so it is a diagnostic rather than a score. It is the "
+        "measured size of the caveat under *Limitations*: the fixed-form transfer numbers are "
+        "an upper estimate.\n"
     )
 
 
@@ -882,60 +925,73 @@ def _opaque_note(report: Report) -> str:
     )
 
 
-def _length_note(report: Report) -> str:
-    """Explain the retained E3-Valid plateau selection and its paired sensitivity table."""
+def _length_note(report: Report, selection: SelectionConfig) -> str:
+    """Explain the length rule with this run's knees, and the paired sensitivity table."""
     if report.length_choice.height == 0:
         return ""
-    rows = report.length_choice.to_dicts()
-    selected = next((row for row in rows if row["verdict"] == "selected"), None)
-    if selected is None:
-        return ""
+    knees = knee_lengths(report.e3.curve, selection.smoothing)
+    listed = ", ".join(str(knee) for knee in knees) if knees else "none"
+    _, how = plateau_start(
+        report.e3.curve, delta=selection.delta, window=selection.window, smoothing=selection.smoothing
+    )
+    reached = (
+        "It is a knee: the curve stops improving right after it."
+        if how == "knee"
+        else "None of the knees is followed by a plateau -- the curve keeps gaining past each -- so "
+        "the plateau starts at the smoothed maximum."
+    )
     lines = [
-        f"E3-Valid selects **{int(selected['n_terms'])} terms** immediately before the first "
-        "sustained plateau in Combined R², the median of IS, LODO, and LOMO R². "
-        "The retained rule uses a forward window of three "
-        "evaluated lengths and a maximum best-so-far gain of 0.001. It compares both searched "
-        "arities before selecting the equation.\n",
-        _crater_note(report),
-        "The following paired analysis compares every length on the selected arity against "
-        "E3-Valid; it is a sensitivity analysis rather than an additional selector:\n",
+        f"E3-Valid has **{report.e3.n_terms} terms**. The rule, `selection.plateau_knee`, is "
+        "the same for E1, E2 and E3-Valid. It reads the worst R² over IS, LODO, LOMO and DHO at "
+        f"every length, smoothed by a running median of {selection.smoothing} lengths; "
+        "multi-Kneedle (`kneeliverse`) proposes the lengths where that curve's Pareto front "
+        f"bends -- here **{listed}** -- and the rule takes the first of them, or the smoothed "
+        f"maximum, after which the smoothed curve gains at most {selection.delta:g} over the next "
+        f"{selection.window} lengths: the shortest equation that has stopped improving. {reached}\n",
+        _crater_note(report, selection),
+        "The following paired analysis compares every length against E3-Valid, dataset by "
+        "dataset; it is a sensitivity analysis rather than an additional selector:\n",
         _table(report.length_choice) + "\n",
     ]
     return "\n".join(lines)
 
 
+def _form_stability(report: EquationReport) -> float:
+    """Mean share of LODO folds that re-select the equation's own terms."""
+    if report.stability is None or not report.equation.terms:
+        return float("nan")
+    frequency = dict(zip(report.stability["term"].to_list(), report.stability["frequency"].to_list(), strict=True))
+    return float(np.mean([frequency.get(term.name, 0.0) for term in report.equation.terms]))
+
+
 def _capability_note(report: Report) -> str:
-    """The same features under the full grammar: how far the additive form reaches."""
+    """The same configuration under the wider grammar: how far the additive form reaches."""
     capability = report.e3_capability
     if not capability.equation.terms:
         return ""
-    if capability is report.e3:
-        return (
-            "E3-Valid and E3-MAX coincide on the corrected corpus: both rules select the "
-            f"arity-3, {capability.equation.n_terms}-term equation. There is therefore no "
-            "separate capability equation to report.\n"
-        )
     published = float(report.e3.in_sample["r2"])
     reached = float(capability.in_sample["r2"])
     lines = [
-        f"The published equation uses the **parsimonious** grammar (arity 2). The same features "
-        f"under the **full** grammar (arity 3), selected by the E3-MAX floor rule, reach "
+        f"The published equation uses arity {report.e3.arity}. The same configuration under arity "
+        f"{capability.arity}, at the raw maximum of its worst-protocol curve (E3-MAX), reaches "
         f"{len(capability.equation.terms)} terms at R² {reached:.4f} under IS:\n",
-        "| | terms | IS | LODO | LOMO |",
-        "|---|---|---|---|---|",
-        f"| published (arity 2) | {len(report.e3.equation.terms)} | {published:.4f} | "
+        "| | terms | IS | LODO | LOMO | DHO | form stability |",
+        "|---|---|---|---|---|---|---|",
+        f"| E3-Valid (arity {report.e3.arity}) | {len(report.e3.equation.terms)} | {published:.4f} | "
         f"{float(report.e3.cross_validated['loo_dataset']['r2']):.4f} | "
-        f"{float(report.e3.cross_validated['loo_model']['r2']):.4f} |",
-        f"| capability (arity 3) | {len(capability.equation.terms)} | {reached:.4f} | "
+        f"{float(report.e3.cross_validated['loo_model']['r2']):.4f} | "
+        f"{float(report.e3.cross_validated['loo_cell']['r2']):.4f} | {_form_stability(report.e3):.2f} |",
+        f"| E3-MAX (arity {capability.arity}) | {len(capability.equation.terms)} | {reached:.4f} | "
         f"{float(capability.cross_validated['loo_dataset']['r2']):.4f} | "
-        f"{float(capability.cross_validated['loo_model']['r2']):.4f} |",
+        f"{float(capability.cross_validated['loo_model']['r2']):.4f} | "
+        f"{float(capability.cross_validated['loo_cell']['r2']):.4f} | {_form_stability(capability):.2f} |",
         "",
         "This is a **capability measurement, not a recommendation**. It answers the question "
         "the published equation cannot answer about itself — whether the additive form is out "
         f"of room or whether this equation is short of it — and the answer is that {reached - published:+.4f} "
-        "of IS R² is still available to a longer equation over a wider grammar. What "
-        "that costs is what the published equation is buying: more terms, an operation more, "
-        "and a form that reselects far less often across folds.\n",
+        "of IS R² is still available to a longer equation over a wider grammar. Form stability "
+        "is the mean share of LODO folds that re-select an equation's own terms when selection "
+        "is re-run without the held-out dataset.\n",
     ]
     return "\n".join(lines)
 
@@ -1128,10 +1184,14 @@ def _baseline_centre_note(baselines: pl.DataFrame) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _configuration(config: Configuration) -> str:
-    return _table(
-        pl.DataFrame([{"setting": field.name, "value": str(getattr(config, field.name))} for field in fields(config)])
-    )
+def _configuration(config: Configuration, selection: SelectionConfig | None) -> str:
+    rows = [{"setting": f"search.{field.name}", "value": str(getattr(config, field.name))} for field in fields(config)]
+    if selection is not None:
+        rows += [
+            {"setting": f"selection.{field.name}", "value": str(getattr(selection, field.name))}
+            for field in fields(selection)
+        ]
+    return _table(pl.DataFrame(rows))
 
 
 def render(
@@ -1143,6 +1203,7 @@ def render(
     *,
     frame: pl.DataFrame | None = None,
     config: Configuration | None = None,
+    selection: SelectionConfig | None = None,
     source: str | None = None,
 ) -> str:
     """The full study as a markdown report.
@@ -1152,6 +1213,7 @@ def render(
     it describes the *method*, which does not change between runs; anything describing
     the *result* is generated.
     """
+    rule = selection or load_config().selection
     importance = term_importance(report.e3.equation, columns, dataset_features, model_features, report.e3.stability)
     concentration = coverage(importance)
     equation = report.e3.equation
@@ -1168,11 +1230,12 @@ def render(
         "hand at report time.\n"
     )
 
-    parts.append("## 1. Run\n")
+    parts.append("## 1. The configuration this run used\n")
     if source:
         parts.append(f"Meta-dataset: `{source}`\n")
     if config is not None:
-        parts.append(_configuration(config) + "\n")
+        parts.append("Every hyperparameter below is read from `config/study.json`; E1, E2 and E3 share all of them.\n")
+        parts.append(_configuration(config, selection) + "\n")
 
     parts.append("## 1b. The corpus\n")
     parts.append(
@@ -1569,14 +1632,12 @@ def render(
     parts.append(_table(report.leakage) + "\n")
 
     parts.append("## 8. Equation length\n")
-    parts.append(_length_note(report))
-    parts.append(
-        "The full curve reports all four protocols at every length. E3-Valid reads IS, "
-        "LODO, and LOMO through Combined R²; DHO is reported alongside them but is not "
-        "an input to that plateau rule:\n"
-    )
+    parts.append(_length_note(report, rule))
+    parts.append("The full curve reports all four protocols at every length; the length rule reads their minimum:\n")
     parts.append(_table(report.e3.curve) + "\n")
 
+    parts.append("## 8b. How much of the transfer is the form's selection\n")
+    parts.append(_optimism_note(report))
     parts.append("## 9. The dataset-only and model-only controls\n")
     parts.append(
         "E1 sees dataset meta-features only, so it can predict just one value per dataset; "
@@ -1587,12 +1648,13 @@ def render(
     parts.append("```\n" + str(report.e1.equation) + "\n```\n")
     parts.append(f"**E2** ({report.e2.equation.n_terms} terms):\n")
     parts.append("```\n" + str(report.e2.equation) + "\n```\n")
+    parts.append(_shared_terms_note(report))
 
     if report.e3_capability is report.e3:
         parts.append("### E3-Valid and E3-MAX coincide\n")
         parts.append(
-            "The configuration rule and the capability rule select the same arity-3, "
-            f"{report.e3.equation.n_terms}-term equation on the corrected corpus. The full "
+            f"The length rule and the capability rule select the same arity-{report.e3.arity}, "
+            f"{report.e3.equation.n_terms}-term equation. The full "
             "equation above therefore serves both roles; repeating it here would create a "
             "duplicate result.\n"
         )
@@ -1629,7 +1691,12 @@ CHAPTER_SECTIONS: dict[str, tuple[str, ...]] = {
     # Ownership, one topic to one chapter. The length rule lives with the selection procedure
     # that applies it, the ceilings with the equation they bound, the protocols with the
     # evaluation. Each generated section has one chapter owner.
-    "03-term-selection.md": ("3b. Why a subset rather than every term", "8. Equation length"),
+    "03-term-selection.md": (
+        "1. The configuration this run used",
+        "3b. Why a subset rather than every term",
+        "8. Equation length",
+        "8b. How much of the transfer is the form's selection",
+    ),
     "04-equation.md": (
         "2. The equation",
         "3c. How far the form could reach",
@@ -1649,6 +1716,8 @@ CHAPTER_SECTIONS: dict[str, tuple[str, ...]] = {
 #: The markers a generated block sits between. Everything between them is replaced on every
 #: run; everything outside them is written by hand and never touched.
 BEGIN, END = "<!-- generated: do not edit below -->", "<!-- end generated -->"
+#: The generated section the README carries between its markers.
+README_SECTION = "1c. The headline"
 
 
 def sections(text: str) -> dict[str, str]:
@@ -1701,7 +1770,9 @@ def write_into_chapters(
     *,
     frame: pl.DataFrame | None = None,
     config: Configuration | None = None,
+    selection: SelectionConfig | None = None,
     source: str | None = None,
+    readme: str | Path | None = None,
 ) -> list[Path]:
     """Write each generated section into the chapter it belongs to.
 
@@ -1719,6 +1790,7 @@ def write_into_chapters(
         model_features,
         frame=frame,
         config=config,
+        selection=selection,
         source=source,
     )
     available = sections(text)
@@ -1742,6 +1814,17 @@ def write_into_chapters(
                 splice(content, "\n\n".join(blocks)),
                 encoding="utf-8",
             )
+            written.append(page)
+    # The README carries the headline too, so the first numbers a reader sees are generated
+    # like every other number. It must already hold the markers: a README without them is
+    # left alone rather than given a block in a place nobody chose.
+    if readme is not None and Path(readme).is_file():
+        page = Path(readme)
+        content = page.read_text(encoding="utf-8")
+        body = available.get(README_SECTION)
+        if body and BEGIN in content and END in content:
+            heading = README_SECTION.split(". ", 1)[-1]
+            page.write_text(splice(content, f"## {heading}\n\n{_demote(body)}"), encoding="utf-8")
             written.append(page)
     return written
 

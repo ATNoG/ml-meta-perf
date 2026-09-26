@@ -209,7 +209,7 @@ def fold_selections(
         train_matrix = library.matrix[train]
         standardizer = Standardizer.fit(train_matrix)
         design = standardizer.apply(train_matrix)
-        pool = guided_screen(_view(library, train), target[train], keep=pool_size)
+        pool = guided_screen(library_rows(library, train), target[train], keep=pool_size)
         selector = Selector(design, target[train], penalty, library.feature_groups)
         subsets = selector.search(pool, n_terms, beam_width=beam_width)
         if n_terms in subsets:
@@ -390,7 +390,7 @@ def _clip_to_training(prediction: np.ndarray, training_target: np.ndarray) -> np
     return np.clip(prediction, float(training_target.min()), float(training_target.max()))
 
 
-def _view(library: Library, mask: np.ndarray) -> Library:
+def library_rows(library: Library, mask: np.ndarray) -> Library:
     """A library restricted to a row subset, without re-evaluating any term."""
     clone = object.__new__(Library)
     clone.terms = library.terms

@@ -2,13 +2,14 @@
 
 The three equations differ only in which features they may draw on -- E1 sees dataset
 meta-features, E2 sees model meta-features, E3 sees both -- so the gaps between them
-measure what each half of the meta-data is worth.
+measure what each half of the meta-data is worth. Everything else is shared: **one
+configuration** (`config.Configuration`, read from ``config/study.json``), one search, one
+set of protocols, and **one length rule**, `selection.plateau_knee`. Each equation searches
+every feature it is allowed; the search, not the configuration, decides which it keeps.
 
-The defaults below are the configuration selected by the corrected-corpus sweep. The broad
-stage uses a composite objective to shortlist candidates. E3-Valid uses the retained
-Combined-R² plateau rule, while E3-MAX independently maximises the worst R² over in-sample
-(IS), leave-one-dataset-out (LODO), leave-one-model-out (LOMO), and doubly held-out (DHO)
-validation.
+E3-Valid is the E3 the study publishes. E3-MAX is the same configuration under the wider
+grammar (``selection.capability_arity``) at the raw maximum of its worst-protocol curve: a
+capability bound on the additive form, not an equation put forward to be read.
 
 Study chapter: [4. The equation][study-chapter] -- the rationale, in
 prose, with the figures.
@@ -26,6 +27,7 @@ import polars as pl
 
 from ml_meta_perf.analysis import feature_reach, grammar_ceiling, saturated_fit, screen
 from ml_meta_perf.attribution import group_shares, term_effects, variance_decomposition
+from ml_meta_perf.config import Configuration, OpaqueConfig, SelectionConfig, load_config
 from ml_meta_perf.data import (
     DATASET_COLUMN,
     DATASET_FEATURES,
@@ -40,19 +42,11 @@ from ml_meta_perf.identity import correct_out_of_fold
 from ml_meta_perf.model import Equation
 from ml_meta_perf.opaque import Builder as OpaqueBuilder
 from ml_meta_perf.opaque import OpaqueRun
+from ml_meta_perf.opaque import estimators as opaque_estimators
 from ml_meta_perf.opaque import evaluate as opaque_evaluate
 from ml_meta_perf.practices import best_practices, feature_practices
 from ml_meta_perf.search import prune, search
-from ml_meta_perf.selection import (
-    PLATEAU_TOLERANCE,
-    PLATEAU_WINDOW,
-    complexity,
-    floor_argmax,
-    floor_curve,
-    most_capable,
-    plateau_configuration,
-    protocol_spread,
-)
+from ml_meta_perf.selection import complexity, floor_argmax, floor_curve, plateau_knee, protocol_spread, smoothed
 from ml_meta_perf.stats import mae, r2_score
 from ml_meta_perf.terms import Library, build_library
 from ml_meta_perf.validate import (
@@ -66,6 +60,7 @@ from ml_meta_perf.validate import (
     fold_selections,
     interaction_capture,
     leave_one_group_out,
+    library_rows,
     oracle_ladder,
     paired_comparison,
     random_kfold_groups,
@@ -74,113 +69,11 @@ from ml_meta_perf.validate import (
     term_stability,
 )
 
-
-@dataclass(frozen=True)
-class Configuration:
-    """The search knobs retained from the configuration sweep."""
-
-    max_abs_zscore: float
-    penalty: float
-    pool_size: int
-    #: The search horizon: the longest equation `fit` explores, and the range the curve covers.
-    #: **Not the published length** -- selection derives that from the complete curve and
-    #: carries it on `EquationReport.n_terms`.
-    max_terms: int
-    beam_width: int = 6
-    max_arity: int = 3
-
-
-#: **One configuration, shared by all three equations.** This keeps the E1/E2/E3 comparison
-#: attributable to the feature sets rather than to separate tuning runs. The values come from
-#: the exhaustive corrected-corpus E3 sweep; E1 and E2 use the same base settings.
-
-#: The ridge penalty on standardised terms. The corrected-corpus sweep evaluated sixteen
-#: values from 0.1 through 80; the shared base configuration whose four-protocol floor was
-#: highest uses 1.0. This is applied to all three equations so their differences remain
-#: attributable to their feature sets.
-PENALTY = 1.0
-
-#: The largest standard score a term may reach before it is rejected as a spike. The
-#: corrected-corpus sweep tested 3.0, 3.5, 4.0, 4.25, 4.5 and 5.0 and selected 5.0. The cap
-#: still excludes terms supported only by extreme rows; 5.0 is the measured setting of the
-#: winning shared base rather than a manual relaxation.
-MAX_ABS_ZSCORE = 5.0
-
-#: Terms surviving the correlation screen into the beam.
-POOL_SIZE = 600
-
-#: Beam width. Measured over the full beam sweep: eight times the search converges to the
-#: fourth decimal, so the width is a cost control rather than a tuned knob.
-BEAM_WIDTH = 6
-
-#: The longest equation the search explores. **The horizon, not the published length** --
-#: E3-Valid applies `selection.plateau_configuration` over this complete horizon. E3-MAX
-#: independently uses the four-protocol floor.
-MAX_TERMS = 25
-
-#: The grammars the arity search covers, and the default for ``--arity``.
-#:
-#: **Arity 4 is deliberately out on readability grounds.** The four-feature ratio-of-sums
-#: remains reachable through the flag for exploratory runs, while the default sweep stops at
-#: terms a reader can reasonably hold in one expression. Arity 1 is
-#: admissible too and is never worth a default: a grammar with no products cannot express the
-#: conditional claims the study is about.
-ARITIES: tuple[int, ...] = (2, 3)
-
-# The corrected-corpus sweep uses the historical composite objective only to make a diverse
-# shortlist. E3-Valid selects arity 2 at 18 terms, immediately before the Combined-R2 curve's
-# first sustained plateau. E3-MAX independently selects arity 3 at 25 terms by maximising the
-# four-protocol R2 floor, including the cell in which both dataset and model are held out.
-#
-# The selected four-feature subset is `Model Capability`, `Processing Units Number`,
-# `Fitting Regime`, `Loss Margin Behaviour`. The corpus still carries all six model features
-# for identification; the equation uses the subset the recalibration selected for compression.
-# What must not change is the corpus: `MODEL_FEATURES` is the schema `load` validates and the
-# set `tests/test_model_features.py` checks identification against.
-#
-# E1 is fitted on all 476 rows like the other two. An earlier version fitted it on the 20
-# aggregated per-dataset means, on the grounds that a predictor constant inside a group can
-# only ever predict that group's mean anyway. That was true and still the wrong choice: it put
-# E1's R2 on a 20-point denominator, so its headline could not be compared with E3's without a
-# paragraph of explanation, and the 0.506 it produced read as *better* transfer than E3's
-# 0.466 when on the common scale it is 0.217. See [chapter 4](https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/04-equation.md).
-DEFAULT = Configuration(
-    max_abs_zscore=MAX_ABS_ZSCORE,
-    penalty=PENALTY,
-    pool_size=POOL_SIZE,
-    beam_width=BEAM_WIDTH,
-    max_terms=MAX_TERMS,
-    # Where a caller that does *not* search starts: E1 and E2 are fitted once, over the most
-    # parsimonious grammar in `ARITIES`. E3's arity is chosen by `search_grammars`, which
-    # replaces this field per candidate grammar.
-    max_arity=min(ARITIES),
-)
-
-
-#: The model features the **equation** may build terms from.
-#:
-#: Deliberately a subset of `data.MODEL_FEATURES`, which is the *corpus* schema. The two
-#: stages have different criteria and `data`'s module docstring sets them out: designing the
-#: corpus requires **identification**, so it carries all six columns and every learner is
-#: distinguishable on every dataset; fitting the equation requires **compression**, and an
-#: equation that used every available column would be one that had failed to generalise.
-#: Restricting the term pool removes nothing from the corpus.
-#:
-#: The corrected-corpus sweep chose this subset. `Solution Stochasticity` and
-#: `Input Distribution Modelling` remain in the corpus and out of the equation.
-EQUATION_MODEL_FEATURES: tuple[str, ...] = (
-    "Model Capability",
-    "Processing Units Number",
-    "Fitting Regime",
-    "Loss Margin Behaviour",
-)
-
-#: Lengths the E3 curve is reported at.
-#:
-#: Every length is retained so the sustained-plateau rule reads a complete, uniformly spaced
-#: curve. This costs nothing beyond the fitted path because ``fit`` already builds every
-#: equation up to ``max_terms``.
-SWEEP_SIZES: tuple[int, ...] | None = None
+#: E1 is fitted on all 476 rows like the other two. An earlier version fitted it on the 20
+#: aggregated per-dataset means, on the grounds that a predictor constant inside a group can
+#: only ever predict that group's mean anyway. That was true and still the wrong choice: it put
+#: E1's R2 on a 20-point denominator, so its headline could not be compared with E3's without a
+#: paragraph of explanation. See [chapter 4][study-chapter].
 
 
 @dataclass
@@ -188,15 +81,11 @@ class EquationReport:
     """One equation together with everything said about it."""
 
     equation: Equation
-    #: The selected length. E1 and E2 use `selection.floor_argmax`; E3-Valid uses the plateau
-    #: rule and E3-MAX uses the cross-protocol floor. Every output reads the result from here.
+    #: The selected length: `selection.plateau_knee` for E1, E2 and E3-Valid, the raw floor
+    #: maximum for E3-MAX. Every output reads the result from here.
     n_terms: int
-    #: The grammar this equation was searched under. **Every helper that refits must be given
-    #: it**, because several of them rebuild the library from a `Configuration` and the arity
-    #: on that object is the default rather than the one `search_grammars` chose. Before this
-    #: field existed, a run whose chosen grammar was not the configuration's -- `--arity 3`
-    #: reproduces it -- published an arity-3 equation and scored its DHO row on an
-    #: arity-2 refit.
+    #: The grammar this equation was searched under -- the configuration's for E1, E2 and
+    #: E3-Valid, ``selection.capability_arity`` for E3-MAX.
     arity: int
     in_sample: dict[str, float | int]
     curve: pl.DataFrame
@@ -245,7 +134,7 @@ def _fixed_form_path(
     labels: np.ndarray,
     config: Configuration,
     library: Library | None = None,
-    model_features: tuple[str, ...] = EQUATION_MODEL_FEATURES,
+    model_features: tuple[str, ...] = MODEL_FEATURES,
 ) -> tuple[dict[int, CrossValidation], Library]:
     """Fit once, then cross-validate the resulting forms with only their weights refit.
 
@@ -274,24 +163,34 @@ def _fixed_form_path(
     return path, library
 
 
-def run_equation(
+@dataclass(frozen=True)
+class FittedPath:
+    """Everything `run_equation` computes before a length is chosen.
+
+    Searching and cross-validating every length is the expensive half of an equation; choosing
+    one length and finalising it is cheap. Keeping the two apart means a length rule only ever
+    reads a curve that was computed once, and lets `ml_meta_perf.sweep` score hundreds of
+    configurations without finalising any of them.
+    """
+
+    library: Library
+    columns: dict[str, np.ndarray]
+    truth: np.ndarray
+    datasets: np.ndarray
+    equations: dict[int, Equation]
+    paths: dict[str, dict[int, CrossValidation]]
+    curve: pl.DataFrame
+    config: Configuration
+
+
+def fit_path(
     frame: pl.DataFrame,
     dataset_features: tuple[str, ...],
     model_features: tuple[str, ...],
     config: Configuration,
     name: str,
-    sizes: tuple[int, ...] | None = None,
-    selected_size: int | None = None,
-) -> EquationReport:
-    """Fit one equation and validate it. The three equations differ **only** in the
-    features they may draw on, and this is the single code path that says so.
-
-    Every one of them is fitted on all 476 rows and scored on all 476 rows, under both
-    leave-one-group-out protocols. That uniformity is the point: the gaps between E1, E2
-    and E3 are only evidence about what each half of the meta-data is worth if nothing
-    else differs between them -- not the fitting scale, not the protocol, not the
-    denominator of the R2.
-    """
+) -> FittedPath:
+    """Search one grammar and cross-validate every length on it, choosing none of them."""
     columns = columns_as_arrays(frame, dataset_features + model_features)
     truth = target(frame)
     datasets = groups(frame, DATASET_COLUMN)
@@ -319,227 +218,185 @@ def run_equation(
         label: cross_validate_fixed_form(library, columns, truth, labels, result.equations, penalty=config.penalty)
         for label, labels in (("loo_dataset", datasets), ("loo_model", models))
     }
-    # DHO at **every** length, not just the selected one. E1, E2 and
-    # E3-MAX use it through `selection.floor_curve`; E3-Valid reports it without selecting on
-    # it because its Combined-R2 plateau is defined over the other three protocols.
+    # DHO at **every** length, not just the selected one: every selection rule reads the
+    # complete curve, and E3-MAX selects on this protocol through `selection.floor_curve`.
     paths["loo_cell"] = cross_validate_doubly_held_out(
         library, columns, truth, datasets, models, result.equations, penalty=config.penalty
     )
     in_sample = {k: score(truth, eq.predict(columns)) for k, eq in result.equations.items()}
-    curve = _curve(sizes or tuple(sorted(result.equations)), in_sample, paths, truth)
+    curve = _curve(tuple(sorted(result.equations)), in_sample, paths, truth)
+    return FittedPath(library, columns, truth, datasets, result.equations, paths, curve, config)
 
-    # **The length is derived, not asserted.** `fit` returns an equation at every length in one
-    # pass and every one of them has just been cross-validated. Callers may provide the result
-    # of a cross-grammar rule; otherwise the single-grammar floor chooses it.
-    size = floor_argmax(curve) if selected_size is None else selected_size
-    if size not in result.equations:
+
+def finalise(fitted: FittedPath, size: int) -> EquationReport:
+    """Publish one length of a fitted path: prune it, and measure how stable its form is."""
+    if size not in fitted.equations:
         raise ValueError(f"selected equation length {size} is unavailable")
-
+    config, truth = fitted.config, fitted.truth
     # The same folds with selection re-run inside them, kept only for `stability`: the share
     # of the equation's terms that survive when a fifth of the data is removed. That is what
     # licenses fixing the form, and it is not part of any reported score.
     reselected = fold_selections(
-        library,
+        fitted.library,
         truth,
-        datasets,
+        fitted.datasets,
         n_terms=size,
         penalty=config.penalty,
         pool_size=config.pool_size,
         beam_width=config.beam_width,
     )
-    equation = prune(result.equations[size], columns, truth, penalty=config.penalty)
+    equation = prune(fitted.equations[size], fitted.columns, truth, penalty=config.penalty)
 
     return EquationReport(
         equation=equation,
         n_terms=size,
         arity=config.max_arity,
-        in_sample=score(truth, equation.predict(columns)).as_dict(),
-        curve=curve,
+        in_sample=score(truth, equation.predict(fitted.columns)).as_dict(),
+        curve=fitted.curve,
         cross_validated={
-            label: path[size].scores(truth).as_dict() | path[size].dispersion() for label, path in paths.items()
+            label: path[size].scores(truth).as_dict() | path[size].dispersion() for label, path in fitted.paths.items()
         },
         stability=term_stability(reselected, tuple(term.name for term in equation.terms)),
-        paths=paths,
+        paths=fitted.paths,
     )
 
 
-def run_e1(frame: pl.DataFrame, config: Configuration = DEFAULT) -> EquationReport:
+def _resolve(config: Configuration | None, selection: SelectionConfig | None) -> tuple[Configuration, SelectionConfig]:
+    """Fill whichever of the two was not given from ``config/study.json``."""
+    if config is None or selection is None:
+        study = load_config()
+        return config or study.search, selection or study.selection
+    return config, selection
+
+
+def select_length(curve: pl.DataFrame, selection: SelectionConfig) -> int:
+    """The length rule every published equation shares: `selection.plateau_knee`."""
+    return plateau_knee(curve, delta=selection.delta, window=selection.window, smoothing=selection.smoothing)
+
+
+def run_equation(
+    frame: pl.DataFrame,
+    dataset_features: tuple[str, ...],
+    model_features: tuple[str, ...],
+    config: Configuration,
+    selection: SelectionConfig,
+    name: str,
+) -> EquationReport:
+    """Fit one equation and validate it. The three equations differ **only** in the
+    features they may draw on, and this is the single code path that says so.
+
+    Every one of them is fitted on all 476 rows and scored on all 476 rows, under all four
+    protocols, and has its length chosen by the same rule. That uniformity is the point: the
+    gaps between E1, E2 and E3 are only evidence about what each half of the meta-data is
+    worth if nothing else differs between them -- not the fitting scale, not the protocol,
+    not the denominator of the R2, not the way the length was picked.
+
+    **The length is derived, not asserted**: `select_length` reads it off the complete
+    cross-validated curve.
+    """
+    fitted = fit_path(frame, dataset_features, model_features, config, name)
+    return finalise(fitted, select_length(fitted.curve, selection))
+
+
+def run_e1(
+    frame: pl.DataFrame, config: Configuration | None = None, selection: SelectionConfig | None = None
+) -> EquationReport:
     """Dataset features only -- how much of MCC the data alone explains.
 
     Every model on a given dataset shares one feature vector, so this equation can only
     ever predict a per-dataset constant. That is not a flaw to be corrected, it is the
     control: whatever E3 reaches beyond this is what knowing the model buys.
 
-    Least squares finds that per-dataset constant on its own, so the aggregation an
-    earlier version performed up front was unnecessary as well as harmful to the
-    comparison -- see the note on `DEFAULT`.
+    Least squares finds that per-dataset constant on its own, so aggregating the rows to
+    twenty dataset means first would be unnecessary as well as harmful to the comparison.
     """
-    return run_equation(frame, DATASET_FEATURES, (), config, "E1")
+    config, selection = _resolve(config, selection)
+    return run_equation(frame, DATASET_FEATURES, (), config, selection, "E1")
 
 
-def run_e2(frame: pl.DataFrame, config: Configuration = DEFAULT) -> EquationReport:
+def run_e2(
+    frame: pl.DataFrame, config: Configuration | None = None, selection: SelectionConfig | None = None
+) -> EquationReport:
     """Model features only -- the mirror image of E1.
 
     There are six model features and five of them are constant per model, so the library
     is tiny and the equation is short by necessity rather than by choice. That is itself
     the finding: the meta-data describes datasets far better than it describes models.
-    The constraint on repeated feature combinations binds hardest here for the same
-    reason -- six features offer only fifteen pairs -- which is why E2 is six terms.
 
-    Aggregating this one to 25 per-model means -- the mirror of what E1 used to do -- was
+    Aggregating this one to 25 per-model means -- the mirror of aggregating E1 -- was
     measured and is worse. `Processing Units Number` is intentionally allowed to vary with
     the dataset because it is a capacity calculation over that dataset's shape. Averaging
     it away discards real variation, and the optimum collapses to a single term.
     """
-    return run_equation(frame, (), MODEL_FEATURES, config, "E2")
+    config, selection = _resolve(config, selection)
+    return run_equation(frame, (), MODEL_FEATURES, config, selection, "E2")
 
 
-@dataclass(frozen=True)
-class GrammarSearch:
-    """The retained E3-Valid and E3-MAX fits and their selection record."""
+def run_e3(
+    frame: pl.DataFrame, config: Configuration | None = None, selection: SelectionConfig | None = None
+) -> EquationReport:
+    """Dataset and model features: E3-Valid, the equation the study publishes.
 
-    #: One `EquationReport` per arity searched, each already at its own derived length.
-    reports: dict[int, EquationReport]
-    #: The arity selected by the E3-Valid plateau rule.
-    valid: int
-    #: The arity `selection.most_capable` chose: how far the additive form reaches.
-    maximum: int
-    valid_report: EquationReport
-    maximum_report: EquationReport
-    #: The selected equations and the metrics used to distinguish their roles.
-    candidates: pl.DataFrame
-
-
-def search_grammars(
-    frame: pl.DataFrame,
-    config: Configuration = DEFAULT,
-    arities: tuple[int, ...] = ARITIES,
-) -> GrammarSearch:
-    """Fit E3 once per grammar and select E3-Valid and E3-MAX reproducibly.
-
-    **Every grammar is fitted under the same configuration bar the arity.** That is the point:
-    the study used to fit its published equation at arity 2 with penalty 20 and its capability
-    bound at arity 3 with penalty 3, and a comparison between two equations tuned differently
-    is not a comparison. It moves the bound's numbers -- it is no longer allowed its own
-    shrinkage -- and what it buys is that "arity 3 reaches further" becomes a statement about
-    the grammar rather than about two hyperparameter sets.
-
-    E3-Valid uses the combined-R2 plateau rule retained by the configuration search. E3-MAX
-    independently maximises the four-protocol R2 floor as a capability bound.
+    Every dataset feature and every model feature is in the term pool; the configuration
+    restricts the search only through its hyperparameters.
     """
-    reports = {
-        arity: run_equation(
-            frame,
-            DATASET_FEATURES,
-            EQUATION_MODEL_FEATURES,
-            dataclasses.replace(config, max_arity=arity),
-            f"E3-arity{arity}",
-            SWEEP_SIZES,
-        )
-        for arity in arities
-    }
-    curves = {arity: report.curve for arity, report in reports.items()}
-    valid_arity, valid_size = plateau_configuration(
-        curves,
-        tolerance=PLATEAU_TOLERANCE,
-        window=PLATEAU_WINDOW,
-    )
-    max_arity, max_size = most_capable(curves)
+    config, selection = _resolve(config, selection)
+    return run_equation(frame, DATASET_FEATURES, MODEL_FEATURES, config, selection, "E3")
 
-    valid_report = reports[valid_arity]
-    if valid_report.n_terms != valid_size:
-        valid_report = run_equation(
-            frame,
-            DATASET_FEATURES,
-            EQUATION_MODEL_FEATURES,
-            dataclasses.replace(config, max_arity=valid_arity),
-            f"E3-arity{valid_arity}",
-            SWEEP_SIZES,
-            selected_size=valid_size,
-        )
-    maximum_report = reports[max_arity]
 
-    # Named for the role the rule gave them, not for the grammar they were searched under. The
-    # arity is a search detail; "E3" and "E3-capability" are what the chapters and the saved
-    # equations refer to, and they must not change name because the search that found them did.
-    if (max_arity, max_size) == (valid_arity, valid_size):
-        valid_report.equation = dataclasses.replace(
-            valid_report.equation,
-            name=valid_report.equation.name.replace(f"E3-arity{valid_arity}", "E3"),
-        )
-        maximum_report = valid_report
-    else:
-        for report, arity, role in (
-            (maximum_report, max_arity, "E3-capability"),
-            (valid_report, valid_arity, "E3"),
-        ):
-            report.equation = dataclasses.replace(
-                report.equation, name=report.equation.name.replace(f"E3-arity{arity}", role)
-            )
+def run_capability(
+    frame: pl.DataFrame, config: Configuration | None = None, selection: SelectionConfig | None = None
+) -> EquationReport:
+    """E3-MAX: E3's configuration under the wider grammar, at the raw maximum of its floor.
 
+    **A capability measurement, not a recommendation.** It answers the question E3-Valid cannot
+    answer about itself -- whether the additive form is out of reach or merely out of the
+    readable range -- so it takes `selection.floor_argmax` rather than the length rule, with
+    no smoothing and no complexity penalty. Only the arity differs from E3-Valid.
+    """
+    config, selection = _resolve(config, selection)
+    wider = dataclasses.replace(config, max_arity=selection.capability_arity)
+    fitted = fit_path(frame, DATASET_FEATURES, MODEL_FEATURES, wider, "E3-MAX")
+    return finalise(fitted, floor_argmax(fitted.curve))
+
+
+def selection_summary(
+    e3: EquationReport, capability: EquationReport, config: Configuration, selection: SelectionConfig
+) -> pl.DataFrame:
+    """E3-Valid and E3-MAX side by side: the rule each used and where it landed.
+
+    ``smoothed_floor`` is the quantity the length rule reads; ``floor`` is the raw worst
+    protocol at that length; ``at_horizon`` flags a bound that stopped at ``max_terms`` rather
+    than at a maximum of the data.
+    """
     rows: list[dict[str, object]] = []
-    selected_reports = [("E3-Valid", valid_report)]
-    if maximum_report is valid_report:
-        selected_reports[0] = ("E3-Valid + E3-MAX", valid_report)
-    else:
-        selected_reports.append(("E3-MAX", maximum_report))
-    for role, report in selected_reports:
-        arity = report.arity
-        size = report.n_terms
-        position = list(curves[arity]["n_terms"]).index(size)
+    for role, report, rule in (
+        ("E3-Valid", e3, "first plateau knee"),
+        ("E3-MAX", capability, "raw floor maximum"),
+    ):
+        curve = report.curve
+        position = list(curve["n_terms"]).index(report.n_terms)
         rows.append(
             {
-                "arity": arity,
-                "n_terms": size,
-                "complexity": complexity(arity, size),
-                "r2_in_sample": float(curves[arity]["r2_in_sample"][position]),
-                "r2_loo_dataset": float(curves[arity]["r2_loo_dataset"][position]),
-                "r2_loo_model": float(curves[arity]["r2_loo_model"][position]),
-                "combined_r2": float(
-                    np.median(
-                        [
-                            curves[arity][column][position]
-                            for column in ("r2_in_sample", "r2_loo_dataset", "r2_loo_model")
-                        ]
-                    )
-                ),
-                "floor": float(floor_curve(curves[arity])[position]),
-                "spread": float(protocol_spread(curves[arity])[position]),
                 "role": role,
+                "rule": rule,
+                "arity": report.arity,
+                "n_terms": report.n_terms,
+                "complexity": complexity(report.arity, report.n_terms),
+                "r2_in_sample": float(curve["r2_in_sample"][position]),
+                "r2_loo_dataset": float(curve["r2_loo_dataset"][position]),
+                "r2_loo_model": float(curve["r2_loo_model"][position]),
+                "r2_loo_cell": float(curve["r2_loo_cell"][position]),
+                "floor": float(floor_curve(curve)[position]),
+                "smoothed_floor": float(smoothed(floor_curve(curve), selection.smoothing)[position]),
+                "spread": float(protocol_spread(curve)[position]),
+                "at_horizon": report.n_terms == config.max_terms,
             }
         )
-    return GrammarSearch(
-        reports=reports,
-        valid=valid_arity,
-        maximum=max_arity,
-        valid_report=valid_report,
-        maximum_report=maximum_report,
-        candidates=pl.DataFrame(rows),
-    )
+    return pl.DataFrame(rows)
 
 
-def run_e3(frame: pl.DataFrame, config: Configuration = DEFAULT) -> EquationReport:
-    """Dataset and model features, selected by the retained plateau rule for one arity."""
-    report = run_equation(frame, DATASET_FEATURES, EQUATION_MODEL_FEATURES, config, "E3", SWEEP_SIZES)
-    _, size = plateau_configuration(
-        {config.max_arity: report.curve},
-        tolerance=PLATEAU_TOLERANCE,
-        window=PLATEAU_WINDOW,
-    )
-    if report.n_terms == size:
-        return report
-    return run_equation(
-        frame,
-        DATASET_FEATURES,
-        EQUATION_MODEL_FEATURES,
-        config,
-        "E3",
-        SWEEP_SIZES,
-        selected_size=size,
-    )
-
-
-def reach_analysis(frame: pl.DataFrame, config: Configuration = DEFAULT) -> tuple[pl.DataFrame, pl.DataFrame]:
+def reach_analysis(frame: pl.DataFrame, config: Configuration) -> tuple[pl.DataFrame, pl.DataFrame]:
     """What each raw feature is worth, and how far the grammar reaches before any search.
 
     Returns the per-feature table and the three-level ceiling ladder as a one-row frame.
@@ -560,17 +417,17 @@ def reach_analysis(frame: pl.DataFrame, config: Configuration = DEFAULT) -> tupl
     return feature_reach(library, truth, features), pl.DataFrame([ladder])
 
 
-def saturated_analysis(frame: pl.DataFrame, config: Configuration = DEFAULT) -> dict[str, float]:
+def saturated_analysis(frame: pl.DataFrame, config: Configuration) -> dict[str, float]:
     """`analysis.saturated_fit` over the library E3 actually searches.
 
     The library rather than the screened pool, and the E3 grammar rather than the capability
     one, because the claim it supports is about the procedure the study publishes: handing
     *these* candidates to least squares in one go is what selection is being compared with.
     """
-    columns = columns_as_arrays(frame, DATASET_FEATURES + EQUATION_MODEL_FEATURES)
+    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
     library = build_library(
         DATASET_FEATURES,
-        EQUATION_MODEL_FEATURES,
+        MODEL_FEATURES,
         columns,
         max_arity=config.max_arity,
         max_abs_zscore=config.max_abs_zscore,
@@ -578,7 +435,7 @@ def saturated_analysis(frame: pl.DataFrame, config: Configuration = DEFAULT) -> 
     return saturated_fit(library, target(frame), groups(frame, DATASET_COLUMN))
 
 
-def correlation_analysis(frame: pl.DataFrame, config: Configuration = DEFAULT, top: int = 15) -> pl.DataFrame:
+def correlation_analysis(frame: pl.DataFrame, config: Configuration, top: int = 15) -> pl.DataFrame:
     """Rank candidate terms by how they relate to MCC, linearly and monotonically.
 
     Both correlations are reported because they say different things and the difference
@@ -638,7 +495,7 @@ def baselines(frame: pl.DataFrame) -> pl.DataFrame:
 def leakage_demonstration(
     frame: pl.DataFrame,
     n_terms: int,
-    config: Configuration = DEFAULT,
+    config: Configuration,
     known: dict[str, dict[int, CrossValidation]] | None = None,
 ) -> pl.DataFrame:
     """The same equation scored under a random split and under a grouped split.
@@ -669,6 +526,49 @@ def leakage_demonstration(
         size = n_terms if n_terms in path else max(path)
         rows.append({"protocol": label, **path[size].scores(truth).as_dict()})
     return pl.DataFrame(rows)
+
+
+def selection_optimism(frame: pl.DataFrame, e3: EquationReport, config: Configuration) -> pl.DataFrame:
+    """LODO with the terms **re-chosen inside every fold**, beside the reported fixed-form LODO.
+
+    The reported protocol fixes the form -- chosen once, on all rows -- and refits only the
+    weights per fold (`validate.cross_validate_fixed_form`). That is a position about what the
+    equation is, and it has a price: the form was chosen with the held-out dataset in view. This
+    measures the price, by repeating the selection itself without the held-out dataset, at
+    E3-Valid's length and configuration, and scoring those predictions.
+
+    **A diagnostic, not a score.** Twenty folds fit twenty different equations, so the nested
+    row describes the discovery procedure rather than the published equation; it is reported
+    so the fixed-form transfer numbers are read as the upper estimate they are.
+    """
+    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+    truth, datasets = target(frame), groups(frame, DATASET_COLUMN)
+    library = build_library(
+        DATASET_FEATURES, MODEL_FEATURES, columns, max_arity=config.max_arity, max_abs_zscore=config.max_abs_zscore
+    )
+    position = {name: index for index, name in enumerate(library.names)}
+    nested = np.zeros_like(truth)
+    for _, train, test in leave_one_group_out(datasets):
+        result = search(
+            library_rows(library, train),
+            truth[train],
+            max_terms=e3.n_terms,
+            penalty=config.penalty,
+            pool_size=config.pool_size,
+            beam_width=config.beam_width,
+        )
+        equation = result.equations[max(size for size in result.equations if size <= e3.n_terms)]
+        held = library.matrix[test][:, [position[term.name] for term in equation.terms]]
+        nested[test] = np.clip(
+            equation.intercept + held @ np.asarray(equation.weights), truth[train].min(), truth[train].max()
+        )
+    fixed = e3.paths["loo_dataset"][e3.n_terms].predictions
+    return pl.DataFrame(
+        [
+            {"LODO": "form chosen once, on all rows (reported)", **score(truth, fixed).as_dict()},
+            {"LODO": "form re-chosen inside every fold", **score(truth, nested).as_dict()},
+        ]
+    )
 
 
 def identity_ceiling(frame: pl.DataFrame, e3: EquationReport) -> pl.DataFrame:
@@ -856,7 +756,7 @@ def comparison(
 def decision_quality(
     frame: pl.DataFrame,
     n_terms: int,
-    config: Configuration = DEFAULT,
+    config: Configuration,
     known: dict[int, CrossValidation] | None = None,
 ) -> pl.DataFrame:
     """Go/no-go decision quality, with both the dataset and the model held out.
@@ -871,7 +771,7 @@ def decision_quality(
     doubly = doubly_held_out_predictions(frame, n_terms, config)
     if doubly is not None:
         return decision_report(truth, doubly, datasets)
-    columns = columns_as_arrays(frame, DATASET_FEATURES + EQUATION_MODEL_FEATURES)
+    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
     path = known
     if path is None or n_terms not in path:
         path, _ = _fixed_form_path(columns, truth, datasets, config)
@@ -879,7 +779,7 @@ def decision_quality(
     return decision_report(truth, path[size].predictions, datasets)
 
 
-def length_comparison(frame: pl.DataFrame, e3: EquationReport, config: Configuration = DEFAULT) -> pl.DataFrame:
+def length_comparison(frame: pl.DataFrame, e3: EquationReport, config: Configuration) -> pl.DataFrame:
     """Every equation length paired against the E3-Valid selection, per held-out dataset.
 
     E3-Valid is selected before this diagnostic is computed. The table measures how each
@@ -937,9 +837,7 @@ def length_comparison(frame: pl.DataFrame, e3: EquationReport, config: Configura
     return pl.DataFrame(rows)
 
 
-def doubly_held_out_predictions(
-    frame: pl.DataFrame, n_terms: int, config: Configuration = DEFAULT
-) -> np.ndarray | None:
+def doubly_held_out_predictions(frame: pl.DataFrame, n_terms: int, config: Configuration) -> np.ndarray | None:
     """E3's predictions with **both** the dataset and the model of each cell held out.
 
     Used for the ranking and the threshold decision and for nothing else. Those two are the
@@ -952,13 +850,13 @@ def doubly_held_out_predictions(
     scope for them: they are about how the equation degrades as one axis becomes unfamiliar,
     and a per-cell refit would answer a different question at 32 times the cost.
     """
-    columns = columns_as_arrays(frame, DATASET_FEATURES + EQUATION_MODEL_FEATURES)
+    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
     truth = target(frame)
     datasets = groups(frame, DATASET_COLUMN)
     models = groups(frame, MODEL_COLUMN)
     library = build_library(
         DATASET_FEATURES,
-        EQUATION_MODEL_FEATURES,
+        MODEL_FEATURES,
         columns,
         max_arity=config.max_arity,
         max_abs_zscore=config.max_abs_zscore,
@@ -996,7 +894,7 @@ def _e3_predictions(frame: pl.DataFrame, e3: EquationReport, protocol: str, conf
     if protocol == "loo_cell":
         return doubly_held_out_predictions(frame, e3.n_terms, config)
     if protocol == "in_sample":
-        columns = columns_as_arrays(frame, DATASET_FEATURES + EQUATION_MODEL_FEATURES)
+        columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
         return e3.equation.predict(columns)
     path = e3.paths.get(protocol)
     if not path:
@@ -1008,8 +906,8 @@ def _e3_predictions(frame: pl.DataFrame, e3: EquationReport, protocol: str, conf
 def model_selection(
     frame: pl.DataFrame,
     e3: EquationReport,
+    config: Configuration,
     protocol: str = "loo_cell",
-    config: Configuration = DEFAULT,
 ) -> pl.DataFrame:
     """Can the equation pick a good model for a dataset it has never run it on?
 
@@ -1055,7 +953,7 @@ def _opaque_candidates(opaque: OpaqueRun) -> dict[str, np.ndarray]:
 def ranking_baselines(
     frame: pl.DataFrame,
     e3: EquationReport,
-    config: Configuration = DEFAULT,
+    config: Configuration,
     opaque: OpaqueRun | None = None,
 ) -> pl.DataFrame:
     """The equation's ranking against the trivial rankings, averaged over datasets.
@@ -1129,7 +1027,7 @@ def ranking_baselines(
 
 def decision_baselines(
     frame: pl.DataFrame,
-    config: Configuration = DEFAULT,
+    config: Configuration,
     known: dict[int, CrossValidation] | None = None,
     e3: EquationReport | None = None,
     opaque: OpaqueRun | None = None,
@@ -1141,7 +1039,7 @@ def decision_baselines(
     `decision_report` already carries a majority-class column, which is the floor any rule has
     to clear; these are the harder comparison.
     """
-    columns = columns_as_arrays(frame, DATASET_FEATURES + EQUATION_MODEL_FEATURES)
+    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
     truth = target(frame)
     datasets = groups(frame, DATASET_COLUMN)
     models = groups(frame, MODEL_COLUMN)
@@ -1183,14 +1081,11 @@ class Report:
     e1: EquationReport
     e3: EquationReport
     e2: EquationReport
-    #: The same features under the full grammar (arity 3). Reported to show how far the
-    #: additive form reaches, not as the study's recommendation. See `search_grammars`.
-    #: **It is the same object as `e3` when the rule picks one grammar for both**, which is a
-    #: legitimate outcome: the bound and the equation coincide when the wider grammar earns
-    #: its additional complexity.
+    #: E3-MAX: the same configuration under the wider grammar at the raw floor maximum.
+    #: Reported to show how far the additive form reaches, not as the study's
+    #: recommendation. See `run_capability`.
     e3_capability: EquationReport
-    #: One row per grammar searched, with the floor, the spread and the margin against the
-    #: best -- `search_grammars` shows the rule's working.
+    #: E3-Valid and E3-MAX side by side, with the rule each used. See `selection_summary`.
     grammars: pl.DataFrame
     #: Feature-level effects and stability before evidence thresholds are applied.
     feature_practices: pl.DataFrame
@@ -1231,67 +1126,55 @@ class Report:
     #: and the length rule would be machinery in search of a problem. See
     #: `analysis.saturated_fit`.
     saturated: pl.DataFrame
+    #: LODO with E3-Valid's terms re-chosen in every fold, beside the reported fixed form: how
+    #: much of the transfer number belongs to choosing the form on all rows. See
+    #: `selection_optimism`.
+    optimism: pl.DataFrame
 
 
 def run(
     path: str | None = None,
     *,
-    config_e1: Configuration | None = None,
-    config_e2: Configuration | None = None,
-    config_e3: Configuration | None = None,
-    arities: tuple[int, ...] = ARITIES,
+    config: Configuration | None = None,
+    selection: SelectionConfig | None = None,
+    opaque: OpaqueConfig | None = None,
     opaque_models: tuple[tuple[str, OpaqueBuilder], ...] | None = None,
 ) -> Report:
     """Run the whole study.
 
-    The three configurations default to the retained sweep settings. Passing them explicitly is how the
-    command line exposes the knobs: a caller who overrides ``config_e3`` gets a study that is
-    internally consistent, since every table that mentions E3 is computed from the same
-    configuration object.
-
-    **There is no ``quick`` any more.** It was a preset of three flags that already exist,
-    and it silently reached two things they did not -- E2's configuration and the opaque
-    ensemble sizes -- which is how it came to promise "seconds" while paying 226 s for a
-    comparison. Every knob it set is now a parameter here, so a caller that wants a cheap run
-    says which parts are cheap and the reader of that call site can see it.
+    ``config``, ``selection`` and ``opaque`` default to ``config/study.json``. **One
+    configuration serves all three equations**: every table that mentions an equation is
+    computed from the same object, so an override changes the study consistently.
 
     ``opaque_models`` replaces the estimators the comparison is run against, in the shape
-    `opaque.evaluate` takes. It exists for the same reason that parameter does: the opaque
-    side is scikit-learn's, the DHO refit around it is this project's, and a
-    caller checking the wiring should be able to exercise the second without paying for the
-    first -- which at 476 refits per estimator is most of what a run costs.
+    `opaque.evaluate` takes. The opaque side is scikit-learn's and the DHO refit around it is
+    this project's, so a caller checking the wiring can exercise the second without paying
+    for the first -- which at 476 refits per estimator is most of what a run costs.
     """
     frame = load(path)
-    config_e1 = config_e1 or DEFAULT
-    config_e2 = config_e2 or DEFAULT
-    config_e3 = config_e3 or DEFAULT
-    e1 = run_e1(frame, config_e1)
-    # One fit per grammar and the rule picks, rather than two hand-fixed arities. `e3` and
-    # `e3_capability` are both drawn from this: the same search, the same configuration, the
-    # arity the only difference between them.
-    grammars = search_grammars(frame, config_e3, arities)
-    e3 = grammars.valid_report
-    e3_capability = grammars.maximum_report
-    # **Every table below is built from the grammar the rule chose, not the one the
-    # configuration happened to carry.** Several of these helpers rebuild the library and
-    # refit; handing them `config_e3` scored the published equation's strictest protocol on a
-    # different grammar whenever the two disagreed.
-    config_e3 = dataclasses.replace(config_e3, max_arity=e3.arity)
+    config, selection = _resolve(config, selection)
+    e1 = run_e1(frame, config, selection)
+    e2 = run_e2(frame, config, selection)
+    e3 = run_e3(frame, config, selection)
+    e3_capability = run_capability(frame, config, selection)
+    config_e3 = config
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
-    e2 = run_e2(frame, config_e2)
     reach, ceiling = reach_analysis(frame, config_e3)
     # Fitted once and shared: the folds are the expensive part, and the regression table and
     # the two decision comparisons have to be scored from the same predictions or they can
     # disagree with each other.
+    if opaque_models is None:
+        opaque_models = opaque_estimators(opaque or load_config().opaque)
     opaque_run = opaque_evaluate(frame, models=opaque_models)
     return Report(
         opaque=opaque_run.table,
         saturated=pl.DataFrame([saturated_analysis(frame, config_e3)]),
+        optimism=selection_optimism(frame, e3, config_e3),
         e1=e1,
         e2=e2,
         e3=e3,
         e3_capability=e3_capability,
-        grammars=grammars.candidates,
+        grammars=selection_summary(e3, e3_capability, config, selection),
         feature_practices=feature_practices(e3.equation, columns, e3.stability),
         practices=best_practices(e3.equation, columns, e3.stability),
         effects=term_effects(e3.equation, columns, DATASET_FEATURES, MODEL_FEATURES),
@@ -1303,7 +1186,7 @@ def run(
         baselines=baselines(frame),
         comparison=comparison(frame, e1, e3, e2, e3_capability),
         leakage=leakage_demonstration(frame, e3.n_terms, config_e3, e3.paths),
-        selection=model_selection(frame, e3, "loo_cell", config_e3),
+        selection=model_selection(frame, e3, config_e3, "loo_cell"),
         decision=decision_quality(frame, e3.n_terms, config_e3, e3.paths.get("loo_dataset")),
         ranking_baselines=ranking_baselines(frame, e3, config_e3, opaque_run),
         decision_baselines=decision_baselines(frame, config_e3, e3.paths.get("loo_dataset"), e3, opaque_run),

@@ -1,7 +1,7 @@
 # Meta-Dataset Pipeline
 
 This folder contains the reproducible pipeline used to build the meta-dataset
-shipped by `ml_meta_perf`.
+that `ml_meta_perf` reads from `dataset/meta_dataset.csv` at the repository root.
 
 The file-format abbreviations used below are comma-separated values (**CSV**) and
 Attribute-Relation File Format (**ARFF**). The pretrained tabular models are Tabular
@@ -22,10 +22,10 @@ meta_dataset_pipeline/
   local_config.example.json  # Template for local secrets.
 ```
 
-The package-level dataset remains:
+The versioned corpus the study reads is:
 
 ```text
-src/ml_meta_perf/meta_dataset.csv
+dataset/meta_dataset.csv
 ```
 
 ## Installation
@@ -34,7 +34,7 @@ From the repository root, install the project with the meta-dataset pipeline dep
 before running these stages:
 
 ```bash
-python -m pip install -r requirements-meta-dataset.txt
+python -m pip install -e ".[meta-dataset]"
 ```
 
 This includes the regular `ml-meta-perf` dependencies plus the raw-corpus tooling used here,
@@ -103,14 +103,14 @@ meta_dataset_pipeline/results/meta_dataset.csv
 compare it with:
 
 ```text
-src/ml_meta_perf/meta_dataset.csv
+dataset/meta_dataset.csv
 ```
 
-If the regenerated file is the intended corpus update, copy it over the package
-dataset:
+If the regenerated file is the intended corpus update, copy it over the versioned
+corpus:
 
 ```text
-src/ml_meta_perf/meta_dataset.csv
+dataset/meta_dataset.csv
 ```
 
 The intermediate CSV files in `meta_dataset_pipeline/results/` are generated

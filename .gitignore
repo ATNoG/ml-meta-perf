@@ -45,4 +45,3 @@ ISSUES.md
 
 # Slurm execution logs
 slurm-*.out
-scripts/equation_search_local.bat

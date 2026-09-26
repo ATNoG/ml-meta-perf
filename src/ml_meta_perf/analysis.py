@@ -196,6 +196,22 @@ def grammar_ceiling(
     }
 
 
+def _min_norm_lstsq(design: np.ndarray, target: np.ndarray) -> np.ndarray:
+    """Minimum-norm least squares that does not depend on one LAPACK build converging.
+
+    `np.linalg.lstsq` raises "SVD did not converge" on some OpenBLAS builds for the
+    saturated design, which is numerically rank-deficient (about 100 independent columns of
+    229 in the leave-X-IIoTID-out fold). The SVD of the transpose is the same problem and
+    converges there, so it is the fallback; the truncation is `lstsq`'s own default.
+    """
+    try:
+        return np.linalg.lstsq(design, target, rcond=None)[0]
+    except np.linalg.LinAlgError:
+        right, singular, left = np.linalg.svd(design.T, full_matrices=False)
+        keep = singular > singular[0] * np.finfo(float).eps * max(design.shape)
+        return (right[:, keep] / singular[keep]) @ (left[keep] @ target)
+
+
 def saturated_fit(
     library: Library,
     target: np.ndarray,
@@ -222,7 +238,7 @@ def saturated_fit(
     matrix = library.matrix
     standardizer = Standardizer.fit(matrix)
     offset = float(target.mean())
-    weights = np.linalg.lstsq(standardizer.apply(matrix), target - offset, rcond=None)[0]
+    weights = _min_norm_lstsq(standardizer.apply(matrix), target - offset)
     in_sample = r2_score(target, standardizer.apply(matrix) @ weights + offset)
 
     held = np.zeros_like(target)
@@ -231,7 +247,7 @@ def saturated_fit(
         fold = Standardizer.fit(matrix[train])
         design = fold.apply(matrix[train])
         centre = float(target[train].mean())
-        fitted = np.linalg.lstsq(design, target[train] - centre, rcond=None)[0]
+        fitted = _min_norm_lstsq(design, target[train] - centre)
         held[test] = fold.apply(matrix[test]) @ fitted + centre
         bounded[test] = np.clip(held[test], float(target[train].min()), float(target[train].max()))
     return {

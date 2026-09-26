@@ -29,7 +29,6 @@ from ml_meta_perf.data import (
     MODEL_ORDINALS,
     load,
 )
-from ml_meta_perf.experiment import EQUATION_MODEL_FEATURES
 from tests import corpus
 
 
@@ -161,10 +160,10 @@ class TestIdentification(unittest.TestCase):
         self.assertLess(distinct, self.frame[MODEL_COLUMN].n_unique())
 
     def test_dropping_the_identification_only_columns_costs_identification(self) -> None:
-        # The corrected-corpus sweep omits two descriptors from E3 for compression. They still
-        # earn their place in the corpus because the retained subset does not identify every
-        # learner by itself.
-        reduced = list(EQUATION_MODEL_FEATURES)
+        # `Solution Stochasticity` and `Loss Margin Behaviour` add little to a fit and earn
+        # their place in the corpus anyway: without them some learners stop being
+        # distinguishable on the same dataset.
+        reduced = [name for name in MODEL_FEATURES if name not in ("Solution Stochasticity", "Loss Margin Behaviour")]
         ambiguous = 0
         for _, rows in self.frame.group_by(DATASET_COLUMN):
             counts = rows.group_by(reduced).len()
@@ -204,20 +203,21 @@ class TestReportedProtocol(unittest.TestCase):
     """
 
     def test_run_equation_reports_the_fixed_form(self) -> None:
+        from ml_meta_perf.config import default_configuration
         from ml_meta_perf.data import DATASET_FEATURES, columns_as_arrays, groups, target
-        from ml_meta_perf.experiment import DEFAULT
         from ml_meta_perf.terms import build_library
         from ml_meta_perf.validate import cross_validate_fixed_form
 
         frame = load()
         report = corpus.published()
+        config = default_configuration()
         columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
         library = build_library(
             DATASET_FEATURES,
             MODEL_FEATURES,
             columns,
-            max_arity=DEFAULT.max_arity,
-            max_abs_zscore=DEFAULT.max_abs_zscore,
+            max_arity=config.max_arity,
+            max_abs_zscore=config.max_abs_zscore,
         )
         size = len(report.equation.terms)
         direct = cross_validate_fixed_form(
@@ -226,7 +226,7 @@ class TestReportedProtocol(unittest.TestCase):
             target(frame),
             groups(frame, "Dataset"),
             {size: report.equation},
-            penalty=DEFAULT.penalty,
+            penalty=config.penalty,
         )
         self.assertAlmostEqual(
             report.cross_validated["loo_dataset"]["r2"],

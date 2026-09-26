@@ -6,8 +6,11 @@ practices, writes the figures and generates the written report -- in one command
 one set of parameters, so a result can be reproduced by repeating the command line rather
 than by rerunning a notebook in the right order.
 
-Every search knob is exposed as a flag. Defaults retain the sweep's settings, so a bare
-``python -m ml_meta_perf`` reproduces the reported corrected-data run.
+Every hyperparameter comes from ``config/study.json`` -- the command line holds no tuned
+default of its own -- so a bare ``python -m ml_meta_perf`` reproduces the reported run. The
+file is read with `jsonargparse`: ``--config other.json`` replaces it, any field can be
+overridden as a dotted flag (``--search.penalty 3``, ``--selection.delta 0.02``), and
+``--print_config`` shows the effective configuration.
 
 Study chapter: [4. The equation][study-chapter] -- the rationale, in
 prose, with the figures.
@@ -17,28 +20,23 @@ prose, with the figures.
 
 from __future__ import annotations
 
-import argparse
-import dataclasses
 import sys
 import time
 from pathlib import Path
 
 import numpy as np
 import polars as pl
+from jsonargparse import ActionConfigFile, ArgumentParser, Namespace  # pyright: ignore[reportPrivateImportUsage]
 
-from ml_meta_perf.data import DATASET_FEATURES, DEFAULT_PATH, MODEL_FEATURES, columns_as_arrays, load, target
-from ml_meta_perf.experiment import (
-    ARITIES,
-    BEAM_WIDTH,
-    DEFAULT,
-    MAX_ABS_ZSCORE,
-    MAX_TERMS,
-    PENALTY,
-    POOL_SIZE,
+from ml_meta_perf.config import (
+    DEFAULT_CONFIG_PATH,
     Configuration,
-    Report,
-    run,
+    OpaqueConfig,
+    SelectionConfig,
+    SweepConfig,
 )
+from ml_meta_perf.data import DATASET_FEATURES, DEFAULT_PATH, MODEL_FEATURES, columns_as_arrays, load, target
+from ml_meta_perf.experiment import Report, run
 from ml_meta_perf.practices import render as render_practices
 from ml_meta_perf.report import term_importance, write_into_chapters
 
@@ -160,33 +158,6 @@ def render(
         )
 
 
-def configuration(arguments: argparse.Namespace) -> Configuration:
-    """The configuration the run fits every equation under.
-
-    `experiment.DEFAULT` is the single retained configuration. The argparse defaults are the
-    constants behind it, so command-line overrides affect every equation consistently and
-    `--help` states the effective values.
-
-    `max_arity` is not read from here. E3's is chosen by `experiment.search_grammars` over
-    ``--arity``, and E1 and E2 -- which are fitted once rather than searched -- take the most
-    parsimonious grammar in that set.
-    """
-    return dataclasses.replace(
-        DEFAULT,
-        max_abs_zscore=arguments.zscore,
-        penalty=arguments.penalty,
-        pool_size=arguments.pool,
-        beam_width=arguments.beam,
-        max_terms=arguments.max_terms,
-        max_arity=min(arities(arguments)),
-    )
-
-
-def arities(arguments: argparse.Namespace) -> tuple[int, ...]:
-    """The grammars to search, de-duplicated in the order the flags gave them."""
-    return tuple(dict.fromkeys(arguments.arity)) if arguments.arity else ARITIES
-
-
 def _save_tables(report: Report, folder: Path) -> list[Path]:
     """Every table the study produced, as CSV, for a paper's tables and plots."""
     tables: dict[str, pl.DataFrame] = {
@@ -212,6 +183,7 @@ def _save_tables(report: Report, folder: Path) -> list[Path]:
         "practices": report.practices,
         "length_choice": report.length_choice,
         "grammars": report.grammars,
+        "optimism": report.optimism,
     }
     if report.e3.stability is not None:
         tables["stability"] = report.e3.stability
@@ -223,92 +195,72 @@ def _save_tables(report: Report, folder: Path) -> list[Path]:
     return written
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+def build_parser() -> ArgumentParser:
+    parser = ArgumentParser(
         prog="ml-meta-perf",
         description=(
             "Fit interpretable equations predicting MCC from dataset and model meta-features, "
             "validate them under leave-one-group-out, and write the figures and the report."
         ),
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        default_config_files=[str(DEFAULT_CONFIG_PATH)],
     )
-    data = parser.add_argument_group("data and output")
-    data.add_argument("--data", default=None, help="meta-dataset CSV (defaults to the shipped corpus)")
-    data.add_argument(
-        "--output",
-        default="results",
-        help="directory for the fitted equations, the CSV tables and the report",
+    parser.add_argument(
+        "--config",
+        action=ActionConfigFile,
+        help=f"study configuration JSON (default: {DEFAULT_CONFIG_PATH.name} in config/)",
     )
-    data.add_argument(
-        "--figures",
-        default="assets/figures",
-        help="directory for the generated figures",
-    )
-    # The generated results go *into* the chapters that discuss them, between markers, rather
-    # than into a report of their own: the study has six chapters and a reader should not have
-    # to hold a chapter and a separate report at once. Everything outside the markers is
-    # hand-written and never touched; everything inside is rewritten on every run, so a
-    # chapter cannot carry a stale table. `--output` holds the equations and the CSV tables,
-    # which are regenerated every run and are not tracked.
-    data.add_argument(
-        "--docs",
-        default="assets/docs",
-        help="chapter directory whose generated sections are rewritten",
-    )
-    data.add_argument("--no-figures", action="store_true", help="skip figure generation")
-    data.add_argument("--no-report", action="store_true", help="skip rewriting the generated chapter sections")
-    data.add_argument("--no-tables", action="store_true", help="skip the CSV tables")
-    data.add_argument("--quiet", action="store_true", help="write files without printing the study")
-
-    search = parser.add_argument_group("equation and search")
-    # `--max-terms` sets the search horizon and therefore the range covered by the reported
-    # curve. It does not set the selected equation length.
-    search.add_argument("--max-terms", type=int, default=MAX_TERMS, help="longest equation the search explores")
-    search.add_argument("--penalty", type=float, default=PENALTY, help="ridge penalty on standardised terms")
-    # Repeatable, because the arity is searched rather than fixed: `--arity 2 --arity 3` is the
-    # default set and `--arity 4` narrows the search to the grammar the negatives were measured
-    # under. One value is a search over one grammar, which is what fixing the arity now means.
-    search.add_argument(
-        "--arity",
-        type=int,
-        choices=(1, 2, 3, 4),
-        action="append",
-        default=None,
-        help=f"raw features per term; repeat to search several grammars; unset searches {ARITIES}",
-    )
-    search.add_argument("--pool", type=int, default=POOL_SIZE, help="terms surviving screening into the beam")
-    search.add_argument("--beam", type=int, default=BEAM_WIDTH, help="beam width")
-    search.add_argument(
-        "--zscore",
-        type=float,
-        default=MAX_ABS_ZSCORE,
-        help="largest standard score a term may reach before it is rejected as a spike",
-    )
+    # The hyperparameters. Their values live only in the configuration file; each field can be
+    # overridden as a dotted flag, e.g. `--search.penalty 3`.
+    parser.add_argument("--search", type=Configuration, help="search hyperparameters shared by E1, E2 and E3")
+    parser.add_argument("--selection", type=SelectionConfig, help="the equation-length rule")
+    parser.add_argument("--opaque", type=OpaqueConfig, help="the opaque regressors' sizes")
+    parser.add_argument("--sweep", type=SweepConfig, help="the grid `ml-meta-perf-search` explores (unused here)")
 
     parser.add_argument(
+        "--data", type=str | None, default=None, help="meta-dataset CSV (default: dataset/meta_dataset.csv)"
+    )
+    parser.add_argument("--output", type=str, default="results", help="directory for the equations and CSV tables")
+    parser.add_argument("--figures", type=str, default="assets/figures", help="directory for the generated figures")
+    # The generated results go *into* the chapters that discuss them, between markers, rather
+    # than into a report of their own. Everything outside the markers is hand-written and never
+    # touched; everything inside is rewritten on every run, so a chapter cannot carry a stale table.
+    parser.add_argument(
+        "--docs", type=str, default="assets/docs", help="chapters whose generated sections are rewritten"
+    )
+    parser.add_argument("--readme", type=str, default="README.md", help="README whose generated headline is rewritten")
+    parser.add_argument("--no-figures", action="store_true", help="skip figure generation")
+    parser.add_argument("--no-report", action="store_true", help="skip rewriting the generated chapter sections")
+    parser.add_argument("--no-tables", action="store_true", help="skip the CSV tables")
+    parser.add_argument("--quiet", action="store_true", help="write files without printing the study")
+    parser.add_argument(
         "--phase",
-        choices=(*PHASES, "all"),
-        action="append",
+        type=str | None,
         default=None,
-        help="run a subset of the phases; repeatable (default: all)",
+        help=f"comma-separated phases to run (default: all): {', '.join(PHASES)}",
     )
     return parser
 
 
+def phases_of(arguments: Namespace) -> frozenset[str]:
+    """The phases to run; every phase when none, or ``all``, was asked for."""
+    requested = [name.strip() for name in (arguments.phase or "").split(",") if name.strip()]
+    if not requested or "all" in requested:
+        return frozenset(PHASES)
+    unknown = sorted(set(requested) - set(PHASES))
+    if unknown:
+        raise SystemExit(f"ml-meta-perf: unknown phase(s): {', '.join(unknown)}")
+    return frozenset(requested)
+
+
 def main(argv: list[str] | None = None) -> int:
     _configure_windows_output()
-    arguments = build_parser().parse_args(argv)
-    phases = frozenset(PHASES) if not arguments.phase or "all" in arguments.phase else frozenset(arguments.phase)
+    parser = build_parser()
+    arguments = parser.instantiate(parser.parse_args(argv))
+    phases = phases_of(arguments)
 
-    config = configuration(arguments)
+    config: Configuration = arguments.search
     started = time.perf_counter()
-    report = run(
-        arguments.data,
-        config_e1=config,
-        config_e2=config,
-        config_e3=config,
-        arities=arities(arguments),
-    )
+    report = run(arguments.data, config=config, selection=arguments.selection, opaque=arguments.opaque)
     elapsed = time.perf_counter() - started
 
     frame = load(arguments.data)
@@ -340,9 +292,11 @@ def main(argv: list[str] | None = None) -> int:
             arguments.docs,
             frame=frame,
             config=config,
+            selection=arguments.selection,
             source=source,
+            readme=arguments.readme,
         )
-        print(f"{len(pages)} chapters regenerated in {arguments.docs}")
+        print(f"{len(pages)} pages regenerated ({arguments.docs}, {arguments.readme})")
 
     if arguments.figures and not arguments.no_figures and "figures" in phases:
         from ml_meta_perf.figures import generate

@@ -86,34 +86,27 @@ arity is now fitted with the same ridge penalty, stability cap, candidate pool, 
 and search horizon. Keeping those settings fixed is essential: otherwise a difference
 between two arities would also be a difference between two tuning runs.
 
-Arity 2 offers atoms, ratios and products. Arity 3 adds `sum_ratio`. Both grammars contribute
-their complete term-count curves to the E3-Valid and E3-MAX selectors.
+Arity 2 offers atoms, ratios and products. Arity 3 adds `sum_ratio`, the ratio-of-sums
+`(f1+f2)/f3`.
 
-### The arity is searched, not set
+### The arity is a hyperparameter, and E3-MAX uses the wider one
 
-The table above answers "which single arity should the study fix?", but the study searches
-both retained grammars. `experiment.search_grammars` fits E3 once per arity in
-`experiment.ARITIES` — `(2, 3)` by default, and `--arity` is repeatable. Both selected roles
-are reported:
+The arity is part of the **one configuration** E1, E2 and E3 share (`search.max_arity` in
+`config/study.json`), chosen by the configuration sweep like every other hyperparameter
+([chapter 3](03-term-selection.md#how-the-configuration-itself-was-chosen)). The sweep searched
+arities 2 and 3 and retained **arity 2**: among the configurations tied on R² at a readable
+length, the arity-2 equation ranked the models best — and an arity-2 equation is products and
+simple ratios only, which is what a reader can hold in mind term by term.
 
-| | grammar | terms | complexity `a·k` | floor over four protocols | protocol spread |
-|---|---|---|---|---|---|
-| **E3-Valid** | **arity 2** | **18** | **36** | **0.6103** | **0.0684** |
-| E3-MAX | arity 3 | 25 | 75 | 0.6554 | 0.0640 |
+The wider grammar is still measured. **E3-MAX** is the same configuration under
+`selection.capability_arity` = 3, at the raw maximum of its worst-protocol curve: how far the
+additive form reaches when it is not asked to stay readable. Its scores beside E3-Valid's are
+generated in [chapter 4](04-equation.md#how-far-the-form-could-reach), together with how often
+each equation's terms are re-selected across folds.
 
-The **floor** is the minimum over all four protocols — IS, LODO,
-LOMO, and the DHO cell — so a grammar is judged by its worst
-showing rather than its best. See [chapter 5](05-evaluation.md#four-protocols) for the four.
-
-E3-Valid uses the arity-2 point immediately before the first sustained plateau in Combined R².
-E3-MAX uses arity 3 because that grammar reaches the highest four-protocol floor. Keeping the
-roles separate preserves a readable recommended equation while showing the additional
-accuracy available to the wider grammar.
-
-**Arity 4 remains available through the flag and outside the default search on readability
+**Arity 4 remains available through `--search.max_arity 4` and outside the sweep on readability
 grounds.** A `(f1+f2)/(f3+f4)` term names four features and two operations, beyond the intended
-limit for a printed equation. It was not part of the corrected-corpus calibration grid, so no
-current arity-4 performance claim is made here.
+limit for a printed equation, so no current arity-4 performance claim is made here.
 
 Operation counts come from `report.operation_usage`; the published equation's current table
 is in [chapter 4](04-equation.md#which-operations-the-equation-needed).

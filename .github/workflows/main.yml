@@ -28,20 +28,19 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # Pinned, and matching the other repositories. Unpinned, a linter
-          # release that enables new rules by default fails a PR that changed
-          # none of the code it flags -- which is what happened at ruff 0.16.
-          pip install ruff==0.16.1 basedpyright==1.39.8 vulture==2.16
-          # Exercise the exact reference environment on its recorded Python version and
-          # the declared compatible ranges on the newest supported Python version.
+          # `pyproject.toml` is the only dependency manifest. The `dev` extra pins the three
+          # static-analysis tools: unpinned, a linter release that enables new rules by default
+          # fails a PR that changed none of the code it flags -- which happened at ruff 0.16.
+          # The exact reference runtime is exercised on its recorded Python version, the
+          # declared compatible ranges on the newest supported one.
           if [ "${{ matrix.python-version }}" = "3.12" ]; then
-            pip install -r requirements-reproducibility.txt
+            pip install ".[dev,reproducibility]"
           else
-            pip install .
+            pip install ".[dev]"
           fi
 
       - name: Lint with Ruff
-        run: ruff check src tests scripts
+        run: ruff check src tests
 
       - name: Type-check with basedpyright
         # --pythonpath, because pyproject.toml deliberately pins no venv: without it

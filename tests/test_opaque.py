@@ -26,6 +26,7 @@ import unittest
 import numpy as np
 import polars as pl
 
+from ml_meta_perf.config import OpaqueConfig, default_configuration
 from ml_meta_perf.data import DATASET_COLUMN, MODEL_COLUMN, groups, load, target
 from ml_meta_perf.opaque import OpaqueRun, _cross_validate, _design, estimators, evaluate
 from ml_meta_perf.validate import leave_one_group_out
@@ -37,7 +38,15 @@ from tests.corpus import DOUBLES, Stub
 #: and the published sizes cost 226 s a pass.
 TREES = 5
 STAGES = 5
-REDUCED = estimators(TREES, STAGES)
+REDUCED = estimators(
+    OpaqueConfig(
+        forest_trees=TREES,
+        forest_max_features=0.33,
+        boosting_stages=STAGES,
+        boosting_learning_rate=0.1,
+        boosting_max_depth=3,
+    )
+)
 FOREST = f"RandomForest ({TREES} trees)"
 
 #: One pass over the doubles for the whole module -- milliseconds, but shared anyway so that
@@ -172,10 +181,12 @@ class TestTheStudysOpaqueClaim(unittest.TestCase):
         to the equation. A claim about real estimators -- a double predicting a constant makes
         no positive calls at all and scores an undefined MCC -- so it lives here rather than
         with the plumbing."""
-        from ml_meta_perf.experiment import DEFAULT, decision_baselines
+        from ml_meta_perf.experiment import decision_baselines
 
         equation = self.equation
-        table = decision_baselines(self.frame, DEFAULT, equation.paths.get("loo_dataset"), equation, _real_outcome())
+        table = decision_baselines(
+            self.frame, default_configuration(), equation.paths.get("loo_dataset"), equation, _real_outcome()
+        )
         at_threshold = {
             row["predictor"]: float(row["mcc"]) for row in table.to_dicts() if abs(float(row["threshold"]) - 0.7) < 1e-9
         }
@@ -269,10 +280,10 @@ class TestDoublyHeldOut(unittest.TestCase):
                 self.assertLess(row["r2_loo_cell"], 0.1)
 
     def test_the_equation_beats_every_opaque_model_on_the_same_protocol(self) -> None:
-        from ml_meta_perf.experiment import DEFAULT, doubly_held_out_predictions
+        from ml_meta_perf.experiment import doubly_held_out_predictions
         from ml_meta_perf.stats import r2_score
 
-        predictions = doubly_held_out_predictions(self.frame, 3, DEFAULT)
+        predictions = doubly_held_out_predictions(self.frame, 3, default_configuration())
         assert predictions is not None
         equation = r2_score(target(self.frame), predictions)
         for label, row in self.rows.items():
