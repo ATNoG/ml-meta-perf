@@ -525,3 +525,60 @@ class FlexFLSchemaTests(unittest.TestCase):
         negative |= {"stability": 0.0, "brevity": 0.0}
         self.assertAlmostEqual(configuration_search.scale_free_objective(perfect), 1.0)
         self.assertAlmostEqual(configuration_search.scale_free_objective(negative), 0.0)
+
+    def test_n_epochs_target(self) -> None:
+        schema = flexfl_schema("n_epochs")
+        self.assertIsNone(schema.bounds)
+        self.assertEqual((schema.slug, schema.label), ("n_epochs", "n_epochs"))
+        self.assertEqual(flexfl_schema("n_epochs", "regression").slug, "n_epochs-regression")
+        frame = load(FIXTURE, schema)
+        self.assertEqual(frame.height, 24)
+        self.assertEqual(frame["n_epochs"].dtype, pl.Float64)
+        with self.assertRaisesRegex(ValueError, "log1p applies only to the cost targets"):
+            flexfl_schema("n_epochs", log_target=True)
+        for name in ("comm_bytes_sent", "comm_bytes_recv"):
+            with self.subTest(target=name), self.assertRaises(ValueError):
+                flexfl_schema(name)
+
+    def test_run_flexfl_on_n_epochs(self) -> None:
+        schema = flexfl_schema("n_epochs")
+        with mock.patch.object(experiment, "prune", wraps=experiment.prune) as spy:
+            result = experiment.run_flexfl(FIXTURE, schema, TINY)
+        truth = target(load(FIXTURE, schema), schema)
+        self.assertEqual(spy.call_args.kwargs["min_contribution"], pruning_threshold(None, truth))
+        self.assertIsNone(result.equation.equation.bounds)
+        self.assertNotIn("log1p", result.equation.equation.name)
+        self.assertGreater(result.effects.height, 0)
+        for row in result.effects.iter_rows(named=True):
+            expected = "raises" if row["beta"] > 0 else "lowers"
+            self.assertEqual(row["direction"], f"{expected} n_epochs")
+
+    def test_n_epochs_cli_outputs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            code = cli.main([
+                "--target", "n_epochs", "--data", str(FIXTURE), "--output", str(out), "--quiet",
+                "--max-terms", "2", "--pool", "20", "--beam", "1", "--arity", "1",
+            ])
+            self.assertEqual(code, 0)
+            folder = out / "flexfl" / "n_epochs"
+            self.assertTrue((folder / "equation.txt").read_text().startswith("n_epochs = "))
+            self.assertIsNone(Equation.load(folder / "equation.json").bounds)
+            search_out = out / "search"
+            self.assertEqual(configuration_search.main(search_argv(search_out, "n_epochs")), 0)
+            self.assertTrue((search_out / "e3_valid.txt").read_text().startswith("n_epochs = "))
+            manifest = json.loads((search_out / "manifest.json").read_text())
+            self.assertEqual(manifest["settings"]["target"], "n_epochs")
+
+    def test_n_epochs_argument_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            for entry, argv in (
+                (cli.main, ["--target", "n_epochs", "--data", str(FIXTURE), "--log-target"]),
+                (configuration_search.main, [*search_argv(out, "n_epochs"), "--log-target"]),
+                (cli.main, ["--target", "comm_bytes_sent", "--data", str(FIXTURE)]),
+                (configuration_search.main, search_argv(out, "comm_bytes_recv")),
+            ):
+                with self.subTest(argv=argv), self.assertRaises(SystemExit) as error:
+                    entry(argv)
+                self.assertEqual(error.exception.code, 2)

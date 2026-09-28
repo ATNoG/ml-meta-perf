@@ -68,19 +68,28 @@ evaluated term counts is at most `0.001`. These values are exposed as `--plateau
 
 ## FlexFL targets
 
-Use `--target performance`, `--target total_time_s`, or `--target comm_bytes_total` with a
-FlexFL CSV supplied by `--data`. Performance also requires `--task-type classification` or
-`--task-type regression`. A task type on a cost target filters the input rows as well.
+Use `--target performance`, `--target total_time_s`, `--target comm_bytes_total`, or
+`--target n_epochs` with a FlexFL CSV supplied by `--data`. Performance also requires
+`--task-type classification` or `--task-type regression`. A task type on any other target
+filters the input rows as well. `n_epochs` is the number of validation rounds a run logged
+before it stopped. That is one per global epoch, except in CentralizedSync runs whose worker
+count does not divide the total batch count: those validate every few epochs, so `n_epochs`
+undercounts the epochs trained. `comm_bytes_sent` and `comm_bytes_recv` are not targets:
+each is half of `comm_bytes_total` to within 1%, so a fit on either repeats the
+`comm_bytes_total` fit.
 
 `--log-target` with `total_time_s` or `comm_bytes_total` fits `log1p` of the target,
-so R², MAE and the objective are on the log scale. It is rejected for `mcc` and
-`performance`. Outputs stay in `--output`, with `e3_valid.txt` and `e3_max.txt`
+so R², MAE and the objective are on the log scale. It is rejected for `mcc`,
+`performance` and `n_epochs`. `n_epochs` is a count capped by FlexFL's global epoch limit,
+piled up at that cap rather than spread over orders of magnitude, so `log1p` has no skew to
+remove. Outputs stay in `--output`, with `e3_valid.txt` and `e3_max.txt`
 labelled `log1p(<target>)`, equations named `E3_log1p_k<n>`, and
 `settings.log_target` in `manifest.json`. A directory holding a raw search cannot be
 reused for a log search.
 
-Unbounded cost targets prune terms whose contribution spans less than 0.002 times the
-target's 1st-to-99th percentile spread divided by 2, while bounded targets keep 0.002.
+Unbounded targets, the cost targets and `n_epochs`, prune terms whose contribution spans
+less than 0.002 times the target's 1st-to-99th percentile spread divided by 2, while
+bounded targets keep 0.002.
 
 The default FlexFL grid uses one feature set containing every FlexFL model feature. Use
 `--feature-set` to request subsets. `--min-features` and `--max-features` apply only to MCC
