@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import dataclasses
+import io
 import json
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
 from unittest import mock
 
@@ -297,6 +299,7 @@ class FlexFLSchemaTests(unittest.TestCase):
         for target_name, task_type, rows in (
             ("total_time_s", None, 24), ("comm_bytes_total", None, 24),
             ("performance", "classification", 12), ("performance", "regression", 12),
+            ("n_epochs", None, 24), ("n_epochs", "classification", 12),
         ):
             with self.subTest(target=target_name, task_type=task_type):
                 schema = flexfl_schema(target_name, task_type)
@@ -573,12 +576,17 @@ class FlexFLSchemaTests(unittest.TestCase):
     def test_n_epochs_argument_errors(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory)
-            for entry, argv in (
-                (cli.main, ["--target", "n_epochs", "--data", str(FIXTURE), "--log-target"]),
-                (configuration_search.main, [*search_argv(out, "n_epochs"), "--log-target"]),
-                (cli.main, ["--target", "comm_bytes_sent", "--data", str(FIXTURE)]),
-                (configuration_search.main, search_argv(out, "comm_bytes_recv")),
+            log_error = "--log-target applies only to --target total_time_s or comm_bytes_total"
+            for entry, argv, messages in (
+                (cli.main, ["--target", "n_epochs", "--data", str(FIXTURE), "--log-target"], (log_error,)),
+                (configuration_search.main, [*search_argv(out, "n_epochs"), "--log-target"], (log_error,)),
+                (cli.main, ["--target", "comm_bytes_sent", "--data", str(FIXTURE)],
+                 ("invalid choice", "comm_bytes_sent")),
+                (configuration_search.main, search_argv(out, "comm_bytes_recv"), ("invalid choice", "comm_bytes_recv")),
             ):
-                with self.subTest(argv=argv), self.assertRaises(SystemExit) as error:
+                stderr = io.StringIO()
+                with self.subTest(argv=argv), self.assertRaises(SystemExit) as error, redirect_stderr(stderr):
                     entry(argv)
                 self.assertEqual(error.exception.code, 2)
+                for message in messages:
+                    self.assertIn(message, stderr.getvalue())
