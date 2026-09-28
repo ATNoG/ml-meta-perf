@@ -85,7 +85,9 @@ master's first `start` and last `end`. `compute_time_total_s` sums worker work t
 `compute_time_max_s` is the work time of the busiest worker. `comm_time_total_s` sums
 worker communication time. Its timings pair a master and a worker clock, so positive
 clock skew is not detectable. `validation_time_s` sums validation time and mostly follows
-validation-set size and the number of validations.
+validation-set size and the number of validations. The assembler leaves the decomposition
+columns empty for a run with no worker logs or no work inside that window, and loading
+rejects any empty value in the target column, so these targets need a CSV without such rows.
 
 `--log-target` with `total_time_s`, `comm_bytes_total`, `compute_time_total_s`,
 `compute_time_max_s`, `comm_time_total_s`, or `validation_time_s` fits `log1p` of the target,

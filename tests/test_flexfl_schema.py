@@ -43,6 +43,7 @@ ALGORITHMS = {"CentralizedSync", "CentralizedAsync", "DecentralizedSync", "Decen
 DROPPED = {
     "strategy_dirichlet", "alpha", "distribution_percentage", "worker_rate_min", "is_classification", "n_classes"
 }
+DECOMPOSITION_TARGETS = ("compute_time_total_s", "compute_time_max_s", "comm_time_total_s", "validation_time_s")
 
 
 def search_argv(output: Path, target: str = "comm_bytes_total") -> list[str]:
@@ -73,7 +74,7 @@ class FlexFLSchemaTests(unittest.TestCase):
         ))
 
     def test_decomposition_targets(self) -> None:
-        for name in ("compute_time_total_s", "compute_time_max_s", "comm_time_total_s", "validation_time_s"):
+        for name in DECOMPOSITION_TARGETS:
             with self.subTest(target=name):
                 schema = flexfl_schema(name)
                 schema_log = flexfl_schema(name, log_target=True)
@@ -85,7 +86,7 @@ class FlexFLSchemaTests(unittest.TestCase):
                 )
 
     def test_decomposition_target_cli_outputs(self) -> None:
-        for name in ("compute_time_total_s", "compute_time_max_s", "comm_time_total_s", "validation_time_s"):
+        for name in DECOMPOSITION_TARGETS:
             with self.subTest(target=name), tempfile.TemporaryDirectory() as directory:
                 out = Path(directory)
                 self.assertEqual(cli.main([
@@ -339,6 +340,8 @@ class FlexFLSchemaTests(unittest.TestCase):
             ("total_time_s", None, 24), ("comm_bytes_total", None, 24),
             ("performance", "classification", 12), ("performance", "regression", 12),
             ("n_epochs", None, 24), ("n_epochs", "classification", 12),
+            ("compute_time_total_s", None, 24), ("compute_time_max_s", None, 24),
+            ("comm_time_total_s", None, 24), ("validation_time_s", None, 24),
         ):
             with self.subTest(target=target_name, task_type=task_type):
                 schema = flexfl_schema(target_name, task_type)
