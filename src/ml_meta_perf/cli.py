@@ -336,7 +336,7 @@ def _check_target(parser: argparse.ArgumentParser, arguments: argparse.Namespace
     if arguments.target != "mcc" and arguments.data is None:
         parser.error("--data is required with a FlexFL --target")
     if arguments.log_target and arguments.target not in FLEXFL_COST_TARGETS:
-        parser.error("--log-target applies only to --target total_time_s or comm_bytes_total")
+        parser.error(f"--log-target applies only to --target {' or '.join(FLEXFL_COST_TARGETS)}")
 
 
 def _run_flexfl_cli(arguments: argparse.Namespace) -> int:

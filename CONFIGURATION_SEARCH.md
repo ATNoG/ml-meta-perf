@@ -68,8 +68,10 @@ evaluated term counts is at most `0.001`. These values are exposed as `--plateau
 
 ## FlexFL targets
 
-Use `--target performance`, `--target total_time_s`, `--target comm_bytes_total`, or
-`--target n_epochs` with a FlexFL CSV supplied by `--data`. Performance also requires
+Use `--target performance`, `--target total_time_s`, `--target comm_bytes_total`,
+`--target n_epochs`, `--target compute_time_total_s`, `--target compute_time_max_s`,
+`--target comm_time_total_s`, or `--target validation_time_s` with a FlexFL CSV supplied
+by `--data`. Performance also requires
 `--task-type classification` or `--task-type regression`. A task type on any other target
 filters the input rows as well. `n_epochs` is the number of validation rounds a run logged
 before it stopped. That is one per global epoch, except in CentralizedSync runs whose worker
@@ -78,7 +80,15 @@ undercounts the epochs trained. `comm_bytes_sent` and `comm_bytes_recv` are not 
 each is half of `comm_bytes_total` to within 1%, so a fit on either repeats the
 `comm_bytes_total` fit.
 
-`--log-target` with `total_time_s` or `comm_bytes_total` fits `log1p` of the target,
+FlexFL assembler commit `d4a75c5` produces the decomposition columns, clipped to the
+master's first `start` and last `end`. `compute_time_total_s` sums worker work time, while
+`compute_time_max_s` is the work time of the busiest worker. `comm_time_total_s` sums
+worker communication time. Its timings pair a master and a worker clock, so positive
+clock skew is not detectable. `validation_time_s` sums validation time and mostly follows
+validation-set size and the number of validations.
+
+`--log-target` with `total_time_s`, `comm_bytes_total`, `compute_time_total_s`,
+`compute_time_max_s`, `comm_time_total_s`, or `validation_time_s` fits `log1p` of the target,
 so R², MAE and the objective are on the log scale. It is rejected for `mcc`,
 `performance` and `n_epochs`. `n_epochs` is a count capped by FlexFL's global epoch limit,
 piled up at that cap rather than spread over orders of magnitude, so `log1p` has no skew to

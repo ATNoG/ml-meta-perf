@@ -736,7 +736,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments.target != "mcc" and arguments.data is None:
         parser.error("--data is required with a FlexFL --target")
     if arguments.log_target and arguments.target not in FLEXFL_COST_TARGETS:
-        parser.error("--log-target applies only to --target total_time_s or comm_bytes_total")
+        parser.error(f"--log-target applies only to --target {' or '.join(FLEXFL_COST_TARGETS)}")
     if arguments.target != "mcc" and (arguments.min_features is not None or arguments.max_features is not None):
         parser.error(
             "--min-features and --max-features apply only to --target mcc; use --feature-set for FlexFL subsets"
