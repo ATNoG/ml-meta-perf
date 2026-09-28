@@ -360,7 +360,7 @@ MCC_SCHEMA = Schema(
 
 FLEXFL_DATASET_COLUMN = "dataset"
 FLEXFL_MODEL_COLUMN = "fl_algo"
-FLEXFL_TARGETS: tuple[str, ...] = ("performance", "total_time_s", "comm_bytes_total")
+FLEXFL_TARGETS: tuple[str, ...] = ("performance", "total_time_s", "comm_bytes_total", "n_epochs")
 FLEXFL_COST_TARGETS: tuple[str, ...] = ("total_time_s", "comm_bytes_total")
 TASK_TYPES: tuple[str, ...] = ("classification", "regression")
 FLEXFL_DATASET_FEATURES: tuple[str, ...] = (
