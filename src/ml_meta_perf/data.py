@@ -70,11 +70,15 @@ from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import polars as pl
 
 from ml_meta_perf.model import MCC_LOWER, MCC_UPPER
+
+if TYPE_CHECKING:
+    import argparse
 
 DATASET_COLUMN = "Dataset"
 MODEL_COLUMN = "Model"
@@ -360,8 +364,24 @@ MCC_SCHEMA = Schema(
 
 FLEXFL_DATASET_COLUMN = "dataset"
 FLEXFL_MODEL_COLUMN = "fl_algo"
-FLEXFL_TARGETS: tuple[str, ...] = ("performance", "total_time_s", "comm_bytes_total", "n_epochs")
-FLEXFL_COST_TARGETS: tuple[str, ...] = ("total_time_s", "comm_bytes_total")
+FLEXFL_TARGETS: tuple[str, ...] = (
+    "performance",
+    "total_time_s",
+    "comm_bytes_total",
+    "n_epochs",
+    "compute_time_total_s",
+    "compute_time_max_s",
+    "comm_time_total_s",
+    "validation_time_s",
+)
+FLEXFL_COST_TARGETS: tuple[str, ...] = (
+    "total_time_s",
+    "comm_bytes_total",
+    "compute_time_total_s",
+    "compute_time_max_s",
+    "comm_time_total_s",
+    "validation_time_s",
+)
 TASK_TYPES: tuple[str, ...] = ("classification", "regression")
 FLEXFL_DATASET_FEATURES: tuple[str, ...] = (
     "n_samples",
@@ -433,6 +453,18 @@ def flexfl_schema(target: str, task_type: str | None = None, log_target: bool = 
         task_type=task_type,
         log_target=log_target,
     )
+
+
+def check_target_arguments(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> None:
+    """Reject incompatible target and task type arguments."""
+    if arguments.target == "mcc" and arguments.task_type is not None:
+        parser.error("--task-type applies only to a FlexFL --target")
+    if arguments.target == "performance" and arguments.task_type is None:
+        parser.error("--task-type is required with --target performance")
+    if arguments.target != "mcc" and arguments.data is None:
+        parser.error("--data is required with a FlexFL --target")
+    if arguments.log_target and arguments.target not in FLEXFL_COST_TARGETS:
+        parser.error(f"--log-target applies only to --target {' or '.join(FLEXFL_COST_TARGETS)}")
 
 #: Learner family for each model in the meta-dataset. Model *features* describe capacity
 #: and cost; they do not say what kind of learner a row refers to, and the tabular-ML

@@ -43,6 +43,7 @@ ALGORITHMS = {"CentralizedSync", "CentralizedAsync", "DecentralizedSync", "Decen
 DROPPED = {
     "strategy_dirichlet", "alpha", "distribution_percentage", "worker_rate_min", "is_classification", "n_classes"
 }
+DECOMPOSITION_TARGETS = ("compute_time_total_s", "compute_time_max_s", "comm_time_total_s", "validation_time_s")
 
 
 def search_argv(output: Path, target: str = "comm_bytes_total") -> list[str]:
@@ -67,7 +68,46 @@ class FlexFLSchemaTests(unittest.TestCase):
         self.assertFalse(MCC_SCHEMA.log_target)
         self.assertEqual(MCC_SCHEMA.label, "MCC")
         self.assertEqual(flexfl_schema("comm_bytes_total").label, "comm_bytes_total")
-        self.assertEqual(FLEXFL_COST_TARGETS, ("total_time_s", "comm_bytes_total"))
+        self.assertEqual(FLEXFL_COST_TARGETS, (
+            "total_time_s", "comm_bytes_total", "compute_time_total_s", "compute_time_max_s",
+            "comm_time_total_s", "validation_time_s",
+        ))
+
+    def test_decomposition_targets(self) -> None:
+        for name in DECOMPOSITION_TARGETS:
+            with self.subTest(target=name):
+                schema = flexfl_schema(name)
+                schema_log = flexfl_schema(name, log_target=True)
+                self.assertIsNone(schema.bounds)
+                self.assertEqual(schema_log.slug, f"{name}-log1p")
+                np.testing.assert_array_equal(
+                    target(load(FIXTURE, schema_log), schema_log),
+                    np.log1p(target(load(FIXTURE, schema), schema)),
+                )
+
+    def test_decomposition_target_cli_outputs(self) -> None:
+        for name in DECOMPOSITION_TARGETS:
+            with self.subTest(target=name), tempfile.TemporaryDirectory() as directory:
+                out = Path(directory)
+                self.assertEqual(cli.main([
+                    "--target", name, "--log-target", "--data", str(FIXTURE), "--output", str(out),
+                    "--quiet", "--max-terms", "2", "--pool", "20", "--beam", "1", "--arity", "1",
+                ]), 0)
+                equation = out / "flexfl" / f"{name}-log1p" / "equation.txt"
+                self.assertTrue(equation.read_text().startswith(f"log1p({name}) = "))
+                search_out = out / "search"
+                self.assertEqual(configuration_search.main([*search_argv(search_out, name), "--log-target"]), 0)
+                manifest = json.loads((search_out / "manifest.json").read_text())
+                self.assertEqual(manifest["settings"]["target"], name)
+
+    def test_unchosen_decomposition_columns_are_not_targets(self) -> None:
+        for column in ("comm_time_max_s", "serial_time_total_s", "comm_skew_clamped"):
+            with self.subTest(target=column):
+                stderr = io.StringIO()
+                with self.assertRaises(SystemExit) as error, redirect_stderr(stderr):
+                    cli.main(["--target", column, "--data", str(FIXTURE)])
+                self.assertEqual(error.exception.code, 2)
+                self.assertIn("invalid choice", stderr.getvalue())
 
     def test_log_target_schema_requires_unbounded_target(self) -> None:
         with self.assertRaises(ValueError):
@@ -300,6 +340,8 @@ class FlexFLSchemaTests(unittest.TestCase):
             ("total_time_s", None, 24), ("comm_bytes_total", None, 24),
             ("performance", "classification", 12), ("performance", "regression", 12),
             ("n_epochs", None, 24), ("n_epochs", "classification", 12),
+            ("compute_time_total_s", None, 24), ("compute_time_max_s", None, 24),
+            ("comm_time_total_s", None, 24), ("validation_time_s", None, 24),
         ):
             with self.subTest(target=target_name, task_type=task_type):
                 schema = flexfl_schema(target_name, task_type)
@@ -576,7 +618,10 @@ class FlexFLSchemaTests(unittest.TestCase):
     def test_n_epochs_argument_errors(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory)
-            log_error = "--log-target applies only to --target total_time_s or comm_bytes_total"
+            log_error = (
+                "--log-target applies only to --target total_time_s or comm_bytes_total or "
+                "compute_time_total_s or compute_time_max_s or comm_time_total_s or validation_time_s"
+            )
             for entry, argv, messages in (
                 (cli.main, ["--target", "n_epochs", "--data", str(FIXTURE), "--log-target"], (log_error,)),
                 (configuration_search.main, [*search_argv(out, "n_epochs"), "--log-target"], (log_error,)),

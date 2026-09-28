@@ -29,10 +29,10 @@ import polars as pl
 from ml_meta_perf.data import (
     DATASET_FEATURES,
     DEFAULT_PATH,
-    FLEXFL_COST_TARGETS,
     FLEXFL_TARGETS,
     MODEL_FEATURES,
     TASK_TYPES,
+    check_target_arguments,
     columns_as_arrays,
     flexfl_schema,
     load,
@@ -327,18 +327,6 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _check_target(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> None:
-    """Reject incompatible target and task type arguments."""
-    if arguments.target == "mcc" and arguments.task_type is not None:
-        parser.error("--task-type applies only to a FlexFL --target")
-    if arguments.target == "performance" and arguments.task_type is None:
-        parser.error("--task-type is required with --target performance")
-    if arguments.target != "mcc" and arguments.data is None:
-        parser.error("--data is required with a FlexFL --target")
-    if arguments.log_target and arguments.target not in FLEXFL_COST_TARGETS:
-        parser.error("--log-target applies only to --target total_time_s or comm_bytes_total")
-
-
 def _run_flexfl_cli(arguments: argparse.Namespace) -> int:
     """Fit one FlexFL E3 equation and write its outputs."""
     schema = flexfl_schema(arguments.target, arguments.task_type, arguments.log_target)
@@ -372,7 +360,7 @@ def main(argv: list[str] | None = None) -> int:
     _configure_windows_output()
     parser = build_parser()
     arguments = parser.parse_args(argv)
-    _check_target(parser, arguments)
+    check_target_arguments(parser, arguments)
     if arguments.target != "mcc":
         return _run_flexfl_cli(arguments)
     phases = frozenset(PHASES) if not arguments.phase or "all" in arguments.phase else frozenset(arguments.phase)

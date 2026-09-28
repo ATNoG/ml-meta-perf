@@ -40,12 +40,12 @@ from joblib import Parallel, delayed
 
 from ml_meta_perf.data import (
     DEFAULT_PATH,
-    FLEXFL_COST_TARGETS,
     FLEXFL_TARGETS,
     MCC_SCHEMA,
     MODEL_FEATURES,
     TASK_TYPES,
     Schema,
+    check_target_arguments,
     columns_as_arrays,
     drop_constant_features,
     flexfl_schema,
@@ -729,14 +729,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     started = time.perf_counter()
     parser = build_parser()
     arguments = parser.parse_args(argv)
-    if arguments.target == "mcc" and arguments.task_type is not None:
-        parser.error("--task-type applies only to a FlexFL --target")
-    if arguments.target == "performance" and arguments.task_type is None:
-        parser.error("--task-type is required with --target performance")
-    if arguments.target != "mcc" and arguments.data is None:
-        parser.error("--data is required with a FlexFL --target")
-    if arguments.log_target and arguments.target not in FLEXFL_COST_TARGETS:
-        parser.error("--log-target applies only to --target total_time_s or comm_bytes_total")
+    check_target_arguments(parser, arguments)
     if arguments.target != "mcc" and (arguments.min_features is not None or arguments.max_features is not None):
         parser.error(
             "--min-features and --max-features apply only to --target mcc; use --feature-set for FlexFL subsets"
