@@ -19,6 +19,7 @@ from ml_meta_perf.configuration_search import SearchSettings, _settings_payload,
 from ml_meta_perf.data import (
     ALL_FEATURES,
     FLEXFL_COST_TARGETS,
+    FLEXFL_EPOCH_CAP_COLUMN,
     FLEXFL_MODEL_FEATURES,
     MCC_SCHEMA,
     SchemaError,
@@ -41,8 +42,10 @@ FIXTURE = Path(__file__).parent / "fixtures" / "flexfl_meta_dataset_sample.csv"
 TINY = dataclasses.replace(DEFAULT, max_terms=2, pool_size=20, beam_width=1, max_arity=1)
 ALGORITHMS = {"CentralizedSync", "CentralizedAsync", "DecentralizedSync", "DecentralizedAsync"}
 DROPPED = {
-    "strategy_dirichlet", "alpha", "distribution_percentage", "worker_rate_min", "is_classification", "n_classes"
+    "strategy_dirichlet", "alpha", "distribution_percentage", "worker_rate_min", "is_classification", "n_classes",
+    FLEXFL_EPOCH_CAP_COLUMN,
 }
+N_MODEL_FEATURES = len(FLEXFL_MODEL_FEATURES)
 DECOMPOSITION_TARGETS = ("compute_time_total_s", "compute_time_max_s", "comm_time_total_s", "validation_time_s")
 
 
@@ -55,6 +58,52 @@ def search_argv(output: Path, target: str = "comm_bytes_total") -> list[str]:
 
 
 class FlexFLSchemaTests(unittest.TestCase):
+    def test_epoch_cap_is_a_flexfl_model_feature(self) -> None:
+        self.assertIn(FLEXFL_EPOCH_CAP_COLUMN, FLEXFL_MODEL_FEATURES)
+        self.assertIn(FLEXFL_EPOCH_CAP_COLUMN, flexfl_schema("n_epochs").model_features)
+        self.assertNotIn(FLEXFL_EPOCH_CAP_COLUMN, MCC_SCHEMA.features)
+
+    def test_load_rejects_a_stale_flexfl_csv(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            stale = Path(directory) / "stale.csv"
+            pl.read_csv(FIXTURE).drop(FLEXFL_EPOCH_CAP_COLUMN).write_csv(stale)
+            with self.assertRaisesRegex(
+                SchemaError,
+                f"stale FlexFL meta-dataset .*: no {FLEXFL_EPOCH_CAP_COLUMN} column; "
+                r"re-assemble it with FlexFL's scripts/assemble_meta_dataset\.py",
+            ):
+                load(stale, flexfl_schema("comm_bytes_total"))
+            schema = flexfl_schema("comm_bytes_total")
+            without = dataclasses.replace(
+                schema,
+                model_features=tuple(name for name in schema.model_features if name != FLEXFL_EPOCH_CAP_COLUMN),
+            )
+            self.assertNotIn(FLEXFL_EPOCH_CAP_COLUMN, load(stale, without).columns)
+
+    def test_load_rejects_a_stale_flexfl_csv_before_the_task_type_filter(self) -> None:
+        frame = pl.read_csv(FIXTURE).drop(FLEXFL_EPOCH_CAP_COLUMN)
+        corpora = {
+            "no classification rows": frame.with_columns(pl.lit(False).alias("is_classification")),
+            "no is_classification column": frame.drop("is_classification"),
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            for name, corpus in corpora.items():
+                with self.subTest(name):
+                    stale = Path(directory) / "stale.csv"
+                    corpus.write_csv(stale)
+                    with self.assertRaisesRegex(SchemaError, f"no {FLEXFL_EPOCH_CAP_COLUMN} column; re-assemble"):
+                        load(stale, flexfl_schema("comm_bytes_total", "classification"))
+
+    def test_mixed_epoch_caps_survive_the_constant_drop(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            mixed = Path(directory) / "mixed.csv"
+            frame = pl.read_csv(FIXTURE)
+            caps = [10 if index % 2 else 200 for index in range(frame.height)]
+            frame.with_columns(pl.Series(FLEXFL_EPOCH_CAP_COLUMN, caps)).write_csv(mixed)
+            schema = flexfl_schema("n_epochs")
+            reduced = drop_constant_features(load(mixed, schema), schema)
+            self.assertIn(FLEXFL_EPOCH_CAP_COLUMN, reduced.model_features)
+
     def test_log_target_schema(self) -> None:
         schema = flexfl_schema("comm_bytes_total", log_target=True)
         self.assertEqual(schema.slug, "comm_bytes_total-log1p")
@@ -163,8 +212,8 @@ class FlexFLSchemaTests(unittest.TestCase):
     def test_search_worker_prunes_with_the_schema_threshold(self) -> None:
         settings = SearchSettings(
             target="comm_bytes_total",
-            minimum_features=27,
-            maximum_features=27,
+            minimum_features=N_MODEL_FEATURES,
+            maximum_features=N_MODEL_FEATURES,
             penalties=(20.0,),
             zscores=(3.0,),
             arities=(1,),
@@ -187,8 +236,8 @@ class FlexFLSchemaTests(unittest.TestCase):
     def test_finalist_worker_prunes_with_the_schema_threshold(self) -> None:
         settings = SearchSettings(
             target="comm_bytes_total",
-            minimum_features=27,
-            maximum_features=27,
+            minimum_features=N_MODEL_FEATURES,
+            maximum_features=N_MODEL_FEATURES,
             penalties=(20.0,),
             zscores=(3.0,),
             arities=(1,),
@@ -326,11 +375,18 @@ class FlexFLSchemaTests(unittest.TestCase):
         self.assertNotIn("log_target", _settings_payload(SearchSettings()))
         self.assertNotIn(
             "log_target",
-            _settings_payload(SearchSettings(target="comm_bytes_total", minimum_features=27, maximum_features=27)),
+            _settings_payload(
+                SearchSettings(
+                    target="comm_bytes_total", minimum_features=N_MODEL_FEATURES, maximum_features=N_MODEL_FEATURES
+                )
+            ),
         )
         self.assertIs(
             _settings_payload(
-                SearchSettings(target="comm_bytes_total", minimum_features=27, maximum_features=27, log_target=True)
+                SearchSettings(
+                    target="comm_bytes_total", minimum_features=N_MODEL_FEATURES, maximum_features=N_MODEL_FEATURES,
+                    log_target=True,
+                )
             )["log_target"],
             True,
         )
@@ -525,12 +581,14 @@ class FlexFLSchemaTests(unittest.TestCase):
             self.assertTrue((out / "e3_valid.txt").read_text().startswith("performance = "))
 
     def test_search_settings_for_flexfl(self) -> None:
-        settings = SearchSettings(target="comm_bytes_total", minimum_features=27, maximum_features=27)
+        settings = SearchSettings(
+            target="comm_bytes_total", minimum_features=N_MODEL_FEATURES, maximum_features=N_MODEL_FEATURES
+        )
         self.assertEqual(feature_subsets(settings), [tuple(sorted(FLEXFL_MODEL_FEATURES))])
-        SearchSettings(target="comm_bytes_total", minimum_features=1, maximum_features=27,
+        SearchSettings(target="comm_bytes_total", minimum_features=1, maximum_features=N_MODEL_FEATURES,
                        explicit_feature_sets=(("learning_rate", "num_workers"),)).validate()
         with self.assertRaisesRegex(ValueError, "Model Capability"):
-            SearchSettings(target="comm_bytes_total", minimum_features=1, maximum_features=27,
+            SearchSettings(target="comm_bytes_total", minimum_features=1, maximum_features=N_MODEL_FEATURES,
                            explicit_feature_sets=(("Model Capability",),)).validate()
         with self.assertRaises(ValueError):
             SearchSettings(task_type="regression").validate()
