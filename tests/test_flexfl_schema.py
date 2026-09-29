@@ -19,6 +19,7 @@ from ml_meta_perf.configuration_search import SearchSettings, _settings_payload,
 from ml_meta_perf.data import (
     ALL_FEATURES,
     FLEXFL_COST_TARGETS,
+    FLEXFL_EPOCH_CAP_COLUMN,
     FLEXFL_MODEL_FEATURES,
     MCC_SCHEMA,
     SchemaError,
@@ -42,7 +43,7 @@ TINY = dataclasses.replace(DEFAULT, max_terms=2, pool_size=20, beam_width=1, max
 ALGORITHMS = {"CentralizedSync", "CentralizedAsync", "DecentralizedSync", "DecentralizedAsync"}
 DROPPED = {
     "strategy_dirichlet", "alpha", "distribution_percentage", "worker_rate_min", "is_classification", "n_classes",
-    "epoch_cap",
+    FLEXFL_EPOCH_CAP_COLUMN,
 }
 N_MODEL_FEATURES = len(FLEXFL_MODEL_FEATURES)
 DECOMPOSITION_TARGETS = ("compute_time_total_s", "compute_time_max_s", "comm_time_total_s", "validation_time_s")
@@ -58,31 +59,36 @@ def search_argv(output: Path, target: str = "comm_bytes_total") -> list[str]:
 
 class FlexFLSchemaTests(unittest.TestCase):
     def test_epoch_cap_is_a_flexfl_model_feature(self) -> None:
-        self.assertIn("epoch_cap", FLEXFL_MODEL_FEATURES)
-        self.assertIn("epoch_cap", flexfl_schema("n_epochs").model_features)
-        self.assertNotIn("epoch_cap", MCC_SCHEMA.features)
+        self.assertIn(FLEXFL_EPOCH_CAP_COLUMN, FLEXFL_MODEL_FEATURES)
+        self.assertIn(FLEXFL_EPOCH_CAP_COLUMN, flexfl_schema("n_epochs").model_features)
+        self.assertNotIn(FLEXFL_EPOCH_CAP_COLUMN, MCC_SCHEMA.features)
 
     def test_load_rejects_a_stale_flexfl_csv(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             stale = Path(directory) / "stale.csv"
-            pl.read_csv(FIXTURE).drop("epoch_cap").write_csv(stale)
-            with self.assertRaisesRegex(SchemaError, "stale FlexFL meta-dataset .*: no epoch_cap column"):
+            pl.read_csv(FIXTURE).drop(FLEXFL_EPOCH_CAP_COLUMN).write_csv(stale)
+            with self.assertRaisesRegex(
+                SchemaError,
+                f"stale FlexFL meta-dataset .*: no {FLEXFL_EPOCH_CAP_COLUMN} column; "
+                r"re-assemble it with FlexFL's scripts/assemble_meta_dataset\.py",
+            ):
                 load(stale, flexfl_schema("comm_bytes_total"))
             schema = flexfl_schema("comm_bytes_total")
             without = dataclasses.replace(
-                schema, model_features=tuple(name for name in schema.model_features if name != "epoch_cap")
+                schema,
+                model_features=tuple(name for name in schema.model_features if name != FLEXFL_EPOCH_CAP_COLUMN),
             )
-            self.assertNotIn("epoch_cap", load(stale, without).columns)
+            self.assertNotIn(FLEXFL_EPOCH_CAP_COLUMN, load(stale, without).columns)
 
     def test_mixed_epoch_caps_survive_the_constant_drop(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             mixed = Path(directory) / "mixed.csv"
             frame = pl.read_csv(FIXTURE)
             caps = [10 if index % 2 else 200 for index in range(frame.height)]
-            frame.with_columns(pl.Series("epoch_cap", caps)).write_csv(mixed)
+            frame.with_columns(pl.Series(FLEXFL_EPOCH_CAP_COLUMN, caps)).write_csv(mixed)
             schema = flexfl_schema("n_epochs")
             reduced = drop_constant_features(load(mixed, schema), schema)
-            self.assertIn("epoch_cap", reduced.model_features)
+            self.assertIn(FLEXFL_EPOCH_CAP_COLUMN, reduced.model_features)
 
     def test_log_target_schema(self) -> None:
         schema = flexfl_schema("comm_bytes_total", log_target=True)
