@@ -395,6 +395,7 @@ FLEXFL_DATASET_FEATURES: tuple[str, ...] = (
     "max_layer_width",
     "weight_decay",
 )
+FLEXFL_EPOCH_CAP_COLUMN = "epoch_cap"
 FLEXFL_MODEL_FEATURES: tuple[str, ...] = (
     "fl_algo_CentralizedSync",
     "fl_algo_CentralizedAsync",
@@ -408,6 +409,7 @@ FLEXFL_MODEL_FEATURES: tuple[str, ...] = (
     "patience",
     "delta",
     "local_epochs",
+    FLEXFL_EPOCH_CAP_COLUMN,
     "alpha",
     "distribution_percentage",
     "feat_entropy_mean",
@@ -556,6 +558,11 @@ def load(path: str | Path | None = None, schema: Schema = MCC_SCHEMA) -> pl.Data
         raise SchemaError(f"meta-dataset not found: {resolved}")
 
     frame = pl.read_csv(resolved)
+    if FLEXFL_EPOCH_CAP_COLUMN in schema.features and FLEXFL_EPOCH_CAP_COLUMN not in frame.columns:
+        raise SchemaError(
+            f"stale FlexFL meta-dataset {resolved}: no {FLEXFL_EPOCH_CAP_COLUMN} column; "
+            "re-assemble it with FlexFL's scripts/assemble_meta_dataset.py"
+        )
     if schema.task_type is not None:
         if "is_classification" not in frame.columns:
             raise SchemaError("missing columns: ['is_classification']")

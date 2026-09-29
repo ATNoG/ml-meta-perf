@@ -92,9 +92,10 @@ rejects any empty value in the target column, so these targets need a CSV withou
 `--log-target` with `total_time_s`, `comm_bytes_total`, `compute_time_total_s`,
 `compute_time_max_s`, `comm_time_total_s`, or `validation_time_s` fits `log1p` of the target,
 so R², MAE and the objective are on the log scale. It is rejected for `mcc`,
-`performance` and `n_epochs`. `n_epochs` is a count capped by FlexFL's global epoch limit,
-piled up at that cap rather than spread over orders of magnitude, so `log1p` has no skew to
-remove. Outputs stay in `--output`, with `e3_valid.txt` and `e3_max.txt`
+`performance` and `n_epochs`. `n_epochs` counts epochs up to the run's global epoch cap, the
+`epoch_cap` column; CentralizedSync runs logged before FlexFL's per-epoch validation fix,
+flagged by `epoch_validation_gap`, can exceed it. Outputs stay in `--output`, with
+`e3_valid.txt` and `e3_max.txt`
 labelled `log1p(<target>)`, equations named `E3_log1p_k<n>`, and
 `settings.log_target` in `manifest.json`. A directory holding a raw search cannot be
 reused for a log search.
@@ -109,6 +110,13 @@ and are rejected for FlexFL targets. Features constant in the loaded frame are r
 before the term library is built. FlexFL outputs add `fitted_features` and
 `n_fitted_features`, the features left after that removal, while `features` and
 `n_features` keep the requested set. MCC outputs have neither column.
+
+`epoch_cap` is a FlexFL model feature: the global epoch cap each run trained under, 10 for
+runs assembled with `--legacy-epoch-cap 10` and, from FlexFL's raised cap onward, 200 for
+campaign runs unless a launch-time `--epochs` overrode it. Loading a FlexFL CSV without the
+column through either CLI fails with a stale-corpus error, `--feature-set` or not;
+re-assemble it with FlexFL's `scripts/assemble_meta_dataset.py`. In a corpus where every run
+shares one cap it is constant and removed before the term library is built.
 
 FlexFL uses a scale-free objective: in-sample R², LODO R², LOMO R², stability and brevity
 have weights 0.10, 0.20, 0.20, 0.15 and 0.05, renormalised by their sum of 0.70. The
