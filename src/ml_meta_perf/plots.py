@@ -34,6 +34,7 @@ import numpy as np
 import polars as pl
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
+from matplotlib.text import Text
 
 IN_SAMPLE = "#1b6ca8"
 LOO_DATASET = "#d1495b"
@@ -43,6 +44,13 @@ POSITIVE = "#00798c"
 NEGATIVE = "#d1495b"
 
 FIGURE_DPI = 150
+
+# The current paper uses elsarticle's preprint, 12pt layout. In that layout the
+# standard article class gives \textwidth = 390pt. DejaVu Sans looks larger than
+# the paper's Latin Modern Roman at the same nominal size; 8.5pt labels align
+# visually with its body text and captions after \includegraphics scales the PDF.
+PAPER_FONT_SIZE_PT = 8.5
+PAPER_TEXT_WIDTH_PT = 390.0
 
 
 #: Written alongside the raster for every figure. A vector copy is what a paper's
@@ -83,7 +91,33 @@ def _save_atomic(figure: Figure, path: Path, *, vector: bool) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def _finish(figure: Figure, destination: str | Path, *, tight_layout: bool = True) -> Path:
+def _match_paper_font(figure: Figure, width_fraction: float, *, tight_layout: bool) -> None:
+    """Match label size to the body text after scaling to the paper width."""
+    target_width_pt = PAPER_TEXT_WIDTH_PT * width_fraction
+    font_size = PAPER_FONT_SIZE_PT
+    for _ in range(8):
+        for axes in figure.axes:
+            axes.tick_params(axis="both", labelsize=font_size)
+        for label in figure.findobj(match=Text):
+            label.set_fontsize(font_size)
+        if tight_layout:
+            figure.tight_layout()
+        figure.canvas.draw()
+        bounds = figure.get_tightbbox(figure.canvas.get_renderer())
+        saved_width_pt = 72 * (bounds.width + 2 * plt.rcParams["savefig.pad_inches"])
+        revised = PAPER_FONT_SIZE_PT * saved_width_pt / target_width_pt
+        if abs(revised - font_size) < 0.01:
+            break
+        font_size = revised
+
+
+def _finish(
+    figure: Figure,
+    destination: str | Path,
+    *,
+    paper_width_fraction: float = 0.99,
+    tight_layout: bool = True,
+) -> Path:
     """Write the figure as PNG and PDF, both on a transparent background.
 
     Transparent rather than white so a figure sits on whatever the page behind it is,
@@ -97,8 +131,7 @@ def _finish(figure: Figure, destination: str | Path, *, tight_layout: bool = Tru
     """
     path = Path(destination)
     path.parent.mkdir(parents=True, exist_ok=True)
-    if tight_layout:
-        figure.tight_layout()
+    _match_paper_font(figure, paper_width_fraction, tight_layout=tight_layout)
     _save_atomic(figure, path, vector=False)
     # `CreationDate: None` because matplotlib otherwise stamps the PDF with the wall clock,
     # so every run rewrote seven tracked figures with byte-different, visually identical
@@ -299,8 +332,8 @@ def term_count_curve(
     axes.set_ylabel("$R^2$")
     axes.set_xticks(_length_ticks(sizes))
     axes.grid(alpha=0.25, linestyle=":")
-    axes.legend(frameon=False, loc="lower right", fontsize=9)
-    return _finish(figure, destination)
+    axes.legend(loc="lower right", facecolor="white", edgecolor="none", framealpha=0.9)
+    return _finish(figure, destination, paper_width_fraction=0.95)
 
 
 def scatter_limits(
@@ -363,7 +396,7 @@ def predicted_versus_actual(
     axes.set_ylabel("predicted MCC")
     axes.grid(alpha=0.25, linestyle=":")
     axes.legend(frameon=False, loc="upper left", fontsize=9)
-    return _finish(figure, destination)
+    return _finish(figure, destination, paper_width_fraction=0.64)
 
 
 def equation_comparison(comparison: pl.DataFrame, destination: str | Path) -> Path:
@@ -403,7 +436,21 @@ def equation_comparison(comparison: pl.DataFrame, destination: str | Path) -> Pa
         edgecolor="white",
     )
     axes.set_xticks(positions)
-    axes.set_xticklabels([_wrap(label) for label in labels], fontsize=8)
+    short_labels = []
+    for label in labels:
+        if label.startswith("E1 reference"):
+            short_labels.append("dataset\nmean")
+        elif label.startswith("E2 reference"):
+            short_labels.append("model\nmean")
+        elif label.startswith("reference: additive"):
+            short_labels.append("additive\nmean")
+        elif label.startswith("E3-Valid"):
+            short_labels.append("E3-\nValid")
+        elif label.startswith("E3-MAX"):
+            short_labels.append("E3-\nMAX")
+        else:
+            short_labels.append(label.split(",", 1)[0])
+    axes.set_xticklabels(short_labels)
     axes.set_ylabel("$R^2$ on all 476 rows")
     axes.grid(axis="y", alpha=0.25, linestyle=":")
 
@@ -428,11 +475,9 @@ def term_effects(effects: pl.DataFrame, destination: str | Path, *, top: int | N
     labels = [term_to_math(name) for name in table["term"].to_list()]
     values = table["effect"].to_numpy() * np.sign(table["beta"].to_numpy())
 
-    # Keep every selected term while making the publication figure compact enough to sit
-    # beside the surrounding discussion. At the retained 18 terms this renders at roughly
-    # 550 pixels high; the lower bound keeps small ad-hoc tables usable as well.
-    compact_height = max(2.0, (0.46 * len(labels) + 1.2) / 2.504)
-    figure, axes = plt.subplots(figsize=(8.0, compact_height))
+    # At 12pt on the page, each of the 18 term labels needs its own readable row.
+    figure_height = max(2.5, 0.29 * len(labels) + 1.6)
+    figure, axes = plt.subplots(figsize=(8.0, figure_height))
     axes.barh(
         range(len(labels)),
         values,
@@ -443,10 +488,10 @@ def term_effects(effects: pl.DataFrame, destination: str | Path, *, top: int | N
     axes.set_yticks(range(len(labels)))
     axes.set_yticklabels(labels, fontsize=7.5)
     axes.axvline(0.0, color="black", linewidth=0.8)
-    axes.set_xlabel("effect on predicted MCC (10th to 90th percentile swing)", fontsize=9)
+    axes.set_xlabel("effect on predicted MCC")
     axes.tick_params(axis="x", labelsize=8)
     axes.grid(axis="x", alpha=0.25, linestyle=":")
-    return _finish(figure, destination)
+    return _finish(figure, destination, paper_width_fraction=0.99)
 
 
 def practice_effects(practices: pl.DataFrame, destination: str | Path) -> Path:
@@ -478,7 +523,7 @@ def practice_effects(practices: pl.DataFrame, destination: str | Path) -> Path:
     axes.set_yticks(range(len(labels)))
     axes.set_yticklabels(labels, fontsize=9)
     axes.axvline(0.0, color="black", linewidth=0.8)
-    axes.set_xlabel("change in predicted MCC, lowest decile of the feature to its highest")
+    axes.set_xlabel("change in predicted MCC")
     axes.grid(axis="x", alpha=0.25, linestyle=":")
 
     # Only the levels actually present, and drawn in the palette the bars use. A legend in a
@@ -487,8 +532,9 @@ def practice_effects(practices: pl.DataFrame, destination: str | Path) -> Path:
     present = _confidence_levels(table)
     if present:
         handles = [Rectangle((0, 0), 1, 1, facecolor=POSITIVE, alpha=CONFIDENCE_ALPHA[name]) for name in present]
-        axes.legend(handles, present, frameon=False, fontsize=8, loc="lower right", title="confidence")
-    return _finish(figure, destination)
+        figure.legend(handles, present, frameon=False, loc="upper right", title="confidence")
+    figure.subplots_adjust(left=0.18, right=0.98, bottom=0.24, top=0.72)
+    return _finish(figure, destination, tight_layout=False)
 
 
 #: Bar opacity per rated confidence. ``unrated`` is deliberately the faintest rather than
@@ -591,7 +637,7 @@ def decision_quality(decision: pl.DataFrame, destination: str | Path) -> Path:
     axes.set_xticks(sorted({float(value) for value in table["threshold"]}))
     axes.grid(alpha=0.25, linewidth=0.6)
     axes.legend(fontsize=9, loc="lower left", framealpha=0.0, title="Evaluation protocol")
-    return _finish(figure, destination)
+    return _finish(figure, destination, paper_width_fraction=0.73)
 
 
 def ranking_quality(selection: pl.DataFrame, destination: str | Path) -> Path:
@@ -615,7 +661,7 @@ def ranking_quality(selection: pl.DataFrame, destination: str | Path) -> Path:
     figure, (axes, cost) = plt.subplots(
         1,
         2,
-        figsize=(9.0, 0.29 * table.height + 1.8),
+        figsize=(9.0, 0.37 * table.height + 2.0),
         sharey=True,
         gridspec_kw={"width_ratios": [2.1, 1.0], "wspace": 0.10},
     )
@@ -639,18 +685,19 @@ def ranking_quality(selection: pl.DataFrame, destination: str | Path) -> Path:
     axes.set_yticklabels([_shorten(name, 24) for name in table["group"]], fontsize=8)
     axes.set_xlim(0.0, 1.0)
     axes.set_xticks([0.0, 0.2, 0.4, 0.6, 0.8])
-    axes.set_xlabel("average precision / reciprocal rank")
+    axes.set_xlabel("average precision /\nreciprocal rank")
     axes.invert_yaxis()
     axes.grid(alpha=0.25, linewidth=0.6, axis="x")
-    axes.legend(fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.06), ncol=3, framealpha=0.0)
+    handles, labels = axes.get_legend_handles_labels()
+    figure.legend(handles, labels, loc="upper center", bbox_to_anchor=(0.5, 0.995), ncol=2, frameon=False)
 
     regret = table["regret"].to_numpy()
     cost.barh(positions, regret, height=0.42, color=[CEILING if v <= 1e-9 else NEGATIVE for v in regret])
-    cost.set_xlabel("MCC given up by taking\nthe top-ranked model")
+    cost.set_xlabel("top-choice regret\n(MCC)")
     cost.grid(alpha=0.25, linewidth=0.6, axis="x")
     cost.tick_params(labelleft=False)
     # ``tight_layout`` warns on this shared-y pair in Matplotlib even though the axes are
     # placed correctly. Set the margins explicitly and retain ``bbox_inches='tight'`` in
     # `_finish`, which still expands the saved canvas around labels and the legend.
-    figure.subplots_adjust(left=0.22, right=0.98, bottom=0.13, top=0.99, wspace=0.10)
-    return _finish(figure, destination, tight_layout=False)
+    figure.subplots_adjust(left=0.30, right=0.98, bottom=0.10, top=0.89, wspace=0.10)
+    return _finish(figure, destination, paper_width_fraction=0.99, tight_layout=False)
