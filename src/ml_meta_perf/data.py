@@ -558,13 +558,6 @@ def load(path: str | Path | None = None, schema: Schema = MCC_SCHEMA) -> pl.Data
         raise SchemaError(f"meta-dataset not found: {resolved}")
 
     frame = pl.read_csv(resolved)
-    if schema.task_type is not None:
-        if "is_classification" not in frame.columns:
-            raise SchemaError("missing columns: ['is_classification']")
-        wanted = schema.task_type == "classification"
-        frame = frame.filter(pl.col("is_classification").cast(pl.Boolean) == wanted)
-        if frame.is_empty():
-            raise SchemaError(f"meta-dataset has no {schema.task_type} rows")
     expected = (schema.dataset_column, schema.model_column, *schema.features, schema.target_column)
     missing = [column for column in expected if column not in frame.columns]
     if FLEXFL_EPOCH_CAP_COLUMN in missing:
@@ -572,6 +565,13 @@ def load(path: str | Path | None = None, schema: Schema = MCC_SCHEMA) -> pl.Data
             f"stale FlexFL meta-dataset {resolved}: no {FLEXFL_EPOCH_CAP_COLUMN} column; "
             "re-assemble it with FlexFL's scripts/assemble_meta_dataset.py"
         )
+    if schema.task_type is not None:
+        if "is_classification" not in frame.columns:
+            raise SchemaError("missing columns: ['is_classification']")
+        wanted = schema.task_type == "classification"
+        frame = frame.filter(pl.col("is_classification").cast(pl.Boolean) == wanted)
+        if frame.is_empty():
+            raise SchemaError(f"meta-dataset has no {schema.task_type} rows")
     if missing:
         raise SchemaError(f"missing columns: {missing}")
 

@@ -80,6 +80,20 @@ class FlexFLSchemaTests(unittest.TestCase):
             )
             self.assertNotIn(FLEXFL_EPOCH_CAP_COLUMN, load(stale, without).columns)
 
+    def test_load_rejects_a_stale_flexfl_csv_before_the_task_type_filter(self) -> None:
+        frame = pl.read_csv(FIXTURE).drop(FLEXFL_EPOCH_CAP_COLUMN)
+        corpora = {
+            "no classification rows": frame.with_columns(pl.lit(False).alias("is_classification")),
+            "no is_classification column": frame.drop("is_classification"),
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            for name, corpus in corpora.items():
+                with self.subTest(name):
+                    stale = Path(directory) / "stale.csv"
+                    corpus.write_csv(stale)
+                    with self.assertRaisesRegex(SchemaError, f"no {FLEXFL_EPOCH_CAP_COLUMN} column; re-assemble"):
+                        load(stale, flexfl_schema("comm_bytes_total", "classification"))
+
     def test_mixed_epoch_caps_survive_the_constant_drop(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             mixed = Path(directory) / "mixed.csv"
