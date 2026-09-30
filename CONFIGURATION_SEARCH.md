@@ -73,10 +73,9 @@ Use `--target performance`, `--target total_time_s`, `--target comm_bytes_total`
 `--target comm_time_total_s`, or `--target validation_time_s` with a FlexFL CSV supplied
 by `--data`. Performance also requires
 `--task-type classification` or `--task-type regression`. A task type on any other target
-filters the input rows as well. `n_epochs` is the number of validation rounds a run logged
-before it stopped. That is one per global epoch, except in CentralizedSync runs whose worker
-count does not divide the total batch count: those validate every few epochs, so `n_epochs`
-undercounts the epochs trained. `comm_bytes_sent` and `comm_bytes_recv` are not targets:
+filters the input rows as well. `n_epochs` is the last epoch a run logged before it
+stopped, at most the run's global epoch cap, the `epoch_cap` column.
+`comm_bytes_sent` and `comm_bytes_recv` are not targets:
 each is half of `comm_bytes_total` to within 1%, so a fit on either repeats the
 `comm_bytes_total` fit.
 
@@ -96,9 +95,7 @@ targets it sees only the kept rows.
 `--log-target` with `total_time_s`, `comm_bytes_total`, `compute_time_total_s`,
 `compute_time_max_s`, `comm_time_total_s`, or `validation_time_s` fits `log1p` of the target,
 so R², MAE and the objective are on the log scale. It is rejected for `mcc`,
-`performance` and `n_epochs`. `n_epochs` counts epochs up to the run's global epoch cap, the
-`epoch_cap` column; CentralizedSync runs logged before FlexFL's per-epoch validation fix,
-flagged by `epoch_validation_gap`, can exceed it. Outputs stay in `--output`, with
+`performance` and `n_epochs`. Outputs stay in `--output`, with
 `e3_valid.txt` and `e3_max.txt`
 labelled `log1p(<target>)`, equations named `E3_log1p_k<n>`, and
 `settings.log_target` in `manifest.json`. A directory holding a raw search cannot be
