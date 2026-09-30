@@ -88,8 +88,10 @@ clock skew is not detectable. `validation_time_s` sums validation time and mostl
 validation-set size and the number of validations. The assembler leaves the decomposition
 columns empty for a run with no worker logs or no work inside that window. Loading one of
 these four targets drops the rows whose target is empty, after any task-type filter, and
-prints the number dropped to stderr; it fails if dropping removes every row. An empty
-feature, or an empty value in any other selected target, still fails the load.
+prints the number dropped to stderr, with counts by dataset and by `fl_algo`; it fails if
+dropping removes every row. An empty feature, or an empty value in any other selected
+target, still fails the load. Constant-feature removal runs after the drop, so for these
+targets it sees only the kept rows.
 
 `--log-target` with `total_time_s`, `comm_bytes_total`, `compute_time_total_s`,
 `compute_time_max_s`, `comm_time_total_s`, or `validation_time_s` fits `log1p` of the target,

@@ -163,7 +163,11 @@ class FlexFLSchemaTests(unittest.TestCase):
                         self.assertEqual(frame.height, 22)
                         self.assertEqual(frame[name].null_count(), 0)
                         self.assertEqual(stdout, "")
-                        self.assertEqual(stderr, f"dropped 2 of 24 rows with an empty {name} from {path}\n")
+                        self.assertEqual(
+                            stderr,
+                            f"dropped 2 of 24 rows with an empty {name} from {path} "
+                            "(by dataset: clf_a 1, clf_b 1; by fl_algo: CentralizedAsync 1, CentralizedSync 1)\n",
+                        )
 
     def test_load_reports_nothing_when_no_decomposition_target_is_empty(self) -> None:
         frame, stdout, stderr = self.loaded(FIXTURE, flexfl_schema("compute_time_total_s"))
@@ -180,7 +184,11 @@ class FlexFLSchemaTests(unittest.TestCase):
             frame, stdout, stderr = self.loaded(path, schema)
             self.assertEqual(frame.height, 11)
             self.assertEqual(stdout, "")
-            self.assertEqual(stderr, f"dropped 1 of 12 rows with an empty comm_time_total_s from {path}\n")
+            self.assertEqual(
+                stderr,
+                f"dropped 1 of 12 rows with an empty comm_time_total_s from {path} "
+                "(by dataset: clf_a 1; by fl_algo: CentralizedSync 1)\n",
+            )
             path = self.blanked(directory, {"comm_time_total_s": [int(regression[0])]})
             frame, stdout, stderr = self.loaded(path, schema)
             self.assertEqual(frame.height, 12)
@@ -195,7 +203,12 @@ class FlexFLSchemaTests(unittest.TestCase):
             ):
                 load(path, flexfl_schema("validation_time_s"))
             self.assertEqual(stdout.getvalue(), "")
-            self.assertEqual(stderr.getvalue(), f"dropped 24 of 24 rows with an empty validation_time_s from {path}\n")
+            self.assertEqual(
+                stderr.getvalue(),
+                f"dropped 24 of 24 rows with an empty validation_time_s from {path} "
+                "(by dataset: clf_a 4, clf_b 4, clf_c 4, reg_a 4, reg_b 4, reg_c 4; "
+                "by fl_algo: CentralizedAsync 6, CentralizedSync 6, DecentralizedAsync 6, DecentralizedSync 6)\n",
+            )
 
     def test_load_returns_an_empty_frame_for_a_header_only_csv(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

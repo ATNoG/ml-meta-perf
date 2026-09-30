@@ -595,8 +595,18 @@ def load(path: str | Path | None = None, schema: Schema = MCC_SCHEMA) -> pl.Data
         kept = frame.drop_nulls(schema.target_column)
         dropped = frame.height - kept.height
         if dropped:
-            print(f"dropped {dropped} of {frame.height} rows with an empty {schema.target_column} from {resolved}",
-                  file=sys.stderr)
+            empty = frame.filter(pl.col(schema.target_column).is_null())
+            breakdown = "; ".join(
+                f"by {column}: " + ", ".join(
+                    f"{name} {count}" for name, count in empty.group_by(column).len().sort(column).iter_rows()
+                )
+                for column in (schema.dataset_column, schema.model_column)
+            )
+            print(
+                f"dropped {dropped} of {frame.height} rows with an empty {schema.target_column} from {resolved} "
+                f"({breakdown})",
+                file=sys.stderr,
+            )
             if kept.is_empty():
                 raise SchemaError(f"meta-dataset has no rows with a {schema.target_column} value")
         frame = kept
