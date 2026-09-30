@@ -7,7 +7,7 @@ import io
 import json
 import tempfile
 import unittest
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -19,9 +19,11 @@ from ml_meta_perf.configuration_search import SearchSettings, _settings_payload,
 from ml_meta_perf.data import (
     ALL_FEATURES,
     FLEXFL_COST_TARGETS,
+    FLEXFL_DECOMPOSITION_TARGETS,
     FLEXFL_EPOCH_CAP_COLUMN,
     FLEXFL_MODEL_FEATURES,
     MCC_SCHEMA,
+    Schema,
     SchemaError,
     aggregate_by_dataset,
     columns_as_arrays,
@@ -133,6 +135,100 @@ class FlexFLSchemaTests(unittest.TestCase):
                     target(load(FIXTURE, schema_log), schema_log),
                     np.log1p(target(load(FIXTURE, schema), schema)),
                 )
+
+    def blanked(self, directory: str, blanks: dict[str, list[int]]) -> Path:
+        frame = pl.read_csv(FIXTURE)
+        for column, rows in blanks.items():
+            frame = frame.with_columns(
+                pl.when(pl.int_range(pl.len()).is_in(rows)).then(None).otherwise(pl.col(column)).alias(column)
+            )
+        path = Path(directory) / "blanked.csv"
+        frame.write_csv(path)
+        return path
+
+    def loaded(self, path: Path, schema: Schema) -> tuple[pl.DataFrame, str, str]:
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            frame = load(path, schema)
+        return frame, stdout.getvalue(), stderr.getvalue()
+
+    def test_load_drops_rows_with_an_empty_decomposition_target(self) -> None:
+        self.assertEqual(FLEXFL_DECOMPOSITION_TARGETS, DECOMPOSITION_TARGETS)
+        with tempfile.TemporaryDirectory() as directory:
+            for name in DECOMPOSITION_TARGETS:
+                for log_target in (False, True):
+                    with self.subTest(target=name, log_target=log_target):
+                        path = self.blanked(directory, {name: [0, 5]})
+                        frame, stdout, stderr = self.loaded(path, flexfl_schema(name, log_target=log_target))
+                        self.assertEqual(frame.height, 22)
+                        self.assertEqual(frame[name].null_count(), 0)
+                        self.assertEqual(stdout, "")
+                        self.assertEqual(stderr, f"dropped 2 of 24 rows with an empty {name} from {path}\n")
+
+    def test_load_reports_nothing_when_no_decomposition_target_is_empty(self) -> None:
+        frame, stdout, stderr = self.loaded(FIXTURE, flexfl_schema("compute_time_total_s"))
+        self.assertEqual(frame.height, 24)
+        self.assertEqual((stdout, stderr), ("", ""))
+
+    def test_load_counts_dropped_rows_after_the_task_type_filter(self) -> None:
+        indexed = pl.read_csv(FIXTURE).with_row_index()
+        classification = indexed.filter(pl.col("is_classification").cast(pl.Boolean))["index"]
+        regression = indexed.filter(~pl.col("is_classification").cast(pl.Boolean))["index"]
+        schema = flexfl_schema("comm_time_total_s", "classification")
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.blanked(directory, {"comm_time_total_s": [int(classification[0]), int(regression[0])]})
+            frame, stdout, stderr = self.loaded(path, schema)
+            self.assertEqual(frame.height, 11)
+            self.assertEqual(stdout, "")
+            self.assertEqual(stderr, f"dropped 1 of 12 rows with an empty comm_time_total_s from {path}\n")
+            path = self.blanked(directory, {"comm_time_total_s": [int(regression[0])]})
+            frame, stdout, stderr = self.loaded(path, schema)
+            self.assertEqual(frame.height, 12)
+            self.assertEqual((stdout, stderr), ("", ""))
+
+    def test_load_rejects_a_decomposition_target_with_no_values(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.blanked(directory, {"validation_time_s": list(range(24))})
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr), self.assertRaisesRegex(
+                SchemaError, "no rows with a validation_time_s value"
+            ):
+                load(path, flexfl_schema("validation_time_s"))
+            self.assertEqual(stdout.getvalue(), "")
+            self.assertEqual(stderr.getvalue(), f"dropped 24 of 24 rows with an empty validation_time_s from {path}\n")
+
+    def test_load_returns_an_empty_frame_for_a_header_only_csv(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "header.csv"
+            pl.read_csv(FIXTURE).head(0).write_csv(path)
+            frame, stdout, stderr = self.loaded(path, flexfl_schema("compute_time_max_s"))
+            self.assertEqual(frame.height, 0)
+            self.assertEqual((stdout, stderr), ("", ""))
+
+    def test_load_still_rejects_empty_features_and_older_targets(self) -> None:
+        classification = pl.read_csv(FIXTURE).with_row_index().filter(
+            pl.col("is_classification").cast(pl.Boolean)
+        )["index"]
+        cases = {
+            "feature beside an empty decomposition target": (
+                {"n_samples": [0], "compute_time_max_s": [0]}, flexfl_schema("compute_time_max_s"),
+            ),
+            "feature with a decomposition target": ({"n_samples": [1]}, flexfl_schema("compute_time_max_s")),
+            "performance": ({"performance": [int(classification[0])]}, flexfl_schema("performance", "classification")),
+            "total_time_s": ({"total_time_s": [0]}, flexfl_schema("total_time_s")),
+            "comm_bytes_total": ({"comm_bytes_total": [0]}, flexfl_schema("comm_bytes_total")),
+            "n_epochs": ({"n_epochs": [0]}, flexfl_schema("n_epochs")),
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            for name, (blanks, schema) in cases.items():
+                with self.subTest(name):
+                    path = self.blanked(directory, blanks)
+                    stdout, stderr = io.StringIO(), io.StringIO()
+                    with redirect_stdout(stdout), redirect_stderr(stderr), self.assertRaisesRegex(
+                        SchemaError, "null values"
+                    ):
+                        load(path, schema)
+                    self.assertEqual((stdout.getvalue(), stderr.getvalue()), ("", ""))
 
     def test_decomposition_target_cli_outputs(self) -> None:
         for name in DECOMPOSITION_TARGETS:

@@ -69,6 +69,7 @@ prose, with the figures.
 from __future__ import annotations
 
 import dataclasses
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -382,6 +383,12 @@ FLEXFL_COST_TARGETS: tuple[str, ...] = (
     "comm_time_total_s",
     "validation_time_s",
 )
+FLEXFL_DECOMPOSITION_TARGETS: tuple[str, ...] = (
+    "compute_time_total_s",
+    "compute_time_max_s",
+    "comm_time_total_s",
+    "validation_time_s",
+)
 TASK_TYPES: tuple[str, ...] = ("classification", "regression")
 FLEXFL_DATASET_FEATURES: tuple[str, ...] = (
     "n_samples",
@@ -579,9 +586,20 @@ def load(path: str | Path | None = None, schema: Schema = MCC_SCHEMA) -> pl.Data
         [pl.col(column).cast(pl.Float64) for column in (*schema.features, schema.target_column)]
     )
 
-    nulls = sum(frame.null_count().row(0))
+    droppable = schema.target_column in FLEXFL_DECOMPOSITION_TARGETS
+    checked = frame.drop(schema.target_column) if droppable else frame
+    nulls = sum(checked.null_count().row(0))
     if nulls:
         raise SchemaError(f"meta-dataset contains {nulls} null values")
+    if droppable:
+        kept = frame.drop_nulls(schema.target_column)
+        dropped = frame.height - kept.height
+        if dropped:
+            print(f"dropped {dropped} of {frame.height} rows with an empty {schema.target_column} from {resolved}",
+                  file=sys.stderr)
+            if kept.is_empty():
+                raise SchemaError(f"meta-dataset has no rows with a {schema.target_column} value")
+        frame = kept
     return frame
 
 

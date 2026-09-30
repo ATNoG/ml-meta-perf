@@ -86,8 +86,10 @@ master's first `start` and last `end`. `compute_time_total_s` sums worker work t
 worker communication time. Its timings pair a master and a worker clock, so positive
 clock skew is not detectable. `validation_time_s` sums validation time and mostly follows
 validation-set size and the number of validations. The assembler leaves the decomposition
-columns empty for a run with no worker logs or no work inside that window, and loading
-rejects any empty value in the target column, so these targets need a CSV without such rows.
+columns empty for a run with no worker logs or no work inside that window. Loading one of
+these four targets drops the rows whose target is empty, after any task-type filter, and
+prints the number dropped to stderr; it fails if dropping removes every row. An empty
+feature, or an empty value in any other selected target, still fails the load.
 
 `--log-target` with `total_time_s`, `comm_bytes_total`, `compute_time_total_s`,
 `compute_time_max_s`, `comm_time_total_s`, or `validation_time_s` fits `log1p` of the target,
