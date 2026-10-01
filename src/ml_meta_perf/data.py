@@ -582,7 +582,10 @@ def load(path: str | Path | None = None, schema: Schema = MCC_SCHEMA) -> pl.Data
             raise SchemaError(f"meta-dataset has no {schema.task_type} rows")
     rule_columns = [column for column in FLEXFL_EARLY_STOP_RULE_COLUMNS if column in frame.columns]
     if rule_columns:
-        rules = sorted(str(rule) for rule in frame.select(rule_columns).unique().iter_rows())
+        fitted = frame
+        if schema.target_column in FLEXFL_DECOMPOSITION_TARGETS and schema.target_column in frame.columns:
+            fitted = frame.filter(pl.col(schema.target_column).is_not_null())
+        rules = sorted(str(rule) for rule in fitted.select(rule_columns).unique().iter_rows())
         if len(rules) > 1:
             raise SchemaError(
                 f"FlexFL meta-dataset {resolved} mixes early-stop rules {', '.join(rules)}; "
