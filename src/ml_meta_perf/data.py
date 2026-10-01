@@ -403,6 +403,7 @@ FLEXFL_DATASET_FEATURES: tuple[str, ...] = (
     "weight_decay",
 )
 FLEXFL_EPOCH_CAP_COLUMN = "epoch_cap"
+FLEXFL_EARLY_STOP_RULE_COLUMNS = ("early_stop_on", "min_epochs")
 FLEXFL_MODEL_FEATURES: tuple[str, ...] = (
     "fl_algo_CentralizedSync",
     "fl_algo_CentralizedAsync",
@@ -579,6 +580,14 @@ def load(path: str | Path | None = None, schema: Schema = MCC_SCHEMA) -> pl.Data
         frame = frame.filter(pl.col("is_classification").cast(pl.Boolean) == wanted)
         if frame.is_empty():
             raise SchemaError(f"meta-dataset has no {schema.task_type} rows")
+    rule_columns = [column for column in FLEXFL_EARLY_STOP_RULE_COLUMNS if column in frame.columns]
+    if rule_columns:
+        rules = sorted(str(rule) for rule in frame.select(rule_columns).unique().iter_rows())
+        if len(rules) > 1:
+            raise SchemaError(
+                f"FlexFL meta-dataset {resolved} mixes early-stop rules {', '.join(rules)}; "
+                "fit runs of one rule at a time"
+            )
     if missing:
         raise SchemaError(f"missing columns: {missing}")
 
