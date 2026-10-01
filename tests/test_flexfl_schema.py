@@ -96,6 +96,96 @@ class FlexFLSchemaTests(unittest.TestCase):
                     with self.assertRaisesRegex(SchemaError, f"no {FLEXFL_EPOCH_CAP_COLUMN} column; re-assemble"):
                         load(stale, flexfl_schema("comm_bytes_total", "classification"))
 
+    def test_load_rejects_mixed_early_stop_rules(self) -> None:
+        frame = pl.read_csv(FIXTURE)
+        mixed = frame.with_columns(
+            pl.Series("early_stop_on", ["metric" if index % 2 else "loss" for index in range(frame.height)]),
+            pl.Series("min_epochs", [0 if index % 2 else 10 for index in range(frame.height)]),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "mixed.csv"
+            mixed.write_csv(path)
+            with self.assertRaisesRegex(
+                SchemaError,
+                r"mixes early-stop rules \('loss', 10\), \('metric', 0\); fit runs of one rule at a time",
+            ):
+                load(path, flexfl_schema("comm_bytes_total"))
+
+    def test_load_rejects_rules_that_differ_in_one_field(self) -> None:
+        frame = pl.read_csv(FIXTURE)
+        pairs = {
+            "min_epochs differs": (("loss", 10), ("loss", 20)),
+            "early_stop_on differs": (("loss", 10), ("metric", 10)),
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            for name, (first, second) in pairs.items():
+                with self.subTest(name):
+                    rules = [second if index % 2 else first for index in range(frame.height)]
+                    path = Path(directory) / "mixed.csv"
+                    frame.with_columns(
+                        pl.Series("early_stop_on", [rule[0] for rule in rules]),
+                        pl.Series("min_epochs", [rule[1] for rule in rules]),
+                    ).write_csv(path)
+                    with self.assertRaisesRegex(SchemaError, "mixes early-stop rules"):
+                        load(path, flexfl_schema("comm_bytes_total"))
+
+    def test_load_rejects_mixed_rules_within_the_selected_task_type(self) -> None:
+        frame = pl.read_csv(FIXTURE)
+        mixed = frame.with_columns(
+            pl.Series("early_stop_on", ["metric" if index % 2 else "loss" for index in range(frame.height)]),
+            pl.Series("min_epochs", [0 if index % 2 else 10 for index in range(frame.height)]),
+        )
+        classification = frame["is_classification"].cast(pl.Boolean)
+        self.assertEqual(
+            {rule for rule, flag in zip(mixed["early_stop_on"], classification, strict=True) if flag},
+            {"loss", "metric"},
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "mixed.csv"
+            mixed.write_csv(path)
+            with self.assertRaisesRegex(SchemaError, "mixes early-stop rules"):
+                load(path, flexfl_schema("comm_bytes_total", "classification"))
+
+    def test_load_ignores_a_rule_only_on_rows_with_an_empty_decomposition_target(self) -> None:
+        frame = pl.read_csv(FIXTURE)
+        legacy = [index % 2 == 1 for index in range(frame.height)]
+        corpus = frame.with_columns(
+            pl.Series("early_stop_on", ["metric" if flag else "loss" for flag in legacy]),
+            pl.Series("min_epochs", [0 if flag else 10 for flag in legacy]),
+            pl.when(pl.Series(legacy)).then(None).otherwise(pl.col("compute_time_total_s")).alias("compute_time_total_s"),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "legacy_empty.csv"
+            corpus.write_csv(path)
+            with redirect_stderr(io.StringIO()):
+                loaded = load(path, flexfl_schema("compute_time_total_s"))
+            self.assertEqual(loaded.height, legacy.count(False))
+            with self.assertRaisesRegex(SchemaError, "mixes early-stop rules"):
+                load(path, flexfl_schema("comm_bytes_total"))
+
+    def test_load_accepts_one_early_stop_rule(self) -> None:
+        frame = pl.read_csv(FIXTURE)
+        uniform = frame.with_columns(pl.lit("loss").alias("early_stop_on"), pl.lit(10).alias("min_epochs"))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "uniform.csv"
+            uniform.write_csv(path)
+            self.assertEqual(load(path, flexfl_schema("comm_bytes_total")).height, frame.height)
+
+    def test_load_checks_the_early_stop_rule_after_the_task_type_filter(self) -> None:
+        frame = pl.read_csv(FIXTURE)
+        classification = frame["is_classification"].cast(pl.Boolean)
+        by_task = frame.with_columns(
+            pl.Series("early_stop_on", ["loss" if flag else "metric" for flag in classification]),
+            pl.Series("min_epochs", [10 if flag else 0 for flag in classification]),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "by_task.csv"
+            by_task.write_csv(path)
+            loaded = load(path, flexfl_schema("comm_bytes_total", "classification"))
+            self.assertEqual(loaded.height, int(classification.sum()))
+            with self.assertRaisesRegex(SchemaError, "mixes early-stop rules"):
+                load(path, flexfl_schema("comm_bytes_total"))
+
     def test_mixed_epoch_caps_survive_the_constant_drop(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             mixed = Path(directory) / "mixed.csv"
