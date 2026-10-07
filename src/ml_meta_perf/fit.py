@@ -30,7 +30,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ml_meta_perf.model import Equation
+from ml_meta_perf.model import MCC_LOWER, MCC_UPPER, Equation
 from ml_meta_perf.terms import Library
 
 #: The ridge penalty a caller gets if it does not choose one.
@@ -98,6 +98,8 @@ def to_equation(
     standardizer: Standardizer,
     offset: float,
     name: str,
+    *,
+    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
 ) -> Equation:
     """Fold the standardisation back into the weights so the equation reads in raw units."""
     order = list(subset.indices)
@@ -109,4 +111,5 @@ def to_equation(
         weights=tuple(float(value) for value in raw),
         standardized_weights=tuple(float(value) for value in subset.weights),
         name=name,
+        bounds=bounds,
     )

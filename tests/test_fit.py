@@ -8,12 +8,26 @@ import unittest
 import numpy as np
 
 from ml_meta_perf.fit import Standardizer, Subset, ridge_solve, to_equation
-from ml_meta_perf.terms import build_library
+from ml_meta_perf.model import MCC_LOWER, MCC_UPPER
+from ml_meta_perf.terms import Library, build_library
 
 
 def synthetic_columns(n: int = 120, seed: int = 3) -> dict[str, np.ndarray]:
     rng = np.random.default_rng(seed)
     return {name: rng.uniform(1.0, 20.0, n) for name in ("f1", "f2", "f3", "f4")}
+
+
+def fitted_pieces() -> tuple[Library, Subset, Standardizer, float]:
+    columns = synthetic_columns(90, seed=11)
+    library = build_library(("f1", "f2"), ("f3",), columns)
+    target = 0.3 * np.log(columns["f1"]) + 0.1 * columns["f3"]
+    standardizer = Standardizer.fit(library.matrix)
+    design = standardizer.apply(library.matrix)
+    offset = float(target.mean())
+    indices = (0, 3, 7)
+    block = design[:, list(indices)]
+    weights = ridge_solve(block.T @ block, block.T @ (target - offset), 1.0)
+    return library, Subset(indices, weights, 0.0), standardizer, offset
 
 
 class TestStandardizer(unittest.TestCase):
@@ -85,6 +99,21 @@ class TestToEquation(unittest.TestCase):
 
         equation = to_equation(library, subset, standardizer, offset, "check")
         np.testing.assert_allclose(equation.evaluate(columns), offset + block @ weights, rtol=1e-6, atol=1e-9)
+
+    def test_bounds_default_to_the_mcc_range(self) -> None:
+        library, subset, standardizer, offset = fitted_pieces()
+        equation = to_equation(library, subset, standardizer, offset, "check")
+        self.assertEqual(equation.bounds, (MCC_LOWER, MCC_UPPER))
+
+    def test_bounds_can_be_disabled(self) -> None:
+        library, subset, standardizer, offset = fitted_pieces()
+        equation = to_equation(library, subset, standardizer, offset, "check", bounds=None)
+        self.assertIsNone(equation.bounds)
+
+    def test_bounds_are_carried_through_as_given(self) -> None:
+        library, subset, standardizer, offset = fitted_pieces()
+        equation = to_equation(library, subset, standardizer, offset, "check", bounds=(0.0, 500.0))
+        self.assertEqual(equation.bounds, (0.0, 500.0))
 
     def test_subset_dataclass_carries_its_fit(self) -> None:
         subset = Subset((1, 2), np.array([0.5, -0.5]), 3.0)

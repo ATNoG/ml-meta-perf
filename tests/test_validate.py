@@ -2,6 +2,8 @@
 
 import itertools
 import unittest
+from dataclasses import replace
+from unittest import mock
 
 import numpy as np
 import polars as pl
@@ -56,6 +58,13 @@ def grid(n_groups: int = 6, per_group: int = 5, seed: int = 4):
     }
     target = 0.05 * columns["f1"] + 0.04 * columns["g1"] + rng.normal(0, 0.01, len(outer))
     return columns, target, outer_labels, inner_labels
+
+
+def unbounded_grid(n_groups: int = 6, per_group: int = 5, seed: int = 4):
+    """The same grid, with an additive target far outside the MCC range."""
+    columns, _, outer, inner = grid(n_groups, per_group, seed)
+    target = 200.0 + 30.0 * columns["f1"] + 10.0 * columns["g1"]
+    return columns, target, outer, inner
 
 
 class TestSplitters(unittest.TestCase):
@@ -134,6 +143,15 @@ class TestCrossValidation(unittest.TestCase):
         result = self.path()[3]
         self.assertEqual(len({tuple(names) for names in result.selected}), 1)
 
+    def test_fold_equations_keep_the_source_equation_bounds(self) -> None:
+        unbounded = {size: replace(equation, bounds=None) for size, equation in self.equations.items()}
+        result = cross_validate_fixed_form(
+            self.library, self.columns, self.target, self.outer, unbounded, penalty=1.0
+        )[2]
+        self.assertTrue(result.equations)
+        for equation in result.equations.values():
+            self.assertIsNone(equation.bounds)
+
     def test_dispersion_summarises_the_per_fold_scores(self) -> None:
         result = self.path()[2]
         dispersion = result.dispersion()
@@ -189,6 +207,30 @@ class TestBaselines(unittest.TestCase):
             float(np.corrcoef(baseline_group_mean(self.target, self.outer), self.target)[0, 1]),
         )
 
+    def test_an_unbounded_group_mean_is_the_training_mean_itself(self) -> None:
+        _, target, outer, _ = unbounded_grid()
+        predictions = baseline_group_mean(target, outer, bounds=None)
+        expected = np.zeros_like(target)
+        for _, train, test in leave_one_group_out(outer):
+            expected[test] = float(target[train].mean())
+        self.assertGreater(float(predictions.min()), 1.0)
+        np.testing.assert_allclose(predictions, expected)
+
+    def test_an_unbounded_group_median_is_the_training_median_itself(self) -> None:
+        _, target, outer, _ = unbounded_grid()
+        predictions = baseline_group_centre(target, outer, centre="median", bounds=None)
+        expected = np.zeros_like(target)
+        for _, train, test in leave_one_group_out(outer):
+            expected[test] = float(np.median(target[train]))
+        self.assertGreater(float(predictions.min()), 1.0)
+        np.testing.assert_allclose(predictions, expected)
+
+    def test_an_unbounded_additive_reference_reproduces_an_additive_target(self) -> None:
+        _, target, outer, inner = unbounded_grid()
+        reference = additive_mean_reference(target, outer, inner, bounds=None)
+        self.assertGreater(float(reference.min()), 1.0)
+        np.testing.assert_allclose(reference, target, rtol=1e-9)
+
     def test_baselines_stay_inside_the_mcc_range(self) -> None:
         for predictions in (
             baseline_group_mean(self.target, self.outer),
@@ -225,6 +267,12 @@ class TestInteractionOracle(unittest.TestCase):
         value = r2_score(self.target, interaction_oracle(self.target, self.outer, self.inner, full))
         self.assertGreater(value, 0.999)
 
+    def test_an_unbounded_oracle_reproduces_an_additive_target(self) -> None:
+        _, target, outer, inner = unbounded_grid()
+        prediction = interaction_oracle(target, outer, inner, 2, bounds=None)
+        self.assertGreater(float(prediction.min()), 1.0)
+        np.testing.assert_allclose(prediction, target, rtol=1e-9)
+
     def test_stays_inside_the_mcc_range(self) -> None:
         prediction = interaction_oracle(self.target, self.outer, self.inner, 2)
         self.assertGreaterEqual(prediction.min(), -1.0)
@@ -249,6 +297,13 @@ class TestOracleLadder(unittest.TestCase):
     def test_gain_is_undefined_for_the_first_rung(self) -> None:
         table = oracle_ladder(self.target, self.outer, self.inner, ranks=(0, 1))
         self.assertNotEqual(table["gain"][0], table["gain"][0])  # NaN
+
+    def test_bounds_reach_the_oracle_behind_the_ladder(self) -> None:
+        _, target, outer, inner = unbounded_grid()
+        unbounded = oracle_ladder(target, outer, inner, ranks=(0, 1), bounds=None)["r2"].to_numpy()
+        clipped = oracle_ladder(target, outer, inner, ranks=(0, 1))["r2"].to_numpy()
+        np.testing.assert_allclose(unbounded, np.ones(2), atol=1e-9)
+        np.testing.assert_allclose(clipped, np.full(2, r2_score(target, np.ones_like(target))))
 
     def test_r2_is_non_decreasing(self) -> None:
         scores = oracle_ladder(self.target, self.outer, self.inner, ranks=(0, 1, 2, 3))["r2"].to_numpy()
@@ -566,3 +621,17 @@ class TestSaturatedFit(unittest.TestCase):
     def test_it_transfers_worse_than_the_published_equation(self) -> None:
         published = float(corpus.published().cross_validated["loo_dataset"]["r2"])
         self.assertGreater(published, self.result["r2_loo_dataset_clipped"])
+
+
+class TestSaturatedFitSolver(unittest.TestCase):
+    """The saturated design is rank-deficient, which numpy's SVD solver cannot always converge on."""
+
+    def setUp(self) -> None:
+        self.columns, self.target, self.outer, _ = grid()
+        self.library = build_library(("f1", "f2"), ("g1", "g2"), self.columns)
+
+    def test_does_not_depend_on_numpys_svd_driver(self) -> None:
+        failure = np.linalg.LinAlgError("SVD did not converge in Linear Least Squares")
+        with mock.patch("ml_meta_perf.analysis.np.linalg.lstsq", side_effect=failure):
+            result = saturated_fit(self.library, self.target, self.outer)
+        self.assertTrue(all(np.isfinite(value) for value in result.values()))

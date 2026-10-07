@@ -18,6 +18,11 @@ The DHO task metrics break the tie because they are what the equation is *for* -
 models for a dataset nobody has run -- and they separate configurations that R2 cannot: at the
 same floor, ranking AP ranges from 0.70 to 0.85.
 
+A FlexFL target (``--target``, with ``--data``) runs the same grid on that corpus's E3. Its
+targets are per-run costs and scores with no go/no-go threshold, so the DHO task metrics are
+left empty and the band is broken by the remaining ties alone: fewer terms, lower arity, then
+the heavier penalty.
+
 Nothing is changed in place. The run writes every curve, one row per configuration, and a
 ``proposed_study.json``; adopting it is a reviewed edit to ``config/study.json``.
 
@@ -49,7 +54,17 @@ from ml_meta_perf.config import (
     StudyConfig,
     SweepConfig,
 )
-from ml_meta_perf.data import DATASET_COLUMN, DATASET_FEATURES, MODEL_FEATURES, groups, load, target
+from ml_meta_perf.data import (
+    MCC_SCHEMA,
+    Schema,
+    add_target_arguments,
+    check_target_arguments,
+    drop_constant_features,
+    flexfl_schema,
+    groups,
+    load,
+    target,
+)
 from ml_meta_perf.selection import floor_curve, plateau_start, smoothed
 from ml_meta_perf.validate import decision_report, ranking_report
 
@@ -66,22 +81,43 @@ def grid(study: StudyConfig) -> list[Configuration]:
     ]
 
 
+TASK_METRICS = ("dho_ap", "dho_mrr", "dho_hit_at_1", "dho_regret", "dho_accuracy", "dho_mcc")
+
+
+def _task_metrics(truth: np.ndarray, predictions: np.ndarray, datasets: np.ndarray) -> dict[str, float]:
+    """The DHO ranking and go/no-go metrics of one MCC configuration."""
+    ranking = ranking_report(truth, predictions, datasets)
+    decision = decision_report(truth, predictions, datasets, thresholds=(DECISION_THRESHOLD,)).row(0, named=True)
+    return {
+        "dho_ap": float(np.mean(ranking["ap"].to_numpy())),
+        "dho_mrr": float(np.mean(ranking["mrr"].to_numpy())),
+        "dho_hit_at_1": float(np.mean(ranking["hit_at_1"].to_numpy())),
+        "dho_regret": float(np.mean(ranking["regret"].to_numpy())),
+        "dho_accuracy": float(decision["accuracy"]),
+        "dho_mcc": float(decision["mcc"]),
+    }
+
+
 def evaluate(
-    config: Configuration, selection: SelectionConfig, data: str | None
+    config: Configuration, selection: SelectionConfig, data: str | None, schema: Schema = MCC_SCHEMA
 ) -> tuple[dict[str, Any], pl.DataFrame]:
     """One configuration: its curve, its chosen length, and that length's DHO task metrics."""
     from ml_meta_perf.experiment import fit_path
 
-    frame = load(data)
-    truth, datasets = target(frame), groups(frame, DATASET_COLUMN)
-    fitted = fit_path(frame, DATASET_FEATURES, MODEL_FEATURES, config, "E3")
+    is_mcc = schema == MCC_SCHEMA
+    frame = load(data, schema)
+    if not is_mcc:
+        schema = drop_constant_features(frame, schema)
+    truth, datasets = target(frame, schema), groups(frame, schema.dataset_column)
+    fitted = fit_path(frame, schema.dataset_features, schema.model_features, config, schema.tag("E3"), schema=schema)
     curve = fitted.curve
     size, how = plateau_start(curve, delta=selection.delta, window=selection.window, smoothing=selection.smoothing)
     position = list(curve["n_terms"]).index(size)
     at = curve.row(position, named=True)
-    predictions = fitted.paths["loo_cell"][size].predictions
-    ranking = ranking_report(truth, predictions, datasets)
-    decision = decision_report(truth, predictions, datasets, thresholds=(DECISION_THRESHOLD,)).row(0, named=True)
+    if is_mcc:
+        tasks = _task_metrics(truth, fitted.paths["loo_cell"][size].predictions, datasets)
+    else:
+        tasks = {name: float("nan") for name in TASK_METRICS}
     row = {
         "max_abs_zscore": config.max_abs_zscore,
         "penalty": config.penalty,
@@ -91,12 +127,7 @@ def evaluate(
         "smoothed_floor": float(smoothed(floor_curve(curve), selection.smoothing)[position]),
         "floor": float(floor_curve(curve)[position]),
         **{name: float(at[name]) for name in ("r2_in_sample", "r2_loo_dataset", "r2_loo_model", "r2_loo_cell")},
-        "dho_ap": float(np.mean(ranking["ap"].to_numpy())),
-        "dho_mrr": float(np.mean(ranking["mrr"].to_numpy())),
-        "dho_hit_at_1": float(np.mean(ranking["hit_at_1"].to_numpy())),
-        "dho_regret": float(np.mean(ranking["regret"].to_numpy())),
-        "dho_accuracy": float(decision["accuracy"]),
-        "dho_mcc": float(decision["mcc"]),
+        **tasks,
         "terms": "; ".join(term.name for term in fitted.equations[size].terms),
     }
     labelled = curve.with_columns(
@@ -108,14 +139,19 @@ def evaluate(
 
 
 def choose(candidates: pl.DataFrame, sweep: SweepConfig) -> dict[str, Any]:
-    """The proposed configuration: best DHO ranking AP within the readable R2 band."""
+    """The proposed configuration: best DHO ranking AP within the readable R2 band.
+
+    Without task metrics (a FlexFL target) the band is broken by the remaining ties alone.
+    """
     readable = candidates.filter(pl.col("n_terms") <= sweep.readable_terms)
     if readable.height == 0:
         raise ValueError(f"no configuration chose an equation of at most {sweep.readable_terms} terms")
     best = float(readable["smoothed_floor"].max())  # pyright: ignore[reportArgumentType]
     band = readable.filter(pl.col("smoothed_floor") >= best - sweep.band)
-    ranked = band.sort(["dho_ap", "n_terms", "max_arity", "penalty"], descending=[True, False, False, True])
-    return ranked.row(0, named=True)
+    keys, descending = ["n_terms", "max_arity", "penalty"], [False, False, True]
+    if not band["dho_ap"].is_nan().all():
+        keys, descending = ["dho_ap", *keys], [True, *descending]
+    return band.sort(keys, descending=descending).row(0, named=True)
 
 
 def _worker_initialiser() -> None:
@@ -135,6 +171,7 @@ def build_parser() -> ArgumentParser:
     parser.add_argument("--opaque", type=OpaqueConfig, help="carried into the proposal unchanged")
     parser.add_argument("--sweep", type=SweepConfig, help="the grid and the choice among close candidates")
     parser.add_argument("--data", type=str | None, default=None, help="meta-dataset CSV")
+    add_target_arguments(parser)
     parser.add_argument("--output", type=str, default="results/sweep", help="directory for the sweep outputs")
     parser.add_argument("--jobs", type=int, default=0, help="parallel workers; 0 uses every CPU")
     return parser
@@ -143,6 +180,12 @@ def build_parser() -> ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     arguments = parser.instantiate(parser.parse_args(argv))
+    check_target_arguments(parser, arguments)
+    schema = (
+        MCC_SCHEMA
+        if arguments.target == "mcc"
+        else flexfl_schema(arguments.target, arguments.task_type, arguments.log_target)
+    )
     study = StudyConfig(
         search=arguments.search, selection=arguments.selection, opaque=arguments.opaque, sweep=arguments.sweep
     )
@@ -152,10 +195,19 @@ def main(argv: list[str] | None = None) -> int:
     jobs = arguments.jobs or os.cpu_count() or 1
     print(f"{len(points)} configurations on {jobs} workers", flush=True)
     started = time.perf_counter()
-    with ProcessPoolExecutor(max_workers=jobs, initializer=_worker_initialiser) as pool:
-        results = list(
-            pool.map(evaluate, points, itertools.repeat(study.selection), itertools.repeat(arguments.data), chunksize=1)
-        )
+    arguments_per_point = (
+        points,
+        itertools.repeat(study.selection),
+        itertools.repeat(arguments.data),
+        itertools.repeat(schema),
+    )
+    # One job runs in this process: forking one whose BLAS or Polars thread pools are already
+    # running (a caller that fitted before, as the test suite does) can deadlock the workers.
+    if jobs == 1:
+        results = list(map(evaluate, *arguments_per_point))
+    else:
+        with ProcessPoolExecutor(max_workers=jobs, initializer=_worker_initialiser) as pool:
+            results = list(pool.map(evaluate, *arguments_per_point, chunksize=1))
     candidates = pl.DataFrame([row for row, _ in results]).sort(["max_abs_zscore", "penalty", "max_arity"])
     pl.concat([curve for _, curve in results]).write_csv(output / "curves.csv")
     candidates.write_csv(output / "candidates.csv")
@@ -172,11 +224,13 @@ def main(argv: list[str] | None = None) -> int:
     (output / "proposed_study.json").write_text(json.dumps(dataclasses.asdict(proposed), indent=2) + "\n")
     elapsed = time.perf_counter() - started
     with pl.Config(tbl_rows=20, tbl_cols=12, float_precision=3):
-        print(candidates.sort("dho_ap", descending=True).drop("terms").head(10))
+        leading = "dho_ap" if schema == MCC_SCHEMA else "smoothed_floor"
+        print(candidates.sort(leading, descending=True).drop("terms").head(10))
     print(
-        f"\nproposed: z-cap {chosen['max_abs_zscore']}, penalty {chosen['penalty']}, arity {chosen['max_arity']} "
-        f"-> {chosen['n_terms']} terms ({chosen['reached_by']}), smoothed floor {chosen['smoothed_floor']:.4f}, "
-        f"DHO AP {chosen['dho_ap']:.4f}\nwritten to {output} in {elapsed:.0f} s"
+        f"\nproposed for {schema.label}: z-cap {chosen['max_abs_zscore']}, penalty {chosen['penalty']}, "
+        f"arity {chosen['max_arity']} -> {chosen['n_terms']} terms ({chosen['reached_by']}), "
+        f"smoothed floor {chosen['smoothed_floor']:.4f}, DHO AP {chosen['dho_ap']:.4f}\n"
+        f"written to {output} in {elapsed:.0f} s"
     )
     return 0
 

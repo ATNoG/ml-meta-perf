@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 import polars as pl
@@ -31,9 +32,12 @@ from ml_meta_perf.config import Configuration, OpaqueConfig, SelectionConfig, lo
 from ml_meta_perf.data import (
     DATASET_COLUMN,
     DATASET_FEATURES,
+    MCC_SCHEMA,
     MODEL_COLUMN,
     MODEL_FEATURES,
+    Schema,
     columns_as_arrays,
+    drop_constant_features,
     groups,
     load,
     target,
@@ -45,7 +49,7 @@ from ml_meta_perf.opaque import OpaqueRun
 from ml_meta_perf.opaque import estimators as opaque_estimators
 from ml_meta_perf.opaque import evaluate as opaque_evaluate
 from ml_meta_perf.practices import best_practices, feature_practices
-from ml_meta_perf.search import prune, search
+from ml_meta_perf.search import prune, pruning_threshold, search
 from ml_meta_perf.selection import complexity, floor_argmax, floor_curve, plateau_knee, protocol_spread, smoothed
 from ml_meta_perf.stats import mae, r2_score
 from ml_meta_perf.terms import Library, build_library
@@ -181,6 +185,7 @@ class FittedPath:
     paths: dict[str, dict[int, CrossValidation]]
     curve: pl.DataFrame
     config: Configuration
+    schema: Schema = MCC_SCHEMA
 
 
 def fit_path(
@@ -189,12 +194,14 @@ def fit_path(
     model_features: tuple[str, ...],
     config: Configuration,
     name: str,
+    *,
+    schema: Schema = MCC_SCHEMA,
 ) -> FittedPath:
     """Search one grammar and cross-validate every length on it, choosing none of them."""
     columns = columns_as_arrays(frame, dataset_features + model_features)
-    truth = target(frame)
-    datasets = groups(frame, DATASET_COLUMN)
-    models = groups(frame, MODEL_COLUMN)
+    truth = target(frame, schema)
+    datasets = groups(frame, schema.dataset_column)
+    models = groups(frame, schema.model_column)
 
     library = build_library(
         dataset_features,
@@ -211,6 +218,7 @@ def fit_path(
         pool_size=config.pool_size,
         beam_width=config.beam_width,
         name=name,
+        bounds=schema.bounds,
     )
     # Fixed form: the terms are chosen once, here, and only the weights are refit in each
     # fold. See `validate.cross_validate_fixed_form` for why that is the reported protocol.
@@ -225,7 +233,7 @@ def fit_path(
     )
     in_sample = {k: score(truth, eq.predict(columns)) for k, eq in result.equations.items()}
     curve = _curve(tuple(sorted(result.equations)), in_sample, paths, truth)
-    return FittedPath(library, columns, truth, datasets, result.equations, paths, curve, config)
+    return FittedPath(library, columns, truth, datasets, result.equations, paths, curve, config, schema)
 
 
 def finalise(fitted: FittedPath, size: int) -> EquationReport:
@@ -245,7 +253,13 @@ def finalise(fitted: FittedPath, size: int) -> EquationReport:
         pool_size=config.pool_size,
         beam_width=config.beam_width,
     )
-    equation = prune(fitted.equations[size], fitted.columns, truth, penalty=config.penalty)
+    equation = prune(
+        fitted.equations[size],
+        fitted.columns,
+        truth,
+        penalty=config.penalty,
+        min_contribution=pruning_threshold(fitted.schema.bounds, truth),
+    )
 
     return EquationReport(
         equation=equation,
@@ -281,6 +295,8 @@ def run_equation(
     config: Configuration,
     selection: SelectionConfig,
     name: str,
+    *,
+    schema: Schema = MCC_SCHEMA,
 ) -> EquationReport:
     """Fit one equation and validate it. The three equations differ **only** in the
     features they may draw on, and this is the single code path that says so.
@@ -294,8 +310,56 @@ def run_equation(
     **The length is derived, not asserted**: `select_length` reads it off the complete
     cross-validated curve.
     """
-    fitted = fit_path(frame, dataset_features, model_features, config, name)
+    fitted = fit_path(frame, dataset_features, model_features, config, name, schema=schema)
     return finalise(fitted, select_length(fitted.curve, selection))
+
+
+@dataclass(frozen=True)
+class FlexFLReport:
+    """One E3 fit on a FlexFL target: the validated equation and what its terms are worth."""
+
+    schema: Schema
+    equation: EquationReport
+    effects: pl.DataFrame
+    shares: pl.DataFrame
+
+
+def run_flexfl(
+    path: str | Path,
+    schema: Schema,
+    config: Configuration | None = None,
+    selection: SelectionConfig | None = None,
+    name: str = "E3",
+) -> FlexFLReport:
+    """Load a FlexFL meta-dataset and run the single E3 fit, both feature groups at once.
+
+    One grammar, ``config.max_arity``, and the study's length rule; no E1, E2 or E3-MAX, and
+    none of the MCC study's baselines, practices or figures.
+    A ``log_target`` schema fits and scores ``log1p`` of the target.
+    """
+    config, selection = _resolve(config, selection)
+    frame = load(path, schema)
+    schema = drop_constant_features(frame, schema)
+    report = run_equation(
+        frame,
+        schema.dataset_features,
+        schema.model_features,
+        config,
+        selection,
+        schema.tag(name),
+        schema=schema,
+    )
+    columns = columns_as_arrays(frame, schema.features)
+    effects = term_effects(report.equation, columns, schema.dataset_features, schema.model_features)
+    label = schema.label
+    effects = effects.with_columns(pl.col("direction").str.replace("MCC", label, literal=True))
+    shares = group_shares(report.equation, columns, schema.dataset_features, schema.model_features)
+    return FlexFLReport(schema, report, effects, shares)
+
+
+def equation_text(equation: Equation, label: str) -> str:
+    """Render an equation with the target label on its first line."""
+    return str(equation).replace("MCC = ", f"{label} = ", 1)
 
 
 def run_e1(

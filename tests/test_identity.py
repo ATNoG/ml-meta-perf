@@ -121,6 +121,19 @@ class TestPredict(unittest.TestCase):
         values = predict(equation, effects, columns, np.array(["m", "m"]))
         np.testing.assert_array_equal(values, np.array([1.0, 1.0]))
 
+    def test_an_unbounded_equation_is_predicted_as_written(self) -> None:
+        columns = {"f": np.array([1.0, 2.0])}
+        equation = Equation(
+            intercept=0.9,
+            terms=(Term("atom", (Atom("f"),)),),
+            weights=(0.5,),
+            standardized_weights=(0.5,),
+            bounds=None,
+        )
+        effects = ModelEffects(atom=None, intercepts={"m": 5.0}, slopes={})
+        values = predict(equation, effects, columns, np.array(["m", "m"]))
+        np.testing.assert_allclose(values, np.array([6.4, 6.9]))
+
 
 class TestCorrectOutOfFold(unittest.TestCase):
     def setUp(self) -> None:
@@ -182,6 +195,32 @@ class TestCorrectOutOfFold(unittest.TestCase):
         # bit-for-bit. The claim under test is that the correction adds *nothing*, and 1e-12
         # says that as well as equality did.
         np.testing.assert_allclose(corrected, path[2].predictions, rtol=1e-12, atol=1e-12)
+
+    def test_unbounded_fold_equations_leave_the_correction_unclipped(self) -> None:
+        from ml_meta_perf.stats import r2_score
+
+        target = 300.0 + 100.0 * self.target
+        path = self._path_for(target, bounds=None)
+        corrected = correct_out_of_fold(path[2], self.columns, target, self.datasets, self.models)
+        self.assertGreater(float(corrected.min()), 1.0)
+        self.assertGreater(r2_score(target, corrected), r2_score(target, path[2].predictions))
+
+    def test_bounded_fold_equations_still_clip_the_correction(self) -> None:
+        target = 300.0 + 100.0 * self.target
+        path = self._path_for(target)
+        corrected = correct_out_of_fold(path[2], self.columns, target, self.datasets, self.models)
+        np.testing.assert_array_equal(corrected, np.ones_like(target))
+
+    def _path_for(
+        self, target: np.ndarray, *, bounds: tuple[float, float] | None = (-1.0, 1.0)
+    ) -> dict[int, CrossValidation]:
+        from dataclasses import replace
+
+        from ml_meta_perf.search import search
+
+        equations = search(self.library, target, max_terms=2, penalty=0.0, pool_size=2).equations
+        bounded = {size: replace(equation, bounds=bounds) for size, equation in equations.items()}
+        return cross_validate_fixed_form(self.library, self.columns, target, self.datasets, bounded, penalty=0.0)
 
     def test_a_fold_without_an_equation_keeps_its_prediction(self) -> None:
         empty = CrossValidation(predictions=np.full_like(self.target, 0.25))

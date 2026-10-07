@@ -300,6 +300,7 @@ def cross_validate_fixed_form(
                 weights=tuple(float(value) for value in raw),
                 standardized_weights=tuple(float(value) for value in weights),
                 name=f"fold_{label}",
+                bounds=equation.bounds,
             )
         results[size] = outcome
     return results
@@ -404,6 +405,7 @@ def baseline_group_centre(
     inner: np.ndarray | None = None,
     *,
     centre: str = "mean",
+    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
 ) -> np.ndarray:
     """Predict a training-fold centre, optionally conditioned on a second grouping.
 
@@ -434,19 +436,27 @@ def baseline_group_centre(
             selected = test & (inner == label)
             source = train & (inner == label)
             predictions[selected] = float(summarise(target[source])) if source.any() else fallback
-    return np.clip(predictions, MCC_LOWER, MCC_UPPER)
+    return predictions if bounds is None else np.clip(predictions, *bounds)
 
 
 def baseline_group_mean(
     target: np.ndarray,
     outer: np.ndarray,
     inner: np.ndarray | None = None,
+    *,
+    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
 ) -> np.ndarray:
     """`baseline_group_centre` at the mean. Kept as the name the rest of the study uses."""
-    return baseline_group_centre(target, outer, inner, centre="mean")
+    return baseline_group_centre(target, outer, inner, centre="mean", bounds=bounds)
 
 
-def additive_mean_reference(target: np.ndarray, first: np.ndarray, second: np.ndarray) -> np.ndarray:
+def additive_mean_reference(
+    target: np.ndarray,
+    first: np.ndarray,
+    second: np.ndarray,
+    *,
+    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
+) -> np.ndarray:
     """Dataset and model target means combined into a descriptive IS reference.
 
     The calculation adds each observed dataset mean and model mean, subtracts the global
@@ -460,7 +470,7 @@ def additive_mean_reference(target: np.ndarray, first: np.ndarray, second: np.nd
         for label in np.unique(group):
             mask = group == label
             prediction[mask] += float(target[mask].mean()) - grand
-    return np.clip(prediction, MCC_LOWER, MCC_UPPER)
+    return prediction if bounds is None else np.clip(prediction, *bounds)
 
 
 def interaction_oracle(
@@ -468,6 +478,8 @@ def interaction_oracle(
     first: np.ndarray,
     second: np.ndarray,
     rank: int,
+    *,
+    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
 ) -> np.ndarray:
     """The additive mean-based reference plus the best rank-``rank`` approximation of what it misses.
 
@@ -513,7 +525,7 @@ def interaction_oracle(
     prediction = np.array(
         [additive[row_index[row], column_index[column]] for row, column in zip(first, second, strict=True)]
     )
-    return np.clip(prediction, MCC_LOWER, MCC_UPPER)
+    return prediction if bounds is None else np.clip(prediction, *bounds)
 
 
 def oracle_ladder(
@@ -521,12 +533,14 @@ def oracle_ladder(
     first: np.ndarray,
     second: np.ndarray,
     ranks: tuple[int, ...] = (0, 1, 2, 3, 4, 6, 8),
+    *,
+    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
 ) -> pl.DataFrame:
     """How much each additional interaction component would be worth."""
     rows: list[dict[str, object]] = []
     previous: float | None = None
     for rank in ranks:
-        value = r2_score(target, interaction_oracle(target, first, second, rank))
+        value = r2_score(target, interaction_oracle(target, first, second, rank, bounds=bounds))
         rows.append(
             {
                 "interaction_rank": rank,

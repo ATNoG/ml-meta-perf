@@ -56,7 +56,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from ml_meta_perf.fit import RIDGE_DEFAULT, Standardizer, Subset, to_equation
-from ml_meta_perf.model import Equation
+from ml_meta_perf.model import MCC_LOWER, MCC_UPPER, Equation
 from ml_meta_perf.stats import pearson, pearson_columns, rank_columns, rankdata, spearman
 from ml_meta_perf.terms import Library, Term, is_trivial, simplify
 
@@ -431,11 +431,13 @@ def search(
     candidates: int = CANDIDATE_POOL_DEFAULT,
     refine_rounds: int = REFINE_ROUNDS_DEFAULT,
     name: str = "equation",
+    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
 ) -> SearchResult:
     """Search for the best subset of every size up to ``max_terms`` over the given library.
 
     Screen, then beam, then fold the standardisation back out. The weights each returned
     equation carries come from `fit`; what this function decides is which terms carry them.
+    Bounds clip every returned equation's prediction; None leaves the target unbounded.
     """
     standardizer = Standardizer.fit(library.matrix)
     design = standardizer.apply(library.matrix)
@@ -449,7 +451,7 @@ def search(
         refine_rounds=refine_rounds,
     )
     equations = {
-        size: to_equation(library, subset, standardizer, selector.offset, f"{name}_k{size}")
+        size: to_equation(library, subset, standardizer, selector.offset, f"{name}_k{size}", bounds=bounds)
         for size, subset in subsets.items()
     }
     return SearchResult(equations=equations, pool_size=len(pool))
@@ -458,7 +460,25 @@ def search(
 #: A term whose contribution never moves predicted MCC by this much across the data is
 #: not doing work worth printing. The default is deliberately well below the resolution
 #: anyone reads MCC at.
+#: Unbounded targets scale it by their spread; see ``pruning_threshold``.
 MIN_CONTRIBUTION = 0.002
+
+
+def pruning_threshold(bounds: tuple[float, float] | None, target: np.ndarray) -> float:
+    """The ``min_contribution`` ``prune`` should use for a target with these bounds.
+
+    A bounded target keeps ``MIN_CONTRIBUTION``. An unbounded one scales it by the target's
+    1st-to-99th percentile spread over the MCC span, so a term has to move the prediction by
+    the same share of the target's spread that ``MIN_CONTRIBUTION`` is of MCC's.
+    """
+    if bounds is not None:
+        return MIN_CONTRIBUTION
+    with np.errstate(invalid="ignore"):
+        low, high = np.percentile(target, [1.0, 99.0])
+    spread = float(high - low)
+    if not np.isfinite(spread) or spread <= 0.0:
+        return MIN_CONTRIBUTION
+    return MIN_CONTRIBUTION * spread / (MCC_UPPER - MCC_LOWER)
 
 
 def prune(
@@ -507,14 +527,19 @@ def prune(
 
     if not keep:
         return Equation(
-            intercept=float(target.mean()), terms=(), weights=(), standardized_weights=(), name=equation.name
+            intercept=float(target.mean()),
+            terms=(),
+            weights=(),
+            standardized_weights=(),
+            name=equation.name,
+            bounds=equation.bounds,
         )
 
     library = Library(keep, columns)
     standardizer = Standardizer.fit(library.matrix)
     selector = Selector(standardizer.apply(library.matrix), target, penalty, library.feature_groups)
     subset = selector._evaluate(tuple(range(len(library))))
-    return to_equation(library, subset, standardizer, selector.offset, equation.name)
+    return to_equation(library, subset, standardizer, selector.offset, equation.name, bounds=equation.bounds)
 
 
 def selected_terms(equation: Equation) -> list[Term]:
