@@ -209,4 +209,3 @@ def get_dataset_list_ordered_by_rows(dataset_root: str | os.PathLike | None = No
         step += 1
 
     return [dataset_setup for dataset_setup, _ in ordered]
-

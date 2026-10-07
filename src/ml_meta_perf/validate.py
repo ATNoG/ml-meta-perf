@@ -209,7 +209,7 @@ def fold_selections(
         train_matrix = library.matrix[train]
         standardizer = Standardizer.fit(train_matrix)
         design = standardizer.apply(train_matrix)
-        pool = guided_screen(_view(library, train), target[train], keep=pool_size)
+        pool = guided_screen(library_rows(library, train), target[train], keep=pool_size)
         selector = Selector(design, target[train], penalty, library.feature_groups)
         subsets = selector.search(pool, n_terms, beam_width=beam_width)
         if n_terms in subsets:
@@ -217,14 +217,14 @@ def fold_selections(
     return selections
 
 
-def term_stability(selections: list[list[str]]) -> pl.DataFrame:
+def term_stability(selections: list[list[str]], required_terms: tuple[str, ...] = ()) -> pl.DataFrame:
     """How often each term was selected across folds.
 
     A term chosen in nearly every fold has stronger support than one chosen only a few times.
     Reporting the final all-data equation without this column would present the two
     identically.
     """
-    counts: dict[str, int] = {}
+    counts: dict[str, int] = dict.fromkeys(required_terms, 0)
     for names in selections:
         for name in names:
             counts[name] = counts.get(name, 0) + 1
@@ -391,7 +391,7 @@ def _clip_to_training(prediction: np.ndarray, training_target: np.ndarray) -> np
     return np.clip(prediction, float(training_target.min()), float(training_target.max()))
 
 
-def _view(library: Library, mask: np.ndarray) -> Library:
+def library_rows(library: Library, mask: np.ndarray) -> Library:
     """A library restricted to a row subset, without re-evaluating any term."""
     clone = object.__new__(Library)
     clone.terms = library.terms

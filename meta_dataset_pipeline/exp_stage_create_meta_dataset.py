@@ -84,7 +84,7 @@ def get_maximum_tree_nodes(max_depth, no_instances):
 
 # /// Adding Model's related columns \\
 #
-# The output schema mirrors ml_meta_perf/meta_dataset.csv: one instance-specific
+# The output schema mirrors dataset/meta_dataset.csv: one instance-specific
 # capacity descriptor plus five canonical ordinal descriptors. "Model" itself
 # is never used as a meta-model feature downstream, so these columns are the
 # signal the meta-model receives about learner identity.
@@ -261,7 +261,7 @@ MODEL_ORDINALS = {
 
 def add_canonical_model_descriptors(frame):
     """
-    Add the same model descriptors used by ml_meta_perf/meta_dataset.csv.
+    Add the same model descriptors used by dataset/meta_dataset.csv.
     """
     models = frame["Model"].astype(str)
     missing_family = sorted(set(models).difference(MODEL_FAMILY))

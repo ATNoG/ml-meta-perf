@@ -34,6 +34,7 @@ import numpy as np
 import polars as pl
 from sklearn.dummy import DummyRegressor
 
+from ml_meta_perf.config import Configuration, SelectionConfig
 from ml_meta_perf.data import (
     DATASET_COLUMN,
     DATASET_FEATURES,
@@ -42,7 +43,7 @@ from ml_meta_perf.data import (
     columns_as_arrays,
     load,
 )
-from ml_meta_perf.experiment import Configuration, EquationReport, Report
+from ml_meta_perf.experiment import EquationReport, Report
 from ml_meta_perf.opaque import Builder
 
 #: Eight of the twenty datasets, spread across the alphabetical order rather than taken from
@@ -113,9 +114,11 @@ DOUBLES: tuple[tuple[str, Builder], ...] = (
 #: All three are written out. They used to come from `--quick`, which set E1 and E3 from a
 #: preset, E2 from somewhere else, and the opaque ensembles from a third place; what a call
 #: site was actually asking for could not be read off it.
-E1 = Configuration(max_abs_zscore=3.0, penalty=1.0, pool_size=60, max_terms=6)
-E2 = Configuration(max_abs_zscore=3.0, penalty=5.0, pool_size=60, max_terms=6, max_arity=2)
-E3 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=60, max_terms=6)
+E1 = Configuration(max_abs_zscore=3.0, penalty=1.0, pool_size=60, max_terms=6, beam_width=6, max_arity=3)
+E2 = Configuration(max_abs_zscore=3.0, penalty=5.0, pool_size=60, max_terms=6, beam_width=6, max_arity=2)
+E3 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=60, max_terms=6, beam_width=6, max_arity=3)
+#: The length rule at the suite's scale: a six-term horizon leaves room for a two-length window.
+SELECTION = SelectionConfig(delta=0.01, window=2, smoothing=3, capability_arity=3)
 
 _FRAME: list[pl.DataFrame] = []
 _PATH: list[Path] = []
@@ -189,9 +192,8 @@ def report() -> Report:
         _REPORT.append(
             run(
                 str(sample_path()),
-                config_e1=E1,
-                config_e2=E2,
-                config_e3=E3,
+                config=E3,
+                selection=SELECTION,
                 opaque_models=DOUBLES,
             )
         )

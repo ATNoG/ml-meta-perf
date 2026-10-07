@@ -1,0 +1,30 @@
+{
+  "search": {
+    "max_abs_zscore": 4.0,
+    "penalty": 0.3,
+    "pool_size": 600,
+    "max_terms": 30,
+    "beam_width": 6,
+    "max_arity": 2
+  },
+  "selection": {
+    "delta": 0.01,
+    "window": 4,
+    "smoothing": 3,
+    "capability_arity": 3
+  },
+  "opaque": {
+    "forest_trees": 100,
+    "forest_max_features": 0.33,
+    "boosting_stages": 50,
+    "boosting_learning_rate": 0.1,
+    "boosting_max_depth": 3
+  },
+  "sweep": {
+    "zscores": [3.0, 3.5, 4.0, 5.0, 6.0, 7.0, 8.0],
+    "penalties": [0.1, 0.3, 1.0, 3.0, 10.0],
+    "arities": [2, 3],
+    "readable_terms": 20,
+    "band": 0.02
+  }
+}

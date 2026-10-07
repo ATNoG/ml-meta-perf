@@ -388,29 +388,32 @@ class TestTheCapacityReading(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        import dataclasses
-
         from ml_meta_perf.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays
-        from ml_meta_perf.experiment import ARITIES, DEFAULT, run_e3
         from ml_meta_perf.guidance import equation_evidence
+        from tests import corpus
 
         frame = load()
         columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
-        e3 = run_e3(frame, dataclasses.replace(DEFAULT, max_arity=max(ARITIES)))
+        e3 = corpus.published()
         cls.evidence = equation_evidence(SimpleNamespace(e3=e3), columns)  # pyright: ignore[reportArgumentType]
 
-    def test_the_capacity_terms_show_both_directions_in_the_current_equation(self) -> None:
-        """The retained equation does not reduce processing-unit count to one direction."""
-        capacity = self.evidence.filter((pl.col("feature") == "Processing Units Number") & (pl.col("direction") != ""))
-        self.assertGreater(capacity.height, 1)
-        self.assertEqual(set(capacity["direction"].to_list()), {"lowers", "raises"})
+    def test_every_capacity_term_of_the_published_equation_is_read(self) -> None:
+        """Each term naming `Processing Units Number` gets exactly one reading, so the
+        chapter's statement about capacity covers the whole equation and not a sample of it."""
+        from tests import corpus
 
-    def test_capacity_appears_in_numerators_and_denominators(self) -> None:
-        """The current reading contains both roles, so coefficient signs need context."""
-        capacity = self.evidence.filter(
-            (pl.col("feature") == "Processing Units Number") & (pl.col("direction") != "")
-        ).to_dicts()
-        self.assertEqual({row["position"] for row in capacity}, {"denominator", "numerator"})
+        terms = [term for term in corpus.published().equation.terms if "Processing Units Number" in term.features]
+        capacity = self.evidence.filter(pl.col("feature") == "Processing Units Number")
+        self.assertEqual(capacity.height, len(terms))
+
+    def test_each_reading_has_a_position_and_a_direction(self) -> None:
+        """Where the feature sits decides what its coefficient sign means, so neither may be
+        missing from a reading."""
+        capacity = self.evidence.filter(pl.col("feature") == "Processing Units Number").to_dicts()
+        for row in capacity:
+            with self.subTest(term=row.get("term")):
+                self.assertIn(row["position"], {"numerator", "denominator", "factor"})
+                self.assertIn(row["direction"], {"raises", "lowers", ""})
 
 
 if __name__ == "__main__":

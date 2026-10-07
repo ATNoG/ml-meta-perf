@@ -2,8 +2,9 @@
 #
 # The local hooks use one pre-commit-managed Python environment rather than repository-local
 # `venv/bin/...` paths. That makes the installed Git hook portable across Linux and Windows.
-# Each hook receives the same pinned tools and runtime dependencies; the launcher adds the
-# working tree's `src/` directory so tests exercise current code rather than an installed copy.
+# Each hook receives the same pinned tools (the `dev` extra in `pyproject.toml`) and runtime
+# dependencies, and reads the working tree's `src/` rather than an installed copy: basedpyright
+# through `extraPaths` in `pyproject.toml`, the tests by putting `src` first on `sys.path`.
 #
 # `pass_filenames: false` is deliberate. Ruff, BasedPyright, and Vulture need the complete
 # configured source tree, and the unit-test command always runs the full suite.
@@ -27,23 +28,25 @@ repos:
     hooks:
       - id: ruff
         name: ruff
-        entry: python scripts/precommit_gate.py ruff
+        entry: ruff check src tests
         language: python
         additional_dependencies: &gate_dependencies
-          - ruff==0.16.1
-          - basedpyright==1.39.8
+          - ruff==0.16.9
+          - basedpyright==1.40.1
           - vulture==2.16
           - numpy==2.5.3
-          - polars==1.44.1
-          - matplotlib==3.11.1
-          - scikit-learn==1.9.0
+          - polars==1.44.2
+          - matplotlib==3.11.2
+          - scikit-learn==1.9.1
           - joblib==1.6.0
+          - jsonargparse==4.52.0
+          - kneeliverse==1.2.0
         files: '(\.py$|^pyproject\.toml$)'
         pass_filenames: false
 
       - id: basedpyright
         name: basedpyright
-        entry: python scripts/precommit_gate.py basedpyright
+        entry: basedpyright
         language: python
         additional_dependencies: *gate_dependencies
         files: '(\.py$|^pyproject\.toml$)'
@@ -51,7 +54,7 @@ repos:
 
       - id: vulture
         name: vulture
-        entry: python scripts/precommit_gate.py vulture
+        entry: vulture
         language: python
         additional_dependencies: *gate_dependencies
         files: '(\.py$|^pyproject\.toml$)'
@@ -59,7 +62,7 @@ repos:
 
       - id: unittest
         name: unittest
-        entry: python scripts/precommit_gate.py unittest
+        entry: python -c "import sys, unittest; sys.path.insert(0, 'src'); unittest.main(module=None, argv=['unittest', 'discover', '-s', 'tests'])"
         language: python
         additional_dependencies: *gate_dependencies
         files: '(\.py$|^pyproject\.toml$)'

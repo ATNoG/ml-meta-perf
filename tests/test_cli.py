@@ -17,56 +17,69 @@ and the chapters matches the report it was given.
 from __future__ import annotations
 
 import io
+import json
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
-from ml_meta_perf.cli import _configure_windows_output, arities, build_parser, configuration, main, render
-from ml_meta_perf.experiment import ARITIES, DEFAULT
+from jsonargparse import Namespace
+
+from ml_meta_perf.cli import PHASES, _configure_windows_output, build_parser, main, phases_of, render
+from ml_meta_perf.config import DEFAULT_CONFIG_PATH, load_config
 from ml_meta_perf.model import Equation
 from ml_meta_perf.report import BEGIN, END
 from tests import corpus
 
 
+def parse(*flags: str) -> Namespace:
+    """The instantiated command line, exactly as `main` sees it."""
+    parser = build_parser()
+    return parser.instantiate(parser.parse_args(list(flags)))
+
+
 class TestFlags(unittest.TestCase):
     """Parsing and folding, with nothing else involved."""
 
-    def test_a_bare_run_is_the_tuned_configuration(self) -> None:
-        self.assertEqual(configuration(build_parser().parse_args([])), DEFAULT)
+    def test_a_bare_run_is_the_study_configuration_file(self) -> None:
+        arguments, study = parse(), load_config()
+        self.assertEqual(arguments.search, study.search)
+        self.assertEqual(arguments.selection, study.selection)
+        self.assertEqual(arguments.opaque, study.opaque)
 
-    def test_flags_override_the_tuned_configuration(self) -> None:
-        parser = build_parser()
-        config = configuration(parser.parse_args(["--penalty", "3", "--arity", "2", "--max-terms", "40"]))
-        self.assertEqual(config.penalty, 3.0)
-        self.assertEqual(config.max_arity, 2)
-        self.assertEqual(config.max_terms, 40)
-        self.assertEqual(config.pool_size, DEFAULT.pool_size, "an unmentioned knob keeps its tuned value")
+    def test_a_dotted_flag_overrides_one_field_of_the_file(self) -> None:
+        arguments = parse("--search.penalty", "3", "--selection.delta", "0.02")
+        self.assertEqual(arguments.search.penalty, 3.0)
+        self.assertEqual(arguments.selection.delta, 0.02)
+        self.assertEqual(
+            arguments.search.pool_size, load_config().search.pool_size, "an unmentioned knob keeps its value"
+        )
 
-    def test_the_grammar_a_non_searching_equation_gets_is_the_smallest_searched(self) -> None:
-        """E1 and E2 are fitted once rather than searched, so they need an arity from
-        somewhere. It is the most parsimonious of the ones asked for, not the first written."""
-        parser = build_parser()
-        self.assertEqual(configuration(parser.parse_args(["--arity", "3", "--arity", "2"])).max_arity, 2)
-        self.assertEqual(configuration(parser.parse_args(["--arity", "3"])).max_arity, 3)
-
-    def test_arity_is_repeatable_and_de_duplicated_in_order(self) -> None:
-        parser = build_parser()
-        self.assertEqual(arities(parser.parse_args(["--arity", "3", "--arity", "2", "--arity", "3"])), (3, 2))
-        self.assertEqual(arities(parser.parse_args([])), ARITIES)
+    def test_another_configuration_file_replaces_the_default_one(self) -> None:
+        payload = json.loads(DEFAULT_CONFIG_PATH.read_text(encoding="utf-8"))
+        payload["search"]["max_terms"] = 12
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "other.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            self.assertEqual(parse("--config", str(path)).search.max_terms, 12)
 
     def test_the_published_length_is_not_a_flag(self) -> None:
         """The selected length is derived from the curve rather than set by a flag."""
-        parser = build_parser()
+        with self.assertRaises(SystemExit), redirect_stderr(io.StringIO()):
+            parse("--terms", "12")
+
+    def test_an_unknown_phase_is_refused(self) -> None:
         with self.assertRaises(SystemExit):
-            parser.parse_args(["--terms", "12"])
+            phases_of(parse("--phase", "screen,nonsense"))
+
+    def test_phases_are_comma_separated_and_default_to_all(self) -> None:
+        self.assertEqual(phases_of(parse("--phase", "screen, figures")), {"screen", "figures"})
+        self.assertEqual(phases_of(parse()), set(PHASES))
 
     def test_windows_output_is_reconfigured_for_unicode_tables(self) -> None:
         stream = mock.Mock()
-        with mock.patch("ml_meta_perf.cli.sys.platform", "win32"), mock.patch(
-            "ml_meta_perf.cli.sys.stdout", stream
-        ):
+        with mock.patch("ml_meta_perf.cli.sys.platform", "win32"), mock.patch("ml_meta_perf.cli.sys.stdout", stream):
             _configure_windows_output()
         stream.reconfigure.assert_called_once_with(encoding="utf-8", errors="replace")
 
@@ -103,6 +116,8 @@ class CliTestCase(unittest.TestCase):
                     str(self.directory),
                     "--docs",
                     str(self.docs),
+                    "--readme",
+                    str(self.directory / "README.md"),
                     "--no-figures",
                     *flags,
                 ]
@@ -117,19 +132,19 @@ class CliTestCase(unittest.TestCase):
 
 
 class TestWhatTheFlagsReachTheEngineAs(CliTestCase):
-    def test_the_default_run_is_the_tuned_one_over_the_default_arities(self) -> None:
+    def test_the_default_run_is_the_study_configuration(self) -> None:
         self.run_main("--quiet", "--no-report", "--no-tables")
         self.engine.assert_called_once()
         arguments, keywords = self.engine.call_args
+        study = load_config()
         self.assertEqual(arguments[0], str(corpus.sample_path()))
-        self.assertEqual(keywords["config_e1"], DEFAULT)
-        self.assertEqual(keywords["config_e2"], DEFAULT)
-        self.assertEqual(keywords["config_e3"], DEFAULT)
-        self.assertEqual(keywords["arities"], ARITIES)
+        self.assertEqual(keywords["config"], study.search)
+        self.assertEqual(keywords["selection"], study.selection)
+        self.assertEqual(keywords["opaque"], study.opaque)
 
-    def test_a_repeated_arity_becomes_the_searched_set(self) -> None:
-        self.run_main("--quiet", "--no-report", "--no-tables", "--arity", "3", "--arity", "2", "--arity", "3")
-        self.assertEqual(self.engine.call_args.kwargs["arities"], (3, 2))
+    def test_an_override_reaches_the_engine(self) -> None:
+        self.run_main("--quiet", "--no-report", "--no-tables", "--search.penalty", "3")
+        self.assertEqual(self.engine.call_args.kwargs["config"].penalty, 3.0)
 
     def test_there_is_no_preset_that_sets_knobs_the_flags_do_not(self) -> None:
         """`--quick` was three flags that already existed plus two that did not: it also chose
@@ -137,7 +152,7 @@ class TestWhatTheFlagsReachTheEngineAs(CliTestCase):
         "seconds" while paying 226 s for the comparison. Every knob is a flag or a parameter
         now, so a cheap run says at its call site which parts of it are cheap."""
         parser = build_parser()
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(SystemExit), redirect_stderr(io.StringIO()):
             parser.parse_args(["--quick"])
 
 

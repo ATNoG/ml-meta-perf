@@ -49,6 +49,7 @@ from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.linear_model import RidgeCV
 from sklearn.utils.parallel import Parallel, delayed
 
+from ml_meta_perf.config import OpaqueConfig, load_config
 from ml_meta_perf.data import (
     ALL_FEATURES,
     DATASET_COLUMN,
@@ -66,19 +67,13 @@ from ml_meta_perf.validate import leave_one_group_out
 #: larger than the spread a different seed produces.
 SEED = 0
 
-#: The published ensemble sizes. **A parameter rather than a literal because DHO
-#: refits each estimator 476 times**, which puts one `evaluate` at 226 s -- almost
-#: the whole cost of a study run, and, until 2026-09-08, of the test suite six times over
-#: because `--quick` reached the equation's knobs and not these. The study still runs at
-#: these numbers and its output is unchanged; a caller that only needs the shape of the
-#: comparison can ask for less.
-#:
-#: Neither conclusion depends on the size. The forest's argument is that a flexible model
-#: fits this meta-data almost perfectly and reaches nothing on an unseen cell, and that gap
-#: is a property of the design matrix -- twenty dataset groups, features constant within a
-#: group -- rather than of how many trees vote on it.
-FOREST_TREES = 300
-BOOSTING_STAGES = 100
+#: The ensemble sizes are hyperparameters and live in ``config/study.json`` (`config.OpaqueConfig`).
+#: They were chosen on a grid scored under all four protocols: a third of the features per split
+#: transfers far better than all of them, and a hundred trees reach within noise of three
+#: hundred at a third of the cost. Neither conclusion the study draws depends on the size: the
+#: forest's argument is that a flexible model fits this meta-data almost perfectly and reaches
+#: nothing on an unseen cell, which is a property of the design matrix -- twenty dataset groups,
+#: features constant within a group -- rather than of how many trees vote on it.
 
 
 class Regressor(Protocol):
@@ -106,7 +101,7 @@ class Regressor(Protocol):
 Builder = Callable[[int], Regressor]
 
 
-def estimators(trees: int = FOREST_TREES, stages: int = BOOSTING_STAGES) -> tuple[tuple[str, Builder], ...]:
+def estimators(opaque: OpaqueConfig) -> tuple[tuple[str, Builder], ...]:
     """The published regressors, as (label, factory).
 
     Factories rather than instances so each fold gets a fresh unfitted estimator -- refitting
@@ -114,7 +109,7 @@ def estimators(trees: int = FOREST_TREES, stages: int = BOOSTING_STAGES) -> tupl
     that silently leaks if an estimator ever caches.
 
     **The size is in the label**, so a table produced at a reduced size says so rather than
-    claiming three hundred trees it never grew.
+    claiming a size it never grew.
     """
     return (
         # A wide log-spaced grid rather than a chosen penalty: the point of the control is
@@ -122,12 +117,22 @@ def estimators(trees: int = FOREST_TREES, stages: int = BOOSTING_STAGES) -> tupl
         # picking the penalty by hand would leave the result open to that objection.
         ("RidgeCV (linear)", lambda _threads=-1: RidgeCV(alphas=np.logspace(-3, 3, 25))),
         (
-            f"RandomForest ({trees} trees)",
-            lambda threads=-1: RandomForestRegressor(n_estimators=trees, random_state=SEED, n_jobs=threads),
+            f"RandomForest ({opaque.forest_trees} trees)",
+            lambda threads=-1: RandomForestRegressor(
+                n_estimators=opaque.forest_trees,
+                max_features=opaque.forest_max_features,
+                random_state=SEED,
+                n_jobs=threads,
+            ),
         ),
         (
-            f"GradientBoosting ({stages} stages)",
-            lambda _threads=-1: GradientBoostingRegressor(n_estimators=stages, random_state=SEED),
+            f"GradientBoosting ({opaque.boosting_stages} stages)",
+            lambda _threads=-1: GradientBoostingRegressor(
+                n_estimators=opaque.boosting_stages,
+                learning_rate=opaque.boosting_learning_rate,
+                max_depth=opaque.boosting_max_depth,
+                random_state=SEED,
+            ),
         ),
     )
 
@@ -197,7 +202,7 @@ def evaluate(frame: pl.DataFrame, *, models: tuple[tuple[str, Builder], ...] | N
 
     rows: list[dict[str, object]] = []
     predictions: dict[str, dict[str, np.ndarray]] = {}
-    for label, build in models or estimators():
+    for label, build in models or estimators(load_config().opaque):
         fitted = build(-1)
         fitted.fit(design, truth)
         held: dict[str, np.ndarray] = {

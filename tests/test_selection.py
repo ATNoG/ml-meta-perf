@@ -1,4 +1,4 @@
-"""Tests for the retained E3-Valid plateau rule and the independent E3-MAX bound."""
+"""Tests for the length rule (`plateau_knee`) and the E3-MAX bound (`floor_argmax`)."""
 
 import unittest
 
@@ -6,15 +6,17 @@ import numpy as np
 import polars as pl
 
 from ml_meta_perf.selection import (
-    arity_candidates,
     complexity,
-    consensus_curve,
+    floor_argmax,
     floor_curve,
-    most_capable,
-    plateau_configuration,
-    plateau_index,
+    knee_lengths,
+    plateau_knee,
+    plateau_start,
     protocol_spread,
+    smoothed,
 )
+
+RULE = {"delta": 0.01, "window": 4, "smoothing": 3}
 
 
 def curve(
@@ -34,40 +36,15 @@ def curve(
     return pl.DataFrame(data)
 
 
-class TestConsensusCurve(unittest.TestCase):
-    """One score per length across the protocols, so no single curve chooses the length."""
+def saturating(horizon: int = 30, scale: float = 4.0) -> np.ndarray:
+    """A curve that climbs fast and levels off, the shape every equation's floor has."""
+    return 0.65 * (1.0 - np.exp(-np.arange(1, horizon + 1) / scale))
 
-    def setUp(self) -> None:
-        self.table = curve(
-            [2, 4, 6, 8],
-            [0.40, 0.50, 0.60, 0.66],
-            [0.30, 0.45, 0.10, 0.62],  # 0.10 is a crater, as LODO genuinely has
-            [0.35, 0.47, 0.58, 0.60],
-        )
 
-    def test_the_median_ignores_a_single_protocol_crater(self) -> None:
-        """Why median and not mean.
-
-        At the cratered length the three protocols read 0.60 / 0.10 / 0.58. The median takes
-        0.58 -- one fold extrapolating outside the training hull is a property of that fold,
-        not of the length -- while the mean is dragged down by it.
-        """
-        median = consensus_curve(self.table, "median")
-        mean = consensus_curve(self.table, "mean")
-        self.assertAlmostEqual(float(median[2]), 0.58)
-        self.assertAlmostEqual(float(mean[2]), (0.60 + 0.10 + 0.58) / 3)
-        self.assertGreater(float(median[2]), float(mean[2]))
-
-    def test_min_is_the_conservative_reading(self) -> None:
-        self.assertAlmostEqual(float(consensus_curve(self.table, "min")[2]), 0.10)
-
-    def test_a_single_protocol_is_its_own_consensus(self) -> None:
-        plain = curve([2, 4, 6], [0.2, 0.5, 0.6])
-        np.testing.assert_allclose(consensus_curve(plain), [0.2, 0.5, 0.6])
-
-    def test_it_refuses_a_curve_with_no_protocol_columns(self) -> None:
-        with self.assertRaises(ValueError):
-            consensus_curve(pl.DataFrame({"n_terms": [2, 4]}))
+def as_curve(floor: np.ndarray) -> pl.DataFrame:
+    """A curve whose four protocols are all ``floor``, so the floor is exactly ``floor``."""
+    values = [float(value) for value in floor]
+    return curve(list(range(1, len(values) + 1)), values, values, values, values)
 
 
 class TestFloorCurve(unittest.TestCase):
@@ -77,12 +54,12 @@ class TestFloorCurve(unittest.TestCase):
         table = curve([4], [0.70], [0.65], [0.60], [0.55])
         self.assertAlmostEqual(float(floor_curve(table)[0]), 0.55)
 
-    def test_the_cell_protocol_is_read_and_the_median_would_have_hidden_it(self) -> None:
-        """The point of the minimum. Three protocols agree at 0.66 and the cell reads 0.50;
-        a median of the four sits at 0.66 and reports a number no protocol achieved."""
+    def test_the_cell_protocol_is_read_where_a_median_would_hide_it(self) -> None:
+        """Three protocols agree at 0.66 and the cell reads 0.50: a median of the four reports
+        a number no protocol achieved, the minimum reports the cell."""
         table = curve([4], [0.66], [0.66], [0.66], [0.50])
         self.assertAlmostEqual(float(floor_curve(table)[0]), 0.50)
-        self.assertGreater(float(consensus_curve(table)[0]), 0.60)
+        self.assertGreater(float(np.median([0.66, 0.66, 0.66, 0.50])), 0.60)
 
     def test_it_works_on_a_curve_that_has_not_been_scored_on_every_protocol(self) -> None:
         np.testing.assert_allclose(floor_curve(curve([2, 4], [0.5, 0.6], [0.4, 0.55])), [0.4, 0.55])
@@ -90,6 +67,112 @@ class TestFloorCurve(unittest.TestCase):
     def test_it_refuses_a_curve_with_no_protocol_columns(self) -> None:
         with self.assertRaises(ValueError):
             floor_curve(pl.DataFrame({"n_terms": [2, 4]}))
+
+
+class TestSmoothing(unittest.TestCase):
+    """A running median: no single length can move the curve the rule reads."""
+
+    def test_a_single_length_crater_is_ignored(self) -> None:
+        values = np.array([0.50, 0.55, 0.20, 0.60, 0.62])
+        self.assertAlmostEqual(float(smoothed(values, 3)[2]), 0.55)
+
+    def test_a_single_lucky_length_is_ignored(self) -> None:
+        values = np.array([0.60, 0.61, 0.70, 0.61, 0.62])
+        self.assertAlmostEqual(float(smoothed(values, 3)[2]), 0.61)
+
+    def test_the_window_shrinks_at_the_ends_and_width_one_is_the_identity(self) -> None:
+        values = np.array([0.1, 0.4, 0.2])
+        self.assertAlmostEqual(float(smoothed(values, 3)[0]), 0.25)
+        np.testing.assert_allclose(smoothed(values, 1), values)
+
+    def test_it_refuses_a_non_positive_width(self) -> None:
+        with self.assertRaises(ValueError):
+            smoothed(np.array([0.1]), 0)
+
+
+class TestKneeLengths(unittest.TestCase):
+    """multi-Kneedle proposes lengths where the smoothed front bends."""
+
+    def test_a_saturating_curve_has_knees_on_its_rising_part(self) -> None:
+        knees = knee_lengths(as_curve(saturating()), 3)
+        self.assertTrue(knees, "a saturating curve bends somewhere")
+        self.assertEqual(knees, sorted(knees))
+        self.assertTrue(all(1 <= knee <= 30 for knee in knees))
+
+    def test_a_flat_curve_has_no_front_and_no_knee(self) -> None:
+        self.assertEqual(knee_lengths(as_curve(np.full(12, 0.5)), 3), [])
+
+
+class TestPlateauKnee(unittest.TestCase):
+    """The length rule: the first knee (or the maximum) after which the curve stops improving."""
+
+    def test_it_stops_where_a_saturating_curve_levels_off(self) -> None:
+        floor = saturating()
+        size = plateau_knee(as_curve(floor), **RULE)
+        smooth = smoothed(floor, 3)
+        ahead = smooth[size : size + RULE["window"]]
+        self.assertLessEqual(float(ahead.max() - smooth[size - 1]), RULE["delta"] + 1e-12)
+        self.assertLess(size, 30, "a curve that has levelled off is not read to its horizon")
+        shorter = smooth[: size - 1]
+        self.assertTrue(
+            any(
+                float(smooth[i + 1 : i + 1 + RULE["window"]].max() - smooth[i]) > RULE["delta"]
+                for i in range(len(shorter))
+            )
+            or size <= RULE["window"],
+            "every shorter length is still followed by a real gain",
+        )
+
+    def test_a_lucky_length_near_the_horizon_does_not_choose_the_length(self) -> None:
+        """The spike is never chosen. It can still nudge the knees by one length: Kneedle
+        normalises over the whole Pareto front, and the spike moves the front's far end."""
+        floor = saturating()
+        spiked = floor.copy()
+        spiked[27] += 0.05
+        chosen = plateau_knee(as_curve(spiked), **RULE)
+        self.assertNotEqual(chosen, 28)
+        self.assertLessEqual(abs(chosen - plateau_knee(as_curve(floor), **RULE)), 1)
+
+    def test_a_crater_does_not_block_a_plateau(self) -> None:
+        floor = saturating()
+        size = plateau_knee(as_curve(floor), **RULE)
+        cratered = floor.copy()
+        cratered[size + 1] -= 0.2
+        self.assertEqual(plateau_knee(as_curve(cratered), **RULE), size)
+
+    def test_a_curve_still_climbing_returns_its_maximum(self) -> None:
+        floor = np.linspace(0.2, 0.7, 20)
+        size, how = plateau_start(as_curve(floor), **RULE)
+        self.assertEqual((size, how), (20, "maximum"))
+
+    def test_a_peak_before_a_decline_is_the_plateau_start(self) -> None:
+        floor = np.concatenate([np.linspace(0.3, 0.6, 12), np.linspace(0.59, 0.5, 10)])
+        size, how = plateau_start(as_curve(floor), **RULE)
+        self.assertEqual(how, "maximum")
+        self.assertEqual(size, 12)
+
+    def test_it_is_deterministic(self) -> None:
+        table = as_curve(saturating())
+        self.assertEqual({plateau_knee(table, **RULE) for _ in range(5)}, {plateau_knee(table, **RULE)})
+
+    def test_it_refuses_a_negative_delta_or_an_empty_window(self) -> None:
+        table = as_curve(saturating())
+        with self.assertRaises(ValueError):
+            plateau_knee(table, delta=-0.1, window=4, smoothing=3)
+        with self.assertRaises(ValueError):
+            plateau_knee(table, delta=0.01, window=0, smoothing=3)
+
+
+class TestFloorArgmax(unittest.TestCase):
+    """E3-MAX: the raw maximum, unsmoothed -- a bound, not an equation to read."""
+
+    def test_it_takes_the_raw_maximum_even_on_a_single_length(self) -> None:
+        floor = saturating()
+        floor[27] += 0.05
+        self.assertEqual(floor_argmax(as_curve(floor)), 28)
+
+    def test_ties_go_to_the_shorter_equation(self) -> None:
+        self.assertEqual(floor_argmax(as_curve(np.array([0.5, 0.6, 0.6]))), 2)
 
 
 class TestProtocolSpread(unittest.TestCase):
@@ -109,30 +192,7 @@ class TestProtocolSpread(unittest.TestCase):
             protocol_spread(pl.DataFrame({"n_terms": [2], "r2_loo_dataset": [0.5]}))
 
 
-class TestE3Selection(unittest.TestCase):
-    """The sole E3-Valid plateau rule and the independent E3-MAX bound."""
-
-    def test_plateau_index_stops_before_a_sustained_stall(self) -> None:
-        scores = np.array([0.2, 0.4, 0.6, 0.6002, 0.6004, 0.7])
-        self.assertEqual(plateau_index(scores, tolerance=0.001, window=2), 2)
-
-    def test_plateau_selection_compares_both_arities(self) -> None:
-        arity_two = [0.30, 0.50, 0.60, 0.6002, 0.6003]
-        arity_three = [0.31, 0.49, 0.59, 0.6001, 0.6003]
-        curves = {
-            2: curve([1, 2, 3, 4, 5], arity_two, arity_two, arity_two),
-            3: curve([1, 2, 3, 4, 5], arity_three, arity_three, arity_three),
-        }
-        self.assertEqual(plateau_configuration(curves, tolerance=0.001, window=2), (2, 3))
-
-    def test_most_capable_uses_the_four_protocol_floor(self) -> None:
-        curves = {
-            2: curve([5, 10], [0.50, 0.60], [0.50, 0.60], [0.50, 0.60], [0.50, 0.60]),
-            3: curve([5, 28], [0.50, 0.65], [0.50, 0.65], [0.50, 0.65], [0.50, 0.65]),
-        }
-        self.assertEqual(arity_candidates(curves), {2: 10, 3: 28})
-        self.assertEqual(most_capable(curves), (3, 28))
-
+class TestComplexity(unittest.TestCase):
     def test_complexity_charges_for_the_grammar(self) -> None:
         self.assertEqual(complexity(2, 15), 30)
         self.assertEqual(complexity(3, 15), 45)

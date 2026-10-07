@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import numpy as np
 import polars as pl
-import scipy.linalg
 
 from ml_meta_perf.fit import Standardizer
 from ml_meta_perf.stats import pearson, r2_score, spearman
@@ -197,14 +196,20 @@ def grammar_ceiling(
     }
 
 
-def _minimum_norm_lstsq(design: np.ndarray, rhs: np.ndarray) -> np.ndarray:
-    """Minimum-norm least squares by pivoted QR, with numpy's default rank cutoff.
+def _min_norm_lstsq(design: np.ndarray, target: np.ndarray) -> np.ndarray:
+    """Minimum-norm least squares that does not depend on one LAPACK build converging.
 
-    numpy's SVD driver (gelsd) fails to converge on this design under OpenBLAS: the full
-    library is rank-deficient with its small singular values clustered near zero.
+    `np.linalg.lstsq` raises "SVD did not converge" on some OpenBLAS builds for the
+    saturated design, which is numerically rank-deficient (about 100 independent columns of
+    229 in the leave-X-IIoTID-out fold). The SVD of the transpose is the same problem and
+    converges there, so it is the fallback; the truncation is `lstsq`'s own default.
     """
-    cutoff = np.finfo(np.float64).eps * max(design.shape)
-    return scipy.linalg.lstsq(design, rhs, cond=cutoff, lapack_driver="gelsy")[0]
+    try:
+        return np.linalg.lstsq(design, target, rcond=None)[0]
+    except np.linalg.LinAlgError:
+        right, singular, left = np.linalg.svd(design.T, full_matrices=False)
+        keep = singular > singular[0] * np.finfo(float).eps * max(design.shape)
+        return (right[:, keep] / singular[keep]) @ (left[keep] @ target)
 
 
 def saturated_fit(
@@ -233,7 +238,7 @@ def saturated_fit(
     matrix = library.matrix
     standardizer = Standardizer.fit(matrix)
     offset = float(target.mean())
-    weights = _minimum_norm_lstsq(standardizer.apply(matrix), target - offset)
+    weights = _min_norm_lstsq(standardizer.apply(matrix), target - offset)
     in_sample = r2_score(target, standardizer.apply(matrix) @ weights + offset)
 
     held = np.zeros_like(target)
@@ -242,7 +247,7 @@ def saturated_fit(
         fold = Standardizer.fit(matrix[train])
         design = fold.apply(matrix[train])
         centre = float(target[train].mean())
-        fitted = _minimum_norm_lstsq(design, target[train] - centre)
+        fitted = _min_norm_lstsq(design, target[train] - centre)
         held[test] = fold.apply(matrix[test]) @ fitted + centre
         bounded[test] = np.clip(held[test], float(target[train].min()), float(target[train].max()))
     return {

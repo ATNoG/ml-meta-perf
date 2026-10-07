@@ -5,14 +5,15 @@ the point is that the wiring is correct and the reported relationships hold, not
 reproduce the published numbers inside a commit hook.
 """
 
+import dataclasses
 import re
 import unittest
 from pathlib import Path
-from typing import ClassVar
 
 import numpy as np
 import polars as pl
 
+from ml_meta_perf.config import load_config
 from ml_meta_perf.data import (
     DATASET_COLUMN,
     DATASET_FEATURES,
@@ -20,8 +21,6 @@ from ml_meta_perf.data import (
     load,
 )
 from ml_meta_perf.experiment import (
-    ARITIES,
-    DEFAULT,
     baselines,
     comparison,
     correlation_analysis,
@@ -156,7 +155,7 @@ class TestStudyTables(unittest.TestCase):
         self.assertFalse(used & set(DATASET_FEATURES))
 
     def test_model_selection_reports_every_dataset(self) -> None:
-        table = model_selection(self.frame, self.e3)
+        table = model_selection(self.frame, self.e3, corpus.E3)
         self.assertEqual(table.height, self.frame[DATASET_COLUMN].n_unique())
         self.assertTrue((table["regret"] >= 0.0).all())
 
@@ -252,70 +251,43 @@ class TestOnlyTheValidEquationIsEvaluated(unittest.TestCase):
                     self.assertNotIn("capability", predictor.lower())
 
     def _row(self, role: str) -> dict[str, object]:
-        """The grammars row carrying a role. Matched by substring because one grammar can hold
-        both -- `role` reads "E3-Valid + E3-MAX" when the wider grammar earns its complexity, which
-        is a legitimate outcome and the case `Report.e3_capability` documents."""
-        rows = [row for row in self.report.grammars.to_dicts() if role in str(row["role"])]
-        self.assertEqual(len(rows), 1, f"exactly one grammar should hold {role}")
+        """The selection-summary row for one role: E3-Valid or E3-MAX."""
+        rows = [row for row in self.report.grammars.to_dicts() if row["role"] == role]
+        self.assertEqual(len(rows), 1, f"exactly one row should hold {role}")
         return rows[0]
 
     def test_the_published_equation_is_the_one_the_rule_chose(self) -> None:
         chosen = self._row("E3-Valid")
         self.assertEqual(self.report.e3.arity, chosen["arity"])
         self.assertEqual(self.report.e3.n_terms, chosen["n_terms"])
+        self.assertEqual(chosen["rule"], "first plateau knee")
 
-    def test_the_bound_is_the_grammar_most_capable_chose(self) -> None:
+    def test_the_bound_is_the_raw_floor_maximum_under_the_wider_grammar(self) -> None:
         chosen = self._row("E3-MAX")
-        self.assertEqual(self.report.e3_capability.arity, chosen["arity"])
+        self.assertEqual(self.report.e3_capability.arity, corpus.SELECTION.capability_arity)
         self.assertEqual(self.report.e3_capability.n_terms, chosen["n_terms"])
+        self.assertEqual(chosen["rule"], "raw floor maximum")
 
-    def test_one_equation_keeps_the_published_name_when_both_roles_coincide(self) -> None:
-        if self.report.e3 is self.report.e3_capability:
-            self.assertTrue(self.report.e3.equation.name.startswith("E3_k"))
-            self.assertNotIn("capability", self.report.e3.equation.name)
-
-    def test_every_refit_uses_the_grammar_that_was_published(self) -> None:
+    def test_every_refit_uses_the_configured_grammar(self) -> None:
         """The C3 defect, pinned. Several tables rebuild the library from a `Configuration`
-        and refit. Handing them the configuration's arity rather than the chosen one scored
-        the published equation's strictest protocol on a different grammar -- an arity-3
-        equation with an arity-2 DHO row -- and every test passed."""
+        and refit; they must all use the grammar the published equation was searched under,
+        which is the configuration's, and only E3-MAX may use the wider one."""
         from ml_meta_perf.experiment import run
 
-        # The configuration must disagree with the search, or this proves nothing.
-        self.assertEqual(corpus.E3.max_arity, 3)
-        report = run(
-            str(corpus.sample_path()),
-            config_e1=corpus.E1,
-            config_e2=corpus.E2,
-            config_e3=corpus.E3,
-            arities=(2,),
-            opaque_models=corpus.DOUBLES,
-        )
+        narrow = dataclasses.replace(corpus.E3, max_arity=2)
+        report = run(str(corpus.sample_path()), config=narrow, selection=corpus.SELECTION, opaque_models=corpus.DOUBLES)
         self.assertEqual(report.e3.arity, 2)
         self.assertLessEqual(max(len(term.features) for term in report.e3.equation.terms), 2)
+        self.assertEqual(report.e3_capability.arity, corpus.SELECTION.capability_arity)
 
 
 class TestDocumentedDefaults(unittest.TestCase):
-    """The README's parameter table must state the defaults the code actually has.
+    """The README's configuration table must state the values ``config/study.json`` holds.
 
-    It stated four numbers that had all moved: 24 terms against 15, penalty 5 against 20,
-    arity 3 against 2, z-cap 3.0 against 4.25. Nothing was checking, because the README is
-    the one document the pipeline does not write -- so this reads the table and compares it
-    with `DEFAULT` instead.
+    A README table of defaults once stated four numbers that had all moved, and nothing was
+    checking because the README is the one document the pipeline does not write. The values
+    now live in one file; this reads the README's table and compares it with that file.
     """
-
-    #: The README flag whose default each `Configuration` field is published as.
-    #:
-    #: `--arity` is **not** here, and cannot be: it is repeatable and its default is the set
-    #: `ARITIES` searches, not a `Configuration` field. `test_the_searched_arities_are_documented`
-    #: checks that row separately.
-    FLAGS: ClassVar[dict[str, str]] = {
-        "max_terms": "--max-terms",
-        "penalty": "--penalty",
-        "pool_size": "--pool",
-        "beam_width": "--beam",
-        "max_abs_zscore": "--zscore",
-    }
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -324,27 +296,25 @@ class TestDocumentedDefaults(unittest.TestCase):
             raise unittest.SkipTest("README is not installed beside the package")
         cls.documented = {
             match.group(1): match.group(2)
-            for match in re.finditer(r"^\| `(--[\w-]+)` \| ([\d.]+) \|", readme.read_text(), re.MULTILINE)
+            for match in re.finditer(
+                r"^\| `((?:search|selection|opaque)\.\w+)` \| ([\d.]+) \|", readme.read_text(), re.MULTILINE
+            )
         }
+        cls.study = load_config()
 
-    def test_every_tuned_knob_is_documented(self) -> None:
-        missing = [flag for flag in self.FLAGS.values() if flag not in self.documented]
-        self.assertEqual(missing, [], f"README omits a default for {missing}")
+    def test_every_hyperparameter_is_documented(self) -> None:
+        expected = {
+            f"{section}.{field.name}"
+            for section in ("search", "selection", "opaque")
+            for field in dataclasses.fields(getattr(self.study, section))
+        }
+        self.assertEqual(sorted(expected - set(self.documented)), [], "README omits a hyperparameter")
 
-    def test_documented_defaults_match_the_configuration(self) -> None:
-        for field, flag in self.FLAGS.items():
-            with self.subTest(flag=flag):
-                actual = getattr(DEFAULT, field)
-                self.assertEqual(float(self.documented[flag]), float(actual))
-
-    def test_the_searched_arities_are_documented(self) -> None:
-        """`--arity` publishes a set rather than a number, so it needs its own check --
-        and it is the row most likely to go stale, because it read "2" for as long as the
-        arity was fixed and nothing noticed when the search replaced it."""
-        readme = Path(__file__).resolve().parent.parent / "README.md"
-        row = next(line for line in readme.read_text().splitlines() if line.startswith("| `--arity` |"))
-        documented = re.findall(r"\d+", row.split("|")[2])
-        self.assertEqual([int(value) for value in documented], list(ARITIES))
+    def test_documented_values_match_the_configuration_file(self) -> None:
+        for key, value in self.documented.items():
+            section, name = key.split(".")
+            with self.subTest(key=key):
+                self.assertEqual(float(value), float(getattr(getattr(self.study, section), name)))
 
 
 if __name__ == "__main__":
