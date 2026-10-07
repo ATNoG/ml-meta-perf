@@ -195,17 +195,19 @@ def main(argv: list[str] | None = None) -> int:
     jobs = arguments.jobs or os.cpu_count() or 1
     print(f"{len(points)} configurations on {jobs} workers", flush=True)
     started = time.perf_counter()
-    with ProcessPoolExecutor(max_workers=jobs, initializer=_worker_initialiser) as pool:
-        results = list(
-            pool.map(
-                evaluate,
-                points,
-                itertools.repeat(study.selection),
-                itertools.repeat(arguments.data),
-                itertools.repeat(schema),
-                chunksize=1,
-            )
-        )
+    arguments_per_point = (
+        points,
+        itertools.repeat(study.selection),
+        itertools.repeat(arguments.data),
+        itertools.repeat(schema),
+    )
+    # One job runs in this process: forking one whose BLAS or Polars thread pools are already
+    # running (a caller that fitted before, as the test suite does) can deadlock the workers.
+    if jobs == 1:
+        results = list(map(evaluate, *arguments_per_point))
+    else:
+        with ProcessPoolExecutor(max_workers=jobs, initializer=_worker_initialiser) as pool:
+            results = list(pool.map(evaluate, *arguments_per_point, chunksize=1))
     candidates = pl.DataFrame([row for row, _ in results]).sort(["max_abs_zscore", "penalty", "max_arity"])
     pl.concat([curve for _, curve in results]).write_csv(output / "curves.csv")
     candidates.write_csv(output / "candidates.csv")
