@@ -432,7 +432,7 @@ def is_admissible(values: np.ndarray, max_abs_zscore: float = MAX_ABS_ZSCORE) ->
 
     The cap is sample-size dependent and has to be chosen with that in mind: a single
     outlier among ``n`` rows can reach a z-score of at most about ``sqrt(n)``, so a cap
-    of 8 constrains the 476-row fit but would be inert on the 20-row aggregated fit,
+    of 8 constrains the 484-row fit but would be inert on the 20-row aggregated fit,
     which is why the two configurations do not share a value.
     """
     if not np.all(np.isfinite(values)):

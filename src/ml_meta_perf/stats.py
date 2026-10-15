@@ -17,7 +17,7 @@ import numpy as np
 def rankdata(values: np.ndarray) -> np.ndarray:
     """Ranks from 1, with ties receiving their average rank.
 
-    Average ranks matter here: MCC piles up at exactly 1.0 (17% of the meta-dataset),
+    Average ranks matter here: MCC can pile up at exactly 1.0,
     and ordinal ranks would invent an ordering among tied perfect scores.
     """
     order = np.argsort(values, kind="stable")
@@ -99,7 +99,7 @@ def r2_score(truth: np.ndarray, prediction: np.ndarray) -> float:
     """Coefficient of determination against the mean of ``truth``.
 
     Note the denominator is always the variance of the *evaluated* rows, so an R2 from
-    the 20 aggregated dataset means is not comparable with one from the 476 raw rows.
+    the 20 aggregated dataset means is not comparable with one from the 484 raw rows.
     That is exactly why E1 is reported on both scales.
     """
     residual = float(((truth - prediction) ** 2).sum())
@@ -121,7 +121,7 @@ def smape(truth: np.ndarray, prediction: np.ndarray) -> float:
     """Symmetric mean absolute percentage error, as a percentage in [0, 200].
 
     **Read this one with care on MCC.** SMAPE divides by ``|truth| + |prediction|``, and
-    15 of the 476 rows here have MCC exactly 0. Every one of those contributes the full
+    rows with MCC exactly 0 each contribute the full
     200% unless the prediction is also exactly 0, so the metric is dominated by the rows
     the equation is already known to handle worst rather than by its typical error. It is
     reported because it was asked for and because it is scale-free, but MAE is the

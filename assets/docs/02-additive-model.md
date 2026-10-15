@@ -62,22 +62,16 @@ project's life.
 
 | operation | raw features | terms (arity 3 library) |
 |---|---|---|
-| `atom` | 1 | 62 |
-| `ratio`, `product` | 2 | 144 |
-| `sum_ratio` — `(f1+f2)/f3` | 3 | 600 |
+| `atom` | 1 | generated from the corpus |
+| `ratio`, `product` | 2 | generated from the corpus |
+| `sum_ratio` — `(f1+f2)/f3` | 3 | generated from the corpus |
 | `ratio_of_sums` — `(f1+f2)/(f3+f4)` | 4 | *available, not default* |
 
 ### The asymmetry that was there, and is now fixed
 
-`sum_ratio` was originally generated over the **dataset features only**. Every other
-operation could pair a dataset feature with a model one; the highest-arity operation could
-not. That made the richest part of the grammar the only part unable to express a
-dataset×model interaction — the exact combination carrying E3's entire lift over E1, and
-the exact structure the oracle ladder says is missing.
-
-Generating it over all features instead takes mixed terms in the library from **50 to 392**
-and is worth, on its own, most of the improvement reported in
-[chapter 4](04-equation.md).
+`sum_ratio` is generated over all retained features, including mixed dataset/model
+combinations. Applying the same vocabulary to every feature group avoids giving the
+dataset-only equation access to an operation denied to model terms.
 
 ### Comparing arities without changing the experiment
 
@@ -89,33 +83,19 @@ between two arities would also be a difference between two tuning runs.
 Arity 2 offers atoms, ratios and products. Arity 3 adds `sum_ratio`, the ratio-of-sums
 `(f1+f2)/f3`.
 
-### The arity is a hyperparameter, and E3-MAX uses the wider one
+### The arity is a hyperparameter, and E3-MAX compares length rules
 
-The arity is part of the **one configuration** E1, E2 and E3 share (`search.max_arity` in
-`config/study.json`), chosen by the configuration sweep like every other hyperparameter
-([chapter 3](03-term-selection.md#how-the-configuration-itself-was-chosen)). The sweep searched
-arities 2 and 3 and retained **arity 2**: among the configurations tied on R² at a readable
-length, the arity-2 equation ranked the models best — and an arity-2 equation is products and
-simple ratios only, which is what a reader can hold in mind term by term.
+The arity belongs to the **one configuration** shared by E1, E2 and E3
+(`search.max_arity` in `config/study.json`). The configuration sweep searches arities 2 and
+3 alongside the stability cap and ridge penalty. The revised corpus retains **arity 3**.
 
-The wider grammar is still measured. **E3-MAX** is the same configuration under
-`selection.capability_arity` = 3, at the raw maximum of its worst-protocol curve: how far the
-additive form reaches when it is not asked to stay readable. Its scores beside E3-Valid's are
-generated in [chapter 4](04-equation.md#how-far-the-form-could-reach), together with how often
-each equation's terms are re-selected across folds.
+**E3-MAX** uses `selection.capability_arity` and the raw maximum of its worst-protocol
+curve. In the current configuration that arity is also 3: E3-Valid and E3-MAX compare
+length-selection rules under the same grammar. Their scores and form stability are
+generated in [chapter 4](04-equation.md).
 
-**Arity 4 remains available through `--search.max_arity 4` and outside the sweep on readability
-grounds.** A `(f1+f2)/(f3+f4)` term names four features and two operations, beyond the intended
-limit for a printed equation, so no current arity-4 performance claim is made here.
-
-Operation counts come from `report.operation_usage`; the published equation's current table
-is in [chapter 4](04-equation.md#which-operations-the-equation-needed).
-
-The reason not to go past four is different and does not need a measurement. A
-`(f1+f2)/(f3+f4)` term already names four features and two operations, and the grammar
-exists so a reader can hold a term in their head. **Arity is capped by legibility before it
-is capped by evidence** — four is already at the edge of what belongs in a printed
-equation, and the evidence happens to agree.
+Arity 4 remains available through `--search.max_arity 4`, outside the readability-limited
+sweep. No current arity-4 performance claim is made here.
 
 ## Admissibility: which terms are allowed to exist
 
@@ -134,24 +114,20 @@ so one row holds nearly all of the term's variance and its fitted weight describ
 row rather than a relationship. Requiring only $\min|d| > 0$ would admit exactly those
 terms.
 
-In this meta-dataset the rule excludes `nr_norm`, `nr_bin` and `nr_outliers` (which reach
-0), the log of anything reaching 1 (since $\log 1 = 0$), and wide-range counts such as
-`nr_inst` in raw form — though `log(nr_inst)` qualifies comfortably, which is the
-compression the preference order exists to find.
+The rule excludes a raw denominator reaching zero, the log of anything reaching 1
+(since $\log 1 = 0$), and counts whose raw dynamic range exceeds the limit. A logarithmic
+representation can qualify where the corresponding raw column cannot.
 
 Products are unconditional; only ratios are gated, so refusing a ratio never costs the
 corresponding product.
 
 ### Why this matters, quantitatively
 
-Allowing unrestricted division raises IS R² to 0.611 and drives LODO
-R² to **-1.7**. Standardisation hides the problem while fitting — the spike simply becomes
-the scale — but the term explodes on a held-out dataset outside the training range.
-
-`ml_meta_perf.terms.is_admissible` remains as a cheap numerical backstop for libraries
-assembled by hand, but nothing `build_library` produces depends on it. Its effect is
-visible at loose stability caps: at `max_abs_zscore=6` the worst LODO R²
-across the sweep improved from **-1.66 to -0.39** once the rule became structural.
+A nearly singular denominator can create a term dominated by one observation. Term
+standardisation does not remove that extrapolation risk. The structural denominator rule
+and stability cap constrain which columns reach the solver; they limit capacity without
+guaranteeing generalisation. `ml_meta_perf.terms.is_admissible` remains a numerical
+backstop for libraries assembled by hand.
 
 ### Two terms, one column
 
@@ -161,11 +137,9 @@ $n_{\text{inst}} / n_{\text{attr}}$, so
 
 $$\log(\texttt{inst\_to\_attr}) + \log(\texttt{nr\_attr}) \;=\; \log(\texttt{nr\_inst})$$
 
-exactly — and the grammar generates both sides. Three such pairs exist in the 206-term
-library. The beam search would not have put both members in one equation — it refuses a
-candidate correlating above 0.95 with a selected term — so nothing published was ever at
-risk. What the duplicates cost is candidate-pool slots, search time, and a place in the
-reported term rankings, where the two forms appear as two independent findings and are one.
+exactly — and the grammar generates both sides. The beam search also rejects a candidate correlating above 0.95 with a selected term.
+Removing equivalent columns preserves candidate-pool slots and avoids reporting two
+forms of the same column as independent findings.
 
 `Library` therefore drops a term whose centred column correlates with an already-kept
 column above $1 - 10^{-9}$. Centring first is what makes the test match the fit: fitting
@@ -197,202 +171,69 @@ preferable to an indicator that switches on it.
 
 ## Library sizes
 
-| configuration | `max_abs_zscore` | terms |
-|---|---|---|
-| E1 (dataset features only) | 5.0 | 134 |
-| E2 (model features only) | 5.0 | 48 |
-| **E3-Valid grammar, arity 2** | **5.0** | **229** |
-| E3-MAX grammar, arity 3 | 5.0 | 901 |
-| arity-4 grammar (available, not default) | 5.0 | 4840 |
+Library sizes depend on the corpus, feature group, arity, and `max_abs_zscore`. The
+revised configuration uses a stability cap of 3.5. The run regenerates the admissible
+libraries rather than retaining counts from an earlier corpus.
 
-The `max_abs_zscore` cap rejects a term when a single row sits more than that many
-standard deviations from its mean. The cap is **sample-size dependent**: a lone outlier
-among $n$ rows can reach a z-score of at most about $\sqrt{n}$. All three current equations
-are fitted on the same 476 rows and therefore share the retained value of 5.0.
+The cap rejects a term when one row lies too many standard deviations from its mean.
+It is sample-size dependent: a lone outlier among $n$ rows can approach $\sqrt{n}$.
+All three primary equations use the same 484 observed rows and the same selected cap.
 
 ## Which transforms are admitted, and why not others
 
-`log` and `f^2` are already in the vocabulary; `log` is the workhorse, since it is also the
-compression applied to every composite operand. The obvious extensions — higher
-polynomials and `exp` — were measured rather than argued about. **None is technically
-difficult; each is a one-line addition. The constraint is statistical.**
-
-How many of the current 18 corpus features survive each transform's admissibility rules, and the best
-absolute correlation with MCC among those that do:
-
-| transform | admissible | undefined / overflow | single-row spike | best \|r\| |
-|---|---|---|---|---|
-| `f` | 17/18 | 0 | 1 | **0.376** |
-| `log(f)` | 14/18 | 4 | 0 | 0.356 |
-| `sqrt(f)` | 14/18 | 4 | 0 | 0.371 |
-| `1/f` | 12/18 | 4 | 2 | 0.294 |
-| `f^2` | 17/18 | 0 | 1 | 0.373 |
-| `f^3` | 17/18 | 0 | 1 | 0.363 |
-| `f^4` | 17/18 | 0 | 1 | 0.352 |
-| `exp(f)` | **12/18** | **6** | 0 | 0.300 |
-| `exp(-f)` | 14/18 | 0 | 4 | 0.251 |
-| `exp(f / max f)` | 17/18 | 0 | 1 | 0.376 |
-
-`log` and `sqrt` reach 14 of 18 features because `nr_bin`, `nr_cor_attr`, `nr_norm` and
-`nr_outliers` contain zeros. The reciprocal loses two more features to the z-score cap.
-These are properties of the data rather than arbitrary exclusions from the grammar.
-**All four columns that block the positive-only transforms are dataset features**: every
-model feature is strictly positive, which is a requirement pinned by
-`tests/test_model_features.py` rather than a coincidence.
+The unary vocabulary is fixed to identity, `log`, `sqrt`, reciprocal, and square.
+Positive-only operations are generated only when their domain conditions hold; the
+stability and denominator rules then restrict the resulting columns. Keeping this small
+vocabulary makes the selected form inspectable and limits the search space.
 
 ### Polynomials
 
-Admissible beyond squared, but **monotonically less useful**: best correlation falls 0.373
-(`f^2`) → 0.363 (`f^3`) → 0.352 (`f^4`). Adding `f^3` to the vocabulary was measured
-end-to-end and dropped LODO R² from 0.443 to 0.420. Squared is kept;
-higher powers are not.
+Squared features are available. Higher powers would enlarge the search and amplify large
+values, so they are outside the retained vocabulary.
 
 ### `exp`
 
-Raw `exp(f)` **overflows on six features** — including `gravity`, `nr_inst`, and
-`Processing Units Number` — leaving 12 of 18. Where it survives, its best correlation is
-lower than that of an untransformed feature (0.300 against 0.376). Scaling the argument
-(`exp(f / max f)`) avoids overflow but leaves the raw `Processing Units Number` column above
-the z-score cap; its best correlation then merely matches the identity (0.376), so it adds
-nothing the grammar does not already have.
-
-The decisive argument is directional. Every feature with a meaningful gap between its
-Spearman and Pearson correlations has a **positive** one:
-
-| feature | \|r\| | \|ρ\| | gap |
-|---|---|---|---|
-| `gravity` | 0.047 | 0.286 | **+0.239** |
-| `nr_cor_attr` | 0.074 | 0.197 | +0.122 |
-| `inst_to_attr` | 0.027 | 0.137 | +0.110 |
-| `ns_ratio` | 0.296 | 0.395 | +0.099 |
-
-A positive gap means monotone but curved with a heavy tail — the relationship is there, and
-a straight line misses it because a few large values dominate. That is a request for
-**compression**, which `log`, `sqrt` and `1/f` provide. `exp` expands. It is the wrong
-direction for every feature in this meta-dataset, which is why it is absent rather than
-merely untested.
+Exponential transforms can overflow or amplify heavy tails. They are outside the fixed
+vocabulary. This design choice is not evidence that no expanded grammar could improve
+performance on the revised corpus.
 
 ## Why the raw features are not scaled first
 
-An obvious alternative to log-compressing operands and capping term stability is to scale
-every feature column up front. It was tested, at the same admissibility cap throughout.
-(Measured against the pre-symmetry grammar, whose baseline was 0.5582; the comparison
-between rows is what matters and none of it depends on the baseline.)
-
-| feature scaling | library | IS (k=14) | LODO (k=14) |
-|---|---|---|---|
-| **none (current)** | 172 | 0.5582 | **+0.443** |
-| divide by max (multiplicative) | 120 | 0.5668 | +0.384 |
-| min-max to [1, 2] (affine) | 544 | 0.5230 | **-0.285** |
-| min-max to [1, 10] (affine) | 571 | 0.5578 | -0.093 |
-| standard scaler (mean 0, sd 1) | 97 | 0.5168 | +0.037 |
-
-Three separate reasons it does not help.
-
-**Standard scaling destroys the vocabulary.** Centring makes **all 18 features take
-non-positive values**, so `log`, `sqrt` and `1/f` become undefined for every one of them.
-The library collapses from 172 terms to 97 — only identity, squares and products survive.
-The transforms doing most of the work are precisely the ones that require positivity.
-
-**Multiplicative scaling cannot fix dynamic range, because dynamic range is invariant to
-it.** `gravity` has a max/min ratio of 6.24e15, and dividing the column by its maximum
-leaves that ratio at 6.24e15 exactly. Since the admissibility rules are about *ratios*
-rather than magnitudes, a constant factor changes nothing they test. (It does shift the
-library, from 172 terms to 120, because `log` turns a constant factor into an additive
-shift and the denominator rule is not shift-invariant — but that is a side effect, not a
-fix.)
-
-**Affine scaling fixes dynamic range by removing the signal.** Squeezing every feature into
-[1, 2] does make everything admissible — the library grows to 544 terms — but over that
-range `log`, `sqrt` and the identity are nearly the same function, so the library fills
-with near-duplicates and LODO R² collapses to **-0.285**. The compression
-`log` was providing is exactly what the scaling removed.
-
-The magnitude problem here is a *dynamic-range* problem, and log-compression is the
-response to it. Scaling addresses magnitude, which was never the difficulty.
+Raw named descriptors enter the vocabulary in their recorded units. Scaling them before
+nonlinear term construction changes the candidate functions: for example, an additive
+shift changes a logarithm or reciprocal, and centring can violate positive-domain rules.
+Multiplicative rescaling alone does not change a column's max/min dynamic range.
 
 ### Yeo-Johnson and rank transforms
 
-Two more principled options than min-max were tested, since the classical answer to
-skewed predictors is a power transform (Box & Cox, 1964; Yeo & Johnson, 2000) or a
-rank-based transform (van der Waerden).
-
-| feature transform | library | IS (k=14) | LODO (k=14) |
-|---|---|---|---|
-| **none (current)** | 172 | 0.5582 | **+0.443** |
-| Yeo-Johnson, λ per feature | 392 | 0.5597 | -0.124 |
-| Yeo-Johnson, shifted positive | 675 | 0.5673 | +0.203 |
-| rank → uniform [1, 2] | 1011 | 0.5500 | -0.001 |
-| rank → uniform [1, 100] | 171 | 0.5372 | +0.236 |
-
-Yeo-Johnson does exactly what it promises — it is chosen over Box-Cox here because it
-accepts zero and negative values, which six of these features have:
-
-| feature | fitted λ | skewness before | after |
-|---|---|---|---|
-| `gravity` | -0.05 | 3.97 | **0.01** |
-| `nr_inst` | +0.10 | 3.46 | 0.02 |
-| `nr_outliers` | -0.05 | 3.87 | 0.10 |
-| `ns_ratio` | -0.35 | 3.73 | -0.02 |
-
-**And the λ it chooses is ≈ 0 for every heavy-tailed feature, which is the log transform.**
-The principled method converges on what the grammar already offers. The IS score changes
-little (0.5597 against 0.5582) and transfer falls sharply, because a λ fitted to the
-observed feature distribution extrapolates poorly on a held-out dataset whose features lie
-outside that range.
-
-The distinction that matters: applying a power transform as **preprocessing** commits every
-term to one compression per feature. Keeping `log`, `sqrt` and `1/f` in the **grammar**
-lets the search decide per term whether compression helps and how much. Same functions,
-strictly more freedom, and the freedom is worth 0.24 R² of transfer.
+A fitted preprocessing transform would define a different library and require its own
+training-only estimation. The retained method instead offers a small set of explicit
+transforms within each term.
 
 ### Reading impact off the weights
 
-The second motivation for scaling — being able to compare terms by their weights — is
-already met without it. Selection runs on standardised terms and both weight vectors are
-kept, so every printed equation carries the standardised weight beside the raw one:
-
-```
-+0.00702424 * [log(gravity)] * [log(Model Capability)]   # beta=+0.1381
-```
-
-The raw weight is what you evaluate; `beta` is what you compare. `attribution.term_effects`
-goes further and reports each term's effect in MCC units, which is comparable across terms
-*and* against the target.
+The raw weights evaluate the equation; standardised weights compare coefficients on a
+common term scale. `attribution.term_effects` also reports effects in MCC units. Their
+interpretation remains conditional on the selected terms and descriptor encoding.
 
 ## Standardisation
 
-Terms are standardised (per-term mean and standard deviation, learned on **training rows
-only**) before selection and fitting, and the standardisation is then folded back into
-the weights so the published equation reads in raw units:
+Terms are standardised using per-term means and standard deviations learned on
+**training rows only** before the ridge fit. The standardisation is folded back into
+the raw weights:
 
 $$w^{\text{raw}}_i = \frac{w_i}{\sigma_i}, \qquad w_0^{\text{raw}} = \bar{y} - \sum_i \frac{w_i \mu_i}{\sigma_i}$$
 
-Raw term scales span several orders of magnitude, so this is not cosmetic. A controlled
-12-term audit from the earlier configuration illustrates the effect:
-
-| | standardised | raw |
-|---|---|---|
-| same 12 terms, penalty = 0 | 0.569611 | 0.569611 |
-| same 12 terms, penalty = 20 | 0.556 | 0.559 |
-| same 12 terms, penalty = 200 | 0.461 | 0.503 |
-| **terms chosen by the search** | **0/12 overlap between the two** | |
-
-Ordinary least squares is exactly scale-invariant, so with no penalty the two agree to
-six decimals — the correctness check. Standardisation matters for the two other things
-the pipeline does: the ridge penalty is one number applied to every weight and is only
-meaningful when terms share a scale, and selection compares candidates by correlation
-with the residual, which on raw scales is dominated by whichever term happens to be
-largest. In that audit the two designs selected **completely disjoint** sets of 12 terms.
-
-Both weight vectors are retained on the fitted object: the raw weights *are* the
-equation, the standardised weights ($\beta$) are how terms rank against each other.
+A common ridge penalty depends on the scale of its columns, which is why this step
+matters. Correlation itself is invariant to linear rescaling. Both raw and standardised
+weight vectors are retained on the fitted object.
 
 ## Limitations of the form
 
 ### The additive form
 
-The equation is additive in its terms. [Chapter 4](04-equation.md) quantifies what that
-costs: a rank-1 interaction component is worth +0.122 R², while E3-Valid aligns with about
-one third of that leading interaction pattern. The remaining gap is a limitation of the
-current model family rather than of the linear weight solve.
+The equation is additive in its selected terms; mixed terms can represent some
+interactions between dataset and model descriptors. The identity and interaction
+references in [chapter 4](04-equation.md) assess what those terms recover on this corpus.
+They do not establish a universal upper bound on alternative symbolic forms.
+

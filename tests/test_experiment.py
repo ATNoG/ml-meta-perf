@@ -176,7 +176,7 @@ class TestWhatTheCorpusSays(unittest.TestCase):
 
     Everything else in this file runs on `tests.corpus`, an eight-by-ten slice, because a
     function either builds its table correctly or it does not and 78 rows show that as well
-    as 476 do. A *finding* is different: "dataset features explain more than model features"
+    as 484 do. A *finding* is different: "dataset features explain more than model features"
     is false on the slice -- it inverts, 0.106 against 0.362 -- and a test that asserted it
     there would be asserting nothing about the study.
 

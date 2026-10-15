@@ -63,41 +63,37 @@ twice.
 **The contrast.** Three primary equations differ *only* in which features they may use — E1 dataset,
 E2 model, E3-Valid both — fitted by one function, from one configuration, on the same rows, and
 scored on the same rows under all four protocols. The gaps between them are the evidence about what each half of the
-meta-data is worth. They share a scale but **not a ceiling**: E1 can only predict a
-per-dataset constant, so its structural maximum is well below E3's, and the comparable
-quantity is the fraction of its own ceiling each equation attains — the `reached` column of
-the generated table below.
+meta-data is worth under a shared procedure. E1's dataset-constant predictions have a
+structural per-dataset-mean bound. E2's model-mean reference is descriptive because its
+structural-size proxy can vary with dataset shape.
 
-**The result.** E3-Valid explains roughly two thirds of MCC, and loses little of that when a
-whole dataset or a whole model is held out — the three columns of the generated table below.
-The same features under the looser arity-3 grammar do better still, which shows how far the
-additive form goes under the study's readable grammars. E3-Valid passes both the
-all-single-feature-terms ceiling and the additive mean-based reference. Cross-feature mixed terms therefore
-add information beyond independent feature effects and recover part of the measurable
-dataset×model interaction.
+**The result.**
 
-**The point.** Accuracy is what the equation is scored on; explainability is what it is
-*for*. An opaque regressor reaches R² ≈ 0.9 under IS on this meta-data and scores below
-0.1 under LODO ([chapter 5](05-evaluation.md) has the measurement), and
-nothing can be read off it. Chapter 6 is the payoff: the
-equation's terms are matched against published best practices one at a time, which is a
-check no forest of the same accuracy admits.
+The generated tables report the retained equation and raw-floor length comparison.
+Both currently use arity 3. Fixed-form coefficient refits and within-fold term reselection
+answer different questions; the latter exposes substantial selection sensitivity.
+
+**The point.**
+
+The equation exposes named contributions and encoding assumptions. Regression accuracy,
+threshold qualification, ranking, and term recurrence give complementary evidence;
+unequal representation and selection procedures limit superiority claims.
 
 <!-- generated: do not edit below -->
 
 ## The headline
 
-The one table the study is summarised by, so that the summary cannot drift from the chapters. Every row is scored on the same 476 rows under the same protocols. E1, E2, and E3-Valid share the retained base configuration; E3-MAX uses the wider retained grammar as a capability bound.
+The one table the study is summarised by, so that the summary cannot drift from the chapters. Every row is scored on the same 484 rows under the same protocols. E1, E2, and E3-Valid share the retained base configuration; E3-MAX takes the raw floor maximum at the configured capability arity; the current primary and capability arities both equal three.
 
 | equation | features | terms | IS R2 | LODO R2 | LOMO R2 | DHO R2 | own ceiling | reached |
 |---|---|---|---|---|---|---|---|---|
-| E1 | dataset | 5 | 0.3394 | 0.3211 | 0.3022 | 0.2918 | 0.3539 | 0.9591 |
-| E2 | model | 5 | 0.2537 | 0.1936 | 0.2312 | 0.1794 | 0.2821 | 0.8991 |
-| E3-Valid | both | 17 | 0.6815 | 0.6513 | 0.6261 | 0.6151 |  |  |
-| E3-MAX | both | 29 | 0.7271 | 0.6894 | 0.6538 | 0.6482 |  |  |
+| E1 | dataset | 5 | 0.3766 | 0.3680 | 0.3391 | 0.3350 | 0.3866 | 0.9741 |
+| E2 | model | 7 | 0.2573 | 0.1723 | 0.2256 | 0.1487 |  |  |
+| E3-Valid | both | 15 | 0.6997 | 0.6771 | 0.6574 | 0.6478 |  |  |
+| E3-MAX | both | 24 | 0.7247 | 0.6950 | 0.6736 | 0.6696 |  |  |
 
-**Do not read these R² values as achievements against each other.** They share a scale but not a ceiling: E1 sees only dataset features, every row of a dataset shares one feature vector, and so E1 can predict nothing but a per-dataset constant. Its structural maximum is the `true dataset means` row, and reaching it means E1 is *done* rather than weak. The comparable quantity is the fraction of each equation's own ceiling, which the last column gives.
+**Do not read these R² values as achievements against each other.** They share a scale but not a ceiling: E1 sees only dataset features, every row of a dataset shares one feature vector, and so E1 can predict nothing but a per-dataset constant. The `true dataset means` row gives E1's structural maximum. The last column gives only E1's fraction of that bound. E2's model-mean reference is descriptive because Processing Units Number can vary with dataset shape; no ceiling fraction is reported for E2.
 
-**E3-Valid and E3-MAX have blank ceiling cells because neither has a structural group-identity ceiling.** Nothing in the feature set stops an equation over both halves of the meta-data from predicting every cell, so there is no group-identity bound to divide by. The reference shown instead is the additive mean-based reference, in the comparison table of chapter 5. That reference bounds only an equation additive in dataset effect plus model effect; E3-Valid's mixed terms can represent interactions beyond it. The comparison table reports whether the current equation reaches or exceeds that reference.
+**E2, E3-Valid, and E3-MAX have blank ceiling cells.** Their recorded predictors are not constant within the corresponding identity groups. The comparison table in chapter 5 also shows the additive mean-based reference. On the incomplete grid that reference is not a jointly fitted least-squares additive bound; mixed terms can represent interactions beyond marginal group effects.
 
 <!-- end generated -->

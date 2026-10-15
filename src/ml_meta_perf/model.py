@@ -56,8 +56,8 @@ class Equation:
     def predict(self, columns: dict[str, np.ndarray]) -> np.ndarray:
         """Apply the equation and clip into the range MCC can actually take.
 
-        A linear form has no idea that MCC stops at 1.0, and 17% of the meta-dataset
-        sits exactly there. Clipping is the one piece of domain knowledge imposed on the
+        A linear form has no idea that MCC stops at 1.0, and the meta-dataset
+        includes exact values at that bound. Clipping is the domain knowledge imposed on the
         output, and it is applied identically during cross-validation.
         """
         return np.clip(self.evaluate(columns), MCC_LOWER, MCC_UPPER)

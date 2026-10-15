@@ -101,9 +101,8 @@ class CrossValidation:
     #: reuse the search this path already paid for instead of repeating it.
     equations: dict[str, Equation] = field(default_factory=dict)
     #: How many out-of-fold predictions `_clip_to_training` moved. Not a diagnostic detail:
-    #: on this corpus it is 50 to 78 of 476 at *every* equation length, so a tenth to a sixth
-    #: of the reported LODO predictions are decided by the bound rather than
-    #: by the equation. A study that clips has to say how often the clip fired.
+    #: the count is reported for each equation and protocol, since clipping can affect
+    #: the reported predictions. A study that clips has to say how often the clip fired.
     clipped: int = 0
 
     def scores(self, truth: np.ndarray) -> Scores:
@@ -200,8 +199,8 @@ def fold_selections(
     produce a reported score even by accident.
 
     What it is for is `CrossValidation.stability`. Fixing an equation's form is a claim that
-    the form describes the phenomenon rather than these 476 rows, and the way to check that is
-    to remove a fifth of the data and see whether the same terms come back. A form whose terms
+    the form describes the phenomenon rather than these 484 rows, and the way to check that is
+    to remove one dataset and see whether the same terms come back. A form whose terms
     churn fold to fold has not earned the fixed-form protocol.
     """
     selections: list[list[str]] = []
@@ -377,15 +376,9 @@ def _clip_to_training(prediction: np.ndarray, training_target: np.ndarray) -> np
     corpus has exactly one negative row (-0.29), so a floor at -1.0 leaves a held-out fold free
     to be predicted at a value nothing in training ever took.
 
-    It happens. Held out, `ASNM-CDX-2009` -- 25 rows of 476, mean MCC 0.370 against the
-    corpus's 0.731 -- was predicted at the -1.0 floor by several configurations, and that one
-    fold alone reached **89% of the total squared error**, taking pooled LODO
-    R² negative. Predicting it at the global mean would have cost 0.113 of the total.
-
     The training fold's own observed range uses no held-out information -- it is exactly what
-    the fitted equation was shown -- so this tightens the bound without leaking. Measured, it
-    moves an affected configuration from -0.383 to +0.260 and leaves unaffected ones untouched
-    to four decimal places.
+    the fitted equation was shown. This bounds extrapolation during coefficient refitting;
+    it does not remove optimism from global form selection.
     """
     return np.clip(prediction, float(training_target.min()), float(training_target.max()))
 
@@ -662,8 +655,8 @@ def ranking_report(
     baseline, including a constant, so it cannot separate the things this study compares.
 
     A model counts as a right answer if its MCC is within ``RELEVANCE_TOLERANCE`` of the best
-    on its dataset, rather than by a fixed top-k cut. That is not a convenience: 80 of the 476
-    rows sit at exactly MCC 1.0, so many datasets have several genuinely tied best models, and
+    on its dataset, rather than by a fixed top-k cut. That is not a convenience: multiple observed
+    rows can share MCC 1.0, so datasets may have several tied best models, and
     a top-3 rule would score a correct answer as a miss.
 
     Regret is the practical question in the target's own units: if you pick the model this

@@ -15,21 +15,26 @@ units, so the printed equation evaluates as written.
 The evaluation protocols are in-sample (**IS**), leave-one-dataset-out (**LODO**),
 leave-one-model-out (**LOMO**), and doubly held out (**DHO**).
 
-The project prioritises a readable equation and tests whether that transparency costs transfer
-accuracy. Opaque regressors fit these meta-data more closely under IS, but none beats the
-equation under DHO. The result is an equation a practitioner
-can inspect, challenge, and use to derive guidance.
+The project prioritises a readable equation and compares its fixed-form coefficient refits
+with reference regressors under the same exclusions. The resulting equation can be inspected
+alongside its prediction errors and representation assumptions.
 
-> **Status:** research prototype for an academic study. The corpus contains 476 observed pairs
+> **Status:** research prototype for an academic study. The corpus contains 484 observed pairs
 > from a grid of 20 datasets and 25 models, which is small. The headline equation scores are
 > reported both under IS and held-out cross-validation because the two differ a lot
 > at this size.
 
+The revised corpus covers six network-slicing or service-quality datasets and fourteen
+network-traffic or security datasets. It includes synthetic 6G slicing data and a centralized
+application-layer representation of OCPP 1.6 intrusion-detection data. Sixteen cells are
+excluded by the minimum-training-size policy; the complete grid covers eighteen datasets.
+
 ## Headline results
 
 The equation labels are **E1** (dataset features only), **E2** (model features only),
-**E3-Valid** (the published equation, using both feature groups), and **E3-MAX** (the same
-configuration under a wider grammar, a capability bound rather than an equation to read).
+**E3-Valid** (the retained equation, using both feature groups), and **E3-MAX** (the raw-floor
+length comparison at the configured capability arity). In the current configuration both
+use arity three; their length-selection rules differ.
 
 The table below is **generated**: `ml-meta-perf` rewrites it on every run, like the result
 sections of the chapters, so it cannot drift from the code.
@@ -38,41 +43,43 @@ sections of the chapters, so it cannot drift from the code.
 
 ## The headline
 
-The one table the study is summarised by, so that the summary cannot drift from the chapters. Every row is scored on the same 476 rows under the same protocols. E1, E2, and E3-Valid share the retained base configuration; E3-MAX uses the wider retained grammar as a capability bound.
+The one table the study is summarised by, so that the summary cannot drift from the chapters. Every row is scored on the same 484 rows under the same protocols. E1, E2, and E3-Valid share the retained base configuration; E3-MAX takes the raw floor maximum at the configured capability arity; the current primary and capability arities both equal three.
 
 | equation | features | terms | IS R2 | LODO R2 | LOMO R2 | DHO R2 | own ceiling | reached |
 |---|---|---|---|---|---|---|---|---|
-| E1 | dataset | 5 | 0.3394 | 0.3211 | 0.3022 | 0.2918 | 0.3539 | 0.9591 |
-| E2 | model | 5 | 0.2537 | 0.1936 | 0.2312 | 0.1794 | 0.2821 | 0.8991 |
-| E3-Valid | both | 17 | 0.6815 | 0.6513 | 0.6261 | 0.6151 |  |  |
-| E3-MAX | both | 29 | 0.7271 | 0.6894 | 0.6538 | 0.6482 |  |  |
+| E1 | dataset | 5 | 0.3766 | 0.3680 | 0.3391 | 0.3350 | 0.3866 | 0.9741 |
+| E2 | model | 7 | 0.2573 | 0.1723 | 0.2256 | 0.1487 |  |  |
+| E3-Valid | both | 15 | 0.6997 | 0.6771 | 0.6574 | 0.6478 |  |  |
+| E3-MAX | both | 24 | 0.7247 | 0.6950 | 0.6736 | 0.6696 |  |  |
 
-**Do not read these R² values as achievements against each other.** They share a scale but not a ceiling: E1 sees only dataset features, every row of a dataset shares one feature vector, and so E1 can predict nothing but a per-dataset constant. Its structural maximum is the `true dataset means` row, and reaching it means E1 is *done* rather than weak. The comparable quantity is the fraction of each equation's own ceiling, which the last column gives.
+**Do not read these R² values as achievements against each other.** They share a scale but not a ceiling: E1 sees only dataset features, every row of a dataset shares one feature vector, and so E1 can predict nothing but a per-dataset constant. The `true dataset means` row gives E1's structural maximum. The last column gives only E1's fraction of that bound. E2's model-mean reference is descriptive because Processing Units Number can vary with dataset shape; no ceiling fraction is reported for E2.
 
-**E3-Valid and E3-MAX have blank ceiling cells because neither has a structural group-identity ceiling.** Nothing in the feature set stops an equation over both halves of the meta-data from predicting every cell, so there is no group-identity bound to divide by. The reference shown instead is the additive mean-based reference, in the comparison table of chapter 5. That reference bounds only an equation additive in dataset effect plus model effect; E3-Valid's mixed terms can represent interactions beyond it. The comparison table reports whether the current equation reaches or exceeds that reference.
+**E2, E3-Valid, and E3-MAX have blank ceiling cells.** Their recorded predictors are not constant within the corresponding identity groups. The comparison table in chapter 5 also shows the additive mean-based reference. On the incomplete grid that reference is not a jointly fitted least-squares additive bound; mixed terms can represent interactions beyond marginal group effects.
 
 <!-- end generated -->
 
 The three primary equations differ only in which features they may draw on. All three are
-fitted on the same 476 rows by the same function, under **one** hyperparameter configuration
+fitted on the same 484 rows by the same function, under **one** hyperparameter configuration
 (`config/study.json`), have their length chosen by **one** rule, and are scored on the same
-476 rows under the same four protocols, so the gaps between them measure the features and
+484 rows under the same four protocols, so the gaps between them measure the features and
 nothing else.
 
 **Their coefficient of determination (R²) values share a scale but not a ceiling, and this
 is the most common way to misread the table.** E1 predicts one value per dataset, so the
 variance of the true per-dataset means is the most it could *ever* reach, however good its
 terms were. E1 near that ceiling is not "much worse than E3"; it is finished. The comparable
-quantity is the fraction of its own ceiling each equation attains — the `reached` column.
+quantity for E1 is the fraction of its dataset-constant ceiling — the `reached` column.
+E2 has no such bound because its structural-size proxy can vary within a model.
 E3-Valid has no ceiling of that kind, because it is not constant within either group; it is
-read instead against the best sum of per-feature functions and the best per-dataset value
-plus per-model value, both of which it passes ([chapter 4](assets/docs/04-equation.md)).
+compared with the best sum of per-feature functions and the additive mean-based reference
+([chapter 4](assets/docs/04-equation.md)). The latter is descriptive rather than a fitted
+least-squares bound for this incomplete grid.
 
 **E3-Valid and E3-MAX have separate roles.** E3-Valid's length is the start of the first
 sustained plateau of its worst-protocol curve: the first knee (found by multi-Kneedle,
 [`kneeliverse`](https://github.com/mariolpantunes/knee)) of the smoothed curve after which it
 stops improving, or its smoothed maximum when every knee is still followed by real gains.
-E3-MAX takes the raw maximum of the same curve under the wider grammar
+E3-MAX takes the raw maximum of the curve at the configured capability arity
 ([chapter 3](assets/docs/03-term-selection.md)).
 
 ![Equations against the levels they are read against](assets/figures/01_equation_comparison.png)
@@ -90,8 +97,8 @@ E3-MAX takes the raw maximum of the same curve under the wider grammar
   doubly-held-out predictions rank the models best. Each equation searches every feature it
   may use; the configuration holds hyperparameters only.
 - **The corpus describes datasets far better than models.** The model side's descriptors are
-  a capability ordinal over the ten learner families and four mechanism gradings — all
-  *asserted*, read from published descriptions rather than observed in a training run.
+  a heuristic ordinal over the ten learner families and four mechanism categories — all
+  assigned by the study rather than calibrated measurements from training runs.
   What they cannot do is describe a method nobody has classified.
   [Chapter 1](assets/docs/01-dataset.md).
 - **Mixed dataset×model terms carry a large share of the equation**, which is where "which
@@ -165,6 +172,11 @@ run from a clone; anywhere else, pass `--data`. The scripts and
 configuration needed to rebuild that corpus live in
 [`meta_dataset_pipeline/`](meta_dataset_pipeline/).
 
+The revised data and analysis scripts are supplied in the accompanying study supplement
+and workspace snapshot. The earlier public release v1.0.0 contains a different corpus;
+no new public release is implied by this revision. The construction protocol uses seeds
+5, 7, 11, 13 and 42, yielding 2,420 evaluation records before best-run selection.
+
 The meta-dataset pipeline has additional dependencies, including `pymfe` and the tabular
 model libraries used during the original model-evaluation stages. Install them explicitly:
 
@@ -199,10 +211,8 @@ practices, writing the figures, and splicing the generated sections into the cha
 venv/bin/ml-meta-perf          # or: PYTHONPATH=src venv/bin/python -m ml_meta_perf
 ```
 
-That takes about six minutes on the reference Windows environment — nearly all of it the opaque-regressor comparison, which
-refits a random forest once per held-out group and then once per *cell* for the
-DHO protocol, 522 fits in all. The equation half of the pipeline is 14 seconds.
-It reproduces every number in this README, and writes:
+Runtime depends on the configured search and reference regressors. The DHO comparison
+refits each reference estimator once per observed cell. A full run writes:
 
 | | |
 |---|---|
@@ -252,16 +262,16 @@ effective configuration. E1, E2 and E3 share every one of these values.
 
 | setting | value | what it does |
 |---|---|---|
-| `search.max_abs_zscore` | 4.0 | largest standard score a term may reach before it is rejected as a spike |
-| `search.penalty` | 0.3 | ridge penalty on standardised terms |
+| `search.max_abs_zscore` | 3.5 | largest standard score a term may reach before it is rejected as a spike |
+| `search.penalty` | 0.1 | ridge penalty on standardised terms |
 | `search.pool_size` | 600 | terms surviving screening into the beam |
 | `search.max_terms` | 30 | longest equation the search explores (the curve's horizon, not the published length) |
 | `search.beam_width` | 6 | beam width |
-| `search.max_arity` | 2 | raw features per term — see [chapter 2](assets/docs/02-additive-model.md) |
+| `search.max_arity` | 3 | raw features per term — see [chapter 2](assets/docs/02-additive-model.md) |
 | `selection.delta` | 0.01 | largest smoothed-floor gain over the window that still counts as a plateau |
 | `selection.window` | 4 | lengths after a candidate that must stay within `delta` |
 | `selection.smoothing` | 3 | width of the running median applied to the worst-protocol curve |
-| `selection.capability_arity` | 3 | the wider grammar E3-MAX is fitted under |
+| `selection.capability_arity` | 3 | arity used by E3-MAX; matches the primary grammar in this configuration |
 | `opaque.forest_trees` | 100 | random forest size |
 | `opaque.forest_max_features` | 0.33 | share of features considered at each forest split |
 | `opaque.boosting_stages` | 50 | gradient boosting stages |
@@ -289,7 +299,7 @@ Run options are ordinary flags:
 # it is derived from each equation's own curve
 ml-meta-perf --search.max_terms 12 --search.penalty 10 --output runs/short --no-figures --no-report
 
-# the wider grammar for every equation -- ratio-of-sums terms, harder to read
+# explicitly use the retained arity-three grammar for every equation
 ml-meta-perf --search.max_arity 3 --output runs/arity3 --figures runs/arity3/figures --no-report
 
 # just the screening table

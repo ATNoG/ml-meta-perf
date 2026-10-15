@@ -1,11 +1,11 @@
 {
   "search": {
-    "max_abs_zscore": 4.0,
-    "penalty": 0.3,
+    "max_abs_zscore": 3.5,
+    "penalty": 0.1,
     "pool_size": 600,
     "max_terms": 30,
     "beam_width": 6,
-    "max_arity": 2
+    "max_arity": 3
   },
   "selection": {
     "delta": 0.01,
@@ -21,9 +21,26 @@
     "boosting_max_depth": 3
   },
   "sweep": {
-    "zscores": [3.0, 3.5, 4.0, 5.0, 6.0, 7.0, 8.0],
-    "penalties": [0.1, 0.3, 1.0, 3.0, 10.0],
-    "arities": [2, 3],
+    "zscores": [
+      3.0,
+      3.5,
+      4.0,
+      5.0,
+      6.0,
+      7.0,
+      8.0
+    ],
+    "penalties": [
+      0.1,
+      0.3,
+      1.0,
+      3.0,
+      10.0
+    ],
+    "arities": [
+      2,
+      3
+    ],
     "readable_terms": 20,
     "band": 0.02
   }

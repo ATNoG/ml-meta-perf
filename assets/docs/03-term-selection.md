@@ -73,7 +73,7 @@ per fold rather than one per length.
 
 For a centred, standardised design, centring both sides removes the intercept from the
 system, so no penalty is ever applied to it — shrinking an intercept toward zero would
-bias every prediction toward MCC = 0, a value this data goes nowhere near.
+bias every prediction toward MCC = 0 rather than the fitting partition’s target mean.
 
 $$(G + \lambda I)\,w = b, \qquad G = Z^\top Z, \quad b = Z^\top (y - \bar{y})$$
 
@@ -88,17 +88,13 @@ identity against the literal definition across penalties and subset sizes.
 ### Cost
 
 Every candidate refit is a $k \times k$ solve against a precomputed Gram matrix rather
-than a least-squares call against the full design. Everything this study fits — the term
-sweeps, four equations across two grammars, and all four protocols including the
-DHO cell — runs in tens of seconds on the reference environment, and every
-optimisation that got it there was verified to leave the outputs unchanged.
+than a least-squares call against the full design. The selected run evaluates four
+fixed forms and all four protocols; DHO requires one coefficient refit per observed
+pair, currently 484. The opaque references use the same partition structure.
 
-A full `python -m ml_meta_perf` takes about six minutes on the reference Windows environment;
-most of that time is the opaque comparison in
-[chapter 5](05-evaluation.md#what-an-opaque-model-reaches-and-does-not):
-three scikit-learn regressors refitted once per observed cell, 476 times each. That the
-priced *alternative* to a readable equation costs an order of magnitude more than the
-equation is not the point of this section, but it is not nothing either.
+The timing and profiling measurements below are historical implementation benchmarks,
+not timings of the updated corpus or the complete 70-configuration search. They describe
+the numerical optimizations without replacing the current generated results.
 
 | change | what it does | effect |
 |---|---|---|
@@ -195,34 +191,12 @@ around a loop. The mechanism agrees: a 32×32 system is 8 KB and sits in L1, so 
 cache behaviour for a tuned kernel to improve. A better-tuned BLAS pays on large matrix
 products, and this study never forms one.
 
-## Is the search the limitation? No
+## Search budget
 
-Accuracy is **not** limited by search strength. Sweeping beam width, candidate pool and
-refinement rounds over an order of magnitude each:
-
-| setting | beam | candidates | rounds | IS (k=14) | IS (k=20) |
-|---|---|---|---|---|---|
-| baseline | 6 | 24 | 2 | 0.5582 | 0.5662 |
-| wide beam | 16 | 24 | 2 | 0.5582 | 0.5663 |
-| more candidates | 6 | 64 | 2 | 0.5582 | 0.5661 |
-| more rounds | 6 | 24 | 6 | 0.5582 | 0.5662 |
-| maximal | 48 | 96 | 10 | 0.5582 | 0.5663 |
-
-<sub>Default library. The wider library gains ~0.01 non-monotonically, which is search noise
-rather than systematic improvement. **Measured before the 2026-09-05 protocol change**, so
-these are re-selecting numbers and are not comparable with any current figure — the
-IS column here is not the IS column of chapter 5. What the table supports is a
-statement about *differences between search settings*, and those are internally consistent
-because every row was measured the same way.</sub>
-
-Spending eight times the compute changes the fourth decimal place. Together with the
-negative result on a richer vocabulary ([chapter 2](02-additive-model.md)), this locates
-the limit in the model *form*, not in the optimiser.
-
-**Per-length penalty tuning** was also tested: choosing $\lambda$ separately for each $k$
-lifted LODO R² at $k=14$ from 0.4429 to 0.4456 — again on the pre-2026-09-05
-re-selecting protocol, so read the *gain* and not the level. A gain of 0.003 does not justify
-the extra configuration surface, and one global penalty is retained.
+The beam width, candidate budget, and refinement settings remain fixed while the
+configuration sweep varies the stability cap, ridge penalty, and maximum arity.
+Historical experiments with larger beams or per-length penalties are not current-corpus
+validation; one penalty is retained for each configuration, as specified by the method.
 
 ## Stage 3 — choosing the number of terms
 
@@ -233,15 +207,14 @@ way the length was picked is not something that differs between them. It is
 
 ### Which evidence the rule reads
 
-**The worst protocol at each length.** IS R² is monotone in the number of terms, so it
-cannot express the trade between fit and length by itself; any single held-out curve can be
-flattered by the protocol it happens to be. The rule reads the **floor** — the minimum R² over
+**The worst protocol at each length.** IS fit alone cannot express the trade between
+fit and length; any single held-out curve can be flattered by the protocol it happens to be. The rule reads the **floor** — the minimum R² over
 IS, LODO, LOMO and DHO at each length (`selection.floor_curve`) — so a length is only as good
 as the protocol it does worst on, which is almost always DHO: the cell where neither the
 dataset nor the model has been seen, the question the study is for.
 
-**Smoothed, because single lengths are noisy.** Adjacent lengths differ by 0.03 to 0.05 on
-this curve, and not because of the length. LODO has genuine craters — lengths where the held-out
+**Smoothed, because single lengths are noisy.** Adjacent lengths can fluctuate beyond
+a smooth trend in model size. LODO has genuine craters — lengths where the held-out
 number collapses while its neighbours are untouched, because one held-out dataset sits outside
 the convex hull of the other nineteen in term space, where a linear equation extrapolates
 without limit and `validate._clip_to_training` pins the fold to its training floor. The mirror
@@ -256,9 +229,8 @@ what the smoothing does to it.
 **Knees propose, the plateau decides.** multi-Kneedle — from the
 [`kneeliverse`](https://github.com/mariolpantunes/knee) library — is run on the smoothed curve's
 Pareto front (the lengths that improve on every shorter one) and proposes the lengths where its
-rate of improvement bends (`selection.knee_lengths`). A knee alone is not enough: the first
-bend comes five to nine terms in, well before the curve levels off, and every equation there
-is measurably worse than the ones after it. The rule therefore takes **the first proposed
+rate of improvement bends (`selection.knee_lengths`). A knee alone is not enough: an early
+bend can still be followed by sustained improvement. The rule therefore takes **the first proposed
 length after which the smoothed floor gains at most `delta` over the next `window` lengths** —
 the start of the first sustained plateau, the shortest equation that has stopped improving.
 The smoothed maximum is always a candidate too, since nothing after it gains; when every knee
@@ -288,12 +260,15 @@ they belong on the plot.
 ### E3-MAX, the bound
 
 E3-MAX answers a separate capability question: how far the additive form reaches if it is
-not asked to stay readable. It is the same configuration under the wider grammar
-(`selection.capability_arity`, ratio-of-sums terms), at the **raw** maximum of its floor
+not asked to stay readable. It uses the configured capability arity
+(`selection.capability_arity`), at the **raw** maximum of its floor
 (`selection.floor_argmax`) — no smoothing and no complexity penalty, because a bound should not
 be discounted for being long. A maximum at the horizon means the bound belongs to the horizon,
 and the generated summary flags it. E3-MAX is reported as a bound and is not used for the
-downstream prediction and model-ranking results.
+downstream prediction and model-ranking results. In the current run, primary and
+capability arities both equal three: E3-Valid selects 15 terms by the smoothed plateau
+rule, while E3-MAX selects 24 terms at the raw four-protocol floor maximum. It does
+not use a wider grammar than E3-Valid in this configuration.
 
 ### How the configuration itself was chosen
 
@@ -302,13 +277,15 @@ criterion. `ml-meta-perf-search` fits E3 once for every point of the grid in
 `config/study.json`'s `sweep` section (stability cap × ridge penalty × arity), applies the rule
 to each, and keeps the configurations whose chosen equation is readable (`sweep.readable_terms`
 terms at most). Among those, configurations whose smoothed floor is within `sweep.band` of the
-best are indistinguishable on R² —
-neighbouring configurations differ by less than neighbouring lengths do — and the one whose
+best remain eligible under this numerical tolerance, and the one whose
 doubly-held-out predictions **rank the models best** (mean average precision over the twenty
 datasets) is proposed. Ranking decides because it is what the equation is for, and because it
 separates configurations R² cannot: at the same floor, ranking precision varies widely from
 one configuration to the next. The sweep writes every candidate's scores and a proposal;
-adopting it is a reviewed edit to the file.
+adopting it is a reviewed edit to the file. The unchanged grid contains seven stability
+caps, five penalties, and arities two and three: 70 configurations. Repeating that full
+procedure on the updated corpus retained a stability cap of 3.5, penalty 0.1, and arity
+three; the selection criteria and length rule were not changed.
 
 The paired per-dataset table in the generated section compares other lengths with E3-Valid as
 a sensitivity analysis. It does not define additional E3-Valid equations.
@@ -316,18 +293,18 @@ a sensitivity analysis. It does not define additional E3-Valid equations.
 
 ## The configuration this run used
 
-Meta-dataset: `/home/mantunes/git/ml-meta-perf/dataset/meta_dataset.csv`
+Meta-dataset: `dataset/meta_dataset.csv`
 
 Every hyperparameter below is read from `config/study.json`; E1, E2 and E3 share all of them.
 
 | setting | value |
 |---|---|
-| search.max_abs_zscore | 4.0 |
-| search.penalty | 0.3 |
+| search.max_abs_zscore | 3.5 |
+| search.penalty | 0.1 |
 | search.pool_size | 600 |
 | search.max_terms | 30 |
 | search.beam_width | 6 |
-| search.max_arity | 2 |
+| search.max_arity | 3 |
 | selection.delta | 0.01 |
 | selection.window | 4 |
 | selection.smoothing | 3 |
@@ -339,96 +316,96 @@ The control for the whole selection stage. If handing every candidate term to un
 
 | terms | r2_IS | r2_LODO_clipped | r2_LODO_unclipped |
 |---|---|---|---|
-| 212.0000 | 0.7686 | -0.2952 | -2.0998 |
+| 1080.0000 | 0.8110 | -0.6759 | -3.9684 |
 
-**The solver is not the hard part; the sample size is.** All 212 terms at once fit better under IS than the published equation (0.7686 against 0.6815) and transfer at -0.2952 under LODO, against the published equation's 0.6513. The unclipped figure — -2.1 — is what the fit does when a held-out dataset falls outside the convex hull of the other nineteen and nothing bounds the extrapolation. A design this much wider than 20 held-out groups can support has nothing to constrain it, which is what selection is for.
+**The solver is not the hard part; the sample size is.** All 1080 terms at once fit better under IS than the published equation (0.8110 against 0.6997) and transfer at -0.6759 under LODO, against the published equation's 0.6771. The unclipped figure — -4.0 — is what the fit does when a held-out dataset falls outside the convex hull of the other nineteen and nothing bounds the extrapolation. A design this much wider than 20 held-out groups can support has nothing to constrain it, which is what selection is for.
 
 ## Equation length
 
-E3-Valid has **17 terms**. The rule, `selection.plateau_knee`, is the same for E1, E2 and E3-Valid. It reads the worst R² over IS, LODO, LOMO and DHO at every length, smoothed by a running median of 3 lengths; multi-Kneedle (`kneeliverse`) proposes the lengths where that curve's Pareto front bends -- here **4, 5, 6, 9, 12** -- and the rule takes the first of them, or the smoothed maximum, after which the smoothed curve gains at most 0.01 over the next 4 lengths: the shortest equation that has stopped improving. None of the knees is followed by a plateau -- the curve keeps gaining past each -- so the plateau starts at the smoothed maximum.
+E3-Valid has **15 terms**. The rule, `selection.plateau_knee`, is the same for E1, E2 and E3-Valid. It reads the worst R² over IS, LODO, LOMO and DHO at every length, smoothed by a running median of 3 lengths; multi-Kneedle (`kneeliverse`) proposes the lengths where that curve's Pareto front bends -- here **5, 8, 10, 13, 15, 16** -- and the rule takes the first of them, or the smoothed maximum, after which the smoothed curve gains at most 0.01 over the next 4 lengths: the shortest equation that has stopped improving. It is a knee: the curve stops improving right after it.
 
-**Why the curve is smoothed before a length is chosen.** The deepest crater on this curve is at **12 terms**, where the worst protocol reads 0.568, 0.030 below the neighbouring lengths. The running median of 3 lengths reads 0.592 there. A crater like this is not a property of the length -- it is one held-out dataset sitting outside the convex hull of the other nineteen in term space, where a linear equation extrapolates without limit and `validate._clip_to_training` pins the fold to its training floor -- and the same holds for a single lucky length. Neither should choose the published length.
+**Why the curve is smoothed before a length is chosen.** The deepest crater on this curve is at **7 terms**, where the worst protocol reads 0.545, 0.013 below the neighbouring lengths. The running median of 3 lengths reads 0.545 there. A crater like this is not a property of the length -- it is one held-out dataset sitting outside the convex hull of the other nineteen in term space, where a linear equation extrapolates without limit and `validate._clip_to_training` pins the fold to its training floor -- and the same holds for a single lucky length. Neither should choose the published length.
 
 The following paired analysis compares every length against E3-Valid, dataset by dataset; it is a sensitivity analysis rather than an additional selector:
 
 | n_terms | r2_LODO | mae_LODO | mean_difference | p_value | ci_low | ci_high | verdict |
 |---|---|---|---|---|---|---|---|
-| 1 | 0.1951 | 0.2392 | 0.1023 | 0.0000 | 0.0763 | 0.1287 | worse |
-| 2 | 0.3112 | 0.2120 | 0.0750 | 0.0000 | 0.0490 | 0.1008 | worse |
-| 3 | 0.4559 | 0.1824 | 0.0455 | 0.0026 | 0.0226 | 0.0700 | worse |
-| 4 | 0.5035 | 0.1687 | 0.0318 | 0.0118 | 0.0130 | 0.0511 | worse |
-| 5 | 0.5501 | 0.1600 | 0.0230 | 0.0118 | 0.0063 | 0.0406 | worse |
-| 6 | 0.5635 | 0.1571 | 0.0202 | 0.0414 | 0.0036 | 0.0380 | worse |
-| 7 | 0.5609 | 0.1592 | 0.0223 | 0.1153 | 0.0062 | 0.0387 | worse |
-| 8 | 0.5828 | 0.1523 | 0.0154 | 0.2632 | 0.0014 | 0.0303 | worse |
-| 9 | 0.5858 | 0.1524 | 0.0155 | 0.0414 | 0.0017 | 0.0315 | worse |
-| 10 | 0.6043 | 0.1529 | 0.0160 | 0.2632 | 0.0036 | 0.0303 | worse |
-| 11 | 0.6302 | 0.1409 | 0.0040 | 0.0414 | -0.0036 | 0.0111 | tie |
-| 12 | 0.6053 | 0.1438 | 0.0069 | 0.1153 | -0.0007 | 0.0160 | tie |
-| 13 | 0.6298 | 0.1409 | 0.0040 | 0.2632 | -0.0025 | 0.0105 | tie |
-| 14 | 0.6164 | 0.1426 | 0.0057 | 0.5034 | -0.0021 | 0.0153 | tie |
-| 15 | 0.6223 | 0.1440 | 0.0071 | 0.0118 | 0.0025 | 0.0137 | worse |
-| 16 | 0.6421 | 0.1395 | 0.0026 | 0.8238 | -0.0012 | 0.0069 | tie |
-| 17 | 0.6513 | 0.1369 | 0.0000 | 1.0000 | 0.0000 | 0.0000 | selected |
-| 18 | 0.6477 | 0.1394 | 0.0025 | 0.5034 | -0.0013 | 0.0063 | tie |
-| 19 | 0.6250 | 0.1474 | 0.0105 | 0.1153 | 0.0013 | 0.0203 | worse |
-| 20 | 0.6334 | 0.1439 | 0.0069 | 0.5034 | -0.0012 | 0.0152 | tie |
-| 21 | 0.6322 | 0.1444 | 0.0075 | 0.5034 | -0.0017 | 0.0179 | tie |
-| 22 | 0.6355 | 0.1436 | 0.0066 | 1.0000 | -0.0022 | 0.0162 | tie |
-| 23 | 0.6389 | 0.1413 | 0.0043 | 0.8238 | -0.0053 | 0.0156 | tie |
-| 24 | 0.6257 | 0.1437 | 0.0067 | 1.0000 | -0.0051 | 0.0209 | tie |
-| 25 | 0.6308 | 0.1419 | 0.0050 | 0.8238 | -0.0048 | 0.0160 | tie |
-| 26 | 0.6274 | 0.1425 | 0.0055 | 1.0000 | -0.0046 | 0.0167 | tie |
-| 27 | 0.6063 | 0.1499 | 0.0129 | 0.8238 | -0.0056 | 0.0373 | tie |
-| 28 | 0.6233 | 0.1459 | 0.0089 | 1.0000 | -0.0074 | 0.0306 | tie |
-| 29 | 0.6115 | 0.1486 | 0.0116 | 1.0000 | -0.0067 | 0.0360 | tie |
-| 30 | 0.6121 | 0.1467 | 0.0097 | 0.5034 | -0.0101 | 0.0379 | tie |
+| 1 | 0.2148 | 0.2219 | 0.0990 | 0.0004 | 0.0724 | 0.1253 | worse |
+| 2 | 0.4005 | 0.1838 | 0.0609 | 0.0000 | 0.0377 | 0.0859 | worse |
+| 3 | 0.4633 | 0.1724 | 0.0495 | 0.0026 | 0.0297 | 0.0718 | worse |
+| 4 | 0.5311 | 0.1585 | 0.0356 | 0.0026 | 0.0173 | 0.0559 | worse |
+| 5 | 0.5658 | 0.1527 | 0.0298 | 0.0026 | 0.0140 | 0.0473 | worse |
+| 6 | 0.5629 | 0.1525 | 0.0296 | 0.0118 | 0.0101 | 0.0499 | worse |
+| 7 | 0.5695 | 0.1479 | 0.0250 | 0.0414 | 0.0096 | 0.0424 | worse |
+| 8 | 0.5997 | 0.1442 | 0.0213 | 0.1153 | 0.0071 | 0.0364 | worse |
+| 9 | 0.6198 | 0.1386 | 0.0156 | 0.1153 | 0.0050 | 0.0284 | worse |
+| 10 | 0.6416 | 0.1344 | 0.0115 | 0.2632 | 0.0013 | 0.0242 | worse |
+| 11 | 0.6487 | 0.1326 | 0.0097 | 0.5034 | -0.0005 | 0.0206 | tie |
+| 12 | 0.6552 | 0.1317 | 0.0088 | 1.0000 | 0.0008 | 0.0173 | worse |
+| 13 | 0.6596 | 0.1291 | 0.0062 | 0.8238 | -0.0011 | 0.0140 | tie |
+| 14 | 0.6706 | 0.1258 | 0.0029 | 0.8238 | -0.0035 | 0.0110 | tie |
+| 15 | 0.6771 | 0.1229 | 0.0000 | 1.0000 | 0.0000 | 0.0000 | selected |
+| 16 | 0.6702 | 0.1239 | 0.0010 | 0.5034 | -0.0036 | 0.0056 | tie |
+| 17 | 0.6733 | 0.1218 | -0.0011 | 0.8238 | -0.0050 | 0.0030 | tie |
+| 18 | 0.6812 | 0.1217 | -0.0013 | 0.1153 | -0.0060 | 0.0035 | tie |
+| 19 | 0.6798 | 0.1222 | -0.0008 | 1.0000 | -0.0051 | 0.0035 | tie |
+| 20 | 0.6782 | 0.1235 | 0.0006 | 0.8238 | -0.0050 | 0.0065 | tie |
+| 21 | 0.6798 | 0.1239 | 0.0010 | 0.8238 | -0.0072 | 0.0099 | tie |
+| 22 | 0.6804 | 0.1241 | 0.0012 | 0.8238 | -0.0069 | 0.0099 | tie |
+| 23 | 0.6901 | 0.1209 | -0.0020 | 0.2632 | -0.0073 | 0.0031 | tie |
+| 24 | 0.6950 | 0.1210 | -0.0019 | 1.0000 | -0.0075 | 0.0040 | tie |
+| 25 | 0.6925 | 0.1217 | -0.0012 | 1.0000 | -0.0070 | 0.0047 | tie |
+| 26 | 0.6837 | 0.1228 | -0.0002 | 0.8238 | -0.0071 | 0.0068 | tie |
+| 27 | 0.6855 | 0.1227 | -0.0003 | 1.0000 | -0.0075 | 0.0071 | tie |
+| 28 | 0.6938 | 0.1201 | -0.0029 | 1.0000 | -0.0125 | 0.0068 | tie |
+| 29 | 0.6983 | 0.1226 | -0.0003 | 0.8238 | -0.0100 | 0.0083 | tie |
+| 30 | 0.7060 | 0.1200 | -0.0029 | 0.8238 | -0.0110 | 0.0048 | tie |
 
 The full curve reports all four protocols at every length; the length rule reads their minimum:
 
 | n_terms | r2_IS | mae_IS | smape_IS | r2_LODO | mae_LODO | smape_LODO | r2_LOMO | mae_LOMO | smape_LOMO | r2_DHO | mae_DHO | smape_DHO |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | 0.2427 | 0.2357 | 46.0992 | 0.1951 | 0.2431 | 47.0543 | 0.2268 | 0.2388 | 46.4762 | 0.1834 | 0.2455 | 47.3333 |
-| 2 | 0.3591 | 0.2061 | 43.2679 | 0.3112 | 0.2134 | 44.3729 | 0.3467 | 0.2083 | 43.5514 | 0.3037 | 0.2149 | 44.5410 |
-| 3 | 0.4913 | 0.1754 | 39.6247 | 0.4559 | 0.1806 | 40.4826 | 0.4679 | 0.1793 | 40.2188 | 0.4383 | 0.1837 | 40.9436 |
-| 4 | 0.5437 | 0.1625 | 37.8372 | 0.5035 | 0.1690 | 38.4338 | 0.5172 | 0.1672 | 38.4440 | 0.4834 | 0.1725 | 38.9685 |
-| 5 | 0.5786 | 0.1543 | 36.9901 | 0.5501 | 0.1593 | 37.5379 | 0.5495 | 0.1595 | 37.6940 | 0.5289 | 0.1631 | 37.7402 |
-| 6 | 0.5938 | 0.1510 | 36.0674 | 0.5635 | 0.1566 | 36.7408 | 0.5702 | 0.1556 | 36.9105 | 0.5489 | 0.1597 | 37.3849 |
-| 7 | 0.6044 | 0.1494 | 36.4543 | 0.5609 | 0.1591 | 39.4264 | 0.5803 | 0.1538 | 36.9874 | 0.5467 | 0.1616 | 39.8774 |
-| 8 | 0.6111 | 0.1469 | 36.3032 | 0.5828 | 0.1520 | 36.8695 | 0.5865 | 0.1514 | 37.0059 | 0.5697 | 0.1547 | 37.4232 |
-| 9 | 0.6189 | 0.1456 | 35.9751 | 0.5858 | 0.1525 | 37.6506 | 0.5924 | 0.1510 | 36.8185 | 0.5716 | 0.1557 | 38.1059 |
-| 10 | 0.6406 | 0.1444 | 35.3191 | 0.6043 | 0.1528 | 36.6091 | 0.6048 | 0.1508 | 36.0172 | 0.5806 | 0.1572 | 37.3252 |
-| 11 | 0.6492 | 0.1367 | 34.4060 | 0.6302 | 0.1403 | 34.6698 | 0.6116 | 0.1443 | 35.7268 | 0.6042 | 0.1457 | 35.6503 |
-| 12 | 0.6565 | 0.1356 | 34.4261 | 0.6053 | 0.1437 | 36.8766 | 0.6074 | 0.1438 | 35.6201 | 0.5678 | 0.1488 | 37.2077 |
-| 13 | 0.6599 | 0.1352 | 34.1944 | 0.6298 | 0.1402 | 34.5568 | 0.6100 | 0.1435 | 35.3986 | 0.5916 | 0.1463 | 35.6670 |
-| 14 | 0.6625 | 0.1337 | 33.8307 | 0.6164 | 0.1424 | 36.3760 | 0.6110 | 0.1424 | 35.0663 | 0.5808 | 0.1474 | 37.1943 |
-| 15 | 0.6693 | 0.1341 | 34.1162 | 0.6223 | 0.1440 | 37.7435 | 0.6193 | 0.1428 | 35.1487 | 0.5889 | 0.1487 | 38.6727 |
-| 16 | 0.6795 | 0.1308 | 33.6965 | 0.6421 | 0.1391 | 35.8759 | 0.6264 | 0.1414 | 35.0222 | 0.6076 | 0.1456 | 36.6644 |
-| 17 | 0.6815 | 0.1302 | 34.0670 | 0.6513 | 0.1368 | 35.6741 | 0.6261 | 0.1408 | 35.5131 | 0.6151 | 0.1438 | 36.7482 |
-| 18 | 0.6838 | 0.1303 | 34.0235 | 0.6477 | 0.1392 | 36.8715 | 0.6272 | 0.1412 | 35.6798 | 0.6123 | 0.1462 | 37.8688 |
-| 19 | 0.6834 | 0.1321 | 35.0170 | 0.6250 | 0.1465 | 38.8008 | 0.6253 | 0.1437 | 36.9264 | 0.5897 | 0.1537 | 39.8310 |
-| 20 | 0.6881 | 0.1298 | 34.5425 | 0.6334 | 0.1435 | 38.8351 | 0.6264 | 0.1419 | 36.5925 | 0.5932 | 0.1514 | 39.7196 |
-| 21 | 0.6912 | 0.1279 | 34.5984 | 0.6322 | 0.1441 | 39.5170 | 0.6272 | 0.1406 | 36.5022 | 0.5921 | 0.1514 | 40.2026 |
-| 22 | 0.6938 | 0.1273 | 34.9212 | 0.6355 | 0.1433 | 38.9693 | 0.6311 | 0.1394 | 36.7496 | 0.5985 | 0.1502 | 39.8040 |
-| 23 | 0.6954 | 0.1273 | 34.9208 | 0.6389 | 0.1411 | 37.4720 | 0.6322 | 0.1395 | 36.7864 | 0.5994 | 0.1491 | 38.9270 |
-| 24 | 0.6984 | 0.1264 | 34.3295 | 0.6257 | 0.1422 | 37.0822 | 0.6351 | 0.1386 | 36.1839 | 0.5914 | 0.1492 | 38.3297 |
-| 25 | 0.6988 | 0.1246 | 34.1090 | 0.6308 | 0.1408 | 37.0448 | 0.6292 | 0.1372 | 36.1187 | 0.5917 | 0.1477 | 38.2256 |
-| 26 | 0.6993 | 0.1237 | 34.1600 | 0.6274 | 0.1411 | 37.2823 | 0.6215 | 0.1380 | 36.3287 | 0.5815 | 0.1500 | 38.8356 |
-| 27 | 0.7018 | 0.1221 | 33.8804 | 0.6063 | 0.1467 | 37.4755 | 0.6352 | 0.1334 | 35.8724 | 0.5766 | 0.1512 | 38.9883 |
-| 28 | 0.7031 | 0.1216 | 33.8443 | 0.6233 | 0.1429 | 37.1978 | 0.6356 | 0.1332 | 35.8141 | 0.5916 | 0.1482 | 38.1048 |
-| 29 | 0.7055 | 0.1215 | 33.7253 | 0.6115 | 0.1453 | 37.0577 | 0.6344 | 0.1344 | 35.9684 | 0.5774 | 0.1514 | 38.6281 |
-| 30 | 0.7091 | 0.1200 | 33.8998 | 0.6121 | 0.1424 | 37.2571 | 0.6285 | 0.1349 | 36.3115 | 0.5578 | 0.1521 | 39.5378 |
+| 1 | 0.2467 | 0.2199 | 41.1201 | 0.2148 | 0.2251 | 41.7083 | 0.2276 | 0.2230 | 41.4930 | 0.1984 | 0.2279 | 42.0295 |
+| 2 | 0.4403 | 0.1795 | 38.0771 | 0.4005 | 0.1856 | 38.9150 | 0.4129 | 0.1839 | 38.6545 | 0.3769 | 0.1892 | 39.3901 |
+| 3 | 0.5054 | 0.1665 | 36.3610 | 0.4633 | 0.1738 | 37.4804 | 0.4779 | 0.1714 | 37.0359 | 0.4412 | 0.1777 | 38.0091 |
+| 4 | 0.5699 | 0.1523 | 34.5974 | 0.5311 | 0.1585 | 35.3919 | 0.5446 | 0.1569 | 35.3221 | 0.5123 | 0.1619 | 35.8623 |
+| 5 | 0.5970 | 0.1473 | 34.0607 | 0.5658 | 0.1528 | 34.9640 | 0.5700 | 0.1521 | 34.9553 | 0.5466 | 0.1565 | 35.6511 |
+| 6 | 0.6069 | 0.1459 | 33.9613 | 0.5629 | 0.1532 | 35.2080 | 0.5734 | 0.1514 | 35.0261 | 0.5388 | 0.1574 | 35.9027 |
+| 7 | 0.6331 | 0.1374 | 32.1927 | 0.5695 | 0.1489 | 34.0446 | 0.5990 | 0.1431 | 33.1704 | 0.5448 | 0.1527 | 34.5357 |
+| 8 | 0.6524 | 0.1332 | 33.1590 | 0.5997 | 0.1448 | 34.8665 | 0.6182 | 0.1393 | 34.4938 | 0.5762 | 0.1490 | 35.7633 |
+| 9 | 0.6655 | 0.1302 | 32.3120 | 0.6198 | 0.1388 | 33.6864 | 0.6309 | 0.1366 | 33.3698 | 0.5954 | 0.1433 | 34.2409 |
+| 10 | 0.6729 | 0.1278 | 32.4940 | 0.6416 | 0.1347 | 33.6457 | 0.6352 | 0.1345 | 32.9890 | 0.6152 | 0.1393 | 33.8487 |
+| 11 | 0.6781 | 0.1256 | 32.3765 | 0.6487 | 0.1328 | 33.6992 | 0.6380 | 0.1324 | 32.9198 | 0.6204 | 0.1378 | 34.4379 |
+| 12 | 0.6882 | 0.1234 | 32.0797 | 0.6552 | 0.1317 | 34.0225 | 0.6467 | 0.1308 | 33.1036 | 0.6267 | 0.1368 | 34.9487 |
+| 13 | 0.6908 | 0.1214 | 31.5563 | 0.6596 | 0.1291 | 33.1332 | 0.6456 | 0.1291 | 32.5830 | 0.6267 | 0.1348 | 34.4990 |
+| 14 | 0.6959 | 0.1191 | 30.8920 | 0.6706 | 0.1261 | 32.2411 | 0.6542 | 0.1260 | 31.8926 | 0.6418 | 0.1304 | 32.7609 |
+| 15 | 0.6997 | 0.1176 | 30.9385 | 0.6771 | 0.1231 | 32.2077 | 0.6574 | 0.1247 | 31.9459 | 0.6478 | 0.1280 | 33.1510 |
+| 16 | 0.7029 | 0.1162 | 31.1429 | 0.6702 | 0.1240 | 32.9329 | 0.6600 | 0.1237 | 32.0950 | 0.6440 | 0.1289 | 33.8552 |
+| 17 | 0.7058 | 0.1150 | 30.7971 | 0.6733 | 0.1220 | 32.4237 | 0.6610 | 0.1226 | 31.6534 | 0.6471 | 0.1264 | 32.6842 |
+| 18 | 0.7088 | 0.1152 | 31.0360 | 0.6812 | 0.1216 | 32.6095 | 0.6611 | 0.1237 | 32.0063 | 0.6517 | 0.1269 | 33.1530 |
+| 19 | 0.7099 | 0.1151 | 31.1924 | 0.6798 | 0.1220 | 32.5899 | 0.6633 | 0.1237 | 32.1004 | 0.6518 | 0.1270 | 33.0995 |
+| 20 | 0.7114 | 0.1154 | 31.3703 | 0.6782 | 0.1231 | 32.9638 | 0.6637 | 0.1239 | 32.2015 | 0.6505 | 0.1282 | 33.6932 |
+| 21 | 0.7159 | 0.1146 | 30.2871 | 0.6798 | 0.1238 | 32.6745 | 0.6585 | 0.1247 | 31.4837 | 0.6441 | 0.1296 | 33.3120 |
+| 22 | 0.7175 | 0.1143 | 30.3289 | 0.6804 | 0.1239 | 32.6061 | 0.6579 | 0.1251 | 31.8014 | 0.6434 | 0.1302 | 33.4032 |
+| 23 | 0.7241 | 0.1136 | 31.0781 | 0.6901 | 0.1210 | 32.1751 | 0.6763 | 0.1225 | 32.2929 | 0.6653 | 0.1252 | 32.9278 |
+| 24 | 0.7247 | 0.1131 | 30.9755 | 0.6950 | 0.1207 | 32.7414 | 0.6736 | 0.1225 | 32.4334 | 0.6696 | 0.1247 | 32.5231 |
+| 25 | 0.7273 | 0.1131 | 31.0857 | 0.6925 | 0.1217 | 32.4378 | 0.6738 | 0.1233 | 32.6649 | 0.6616 | 0.1273 | 32.8722 |
+| 26 | 0.7286 | 0.1119 | 30.9733 | 0.6837 | 0.1225 | 33.4069 | 0.6700 | 0.1231 | 32.7671 | 0.6488 | 0.1287 | 34.1027 |
+| 27 | 0.7307 | 0.1115 | 30.8939 | 0.6855 | 0.1223 | 32.8934 | 0.6713 | 0.1230 | 32.6564 | 0.6489 | 0.1291 | 33.3652 |
+| 28 | 0.7352 | 0.1106 | 30.1904 | 0.6938 | 0.1199 | 31.9349 | 0.6724 | 0.1226 | 31.7596 | 0.6573 | 0.1268 | 33.1661 |
+| 29 | 0.7435 | 0.1102 | 29.9980 | 0.6983 | 0.1222 | 33.5189 | 0.6773 | 0.1242 | 31.9815 | 0.6584 | 0.1310 | 34.7846 |
+| 30 | 0.7470 | 0.1089 | 30.4156 | 0.7060 | 0.1196 | 32.9322 | 0.6796 | 0.1232 | 32.0662 | 0.6659 | 0.1284 | 34.4542 |
 
 ## How much of the transfer is the form's selection
 
-Every reported held-out number fixes the equation's form -- chosen once, on all 476 rows -- and refits only its weights in each fold. The form was therefore chosen with the held-out dataset in view. The second row repeats the *selection* inside every LODO fold, at E3-Valid's 17 terms and configuration, and scores those predictions instead:
+Every reported held-out number fixes the equation's form -- chosen once, on all observed rows -- and refits only its weights in each fold. The form was therefore chosen with the held-out dataset in view. The second row repeats the *selection* inside every LODO fold, at E3-Valid's 15 terms and configuration, and scores those predictions instead:
 
 | LODO | r2 | mae | spearman |
 |---|---|---|---|
-| form chosen once, on all rows (reported) | 0.6513 | 0.1368 | 0.8337 |
-| form re-chosen inside every fold | 0.3804 | 0.1756 | 0.6561 |
+| form chosen once, on all rows (reported) | 0.6771 | 0.1231 | 0.8300 |
+| form re-chosen inside every fold | 0.0254 | 0.2158 | 0.5052 |
 
-**0.271 of the reported LODO R² (0.651) belongs to choosing the form on all rows**; with the terms re-chosen blind, LODO R² is 0.380. The nested row describes the discovery procedure -- twenty folds fit twenty different equations -- not the published equation, so it is a diagnostic rather than a score. It is the measured size of the caveat under *Limitations*: the fixed-form transfer numbers are an upper estimate.
+**LODO R² differs by 0.652** between the globally selected form (0.677) and within-fold term reselection (0.025). This is a partial selection-sensitivity diagnostic: global configuration, requested length, and library construction remain shared. Neither row independently assesses the complete discovery procedure. The fixed-form scores are conditional on selection.
 
 <!-- end generated -->
 
@@ -438,8 +415,7 @@ Every reported held-out number fixes the equation's form -- chosen once, on all 
 
 The configuration and the equation length were chosen by reading held-out scores, and the
 equation's form was chosen on all rows before its weights were refit per fold. The reported
-transfer numbers are therefore an **upper estimate**, not an unbiased one — and not a mildly
-optimistic one. The generated section *How much of the transfer is the form's selection*
+transfer numbers are conditional on same-corpus selection and can be optimistic. The generated section *How much of the transfer is the form's selection*
 measures the largest part of the gap by repeating the term selection inside every LODO fold;
 the difference is large at this sample size, because choosing a handful of terms from hundreds
 of candidates with twenty dataset groups is exactly where selection optimism concentrates. What
@@ -447,4 +423,4 @@ the fixed-form numbers license is the claim that *this* equation, recalibrated, 
 reported; what they do not license is a claim that the search would find an equally good one on
 new data.
 
-The **IS** numbers are unaffected by this.
+The **IS** numbers remain resubstitution scores rather than independent validation.

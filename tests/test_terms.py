@@ -196,7 +196,7 @@ class TestAdmissibility(unittest.TestCase):
     def test_cap_cannot_fire_below_its_own_sample_size_limit(self) -> None:
         # Documents the scale dependence: with 51 rows no single outlier can exceed
         # sqrt(51) = 7.1, so a cap of 8 admits even an extreme spike. This is why the
-        # 20-row E1 fit uses a tighter cap than the 476-row E2 fit.
+        # 20-row E1 fit uses a tighter cap than the 484-row E2 fit.
         spike = np.concatenate([np.ones(50), np.array([1e6])])
         self.assertTrue(is_admissible(spike, max_abs_zscore=8.0))
         self.assertFalse(is_admissible(spike, max_abs_zscore=3.0))

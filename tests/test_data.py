@@ -2,6 +2,7 @@
 
 import tempfile
 import unittest
+from math import nextafter
 from pathlib import Path
 
 import polars as pl
@@ -67,16 +68,12 @@ class TestLoad(unittest.TestCase):
         # it was assigned here rather than measured upstream. This is what keeps the column
         # and the taxonomy that explains it from drifting apart.
         frame = load()
-        for model, capability in zip(
-            frame[MODEL_COLUMN].to_list(), frame["Model Capability"].to_list(), strict=True
-        ):
+        for model, capability in zip(frame[MODEL_COLUMN].to_list(), frame["Model Capability"].to_list(), strict=True):
             self.assertEqual(capability, float(MODEL_CAPABILITY[MODEL_FAMILY[model]]))
 
     def test_every_family_sits_somewhere_on_the_capability_ladder(self) -> None:
         self.assertEqual(set(MODEL_FAMILY.values()), set(MODEL_CAPABILITY))
-        self.assertEqual(
-            sorted(MODEL_CAPABILITY.values()), list(range(1, len(MODEL_CAPABILITY) + 1))
-        )
+        self.assertEqual(sorted(MODEL_CAPABILITY.values()), list(range(1, len(MODEL_CAPABILITY) + 1)))
 
     def test_missing_column_is_reported(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -90,10 +87,7 @@ class TestLoad(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "holed.csv"
             frame = synthetic().with_columns(
-                pl.when(pl.col(MODEL_COLUMN) == "m1")
-                .then(None)
-                .otherwise(pl.col("gravity"))
-                .alias("gravity")
+                pl.when(pl.col(MODEL_COLUMN) == "m1").then(None).otherwise(pl.col("gravity")).alias("gravity")
             )
             frame.write_csv(path)
             with self.assertRaises(SchemaError) as caught:
@@ -164,7 +158,7 @@ class TestCorpusSummary(unittest.TestCase):
         self.assertEqual(self.summary["cells absent from the dataset-by-model grid"], 20 * 25 - self.frame.height)
 
     def test_counts_are_integers_not_floats(self) -> None:
-        """A count rendered as `476.0000` in a chapter table is a formatting bug with a
+        """A count rendered as `484.0000` in a chapter table is a formatting bug with a
         cause: putting counts and a mean in one float column."""
         self.assertEqual(corpus_summary(self.frame).schema["count"], pl.Int64)
 
@@ -181,11 +175,14 @@ class TestTargetSummary(unittest.TestCase):
         self.assertEqual(self.rows["at exactly 0"], int((values == 0.0).sum()))
         self.assertEqual(self.rows["below 0"], int((values < 0.0).sum()))
 
-    def test_the_pinned_rows_are_one_fifth_of_the_corpus(self) -> None:
-        """The claim the generated section makes in prose beside this table."""
-        pinned = self.rows["at exactly 1"] + self.rows["at exactly 0"] + self.rows["below 0"]
-        self.assertGreater(pinned / self.frame.height, 0.19)
-        self.assertLess(pinned / self.frame.height, 0.21)
+    def test_boundary_counts_distinguish_exact_from_nearby_values(self) -> None:
+        """Near-boundary targets must not be rounded into zero or perfect scores."""
+        frame = pl.DataFrame({TARGET_COLUMN: [-0.1, 0.0, nextafter(0.0, 1.0), nextafter(1.0, 0.0), 1.0, 1.0]})
+        table = target_summary(frame)
+        rows = dict(zip(table["quantity"], table["rows"], strict=True))
+        self.assertEqual(rows["below 0"], 1)
+        self.assertEqual(rows["at exactly 0"], 1)
+        self.assertEqual(rows["at exactly 1"], 2)
 
     def test_extremes_match_the_column(self) -> None:
         values = target(self.frame)

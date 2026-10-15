@@ -21,8 +21,8 @@ before the curve levels off; a threshold alone reads noise. Together they choose
 the first sustained plateau, which is the shortest equation that has stopped improving. When
 every knee is still followed by real gains, that start is the smoothed maximum.
 
-E3-MAX is not put forward as an equation to read: it is the same configuration under the wider
-grammar, at the raw maximum of its floor (`floor_argmax`), bounding what the additive form can
+E3-MAX is not put forward as an equation to read: it is the same configuration at the configured
+capability arity, at the raw maximum of its floor (`floor_argmax`), bounding what the additive form can
 reach.
 
 Study chapter: [3. Term generation and selection][study-chapter] -- the rationale, in prose.

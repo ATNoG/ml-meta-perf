@@ -58,7 +58,7 @@ def _outcome() -> OpaqueRun:
     """The shared `evaluate` result over the doubles, computed on first use.
 
     Over the slice rather than the corpus: DHO refits once per observed cell, so
-    the corpus is 476 joblib tasks per estimator to check that a fold excludes what it says it
+    the corpus is 484 joblib tasks per estimator to check that a fold excludes what it says it
     excludes. The slice is 78, and it is ragged, which is the part that can go wrong.
     """
     if not _RUN:

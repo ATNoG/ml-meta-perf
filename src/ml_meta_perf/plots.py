@@ -308,6 +308,8 @@ def term_count_curve(
         axes.plot(sizes, curve["r2_loo_dataset"].to_numpy(), "s--", color=LOO_DATASET, label="LODO")
     if "r2_loo_model" in curve.columns:
         axes.plot(sizes, curve["r2_loo_model"].to_numpy(), "^:", color=LOO_MODEL, label="LOMO")
+    if "r2_loo_cell" in curve.columns:
+        axes.plot(sizes, curve["r2_loo_cell"].to_numpy(), "d-.", color="#D1495B", label="DHO")
     if reference is not None:
         axes.axhline(
             reference,
@@ -451,7 +453,7 @@ def equation_comparison(comparison: pl.DataFrame, destination: str | Path) -> Pa
         else:
             short_labels.append(label.split(",", 1)[0])
     axes.set_xticklabels(short_labels)
-    axes.set_ylabel("$R^2$ on all 476 rows")
+    axes.set_ylabel("$R^2$ on observed pairs")
     axes.grid(axis="y", alpha=0.25, linestyle=":")
 
     solid = Rectangle((0, 0), 1, 1, facecolor=IN_SAMPLE, alpha=0.85)

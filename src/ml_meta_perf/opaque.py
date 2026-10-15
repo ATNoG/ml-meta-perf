@@ -246,10 +246,10 @@ def _doubly_held_out(
     which the trivial per-model baselines cannot be computed at all: a model held out of every
     fold has no rows to average. A feature-based predictor still predicts.
 
-    One refit per observed cell rather than per group -- 476 of them against 20 or 25 -- which
+    One refit per observed cell rather than per group -- 484 of them against 20 or 25 -- which
     for a forest is the difference between seconds and minutes, so the cells are run in
     parallel. Each estimator is given a single thread for the same reason: at 434 training rows
-    the thread pool costs more than the trees, and 476 pools of 16 would oversubscribe the
+    the thread pool costs more than the trees, and 484 pools of 16 would oversubscribe the
     machine by an order of magnitude.
     """
     cells = [
@@ -270,7 +270,7 @@ def _doubly_held_out(
         return test, np.clip(held, float(truth[train].min()), float(truth[train].max()))
 
     # A threading backend rather than processes: the estimators release the GIL inside their
-    # own fits, and 476 process spawns would each have to pickle the design across.
+    # own fits, and 484 process spawns would each have to pickle the design across.
     completed: list[tuple[np.ndarray, np.ndarray]] = Parallel(n_jobs=jobs, backend="threading")(
         delayed(one)(row, column) for row, column in cells
     )  # pyright: ignore[reportAssignmentType]

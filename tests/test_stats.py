@@ -93,7 +93,7 @@ class TestSmape(unittest.TestCase):
         self.assertAlmostEqual(smape(np.zeros(3), np.zeros(3)), 0.0)
 
     def test_zero_truth_against_nonzero_prediction_saturates(self) -> None:
-        # The reason SMAPE is a poor headline here: 38 of 476 rows have MCC exactly 0,
+        # The reason SMAPE is a poor headline here: rows with MCC exactly 0 contribute strongly,
         # and each contributes the full 200% however small the prediction is.
         self.assertAlmostEqual(smape(np.zeros(1), np.array([0.01])), 200.0)
 

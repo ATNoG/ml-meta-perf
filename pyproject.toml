@@ -33,7 +33,7 @@ dependencies = [
     # wheel, so it is a base dependency rather than an extra: an extra would leave the same
     # numbers unreproducible for anyone who did not know to ask for it.
     "scikit-learn>=1.5.0",
-    # `opaque` threads the DHO protocol's 476 estimator refits over it. It used to
+    # `opaque` threads one estimator refit per observed pair under DHO. It used to
     # arrive with the `search` extra, which meant a base-only install type-checked with an
     # unresolved import; it is a base dependency now because the study itself runs it.
     "joblib>=1.4.0",

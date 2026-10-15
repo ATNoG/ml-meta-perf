@@ -1,18 +1,18 @@
 """What the test suite shares: a slice of the corpus, and the two fits worth paying for once.
 
 A unit test asks whether *this project's functions* do what they say. That question does not
-need 476 rows: it needs a frame with the same schema and the same shape of structure -- more
+need 484 rows: it needs a frame with the same schema and the same shape of structure -- more
 than one dataset, more than one model, a missing cell -- and every extra row after that is
 paid for by every test that fits anything.
 
 So the suite fits on a **derived slice of the shipped corpus**: eight datasets by ten models,
-78 of the 476 rows. Derived rather than a checked-in second CSV, because a copy of the corpus
+78 of the 484 rows. Derived rather than a checked-in second CSV, because a copy of the corpus
 would go stale the first time a column moved and nothing would say so; taking a slice of the
 real one at import time cannot. It is a slice rather than a synthetic frame for the same
 reason -- the features carry the real correlations, so a term library built over it is the
 real library, and a test that passes here is not passing on numbers invented to make it pass.
 
-**Two of the eighty cells are missing on purpose.** `KPI-KQI` is one of the three datasets the
+**Two of the eighty cells are missing on purpose.** `KPI-KQI` is one of the two datasets the
 eight neural models were never run on, and `MLP` and `XGBoost` are two of those eight, so the
 slice is ragged exactly the way the corpus is. A grid with no holes would let the doubly
 held out (DHO) protocol pass while assuming a rectangle.

@@ -598,14 +598,13 @@ def single_prediction(
     return "```\n" + "\n".join(lines) + "\n```"
 
 
-#: How each equation's own ceiling is labelled in `Report.comparison`. E1 and E2 are bounded
-#: by what their group identity can explain at all. The additive mean-based reference applies to E3,
-#: not a structural bound, so E3 is not given a ratio.
-CEILING_ROWS = {"E1": "E1 reference: true dataset means", "E2": "E2 reference: true model means"}
+#: Only E1 is constant within its identity group. E2's model-mean reference is descriptive
+#: because Processing Units Number can vary within a model, so no ceiling ratio is shown.
+CEILING_ROWS = {"E1": "E1 reference: true dataset means"}
 
 
 def _headline(report: Report) -> pl.DataFrame:
-    """The three equations and any distinct capability variant, each against its own ceiling.
+    """The equations, with a ceiling ratio only for dataset-constant E1.
 
     The one table the study can be summarised by. It exists because the summary page kept a
     hand-written copy of these numbers and had no way of noticing when they moved -- the same
@@ -709,18 +708,17 @@ def _optimism_note(report: Report) -> str:
         return ""
     reported, nested = (float(value) for value in report.optimism["r2"].to_list()[:2])
     return (
-        "Every reported held-out number fixes the equation's form -- chosen once, on all 476 "
+        "Every reported held-out number fixes the equation's form -- chosen once, on all observed "
         "rows -- and refits only its weights in each fold. The form was therefore chosen with "
         "the held-out dataset in view. The second row repeats the *selection* inside every "
         f"LODO fold, at E3-Valid's {report.e3.n_terms} terms and configuration, and scores those "
         "predictions instead:\n\n"
         + _table(report.optimism.select("LODO", "r2", "mae", "spearman"))
-        + f"\n\n**{reported - nested:.3f} of the reported LODO R² ({reported:.3f}) belongs to choosing "
-        f"the form on all rows**; with the terms re-chosen blind, LODO R² is {nested:.3f}. The nested "
-        "row describes the discovery procedure -- twenty folds fit twenty different equations -- "
-        "not the published equation, so it is a diagnostic rather than a score. It is the "
-        "measured size of the caveat under *Limitations*: the fixed-form transfer numbers are "
-        "an upper estimate.\n"
+        + f"\n\n**LODO R² differs by {reported - nested:.3f}** between the globally selected form "
+        f"({reported:.3f}) and within-fold term reselection ({nested:.3f}). This is a partial "
+        "selection-sensitivity diagnostic: global configuration, requested length, and library "
+        "construction remain shared. Neither row independently assesses the complete discovery "
+        "procedure. The fixed-form scores are conditional on selection.\n"
     )
 
 
@@ -870,10 +868,9 @@ def _identity_note(report: Report) -> str:
             "described as free per-model numbers could make it.\n"
         )
     lines.append(
-        "Every model-side encoding the study tried and rejected was rejected for failing to "
-        "recover this gap, so it is a property of the corpus rather than of the search -- and "
-        "the one route to closing it that survives on the merits is measuring what a model is "
-        "good at rather than asserting it.\n"
+        "This correction tests information carried by model histories. Its outcome does not "
+        "establish which alternative descriptors or categorical encodings would transfer to "
+        "unseen learners. Encoding comparisons remain conditional on form selection.\n"
     )
     return "\n".join(lines)
 
@@ -900,28 +897,18 @@ def _opaque_note(report: Report) -> str:
         f"{float(report.e3.in_sample['r2']):.4f} and "
         f"{float(report.e3.cross_validated['loo_dataset']['r2']):.4f} in the corresponding "
         "IS and LODO settings.\n"
-        "\nThe ordering of those four columns is the whole finding. A flexible model on twenty "
-        "dataset groups, with dataset features constant inside a group, does not learn a "
-        "relationship -- it learns which dataset a row came from and looks the answer up. Every "
-        "column that removes an identity removes some of that, and the column that removes "
-        "both leaves almost nothing.\n"
-        f"\n**Under full leakage prevention the best opaque estimator reaches "
-        f"{float(best_cell['r2_loo_cell']):.4f}** ({best_cell['model']}), approximately the "
-        "corpus-mean R² reference of zero. This is the like-for-like comparison in "
-        "the study: LODO still hands a forest the held-out learner on nineteen "
-        "other problems, and LOMO still hands it the held-out dataset. Only here "
-        "is it denied what the equation is denied -- and it is also the protocol on which the "
-        "trivial per-model baselines cannot be computed at all, since a model held out of every "
-        "fold has no rows to average. A feature-based predictor still predicts.\n"
-        "\nThis is the likely provenance of the R² near 0.9 figures reported for opaque "
-        "meta-models: a forest evaluated under IS or a random split reproduces them exactly. "
-        "The ridge "
-        "penalty is selected internally by RidgeCV; the tree ensembles use fixed, documented "
-        "settings rather than a hyperparameter search. Further tuning would answer a different "
-        "objection -- the failure is "
-        "that the sample has twenty dataset groups, which no amount of tuning changes. What the "
-        "table licenses is that the accuracy this study traded away was not there to be had "
-        "under a protocol where the dataset is genuinely unseen.\n"
+        "\nThese are fixed-setting comparisons across grouped coefficient-fit partitions. "
+        "Lower scores after dataset exclusion show sensitivity to the available task histories; "
+        "they do not by themselves identify the mechanism of a regressor's errors.\n"
+        f"\n**Under joint exclusion the best reference R² is "
+        f"{float(best_cell['r2_loo_cell']):.4f}** ({best_cell['model']}). Per-model historical "
+        "baselines are unavailable under DHO because the target learner has no fitting rows. "
+        "Regression, ranking, and threshold outcomes must be read separately.\n"
+        "\nRidgeCV selects its penalty within fitting partitions. The tree ensembles retain "
+        "documented study-development settings without fresh tuning on the revised corpus. "
+        "Their raw features and prior selection budgets differ from the globally selected "
+        "symbolic form; these comparisons do not independently establish superiority of "
+        "the complete discovery procedure.\n"
     )
 
 
@@ -965,7 +952,7 @@ def _form_stability(report: EquationReport) -> float:
 
 
 def _capability_note(report: Report) -> str:
-    """The same configuration under the wider grammar: how far the additive form reaches."""
+    """The configured capability/length comparison at the raw floor maximum."""
     capability = report.e3_capability
     if not capability.equation.terms:
         return ""
@@ -989,7 +976,7 @@ def _capability_note(report: Report) -> str:
         "This is a **capability measurement, not a recommendation**. It answers the question "
         "the published equation cannot answer about itself — whether the additive form is out "
         f"of room or whether this equation is short of it — and the answer is that {reached - published:+.4f} "
-        "of IS R² is still available to a longer equation over a wider grammar. Form stability "
+        "of IS R² separates the equations under the configured arities and length rules. Form stability "
         "is the mean share of LODO folds that re-select an equation's own terms when selection "
         "is re-run without the held-out dataset.\n",
     ]
@@ -1252,7 +1239,7 @@ def render(
         parts.append("And how MCC is distributed over those rows:\n")
         parts.append(_table(target_summary(frame)) + "\n")
         parts.append(
-            "**One fifth of the corpus is exactly 0 or 1, and only one additional row is below "
+            "**The table counts observations exactly at 0 or 1, and those below "
             "zero.** That is "
             "what makes MAE rather than SMAPE the reported error: SMAPE divides by "
             "`|truth| + |prediction|`, so every row at exactly zero contributes the full 200% "
@@ -1263,9 +1250,9 @@ def render(
             "Two things these tables cannot say, both of which bound every number in the study. "
             "Each row is the **best of five seeds**, not their mean, so the target is "
             "optimistic and subject to seed variation that is not modelled separately; and "
-            "every model was "
-            "trained on a stratified sample **capped at 100,000 rows**, so `nr_inst` is the "
-            "source dataset's size rather than the training set's. Both are properties of the "
+            "tuning uses a sample **capped at 100,000 rows**, while later performance evaluation "
+            "uses available source data with dataset/model-specific limits. `nr_inst` is the "
+            "source dataset's size rather than necessarily the training set's. These are properties of the "
             "corpus builder upstream, and are audited against it in the prose above.\n"
         )
     else:
@@ -1276,26 +1263,25 @@ def render(
         "The one table the study is summarised by, so that the summary cannot drift from "
         f"the chapters. Every row is scored on the same {int(report.e3.in_sample['n'])} rows "
         "under the same protocols. E1, E2, and E3-Valid share the retained base configuration; "
-        "E3-MAX uses the wider retained grammar as a capability bound.\n"
+        "E3-MAX takes the raw floor maximum at the configured capability arity; the current "
+        "primary and capability arities both equal three.\n"
     )
     parts.append(_table(_headline(report)) + "\n")
     parts.append(
         "**Do not read these R² values as achievements against each other.** They share a "
         "scale but not a ceiling: E1 sees only dataset features, every row of a dataset "
         "shares one feature vector, and so E1 can predict nothing but a per-dataset "
-        "constant. Its structural maximum is the `true dataset means` row, and reaching it "
-        "means E1 is *done* rather than weak. The comparable quantity is the fraction of "
-        "each equation's own ceiling, which the last column gives.\n"
+        "constant. The `true dataset means` row gives E1's structural maximum. "
+        "The last column gives only E1's fraction of that "
+        "bound. E2's model-mean reference is descriptive because Processing Units Number "
+        "can vary with dataset shape; no ceiling fraction is reported for E2.\n"
     )
     parts.append(
-        "**E3-Valid and E3-MAX have blank ceiling cells because neither has a structural "
-        "group-identity ceiling.** Nothing in the "
-        "feature set stops an equation over both halves of the meta-data from predicting "
-        "every cell, so there is no group-identity bound to divide by. The reference shown "
-        "instead is the additive mean-based reference, in the comparison table of chapter 5. That "
-        "reference bounds only an equation additive in dataset effect plus model effect; E3-Valid's "
-        "mixed terms can represent interactions beyond it. The comparison table reports "
-        "whether the current equation reaches or exceeds that reference.\n"
+        "**E2, E3-Valid, and E3-MAX have blank ceiling cells.** Their recorded predictors are "
+        "not constant within the corresponding identity groups. The comparison table in "
+        "chapter 5 also shows the additive mean-based reference. On the incomplete grid that "
+        "reference is not a jointly fitted least-squares additive bound; mixed terms can "
+        "represent interactions beyond marginal group effects.\n"
     )
 
     parts.append("## 2. The equation\n")
@@ -1320,7 +1306,7 @@ def render(
         "is scored on a group it has never seen. That is the number that matters, and it "
         "is well below the IS value at this sample size.\n"
     )
-    parts.append("Against the baselines and the ceiling that bounds any additive equation:\n")
+    parts.append("Against the baselines and descriptive group-mean references:\n")
     parts.append(_table(report.comparison) + "\n")
 
     parts.append("### The trivial predictors, at both centres\n")
@@ -1329,9 +1315,9 @@ def render(
 
     parts.append("## 3c. How far the form could reach\n")
     parts.append(
-        "Two ceilings, both computed from the library alone and so available *before* an "
-        "equation exists. Each is an expectation the fitted equation is then held against, "
-        "rather than a number read off it.\n"
+        "The following library fits and length comparison describe representational reach "
+        "under the recorded corpus and settings. They are not independent performance "
+        "estimates or universal ceilings.\n"
     )
     parts.append("### How far the additive form reaches\n")
     parts.append(_capability_note(report))
@@ -1482,10 +1468,9 @@ def render(
     parts.append(
         "Under LODO every model appears in every training fold, so the "
         "equation's residual can be averaged per model on the training rows and applied to "
-        "the held-out dataset with no leak. That replaces the model descriptors with the best "
-        "possible substitute -- the model's **identity**, fitted freely -- so what it adds is "
-        "a ceiling on what any descriptor set could reach by telling these classifiers "
-        "apart.\n"
+        "the held-out dataset using fitting histories. These model-identity corrections are "
+        "conditional diagnostic references, not universal ceilings on better descriptors. "
+        "They are unavailable for a learner whose entire history is excluded.\n"
     )
     parts.append(_table(report.identity) + "\n")
     parts.append(_identity_note(report))

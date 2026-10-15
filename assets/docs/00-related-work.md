@@ -15,7 +15,9 @@ and neural network (**NN**).
 
 The equation labels are **E1** (dataset features only), **E3-Valid** (the plateau-selected
 equation using dataset and model features), and **E3-MAX** (the maximum-capability equation
-using those feature groups).
+using those feature groups). The updated corpus contains 484 observed pairs across
+20 network-oriented datasets and 25 classifiers. E3-Valid has 15 terms; E3-MAX has
+24 terms, with both using the retained arity-three grammar.
 
 Notes gathered while building `ml-meta-perf`, organised around the question the project
 actually faces: *why choose a short additive equation over an accurate opaque regressor,
@@ -57,16 +59,12 @@ Their central result is directly relevant and worth quoting in full:
 > hierarchy**, showing that standard complexity measures fail to provide actionable
 > guidance."
 
-**Relevance.** This is independent corroboration of the central measurement here. Our
-published equation reaches LODO R² of 0.652 for a classification metric
-(MCC), against 0.679 under IS; the less constrained E3-MAX capability bound reaches 0.691
-and 0.719. These modest transfer figures reflect a documented property of classifier
-performance prediction. The paper also names the **"interpretability tax"**: methods
-optimising for structural sparsity pay significantly in training time. `ml-meta-perf` pays a
-different tax — accuracy — and quantifies it explicitly through the term-count curve.
-
-This paper is the strongest single citation for framing our modest cross-validated
-numbers as a finding rather than a shortfall.
+**Relevance.** These findings motivate grouped evaluation of classification-performance
+prediction rather than an assumed universal learner hierarchy. Current fixed-form scores
+and the accuracy-versus-length comparison are reported in [chapter 4](04-equation.md)
+and [chapter 5](05-evaluation.md); they remain conditional on same-corpus form and
+configuration selection. The paper also discusses the computational cost of structural
+sparsity, a separate concern from prediction error.
 
 ## 3. Sparse regression over a term library (the method)
 
@@ -91,8 +89,8 @@ even when accurate — is precisely the complaint that motivated this project.
 
 ## 4. Why not genetic programming (the previous approach)
 
-The prior attempt here used genetic evolution and reached R² > 0.7 with expressions too
-long to interpret. That is a known and named failure mode.
+The prior attempt here used genetic evolution and produced expressions too long to
+interpret. Expression growth is a known concern in that approach.
 
 - **Bloat.** Uncontrolled growth of expression size without fitness gain is the
   best-studied pathology in GP. Parsimony pressure and multi-objective (accuracy vs size)
@@ -118,15 +116,11 @@ route to interpretable SR, not a naive simplification. And because `ml-meta-perf
 its weights, the coefficients are solved exactly by ridge regression — sidestepping the
 coefficient-optimisation weakness that GP has to work around.
 
-**A caution on the R² > 0.7 figure.** Dataset meta-features are constant across a dataset's
-rows, so random row splits permit identity leakage and grouped validation remains necessary.
-The current fixed-form equation itself scores almost identically under random 10-fold
-(0.651) and LODO (0.652), while the opaque comparison shows how strongly a
-flexible model can exploit that identity. The **additive mean-based reference sits at 0.6605**: exact
-per-dataset plus per-model effects cannot exceed it, while the published equation reaches
-0.679 through 10 mixed dataset×model terms. A reported value above the additive mean-based reference can
-therefore represent genuine interaction, leakage, or both; grouped protocols distinguish
-those explanations.
+**A caution on apparent fit.** Dataset meta-features are constant across a dataset's
+rows, so random row splits can share dataset identity between fitting and evaluation.
+Grouped protocols distinguish dataset and classifier information availability; they do
+not independently validate a form selected using the complete corpus. The current
+identity references and mixed-term diagnostics are reported in [chapter 4](04-equation.md).
 
 ## 5. Performance-influence models — the closest methodological sibling
 
@@ -164,14 +158,14 @@ LODO question.
 
 **What this community already knows that is worth borrowing.** Interaction terms are the
 standard remedy and are included by default rather than discovered, which is consistent
-with our finding that mixed dataset×model terms carry E3's entire lift. Their sampling
+with this study’s inclusion of mixed dataset×model terms. Their sampling
 literature exists because *which* configurations you measure dominates model quality — the
-analogue here is which (dataset, model) pairs get run, and our 476-of-500 grid is nearly
-complete, so we do not have their hardest problem.
+analogue here is which (dataset, model) pairs get run. The updated corpus observes
+484 of 500 possible pairs; the 16 missing cells follow the declared eligibility rule.
 
 **Where we differ.** They report accuracy on held-out configurations of the *same* system;
-our LODO protocol holds out a whole system. That is the harder question
-and explains part of the gap between their reported accuracies and ours.
+our LODO protocol holds out a dataset, corresponding to a new workload in this analogy,
+while LOMO excludes a classifier. These information settings require separate comparisons.
 
 ## 5b. Two-way tables with covariates on one side — the model behind the ceiling
 
@@ -194,8 +188,8 @@ descriptors would be worth.
 - Efron & Morris, "Data analysis using Stein's estimator and its generalizations", *Journal
   of the American Statistical Association (JASA)* 70 (1975) — the shrinkage applied to both
   the levels and the slopes.
-- Hastie & Tibshirani, *Generalized Additive Models* (1990) — backfitting, the alternative
-  fitting scheme, which was measured here and is worse.
+- Hastie & Tibshirani, *Generalized Additive Models* (1990) — backfitting as an
+  alternative fitting scheme.
 
 **Relevance.** The agronomy literature already cited for AMMI ([chapter 4](04-equation.md))
 answers the question AMMI raises. AMMI's latents are free on both margins, so it explains a
@@ -220,13 +214,11 @@ in AutoML.
 - Yang, Akimoto, Kim, Udell, "Oboe: Collaborative Filtering for AutoML Model Selection",
   *Conference on Knowledge Discovery and Data Mining (KDD) 2019*.
 
-**Relevance.** These establish that latent-factor models over a pipeline-by-dataset matrix
-are standard practice for algorithm recommendation, and they are why the +0.056 LODO
-R² headroom measured in [chapter 4](04-equation.md#the-ceiling-on-model-descriptors) is unsurprising in size. They are also what
-this study deliberately does *not* deliver: a latent factor per model is an uninterpreted
-coordinate, and a table of them supports no term analysis and no transferable practice.
-Reporting the number as a ceiling states the trade honestly — this is what an interpretable
-additive equation gives up against a factorised recommender on this corpus.
+**Relevance.** These establish latent-factor models over a pipeline-by-dataset matrix
+as an algorithm-recommendation approach. Their per-model effects use information that
+is available under LODO but unavailable for a completely excluded classifier. The
+current descriptor and identity-reference comparisons are reported in
+[chapter 4](04-equation.md#the-ceiling-on-model-descriptors).
 
 ## 5d. Ranking objectives
 
@@ -253,11 +245,10 @@ current implementation.
 - Itaya et al., "Statistical Inference of the Matthews Correlation Coefficient for
   Multiclass Classification", arXiv:2503.06450 (2025). Preprint.
 
-**Relevance.** Justifies MCC as the target for imbalanced security/IoT datasets. It also
-raises a modelling caveat we handle explicitly: MCC is bounded in [-1, 1] and this
-meta-dataset piles 17% of its mass at exactly 1.0. A linear form is unaware of the bound,
-so predictions are clipped. A logit/`atanh` transform of the target was tried and
-**hurt badly** (cross-validated R² went negative) — the saturation point maps to infinity.
+**Relevance.** MCC summarizes classification performance while accounting for all
+confusion-matrix cells. Its bounded range [-1, 1] motivates the documented prediction
+bounds. Endpoint observations also require care with target transformations such as
+`atanh`, which is undefined at exactly -1 or 1.
 
 ## 7. Validation protocol
 
@@ -268,41 +259,37 @@ identity, and is the same concern as subject-wise splitting in clinical ML.
   biology", *Nature Methods* 18, 1122-1127 (2021) — community standards on how validation should be
   reported, including the leakage traps.
 
-**Relevance.** Supports reporting LODO as the headline and treating
-random k-fold as a diagnostic for leakage rather than a result.
+**Relevance.** Supports grouped protocols matched to the prediction setting: LODO,
+LOMO, and joint dataset/classifier exclusion under DHO. Random k-fold remains a
+diagnostic for shared identities.
 
 ## 8. Where this work is positioned
 
 | | prior work | `ml-meta-perf` |
 |---|---|---|
 | Model class | opaque regressors (RF, GBM, NN); or GP-evolved long expressions | fixed additive form, linear in the weights |
-| Reported R² | ~0.9 (opaque), >0.7 (GP) | IS 0.679, LODO 0.652; E3-MAX reaches 0.719 / 0.691 |
-| Validation | often random k-fold | LODO and LOMO |
+| Empirical comparison | study-specific targets, corpora, and splits | current fixed-form scores and matched comparisons in chapters 4–5 |
+| Validation | depends on each study’s prediction setting | IS, LODO, LOMO, and DHO with explicit selection dependence |
 | Extractable guidance | little | each weight reads directly in feature units |
-| Ceiling stated | rarely | additive mean-based reference at 0.6605, rank-1 at 0.783, E1 capped at 0.354 |
-| Reachable ceiling | not distinguished | per-model level and slope raise LODO R² from 0.652 to 0.707 (+0.056) |
+| Identity references | study-dependent | dataset, classifier, additive, and interaction references in chapter 4 |
+| Information availability | study-dependent | classifier-history effects distinguished from descriptor-only transfer |
 
-The contribution is not a higher number. It is (a) an equation that can be read, (b) an
-explicit accuracy-versus-length curve instead of a single operating point, (c) the
-E1/E3 contrast isolating how much of MCC is attributable to model capability rather than
-dataset difficulty, and (d) honest grouped-split validation with the leakage gap
-quantified.
+The contribution comprises an inspectable equation, an explicit accuracy-versus-length
+curve, feature-block comparisons of dataset and learner descriptors, and grouped
+coefficient-refitting protocols whose selection dependence is stated explicitly.
 
 ## 9. Open threads
 
-- **Interaction-aware but interpretable terms.** The oracle ladder puts a rank-1
-  interaction at +0.122 R², and the performance-influence literature (§5) includes
-  interaction terms by default. Our symmetric `sum_ratio` fix was a step in that
-  direction and materially improved the wider grammar. The current equation aligns with
-  only 0.37 of the leading interaction pattern under IS and 0.33 out of fold, while a
-  per-model slope still improves transfer. The interaction basis and richer measured model
-  descriptors therefore remain open questions.
-- **Ranking.** Under DHO, E3-Valid reaches average precision 0.724
-  and top-1 regret 0.015, against 0.798 and 0.011 for the per-model-mean baseline evaluated
-  under LODO. The baseline leads on both summaries and its average-precision
-  advantage is significant, while it cannot operate when the model itself is unseen.
-- **More datasets.** Twenty is the binding constraint on every cross-validated number
-  here; OpenML-scale meta-data would settle whether the 0.6605 additive ceiling is a
-  property of this sample or of the approach.
-- **Interaction structure.** E3-Valid reaches 0.679 against 0.783 for the rank-1 oracle. The
-  remaining gap is dataset×model interaction the current fitted equation does not reach.
+- **Interaction-aware but interpretable terms.** The performance-influence literature
+  (§5) motivates mixed terms. The retained arity-three vocabulary includes symmetric
+  `sum_ratio` expressions; richer interaction representations and measured learner
+  descriptors remain possible extensions.
+- **Ranking.** Historical classifier means and medians are available under LODO;
+  descriptor-based prediction remains usable when the classifier itself is excluded.
+  Ranking comparisons require matched information availability, as in chapter 5.
+- **More datasets.** Twenty dataset groups limit the independent dataset-level evidence.
+  Broader coverage would assess whether the observed relationships persist beyond the
+  current network-oriented corpus.
+- **Interaction structure.** Compare the fitted equation with the current additive and
+  interaction references in chapter 4, while distinguishing explanatory references
+  from predictors that can transfer to unseen groups.

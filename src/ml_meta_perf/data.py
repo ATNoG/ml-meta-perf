@@ -26,7 +26,7 @@ apart, and a difference between them is then unexplainable rather than merely
 unexplained. The right move at that stage is a wide feature set chosen for coverage. This
 corpus meets the requirement exactly -- the twelve dataset features give twenty distinct
 vectors for twenty datasets, and the six model features separate all twenty-five learners
-on every dataset, with zero ambiguous rows of 476. ``tests/test_model_features.py`` pins
+on every dataset, with zero ambiguous rows of 484. ``tests/test_model_features.py`` pins
 both.
 
 Two caveats belong with that claim rather than after it. The model side is **joint**, not
@@ -35,7 +35,7 @@ own -- ``FT-Transformer``/``TabNet``/``TabTransformer``, ``LightGBM_RF``/``XGBoo
 ``DNN``/``MLP``, ``TabICL``/``TabPFN`` and ``BernoulliNB``/``GaussianNB`` collide -- and it
 is ``Processing Units Number``, which varies with the dataset, that breaks those ties. So
 the six identify a learner *on a given dataset*. And identification was bought with
-redundancy: ``nr_attr`` and ``nr_outliers`` correlate at 0.9995, and
+redundancy: descriptor columns can be strongly correlated, and
 ``log(inst_to_attr) + log(nr_attr)`` **is** ``log(nr_inst)`` to 2e-15, because
 ``inst_to_attr`` is defined as their ratio.
 
@@ -108,24 +108,17 @@ MODEL_FEATURES: tuple[str, ...] = (
 )
 
 
-#: Where each learner family sits on a capability ladder, low to high.
+#: Study-specific ordinal assignment of the ten learner families.
 #:
 #: This is the **provenance** of the ``Model Capability`` column, which the CSV carries like
 #: any other feature. It is kept here, and checked against the CSV by ``test_data``, so the
 #: column can be regenerated and so a reader can see where the numbers came from rather than
 #: finding twenty-five unexplained integers in a data file.
 #:
-#: **The order is asserted from the tabular-ML literature, not fitted here** -- Grinsztajn
-#: et al. (2022), Shwartz-Ziv & Armon (2022), McElfresh et al. (2023), and Hollmann et al.
-#: (2023) for the in-context models. Ordering families by their observed MCC in this corpus
-#: would fit the column on the target and make every coefficient over it circular.
-#:
-#: That independence is also the column's weakness, and it is measured rather than
-#: suspected: against this corpus the asserted order rises at only 6 of 9 steps in raw
-#: per-family mean MCC, where 9 would be monotone and about 4.5 is unrelated. `generic NN`
-#: has the *lowest* family mean here, 0.454, from rung 6 of 10; `single tree` is near the
-#: top at 0.930 from rung 5. Anything the equation reads off this column is therefore only
-#: loosely "capability", and a term over it must not be quoted as though it were more.
+#: Published tabular-ML comparisons motivate family distinctions; the exact numerical
+#: ordering is a heuristic study assumption, not calibrated capacity or expected MCC.
+#: Encoding sensitivity controls assess the consequences for the retained form.
+#: The assigned values below remain fixed across datasets.
 MODEL_CAPABILITY: dict[str, int] = {
     "naive bayes": 1,
     "discriminant": 2,
@@ -238,7 +231,7 @@ LOSS_MARGIN_BEHAVIOUR: dict[str, int] = {
 #: covariance | 5 generative with a per-class covariance.
 #:
 #: Ng & Jordan (2001) on discriminative versus generative classifiers, and the classical
-#: LDA/QDA covariance hierarchy. **Lopsided**: rung 1 holds 376 of 476 rows and the other four
+#: LDA/QDA covariance hierarchy. **Lopsided**: the discriminative reference contains most rows; the other categories
 #: hold 20-40 each, so three of its five rungs sit below the ten-percent-of-rows floor the
 #: z-score cap imposes elsewhere. Every value is a real reading -- there is no
 #: not-applicable sentinel -- but a term over this column speaks mostly about one rung.
@@ -372,12 +365,12 @@ FEATURE_GLOSSARY: dict[str, str] = {
     "nr_norm": "number of normally distributed attributes",
     "nr_outliers": "number of attributes containing outliers",
     "ns_ratio": "noise-to-signal ratio",
-    "Processing Units Number": "model capacity (number of fitted processing units)",
-    "Model Capability": "learner family's capability rank in the tabular-ML literature (1-10)",
-    "Solution Stochasticity": "how deep randomisation reaches into the fit (1-5)",
-    "Loss Margin Behaviour": "how hard the loss penalises points far from the boundary (1-5)",
-    "Input Distribution Modelling": "how much of the input distribution the learner models (1-5)",
-    "Fitting Regime": "how the parameters are reached, closed form to in-context (1-5)",
+    "Processing Units Number": "family-specific structural-size proxy",
+    "Model Capability": "heuristic study-specific learner-family code (1-10)",
+    "Solution Stochasticity": "assigned stochasticity reference category (1-5)",
+    "Loss Margin Behaviour": "assigned reference loss or decision-criterion category (1-5)",
+    "Input Distribution Modelling": "assigned distribution-modelling category (1-5)",
+    "Fitting Regime": "assigned fitting-regime category (1-5)",
 }
 
 #: The corpus, relative to the repository root. It lives in ``dataset/`` beside the pipeline that
@@ -439,9 +432,9 @@ def aggregate_by_dataset(frame: pl.DataFrame) -> pl.DataFrame:
     **E1 is no longer fitted against this**, and the reason is worth recording. Least
     squares on a predictor that is constant within a group lands on that group's mean
     either way, so aggregating first looked free. It was not: it put E1's R2 on a
-    20-point denominator, which cannot be compared with E3's 476-row one, and the 0.506
+    20-point denominator, which cannot be compared with E3's 484-row one, and the 0.506
     it produced read as *better* transfer than E3's 0.466 when on the common scale it is
-    0.217. All three equations are now fitted on all 476 rows.
+    0.217. All three equations are now fitted on all 484 rows.
 
     Kept because the aggregated view is still the right one for describing the corpus --
     20 datasets, one row each -- and because chapter 6 quotes the comparison.
@@ -480,7 +473,7 @@ def corpus_summary(frame: pl.DataFrame) -> pl.DataFrame:
     Every fact a chapter would otherwise state about the size of the meta-dataset, computed
     from the file rather than transcribed from it. Counts only -- the distribution of the
     target is `target_summary`, kept separate so each table can print at its own precision
-    and neither has to render a count as ``476.0000``.
+    and neither has to render a count as ``484.0000``.
     """
     datasets = int(frame[DATASET_COLUMN].n_unique())
     models = int(frame[MODEL_COLUMN].n_unique())
@@ -502,7 +495,7 @@ def target_summary(frame: pl.DataFrame) -> pl.DataFrame:
 
     The counts at exactly 0 and exactly 1 are here because they are the reason MAE and not
     SMAPE is the reported error, and a reader checking that argument should be able to see
-    the counts it rests on. Together they are one fifth of the corpus; the single negative
+    the counts it rests on. Their frequencies depend on the corpus; the negative
     row is reported separately.
 
     Not included, because it cannot be: the variation across the five seeds from which each

@@ -49,7 +49,6 @@ from ml_meta_perf.data import (
     DATASET_FEATURES,
     MODEL_COLUMN,
     MODEL_FAMILY,
-    MODEL_FEATURES,
     NEURAL_FAMILIES,
     TARGET_COLUMN,
     TREE_FAMILIES,
@@ -209,9 +208,9 @@ def _model_means(frame: pl.DataFrame) -> pl.DataFrame:
 def gather(frame: pl.DataFrame, report: Report) -> Evidence:
     """Measure everything the practice checks need.
 
-    The *complete-grid* tables are the ones the family comparisons use. Twenty-four of the
+    The *complete-grid* tables are the ones the family comparisons use. Sixteen of the
     500 (dataset, model) cells are absent and they are not absent at random -- eight
-    models are missing from the same three datasets -- so a mean taken over all rows
+    models are missing from the same two datasets -- so a mean taken over all rows
     compares those eight models on a different set of problems from the other seventeen.
     Restricting to the datasets where every model ran removes that.
     """
@@ -425,18 +424,17 @@ def _profile_the_data_first(evidence: Evidence) -> Verdict:
     }
     dataset, model = rows.get("dataset identity", float("nan")), rows.get("model identity", float("nan"))
     captured_dataset = evidence.scored("E1, dataset only") / dataset if dataset else float("nan")
-    captured_model = evidence.scored("E2, model only") / model if model else float("nan")
     gap = dataset - model
     return Verdict(
         practice=_BY_ID["profile-the-data-first"],
         verdict=SUPPORTED if gap > 0.02 else QUALIFIED,
         evidence=(
             f"Knowing only which dataset a row came from explains {dataset:.1%} of MCC variance; "
-            f"knowing only which model, {model:.1%}. The dataset side is also the better described: "
+            f"knowing only which model, {model:.1%}. "
             f"{len(DATASET_FEATURES)} dataset meta-features reach {captured_dataset:.0%} of what "
-            f"dataset identity explains, while {len(MODEL_FEATURES)} model meta-features reach "
-            f"{captured_model:.0%} of theirs. Both the effect and our ability to measure it favour "
-            "the data."
+            "dataset identity explains. The model-mean reference does not bound E2, because "
+            "Processing Units Number can vary with dataset shape; its score is reported "
+            "separately without a fraction-of-ceiling claim."
         ),
         magnitude=gap,
     )
@@ -559,8 +557,9 @@ def _capacity_is_not_free(evidence: Evidence) -> Verdict:
     capacity_terms = evidence.practice_terms("Processing Units Number")
     equation_says = (
         f" The equation says it conditionally rather than flatly: `Processing Units Number` "
-        f"carries {capacity_terms} of its terms, mostly against a dataset property, so what "
-        "raises MCC is capacity *matched to* the problem rather than capacity itself."
+        f"appears in {capacity_terms} of its terms alongside other properties; "
+        "the observed association depends on other recorded properties. It does not isolate "
+        "a capacity intervention."
         if capacity_terms
         else " Capacity does not survive into the equation's terms in this run, so the family "
         "means are the whole of the evidence here."
@@ -569,8 +568,7 @@ def _capacity_is_not_free(evidence: Evidence) -> Verdict:
         practice=_BY_ID["capacity-is-not-free"],
         verdict=SUPPORTED if generic < trees - 0.05 else QUALIFIED,
         evidence=(
-            f"The highest-capacity family here is also the worst: generic neural networks "
-            f"average MCC {generic:.3f} against {trees:.3f} for tree ensembles.{equation_says}"
+            f"Generic neural networks average MCC {generic:.3f} against {trees:.3f} for tree ensembles.{equation_says}"
         ),
         magnitude=generic - trees,
     )
@@ -664,7 +662,7 @@ def _report_excluded_runs(evidence: Evidence) -> Verdict:
         evidence=(
             f"{evidence.missing_cells} of {evidence.total_cells} (dataset, model) cells are "
             f"absent -- {share:.0%} -- and they are not absent at random: eight models are "
-            f"missing from the same three datasets. Measuring the bias rather than assuming it "
+            f"missing from datasets excluded by the minimum-size policy. Measuring the bias rather than assuming it "
             f"is small: restricting to the {evidence.n_complete_datasets} complete datasets moves "
             f"the model ranking by Spearman {evidence.ranking_agreement:.3f}, so the ordering "
             "survives, but a mean over all rows still compares eight of the models on a "

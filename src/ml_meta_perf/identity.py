@@ -2,7 +2,7 @@
 
 Chapter 4 measures a gap. Dataset identity explains 0.354 of MCC variance and the twelve
 dataset meta-features recover 99% of that; model identity explains 0.282 and the six model
-meta-features recover 92%. The residual 8% is capability this corpus records nowhere --
+meta-features need not encode every distinction between learner histories --
 the difference between *what a model costs*, which the features state, and *what a model
 is good at*, which they do not.
 

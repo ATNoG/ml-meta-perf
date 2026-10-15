@@ -7,8 +7,8 @@ configuration** (`config.Configuration`, read from ``config/study.json``), one s
 set of protocols, and **one length rule**, `selection.plateau_knee`. Each equation searches
 every feature it is allowed; the search, not the configuration, decides which it keeps.
 
-E3-Valid is the E3 the study publishes. E3-MAX is the same configuration under the wider
-grammar (``selection.capability_arity``) at the raw maximum of its worst-protocol curve: a
+E3-Valid is the E3 the study publishes. E3-MAX is the same configuration at the configured
+capability arity (``selection.capability_arity``) at the raw maximum of its worst-protocol curve: a
 capability bound on the additive form, not an equation put forward to be read.
 
 Study chapter: [4. The equation][study-chapter] -- the rationale, in
@@ -69,7 +69,7 @@ from ml_meta_perf.validate import (
     term_stability,
 )
 
-#: E1 is fitted on all 476 rows like the other two. An earlier version fitted it on the 20
+#: E1 is fitted on all 484 rows like the other two. An earlier version fitted it on the 20
 #: aggregated per-dataset means, on the grounds that a predictor constant inside a group can
 #: only ever predict that group's mean anyway. That was true and still the wrong choice: it put
 #: E1's R2 on a 20-point denominator, so its headline could not be compared with E3's without a
@@ -234,7 +234,7 @@ def finalise(fitted: FittedPath, size: int) -> EquationReport:
         raise ValueError(f"selected equation length {size} is unavailable")
     config, truth = fitted.config, fitted.truth
     # The same folds with selection re-run inside them, kept only for `stability`: the share
-    # of the equation's terms that survive when a fifth of the data is removed. That is what
+    # of the equation's terms that survive when one dataset is removed. That is what
     # licenses fixing the form, and it is not part of any reported score.
     reselected = fold_selections(
         fitted.library,
@@ -285,7 +285,7 @@ def run_equation(
     """Fit one equation and validate it. The three equations differ **only** in the
     features they may draw on, and this is the single code path that says so.
 
-    Every one of them is fitted on all 476 rows and scored on all 476 rows, under all four
+    Every one of them is fitted on all 484 rows and scored on all 484 rows, under all four
     protocols, and has its length chosen by the same rule. That uniformity is the point: the
     gaps between E1, E2 and E3 are only evidence about what each half of the meta-data is
     worth if nothing else differs between them -- not the fitting scale, not the protocol,
@@ -347,7 +347,7 @@ def run_e3(
 def run_capability(
     frame: pl.DataFrame, config: Configuration | None = None, selection: SelectionConfig | None = None
 ) -> EquationReport:
-    """E3-MAX: E3's configuration under the wider grammar, at the raw maximum of its floor.
+    """E3-MAX: E3's configuration at the configured capability arity, at the raw maximum of its floor.
 
     **A capability measurement, not a recommendation.** It answers the question E3-Valid cannot
     answer about itself -- whether the additive form is out of reach or merely out of the
@@ -678,7 +678,7 @@ def comparison(
 ) -> pl.DataFrame:
     """E1 against E3 on the one scale where they are comparable: all rows.
 
-    All three equations are already fitted and scored on the same 476 rows, so this table
+    All three equations are already fitted and scored on the same 484 rows, so this table
     is not correcting a denominator -- an earlier version of E1 was fitted on 20 aggregated
     dataset means and it was. What it adds is the two *ceilings* beside the equations: the
     true per-dataset and per-model means, which are the most any equation restricted to
@@ -1081,7 +1081,7 @@ class Report:
     e1: EquationReport
     e3: EquationReport
     e2: EquationReport
-    #: E3-MAX: the same configuration under the wider grammar at the raw floor maximum.
+    #: E3-MAX: the same configuration at the configured capability arity at the raw floor maximum.
     #: Reported to show how far the additive form reaches, not as the study's
     #: recommendation. See `run_capability`.
     e3_capability: EquationReport
@@ -1149,7 +1149,7 @@ def run(
     ``opaque_models`` replaces the estimators the comparison is run against, in the shape
     `opaque.evaluate` takes. The opaque side is scikit-learn's and the DHO refit around it is
     this project's, so a caller checking the wiring can exercise the second without paying
-    for the first -- which at 476 refits per estimator is most of what a run costs.
+    for the first -- which at 484 refits per estimator is most of what a run costs.
     """
     frame = load(path)
     config, selection = _resolve(config, selection)

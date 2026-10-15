@@ -228,7 +228,7 @@ class TestVerdicts(unittest.TestCase):
 class TestEvidence(unittest.TestCase):
     def test_family_means_use_the_complete_grid(self) -> None:
         evidence = gather(load(), _Report())  # pyright: ignore[reportArgumentType]
-        # Eight models are missing from three datasets, so the two tables differ.
+        # Eight models are missing from two datasets, so the two tables differ.
         self.assertLess(evidence.n_complete_datasets, load()["Dataset"].n_unique())
         self.assertGreater(evidence.missing_cells, 0)
 

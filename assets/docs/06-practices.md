@@ -73,16 +73,14 @@ the verdict at all.
 that the catalogue was chosen to pass: each check has a stated threshold and returns
 `qualified` or `challenged` when the numbers say so, and some do.
 It is that the practices selected are ones a corpus of this shape *can* speak to. The
-honest reading is that this study corroborates established tabular-ML guidance on an
-independent corpus, not that it discovered anything the field disagreed about.
+reading is that these are descriptive checks against established tabular-ML guidance.
+The corpus shares source datasets with related work and does not provide independent
+causal corroboration.
 
-One practice was **withdrawn** rather than reported. *"Neural architectures catch up once
-the dataset is large enough"* looked testable and is not: every model here was trained on a
-stratified sample capped at 100,000 rows, so splitting the corpus by `nr_inst` splits it by
-*source* size while every training set above the cap is identical in size. The withdrawal is
-recorded in [chapter 1](01-dataset.md#training-set-size-is-not-a-variable-here) because
-the near-miss is instructive — the split produced a clean-looking number, and the number
-meant nothing.
+The corpus is not a controlled intervention on training size. `nr_inst` describes source
+size, while tuning samples, evaluation folds, and model context limits can differ from it.
+A source-size split therefore cannot establish whether neural architectures catch up as
+more training examples are supplied. See [chapter 1](01-dataset.md#training-set-size-is-not-a-variable-here).
 
 The assessment itself follows immediately, regenerated on every run. The method behind it —
 how each measurement is derived and filtered — is *after* it rather than before: a reader who
@@ -98,25 +96,25 @@ A best practice is general, transferable advice that already circulates in the f
 
 #### 1. Characterise the dataset before choosing a model. What the data is like bounds what any model can reach, and that bound is usually the larger effect.
 
-**Verdict: supported.** Knowing only which dataset a row came from explains 35.4% of MCC variance; knowing only which model, 28.2%. The dataset side is also the better described: 12 dataset meta-features reach 96% of what dataset identity explains, while 6 model meta-features reach 90% of theirs. Both the effect and our ability to measure it favour the data.
+**Verdict: supported.** Knowing only which dataset a row came from explains 38.7% of MCC variance; knowing only which model, 24.4%. 12 dataset meta-features reach 97% of what dataset identity explains. The model-mean reference does not bound E2, because Processing Units Number can vary with dataset shape; its score is reported separately without a fraction-of-ceiling claim.
 
 *Practice from:* Zha et al., 'Data-centric Artificial Intelligence: A Survey', ACM Computing Surveys 57(5) (2025). The data-centric position holds that returns from improving data exceed returns from swapping architectures. It is an argument about where to spend effort.
 
 #### 2. On tabular data, start from tree ensembles. Reach for a neural architecture only when a tree ensemble has been tried and found wanting.
 
-**Verdict: supported.** On the 17 datasets where every model ran, tree-based families average MCC 0.927 against 0.660 for neural ones. The neural side splits sharply: architectures built for tabular data reach 0.797 while a plain MLP or DNN reaches 0.454, last of the ten families. The advice holds, and it holds most strongly against exactly the architectures that are not designed for this kind of data.
+**Verdict: supported.** On the 18 datasets where every model ran, tree-based families average MCC 0.927 against 0.685 for neural ones. The neural side splits sharply: architectures built for tabular data reach 0.801 while a plain MLP or DNN reaches 0.512, last of the ten families. The advice holds, and it holds most strongly against exactly the architectures that are not designed for this kind of data.
 
 *Practice from:* Grinsztajn, Oyallon & Varoquaux, NeurIPS 2022 Datasets and Benchmarks Track; Shwartz-Ziv & Armon, 'Tabular Data: Deep Learning is Not All You Need', Information Fusion 81, 84-90 (2022). Trees handle irregular, non-smooth target functions and uninformative features, which is what tabular data usually contains.
 
 #### 3. Include a pretrained tabular model (TabPFN, TabICL) in the first round of candidates: it costs one fit and is frequently competitive with a tuned ensemble.
 
-**Verdict: supported.** Pretrained tabular models average MCC 0.953, against 0.951 for the best tree family, and place 1 and 3 of 25 models. They match the strongest tree ensembles here without a tuning budget, which is the whole of the claim.
+**Verdict: supported.** Pretrained tabular models average MCC 0.956, against 0.953 for the best tree family, and place 1 and 3 of 25 models. They match the strongest tree ensembles here without a tuning budget, which is the whole of the claim.
 
 *Practice from:* Hollmann et al., 'Accurate predictions on small data with a tabular foundation model' (TabPFN), Nature 637, 319-326 (2025); Qu, Holzmuller, Varoquaux & Le Morvan, 'TabICL', ICML 2025. In-context learning on tabular data removes the tuning budget that usually separates a quick baseline from a competitive one.
 
 #### 4. When rows share a group -- a subject, a site, a dataset -- validate by holding out whole groups. A random split reports a number that will not survive deployment.
 
-**Verdict: qualified.** The same equation scores R² 0.654 under a random 10-fold split and 0.651 when whole datasets are held out -- 0.003 of pure protocol. Dataset meta-features are constant within a dataset, so a random fold shows the equation rows from a dataset it is being scored on.
+**Verdict: qualified.** The same equation scores R² 0.677 under a random 10-fold split and 0.677 when whole datasets are held out -- 0.000 of pure protocol. Dataset meta-features are constant within a dataset, so a random fold shows the equation rows from a dataset it is being scored on.
 
 *Practice from:* Walsh et al., 'Machine learning reporting standards', Nature Methods 18 (2021). Any feature constant within a group lets the model recognise the group rather than generalise to it, and a random split puts the group on both sides.
 
@@ -134,25 +132,25 @@ A best practice is general, transferable advice that already circulates in the f
 
 #### 7. Match capacity to the problem. A larger, more expensive model is not a safer default; on small tabular problems it is usually a worse one.
 
-**Verdict: supported.** The highest-capacity family here is also the worst: generic neural networks average MCC 0.454 against 0.927 for tree ensembles. The equation says it conditionally rather than flatly: `Processing Units Number` carries 2 of its terms, mostly against a dataset property, so what raises MCC is capacity *matched to* the problem rather than capacity itself.
+**Verdict: supported.** Generic neural networks average MCC 0.512 against 0.927 for tree ensembles. Capacity does not survive into the equation's terms in this run, so the family means are the whole of the evidence here.
 
 *Practice from:* Shwartz-Ziv & Armon, Information Fusion 81, 84-90 (2022). Capacity beyond what the sample supports fits noise, and the cost is paid twice: in accuracy and in the tuning budget needed to recover it.
 
 #### 8. Before adopting a meta-learner to choose models, check it against 'use whatever usually works'. Ranking is an easier problem than prediction and often needs less.
 
-**Verdict: qualified.** Tested against this study's own equation and the two cannot be separated -- which is the practice being right, since it claims the trivial baseline is competitive rather than that it wins. Ranking models within a held-out dataset, against the per-model-mean baseline -- ap 0.846 against 0.798, equation better on 8 of 18 datasets that differ, 95% CI [-0.048, +0.170]; mrr 0.908 against 0.835, equation better on 3 of 4 datasets that differ, 95% CI [-0.042, +0.200]; hit_at_1 0.850 against 0.750, equation better on 3 of 4 datasets that differ, 95% CI [-0.100, +0.300]; regret 0.005 against 0.011, equation better on 12 of 15 datasets that differ, 95% CI [+0.001, +0.013]. Every interval is a paired bootstrap over the twenty held-out datasets, because a difference of two means over twenty folds is not yet a measurement.
+**Verdict: qualified.** Tested against this study's own equation and the two cannot be separated -- which is the practice being right, since it claims the trivial baseline is competitive rather than that it wins. Ranking models within a held-out dataset, against the per-model-mean baseline -- ap 0.816 against 0.826, equation better on 7 of 18 datasets that differ, 95% CI [-0.057, +0.046]; mrr 0.832 against 0.874, equation better on 1 of 3 datasets that differ, 95% CI [-0.125, +0.017]; hit_at_1 0.700 against 0.800, equation better on 0 of 2 datasets that differ, 95% CI [-0.250, +0.000]; regret 0.012 against 0.008, equation better on 10 of 15 datasets that differ, 95% CI [-0.019, +0.006]. Every interval is a paired bootstrap over the twenty held-out datasets, because a difference of two means over twenty folds is not yet a measurement.
 
 *Practice from:* Rice, 'The Algorithm Selection Problem' (1976); standard meta-learning practice. A per-model mean over previous datasets carries most of the ranking signal at zero modelling cost, and is the baseline any selection method has to clear.
 
 #### 9. Report which (dataset, model) runs were excluded and why. Aggregate comparisons over an incomplete grid compare different models on different problems.
 
-**Verdict: supported.** 24 of 500 (dataset, model) cells are absent -- 5% -- and they are not absent at random: eight models are missing from the same three datasets. Measuring the bias rather than assuming it is small: restricting to the 17 complete datasets moves the model ranking by Spearman 0.975, so the ordering survives, but a mean over all rows still compares eight of the models on a different set of problems from the rest. Every family figure quoted here uses the complete subset for that reason.
+**Verdict: supported.** 16 of 500 (dataset, model) cells are absent -- 3% -- and they are not absent at random: eight models are missing from datasets excluded by the minimum-size policy. Measuring the bias rather than assuming it is small: restricting to the 18 complete datasets moves the model ranking by Spearman 0.994, so the ordering survives, but a mean over all rows still compares eight of the models on a different set of problems from the rest. Every family figure quoted here uses the complete subset for that reason.
 
 *Practice from:* Walsh et al., Nature Methods 18 (2021); benchmarking reporting standards. Runs usually go missing where a model struggles or will not fit, so exclusions are correlated with the outcome being measured.
 
 #### 10. Score imbalanced classification with a metric that accounts for all four confusion-matrix cells -- MCC rather than accuracy or F1.
 
-**Verdict: not tested.** This study adopts MCC as its target and never measures an alternative, so it is not evidence for the practice. What it does show is the shape MCC has: 15 of 476 rows sit at exactly 0, which is a classifier that has learned nothing being scored as having learned nothing. Accuracy would not have said that.
+**Verdict: not tested.** This study adopts MCC as its target and never measures an alternative, so it is not evidence for the practice. What it does show is the shape MCC has: 13 of 484 rows sit at exactly 0, which is a classifier that has learned nothing being scored as having learned nothing. Accuracy would not have said that.
 
 *Practice from:* Chicco & Jurman, BMC Genomics 21:6 (2020). Accuracy and F1 can both look strong on a classifier that has learned only the majority class; MCC cannot.
 
@@ -161,16 +159,16 @@ At a glance:
 
 | practice | verdict | magnitude |
 |---|---|---|
-| Characterise the dataset before choosing a model. What the data is like bounds what any model can reach, and that bound is usually the larger effect. | supported | 0.0718 |
-| On tabular data, start from tree ensembles. Reach for a neural architecture only when a tree ensemble has been tried and found wanting. | supported | 0.2675 |
-| Include a pretrained tabular model (TabPFN, TabICL) in the first round of candidates: it costs one fit and is frequently competitive with a tuned ensemble. | supported | 0.0028 |
-| When rows share a group -- a subject, a site, a dataset -- validate by holding out whole groups. A random split reports a number that will not survive deployment. | qualified | 0.0031 |
+| Characterise the dataset before choosing a model. What the data is like bounds what any model can reach, and that bound is usually the larger effect. | supported | 0.1423 |
+| On tabular data, start from tree ensembles. Reach for a neural architecture only when a tree ensemble has been tried and found wanting. | supported | 0.2417 |
+| Include a pretrained tabular model (TabPFN, TabICL) in the first round of candidates: it costs one fit and is frequently competitive with a tuned ensemble. | supported | 0.0026 |
+| When rows share a group -- a subject, a site, a dataset -- validate by holding out whole groups. A random split reports a number that will not survive deployment. | qualified | 0.0001 |
 | Spend the first effort on reducing noise in the data, not on a larger model. Noise sets a ceiling that capacity cannot lift. | not tested |  |
 | On real-world data that has not been carefully curated, prefer a learner with built-in robustness to outliers. | not tested |  |
-| Match capacity to the problem. A larger, more expensive model is not a safer default; on small tabular problems it is usually a worse one. | supported | -0.4727 |
-| Before adopting a meta-learner to choose models, check it against 'use whatever usually works'. Ranking is an easier problem than prediction and often needs less. | qualified | 0.0484 |
-| Report which (dataset, model) runs were excluded and why. Aggregate comparisons over an incomplete grid compare different models on different problems. | supported | 0.0480 |
-| Score imbalanced classification with a metric that accounts for all four confusion-matrix cells -- MCC rather than accuracy or F1. | not tested | 0.0315 |
+| Match capacity to the problem. A larger, more expensive model is not a safer default; on small tabular problems it is usually a worse one. | supported | -0.4149 |
+| Before adopting a meta-learner to choose models, check it against 'use whatever usually works'. Ranking is an easier problem than prediction and often needs less. | qualified | -0.0098 |
+| Report which (dataset, model) runs were excluded and why. Aggregate comparisons over an incomplete grid compare different models on different problems. | supported | 0.0320 |
+| Score imbalanced classification with a metric that accounts for all four confusion-matrix cells -- MCC rather than accuracy or F1. | not tested | 0.0269 |
 
 #### Each practice against the equation's own terms
 
@@ -178,17 +176,20 @@ The verdicts above are drawn from corpus averages -- family means, variance shar
 
 | practice | feature | expected | term | position | beta | effect | stability | rho | direction | agrees |
 |---|---|---|---|---|---|---|---|---|---|---|
-| clean-noise-before-adding-capacity | ns_ratio | lowers |  |  |  |  |  |  |  | not selected |
-| prefer-outlier-robust-learners | nr_outliers | lowers |  |  |  |  |  |  |  | not selected |
-| capacity-is-not-free | Processing Units Number | lowers | [log(gravity)] / [log(Processing Units Number)] | denominator | -0.0906 | 0.2288 | 0.6000 | 0.4128 | raises | no |
-| capacity-is-not-free | Processing Units Number | lowers | [log(nr_class)] / [log(Processing Units Number)] | denominator | -0.0948 | 0.2464 | 0.4000 | 0.7080 | raises | no |
-| capacity-is-not-free | Model Capability | raises | [log(eq_num_attr)] * [log(Model Capability)] | factor | 0.1892 | 0.4828 | 0.6500 | 0.6720 | raises | yes |
-| capacity-is-not-free | Model Capability | raises | [log(gravity)] * [log(Model Capability)] | factor | 0.1653 | 0.4244 | 0.8500 | 0.5408 | raises | yes |
-| capacity-is-not-free | Model Capability | raises | [log(inst_to_attr)] * [log(Model Capability)] | factor | -0.1129 | 0.3011 | 0.1500 | -0.7865 | lowers | no |
+| clean-noise-before-adding-capacity | ns_ratio | lowers | ([log(class_ent)] + [log(ns_ratio)]) / [log(nr_class)] | numerator | -0.0626 | 0.1860 | 0.0000 | -0.9203 | lowers | yes |
+| prefer-outlier-robust-learners | nr_outliers | lowers | ([log(eq_num_attr)] + [log(Fitting Regime)]) / [log(nr_outliers)] | denominator | 0.1628 | 0.4218 | 0.0000 | -0.4978 | lowers | yes |
+| prefer-outlier-robust-learners | nr_outliers | lowers | ([log(gravity)] + [log(inst_to_attr)]) / [log(nr_outliers)] | denominator | -0.1409 | 0.4621 | 0.0000 | -0.0673 |  | no direction |
+| capacity-is-not-free | Processing Units Number | lowers | ([log(eq_num_attr)] + [log(gravity)]) / [log(Processing Units Number)] | denominator | -0.0859 | 0.2128 | 0.9000 | 0.3724 | raises | no |
+| capacity-is-not-free | Processing Units Number | lowers | ([log(eq_num_attr)] + [log(nr_cor_attr)]) / [log(Processing Units Number)] | denominator | -0.2145 | 0.5240 | 1.0000 | -0.5583 | lowers | yes |
+| capacity-is-not-free | Processing Units Number | lowers | ([log(eq_num_attr)] + [log(Loss Margin Behaviour)]) / [log(Processing Units Number)] | denominator | 0.1116 | 0.2865 | 0.1000 | -0.7525 | lowers | yes |
+| capacity-is-not-free | Processing Units Number | lowers | ([log(nr_class)] + [log(Fitting Regime)]) / [log(Processing Units Number)] | denominator | -0.2399 | 0.6181 | 1.0000 | 0.7460 | raises | no |
+| capacity-is-not-free | Model Capability | raises | [log(gravity)] * [log(Model Capability)] | factor | 0.1890 | 0.4736 | 0.5500 | 0.4833 | raises | yes |
+| capacity-is-not-free | Model Capability | raises | ([log(nr_class)] + [log(Model Capability)]) / [log(eq_num_attr)] | numerator | -0.1167 | 0.2864 | 0.0000 | -0.3794 | lowers | no |
+| capacity-is-not-free | Model Capability | raises | ([log(Input Distribution Modelling)] + [log(Model Capability)]) / [log(nr_class)] | numerator | 0.0565 | 0.1616 | 0.0500 | 0.4160 | raises | yes |
 
 **One row per (practice, term) pair**, because the equation is a sum of terms and a term is the unit a practice can be held against. `expected` is what the practice predicts as the feature rises; `direction` is what *that term's own contribution* does, measured on the data rather than read off the weight sign -- which would be wrong the moment the feature sits in a denominator, and several here do. `not selected` marks a claim resting on a feature the search never took, so the equation is silent on it rather than supporting it.
 
-**Read this against the verdict tally above, not as part of it.** Of the 10 practices, 3 make a claim about a quantity the equation contains; the rest are about a protocol, a metric, or a family of learners, and pairing one of those with a coefficient would be inventing a connection. Those are carried by **5 of the equation's 17 terms**, giving 5 directed (practice, term) pairings: **2 come out the way the practice predicts and 3 do not**, with 0 pairing too weak to state a direction for and 2 claim resting on a feature the search never took.
+**Read this against the verdict tally above, not as part of it.** Of the 10 practices, 3 make a claim about a quantity the equation contains; the rest are about a protocol, a metric, or a family of learners, and pairing one of those with a coefficient would be inventing a connection. Those are carried by **10 of the equation's 15 terms**, giving 9 directed (practice, term) pairings: **6 come out the way the practice predicts and 3 do not**, with 1 pairing too weak to state a direction for and 0 claim resting on a feature the search never took.
 
 
 **Read the `position` column before calling a row a disagreement.** A feature in a denominator enters the term inverted, so a negatively-weighted ratio contributes more as that feature rises. The same feature carrying opposite signs in two terms is usually one statement about a ratio rather than two conflicting ones about a quantity.
@@ -202,30 +203,17 @@ What the fitted equation says about each raw feature it uses, kept only when the
 
 **These are associations across 20 datasets, not causal claims, and not practices on their own** — a statement about a meta-feature column is a measurement. Section 5 is where they become advice, by supporting or failing to support something a practitioner could already have been told.
 
- 1. [moderate] Higher learner family's capability rank in the tabular-ML literature (1-10) went with higher MCC (about 0.38 MCC between its lowest and highest decile).
- 2. [moderate] Higher model capacity (number of fitted processing units) went with higher MCC (about 0.35 MCC between its lowest and highest decile).
- 3. [strong  ] Higher how the parameters are reached, closed form to in-context (1-5) went with lower MCC (about 0.35 MCC between its lowest and highest decile).
- 4. [moderate] Higher gravity (separation between the majority and minority class centres) went with lower MCC (about 0.30 MCC between its lowest and highest decile).
+No practice met the effect and stability thresholds.
 
 Evidence:
 
-| feature | meaning | n_terms | direction | effect | stability | confidence |
-|---|---|---|---|---|---|---|
-| Model Capability | learner family's capability rank in the tabular-ML literature (1-10) | 3 | 0.6198 | 0.3786 | 0.5500 | moderate |
-| Processing Units Number | model capacity (number of fitted processing units) | 2 | 0.7496 | 0.3473 | 0.5000 | moderate |
-| Fitting Regime | how the parameters are reached, closed form to in-context (1-5) | 1 | -0.4995 | -0.3460 | 0.9500 | strong |
-| gravity | gravity (separation between the majority and minority class centres) | 6 | -0.4561 | -0.3029 | 0.5500 | moderate |
+_(empty)_
 
 #### These are conditional statements, not marginal ones
 
-A practice states what the *equation* does as a feature rises, with every other term present. A marginal correlation states what the feature does alone. They are different quantities, and here **3 of 4 agree** on the sign:
+A practice states what the *equation* does as a feature rises, with every other term present. A marginal correlation states what the feature does alone. They are different quantities, and here **0 of 0 agree** on the sign:
 
-| feature | meaning | marginal | conditional | practice_says | agrees |
-|---|---|---|---|---|---|
-| Model Capability | learner family's capability rank in the tabular-ML literature (1-10) | 0.3908 | 0.6198 | higher | yes |
-| Processing Units Number | model capacity (number of fitted processing units) | 0.3080 | 0.7496 | higher | yes |
-| Fitting Regime | how the parameters are reached, closed form to in-context (1-5) | 0.0502 | -0.4995 | lower | no |
-| gravity | gravity (separation between the majority and minority class centres) | -0.2863 | -0.4561 | lower | yes |
+_(empty)_
 
 Disagreement is what conditioning does, not a defect. A marginal correlation mixes a feature's effect with everything it travels with; inside the equation the terms carrying those companions are already present, so what is left for this feature is what it adds beyond them. The practical consequence: **these statements describe what to expect once the other factors are accounted for, not what a scatter plot of that one feature will show** — and the scatter plot is what a reader will accidentally check against.
 
@@ -234,22 +222,21 @@ Disagreement is what conditioning does, not a defect. A marginal correlation mix
 The same equation on one row, term by term. The column adds up, and a reader can check that it does, which is the interpretability payoff in its most direct form -- and the row is chosen arithmetically, at the equation's **median absolute error**, so the example is a typical prediction rather than a flattering one somebody picked.
 
 ```
-dataset  : DDOS-ANL
-model    : Bagging
-actual   : +0.9091
-predicted: +1.0000
+dataset  : KPI-KQI
+model    : ExtraTree
+actual   : +0.9591
+predicted: +0.8913
 
 contribution breakdown:
-    +1.7654   intercept
-    -0.4051   [log(eq_num_attr)] * [log(nr_class)]
-    -0.3796   [log(inst_to_attr)] * [log(Model Capability)]
-    +0.3040   [log(eq_num_attr)] * [log(Model Capability)]
-    +0.2687   [log(gravity)] * [log(Model Capability)]
-    -0.2469   [log(eq_num_attr)] / [Input Distribution Modelling]
-    -0.2428   [log(nr_attr)] / [log(nr_class)]
-    +0.0234   the remaining 11 terms
-  = +1.0871   sum
-    clipped to +1.0000, the range MCC can take
+    +1.8644   intercept
+    -0.6715   ([log(nr_class)] + [log(Fitting Regime)]) / [log(Processing Units Number)]
+    -0.4035   [log(eq_num_attr)] * [log(nr_class)]
+    +0.3629   ([log(eq_num_attr)] + [log(nr_cor_attr)]) / [log(Processing Units Number)]
+    +0.3312   ([log(eq_num_attr)] + [log(Fitting Regime)]) / [log(nr_outliers)]
+    -0.3031   ([log(nr_class)] + [log(Model Capability)]) / [log(eq_num_attr)]
+    -0.1564   ([log(nr_class)] + [log(nr_cor_attr)]) / [log(nr_inst)]
+    -0.1328   the remaining 9 terms
+  = +0.8913   sum
 ```
 
 <!-- end generated -->
@@ -380,58 +367,12 @@ derived empirically, as above, rather than read off a sign.
 
 ### A per-feature association can flip sign between equations
 
-`Training Operations` is the worked example. It is the reason the study treats per-feature
-associations as evidence rather than as advice — and, in the end, the reason the column was
-removed from the corpus altogether. The measurement below is retained because the retirement
-does not make the lesson go away; it is what the lesson cost.
+A feature's association can depend on the other terms, grammar, penalty, and selected
+length. `Processing Units Number` also varies with dataset shape and uses family-specific
+formulas, so its association is not a capacity intervention or common-unit compute effect.
 
-| equation | association | effect | confidence |
-|---|---|---|---|
-| earlier default (14 terms, arity 2, λ=20) | higher training cost → **higher** MCC | 0.16 | moderate |
-| a later default (24 terms, arity 3, λ=5) | higher training cost → **lower** MCC | 0.38 | moderate |
+The extraction applies effect, correlation, and fold-stability filters and checks agreement
+between direction and signed decile effect. These restrictions do not establish stability
+across alternative configurations. Further work should assess coefficient and feature-sign
+stability across such configurations before turning an association into general advice.
 
-Same data, same extraction procedure, same confidence rating, opposite sign — and the later
-equation is the better one on every metric, so this is not a case of a bad equation being
-corrected by a good one.
-
-**Neither reading is an error.** Each correctly describes the equation it was extracted
-from. The problem is the feature: `Training Operations` moves with two things at once. It
-rises with model capacity, which raises MCC, and it rises with dataset size, which is where
-the hard datasets are. Which of the two an equation ends up expressing depends on what
-*other* terms it has available to absorb the other half — and that depends on the grammar,
-the penalty and the length, none of which the practitioner reading the practice can see.
-
-**The feature was eventually retired for exactly this.** A column that moves with model
-capacity and dataset size at once is not a model descriptor, and two of the other three
-retired columns had the same defect. That is a resolution of this particular case, not of the
-general problem: the current `Processing Units Number` descriptor still varies with dataset
-shape, and the mitigations below are still what stands between a fitted weight and a stated
-practice.
-
-This generalises past this one feature, and it is the reason the study does not present
-per-feature associations as advice. A measurement like "higher training cost went with
-lower MCC" is **evidence**, and evidence whose sign depends on the equation it came from is
-weak evidence. It is not, on its own, a best practice: a practice is a general
-recommendation that a body of evidence can support, and no single fitted equation is that
-body.
-
-That is why the generated section above states its practices at the level of received
-guidance from the literature and uses this study to weigh each one, rather than reading new
-guidance out of the weights. A recommendation that survives being weighed against several
-independent measurements is worth something; one extracted from a single equation inherits
-that equation's instabilities, of which this is a worked example.
-
-Three mitigations are in place and none of them is sufficient:
-
-- terms selected in fewer than half the folds produce no practice, which catches
-  instability *within* one configuration but says nothing about instability *across*
-  configurations — `Training Operations` sat at 0.66 fold stability in the equation
-  published at the time, which was not low enough to suppress it;
-- the marginal correlation is printed beside the conditional direction
-  (the generated section above), so a reader can at least see when the two disagree, as they
-  do here;
-- features whose rank direction and decile effect disagree in sign are dropped outright.
-
-What would actually settle it is refitting across a grid of configurations and reporting
-only the practices whose sign is stable across all of them. That is a sign-stability
-analogue of the fold-stability filter, it is affordable, and it has not been done.
