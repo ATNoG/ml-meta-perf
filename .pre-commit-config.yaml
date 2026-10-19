@@ -1,4 +1,4 @@
-# The commit gate mirrors the four checks in `.github/workflows/main.yml`.
+# The commit gate mirrors the five checks in `.github/workflows/main.yml`.
 #
 # The local hooks use one pre-commit-managed Python environment rather than repository-local
 # `venv/bin/...` paths. That makes the installed Git hook portable across Linux and Windows.
@@ -41,6 +41,14 @@ repos:
           - joblib==1.6.0
           - jsonargparse==4.52.0
           - kneeliverse==1.2.0
+        files: '(\.py$|^pyproject\.toml$)'
+        pass_filenames: false
+
+      - id: ruff-format
+        name: ruff format (check only)
+        entry: ruff format --check src tests
+        language: python
+        additional_dependencies: *gate_dependencies
         files: '(\.py$|^pyproject\.toml$)'
         pass_filenames: false
 

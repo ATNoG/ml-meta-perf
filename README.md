@@ -395,7 +395,7 @@ pyproject.toml      the package, its dependency ranges, and the extras: `dev` (p
 
 ## Development
 
-`.pre-commit-config.yaml` is the gate and `.github/workflows/main.yml` runs the same four
+`.pre-commit-config.yaml` is the gate and `.github/workflows/main.yml` runs the same five
 checks on Python 3.12 and 3.14, reading their settings from `pyproject.toml`. The hooks use
 a pre-commit-managed environment, so the installed Git hook runs on both Windows and Linux.
 
@@ -403,7 +403,7 @@ a pre-commit-managed environment, so the installed Git hook runs on both Windows
 python3 -m venv venv
 venv/bin/pip install -e ".[dev]"
 venv/bin/pre-commit install
-venv/bin/pre-commit run --all-files   # ruff, basedpyright, vulture, unittest
+venv/bin/pre-commit run --all-files   # ruff, ruff format --check, basedpyright, vulture, unittest
 ```
 
 The `dev` extra installs the project editable and pins pre-commit plus the three

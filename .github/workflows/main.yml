@@ -42,6 +42,10 @@ jobs:
       - name: Lint with Ruff
         run: ruff check src tests
 
+      - name: Check formatting with Ruff
+        # Check only: the gate never rewrites files. Fix with `ruff format src tests`.
+        run: ruff format --check src tests
+
       - name: Type-check with basedpyright
         # --pythonpath, because pyproject.toml deliberately pins no venv: without it
         # basedpyright resolves no third-party import and exits 3 on a clean runner.
