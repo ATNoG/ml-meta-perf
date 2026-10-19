@@ -104,9 +104,7 @@ def feature_practices(
                 "n_terms": len(indices),
                 "direction": spearman(values, total),
                 "effect": effect,
-                "stability": float(
-                    np.mean([frequency.get(equation.terms[index].name, 0.0) for index in indices])
-                )
+                "stability": float(np.mean([frequency.get(equation.terms[index].name, 0.0) for index in indices]))
                 if frequency
                 else float("nan"),
             }

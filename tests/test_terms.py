@@ -67,9 +67,7 @@ class TestTerm(unittest.TestCase):
         a, b, c = Atom("a"), Atom("b"), Atom("c")
         np.testing.assert_allclose(Term("ratio", (a, b)).evaluate(self.columns), [2.0, 2.0, 2.0], rtol=1e-6)
         np.testing.assert_allclose(Term("product", (a, b)).evaluate(self.columns), [2.0, 8.0, 32.0])
-        np.testing.assert_allclose(
-            Term("sum_ratio", (a, b, c)).evaluate(self.columns), [3.0, 6.0, 6.0], rtol=1e-6
-        )
+        np.testing.assert_allclose(Term("sum_ratio", (a, b, c)).evaluate(self.columns), [3.0, 6.0, 6.0], rtol=1e-6)
 
     def test_features_reports_every_operand(self) -> None:
         term = Term("sum_ratio", (Atom("a"), Atom("b"), Atom("c")))
@@ -119,9 +117,7 @@ class TestNesting(unittest.TestCase):
         restored = Term.from_dict(self.outer.to_dict())
         self.assertEqual(restored, self.outer)
         self.assertEqual(restored.depth, 2)
-        np.testing.assert_allclose(
-            restored.evaluate(self.columns), self.outer.evaluate(self.columns)
-        )
+        np.testing.assert_allclose(restored.evaluate(self.columns), self.outer.evaluate(self.columns))
 
     def test_deeply_nested_round_trip(self) -> None:
         deep = Term("ratio", (Term("product", (self.outer, Atom("b"))), Atom("c")))
@@ -161,9 +157,7 @@ class TestSimplify(unittest.TestCase):
 
     def test_simplification_preserves_the_values(self) -> None:
         term = Term("product", (Term("ratio", (self.a, self.b)), self.b))
-        np.testing.assert_allclose(
-            simplify(term).evaluate(self.columns), term.evaluate(self.columns), rtol=1e-6
-        )
+        np.testing.assert_allclose(simplify(term).evaluate(self.columns), term.evaluate(self.columns), rtol=1e-6)
 
     def test_recurses_into_nested_operands(self) -> None:
         inner = Term("product", (Term("ratio", (self.a, self.b)), self.b))
@@ -261,9 +255,7 @@ class TestDenominatorEligibility(unittest.TestCase):
             checked += 1
             divisor = term.operands[-1].evaluate(data)
             self.assertGreater(float(np.min(np.abs(divisor))), 0.0, term.name)
-            self.assertGreater(
-                float(np.min(np.abs(divisor))), 0.05 * float(np.std(divisor)), term.name
-            )
+            self.assertGreater(float(np.min(np.abs(divisor))), 0.05 * float(np.std(divisor)), term.name)
         self.assertGreater(checked, 0)
 
 
@@ -452,9 +444,7 @@ class TestCollinearTermsAreDropped(unittest.TestCase):
         rng = np.random.default_rng(2)
         base = rng.uniform(1.0, 9.0, 40)
         columns = {"a": base, "b": base + rng.normal(0.0, 0.05, 40)}
-        library = Library(
-            [Term("atom", (Atom("a"),)), Term("atom", (Atom("b"),))], columns
-        )
+        library = Library([Term("atom", (Atom("a"),)), Term("atom", (Atom("b"),))], columns)
         self.assertEqual(library.names, ["a", "b"])
 
     def test_the_grammar_generates_an_algebraic_duplicate_and_it_is_dropped(self) -> None:
@@ -471,9 +461,9 @@ class TestCollinearTermsAreDropped(unittest.TestCase):
         }
         # build_library emits pairwise terms before sum_ratio ones, so the two-feature
         # form is offered first and is the one that must survive.
-        terms = pairwise_terms(
-            ("nr_inst",), ("d",), columns, both_directions=True
-        ) + sum_ratio_terms(tuple(columns), columns)
+        terms = pairwise_terms(("nr_inst",), ("d",), columns, both_directions=True) + sum_ratio_terms(
+            tuple(columns), columns
+        )
         offered = [term.name for term in terms]
         kept = set(Library(terms, columns).names)
 
@@ -488,9 +478,7 @@ class TestCollinearTermsAreDropped(unittest.TestCase):
         from ml_meta_perf.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays, load
 
         columns = columns_as_arrays(load(), DATASET_FEATURES + MODEL_FEATURES)
-        library = build_library(
-            DATASET_FEATURES, MODEL_FEATURES, columns, max_arity=3, max_abs_zscore=3.0
-        )
+        library = build_library(DATASET_FEATURES, MODEL_FEATURES, columns, max_arity=3, max_abs_zscore=3.0)
         matrix = library.matrix - library.matrix.mean(axis=0)
         unit = matrix / np.linalg.norm(matrix, axis=0)
         correlation = unit.T @ unit

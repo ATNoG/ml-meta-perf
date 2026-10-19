@@ -27,9 +27,7 @@ class TestEvaluation(unittest.TestCase):
 
     def test_evaluate_applies_the_weights(self) -> None:
         # 0.5 + 0.25*a - 0.5*(a/b)
-        np.testing.assert_allclose(
-            equation().evaluate(self.columns), [0.5 + 0.25 - 0.5, 0.5 + 0.5 - 0.25], rtol=1e-6
-        )
+        np.testing.assert_allclose(equation().evaluate(self.columns), [0.5 + 0.25 - 0.5, 0.5 + 0.5 - 0.25], rtol=1e-6)
 
     def test_predict_clips_into_the_mcc_range(self) -> None:
         wild = Equation(
@@ -109,9 +107,7 @@ class TestSerialisation(unittest.TestCase):
     def test_restored_equation_predicts_identically(self) -> None:
         original = equation()
         columns = {"a": np.array([1.0, 3.0, 7.0]), "b": np.array([2.0, 5.0, 9.0])}
-        np.testing.assert_allclose(
-            Equation.from_dict(original.to_dict()).predict(columns), original.predict(columns)
-        )
+        np.testing.assert_allclose(Equation.from_dict(original.to_dict()).predict(columns), original.predict(columns))
 
     def test_malformed_payload_is_rejected(self) -> None:
         with self.assertRaises(ValueError):

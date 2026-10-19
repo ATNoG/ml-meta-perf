@@ -78,12 +78,8 @@ class TestSelector(unittest.TestCase):
             selector = Selector(self.design, self.target, penalty)
             for indices in ((1,), (1, 4), (0, 4, 7), (1, 3, 4, 7, 9)):
                 order = np.array(indices, dtype=np.intp)
-                reference = ridge_solve(
-                    selector.gram[order[:, None], order], selector.projection[order], penalty
-                )
-                np.testing.assert_allclose(
-                    selector._evaluate(indices).weights, reference, rtol=1e-10, atol=1e-12
-                )
+                reference = ridge_solve(selector.gram[order[:, None], order], selector.projection[order], penalty)
+                np.testing.assert_allclose(selector._evaluate(indices).weights, reference, rtol=1e-10, atol=1e-12)
 
     def test_the_batched_solve_matches_the_one_at_a_time_solve(self) -> None:
         # Beam steps and refinement positions go through the solver as one stack. That is
@@ -103,9 +99,7 @@ class TestSelector(unittest.TestCase):
             for subset, indices in zip(batched, batch, strict=True):
                 reference = single._evaluate(indices)
                 self.assertEqual(subset.indices, reference.indices)
-                np.testing.assert_allclose(
-                    subset.weights, reference.weights, rtol=1e-12, atol=1e-14
-                )
+                np.testing.assert_allclose(subset.weights, reference.weights, rtol=1e-12, atol=1e-14)
                 self.assertAlmostEqual(subset.rss, reference.rss, delta=1e-12 * abs(reference.rss))
 
     def test_the_batched_solve_shares_the_cache_and_keeps_order(self) -> None:
@@ -146,9 +140,7 @@ class TestSearch(unittest.TestCase):
     def setUp(self) -> None:
         self.columns = synthetic_columns(150, seed=7)
         self.library = build_library(("f1", "f2"), ("f3", "f4"), self.columns)
-        self.target = (
-            0.5 * np.log(self.columns["f1"]) - 0.02 * self.columns["f3"] + 0.3
-        )
+        self.target = 0.5 * np.log(self.columns["f1"]) - 0.02 * self.columns["f3"] + 0.3
 
     def test_produces_an_equation_at_every_size(self) -> None:
         result = search(self.library, self.target, max_terms=5, penalty=1.0, pool_size=60)
@@ -232,10 +224,7 @@ class TestOneTermPerFeatureCombination(unittest.TestCase):
     def setUp(self) -> None:
         self.columns = synthetic_columns()
         self.library = build_library(("f1", "f2"), ("f3", "f4"), self.columns)
-        self.target = (
-            3.0 * np.log(self.columns["f1"]) / np.log(self.columns["f3"])
-            + 1.5 * np.log(self.columns["f2"])
-        )
+        self.target = 3.0 * np.log(self.columns["f1"]) / np.log(self.columns["f3"]) + 1.5 * np.log(self.columns["f2"])
 
     def repeated(self, terms) -> list[list[str]]:
         seen: dict[frozenset[str], list[str]] = {}
@@ -258,9 +247,8 @@ class TestOneTermPerFeatureCombination(unittest.TestCase):
         design = standardizer.apply(self.library.matrix)
         pool = list(range(len(self.library)))
         unconstrained = Selector(design, self.target, 1.0).search(pool, 8, beam_width=6)
-        constrained = Selector(design, self.target, 1.0, self.library.feature_groups).search(
-            pool, 8, beam_width=6
-        )
+        constrained = Selector(design, self.target, 1.0, self.library.feature_groups).search(pool, 8, beam_width=6)
+
         def picked(subset: Subset) -> list[Term]:
             return [self.library.terms[i] for i in subset.indices]
 

@@ -57,9 +57,7 @@ class TestContributions(unittest.TestCase):
     def test_rows_sum_to_the_prediction_minus_intercept(self) -> None:
         data = columns()
         eq = equation()
-        np.testing.assert_allclose(
-            contributions(eq, data).sum(axis=1) + eq.intercept, eq.evaluate(data), rtol=1e-9
-        )
+        np.testing.assert_allclose(contributions(eq, data).sum(axis=1) + eq.intercept, eq.evaluate(data), rtol=1e-9)
 
     def test_empty_equation_gives_an_empty_matrix(self) -> None:
         empty = Equation(intercept=0.2, terms=(), weights=(), standardized_weights=())
@@ -130,9 +128,7 @@ class TestVarianceDecomposition(unittest.TestCase):
         self.assertAlmostEqual(scores["model identity"], 0.0)
 
     def test_counts_the_groups(self) -> None:
-        table = variance_decomposition(
-            np.array([0.1, 0.2, 0.3]), np.array(["a", "b", "c"]), np.array(["x", "x", "y"])
-        )
+        table = variance_decomposition(np.array([0.1, 0.2, 0.3]), np.array(["a", "b", "c"]), np.array(["x", "x", "y"]))
         counts = dict(zip(table["knowing only"].to_list(), table["n_groups"].to_list(), strict=True))
         self.assertEqual(counts["dataset identity"], 3)
         self.assertEqual(counts["model identity"], 2)
@@ -146,9 +142,7 @@ class TestVarianceDecomposition(unittest.TestCase):
         from ml_meta_perf.data import DATASET_COLUMN, MODEL_COLUMN, groups, load, target
 
         frame = load()
-        table = variance_decomposition(
-            target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)
-        )
+        table = variance_decomposition(target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN))
         scores = dict(zip(table["knowing only"].to_list(), table["variance_explained"].to_list(), strict=True))
         self.assertGreater(scores["dataset identity"], scores["model identity"])
 

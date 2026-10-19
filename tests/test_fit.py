@@ -32,9 +32,7 @@ class TestStandardizer(unittest.TestCase):
         train = np.arange(20.0).reshape(10, 2)
         standardizer = Standardizer.fit(train)
         test = np.array([[100.0, 100.0]])
-        np.testing.assert_allclose(
-            standardizer.apply(test), (test - standardizer.mean) / standardizer.scale
-        )
+        np.testing.assert_allclose(standardizer.apply(test), (test - standardizer.mean) / standardizer.scale)
 
 
 class TestRidgeSolve(unittest.TestCase):
