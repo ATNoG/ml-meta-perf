@@ -103,7 +103,7 @@ def _match_paper_font(figure: Figure, width_fraction: float, *, tight_layout: bo
         if tight_layout:
             figure.tight_layout()
         figure.canvas.draw()
-        bounds = figure.get_tightbbox(figure.canvas.get_renderer())
+        bounds = figure.get_tightbbox()
         saved_width_pt = 72 * (bounds.width + 2 * plt.rcParams["savefig.pad_inches"])
         revised = PAPER_FONT_SIZE_PT * saved_width_pt / target_width_pt
         if abs(revised - font_size) < 0.01:
