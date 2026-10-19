@@ -45,3 +45,4 @@ ISSUES.md
 
 # Slurm execution logs
 slurm-*.out
+.agents/
