@@ -283,7 +283,7 @@ def cross_validate_fixed_form(
             offset = float(target[train].mean())
             weights = np.linalg.solve(gram, design.T @ (target[train] - offset))
             held = standardizer.apply(matrix[test]) @ weights + offset
-            bounded = _clip_to_training(held, target[train])
+            bounded = _clip_to_training(held, target[train], equation.bounds)
             outcome.clipped += int(np.count_nonzero(bounded != held))
             outcome.predictions[test] = bounded
             outcome.per_fold[label] = score(target[test], outcome.predictions[test])
@@ -299,6 +299,8 @@ def cross_validate_fixed_form(
                 weights=tuple(float(value) for value in raw),
                 standardized_weights=tuple(float(value) for value in weights),
                 name=f"fold_{label}",
+                bounds=equation.bounds,
+                target=equation.target,
             )
         results[size] = outcome
     return results
@@ -355,7 +357,7 @@ def cross_validate_doubly_held_out(
                 offset = float(target[train].mean())
                 weights = np.linalg.solve(gram, design.T @ (target[train] - offset))
                 held = standardizer.apply(matrix[test]) @ weights + offset
-                bounded = _clip_to_training(held, target[train])
+                bounded = _clip_to_training(held, target[train], equation.bounds)
                 outcome.clipped += int(np.count_nonzero(bounded != held))
                 outcome.predictions[test] = bounded
         # Scored per held-out *dataset* rather than per cell: a cell is one to a few rows and
@@ -368,8 +370,16 @@ def cross_validate_doubly_held_out(
     return results
 
 
-def _clip_to_training(prediction: np.ndarray, training_target: np.ndarray) -> np.ndarray:
+def _clip_to_training(
+    prediction: np.ndarray, training_target: np.ndarray, bounds: tuple[float, float] | None
+) -> np.ndarray:
     """Bound a fold's predictions by the target range that fold was trained on.
+
+    **Only for a bounded target.** ``bounds=None`` declares the target unbounded (a cost, a
+    time, a count) and the predictions are returned as fitted: clamping them to the training
+    range would forbid exactly the extrapolation a held-out group needs -- the costliest
+    dataset, held out, could never be predicted above the second costliest. For a bounded
+    target the rule below applies unchanged.
 
     `model.predict` already clips to ``[MCC_LOWER, MCC_UPPER]``, the range MCC can take in
     principle. That is the right bound for the equation as published and too loose here: this
@@ -380,6 +390,8 @@ def _clip_to_training(prediction: np.ndarray, training_target: np.ndarray) -> np
     the fitted equation was shown. This bounds extrapolation during coefficient refitting;
     it does not remove optimism from global form selection.
     """
+    if bounds is None:
+        return prediction
     return np.clip(prediction, float(training_target.min()), float(training_target.max()))
 
 
@@ -397,6 +409,7 @@ def baseline_group_centre(
     inner: np.ndarray | None = None,
     *,
     centre: str = "mean",
+    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
 ) -> np.ndarray:
     """Predict a training-fold centre, optionally conditioned on a second grouping.
 
@@ -427,19 +440,27 @@ def baseline_group_centre(
             selected = test & (inner == label)
             source = train & (inner == label)
             predictions[selected] = float(summarise(target[source])) if source.any() else fallback
-    return np.clip(predictions, MCC_LOWER, MCC_UPPER)
+    return predictions if bounds is None else np.clip(predictions, *bounds)
 
 
 def baseline_group_mean(
     target: np.ndarray,
     outer: np.ndarray,
     inner: np.ndarray | None = None,
+    *,
+    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
 ) -> np.ndarray:
     """`baseline_group_centre` at the mean. Kept as the name the rest of the study uses."""
-    return baseline_group_centre(target, outer, inner, centre="mean")
+    return baseline_group_centre(target, outer, inner, centre="mean", bounds=bounds)
 
 
-def additive_mean_reference(target: np.ndarray, first: np.ndarray, second: np.ndarray) -> np.ndarray:
+def additive_mean_reference(
+    target: np.ndarray,
+    first: np.ndarray,
+    second: np.ndarray,
+    *,
+    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
+) -> np.ndarray:
     """Dataset and model target means combined into a descriptive IS reference.
 
     The calculation adds each observed dataset mean and model mean, subtracts the global
@@ -453,7 +474,7 @@ def additive_mean_reference(target: np.ndarray, first: np.ndarray, second: np.nd
         for label in np.unique(group):
             mask = group == label
             prediction[mask] += float(target[mask].mean()) - grand
-    return np.clip(prediction, MCC_LOWER, MCC_UPPER)
+    return prediction if bounds is None else np.clip(prediction, *bounds)
 
 
 def interaction_oracle(
@@ -461,6 +482,8 @@ def interaction_oracle(
     first: np.ndarray,
     second: np.ndarray,
     rank: int,
+    *,
+    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
 ) -> np.ndarray:
     """The additive mean-based reference plus the best rank-``rank`` approximation of what it misses.
 
@@ -506,7 +529,7 @@ def interaction_oracle(
     prediction = np.array(
         [additive[row_index[row], column_index[column]] for row, column in zip(first, second, strict=True)]
     )
-    return np.clip(prediction, MCC_LOWER, MCC_UPPER)
+    return prediction if bounds is None else np.clip(prediction, *bounds)
 
 
 def oracle_ladder(
@@ -514,12 +537,14 @@ def oracle_ladder(
     first: np.ndarray,
     second: np.ndarray,
     ranks: tuple[int, ...] = (0, 1, 2, 3, 4, 6, 8),
+    *,
+    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
 ) -> pl.DataFrame:
     """How much each additional interaction component would be worth."""
     rows: list[dict[str, object]] = []
     previous: float | None = None
     for rank in ranks:
-        value = r2_score(target, interaction_oracle(target, first, second, rank))
+        value = r2_score(target, interaction_oracle(target, first, second, rank, bounds=bounds))
         rows.append(
             {
                 "interaction_rank": rank,

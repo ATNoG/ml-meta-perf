@@ -125,6 +125,7 @@ figures.
 | 4 | [The equation](assets/docs/04-equation.md) | `ml_meta_perf.experiment`, `ml_meta_perf.validate` |
 | 5 | [Evaluation](assets/docs/05-evaluation.md) | `ml_meta_perf.validate`, `ml_meta_perf.stats` |
 | 6 | [Best practices against the equation](assets/docs/06-practices.md) | `ml_meta_perf.practices`, `ml_meta_perf.attribution`, `ml_meta_perf.guidance` |
+| 7 | [Other targets](assets/docs/07-generic-targets.md) | `ml_meta_perf.model`, `ml_meta_perf.validate`, `ml_meta_perf.data` |
 
 Each chapter is self-contained: it ends with its own limitations, and chapters 4, 5 and 6
 close with a **generated section** that `ml_meta_perf.report` rewrites on every run. Prose
@@ -247,6 +248,18 @@ rule to each, and among the configurations tied on R² at a readable length prop
 whose doubly-held-out predictions rank the models best. It writes `proposed_study.json`;
 adopting it is a reviewed edit to `config/study.json`.
 
+FlexFL targets are available in both commands; see [the FlexFL guide](FLEXFL.md). The study CLI writes `equation.json`, `equation.txt`, `curve.csv`,
+`term_effects.csv` and `group_shares.csv` under `<output>/flexfl/<slug>/`.
+`--log-target` writes to `<output>/flexfl/<slug>-log1p/`.
+
+**Discrete and binary features do not work as independent features here.** The equation is a sum
+of terms, each a product of transformed features. A 0/1 indicator inside a product switches the
+term off on the rows where it is 0, so its weight is a slope that exists in one group only; in a
+sum it is an offset, since $d^2 = d$ and $\sqrt{d} = d$; and a complete set of one-hot columns
+sums to the intercept. Such columns are accepted (the FlexFL corpus has them, for the algorithm
+and the data strategy), and are read as "this group sits higher or lower by $w$", never as a
+quantity whose effect scales. The derivation is in [chapter 7](assets/docs/07-generic-targets.md).
+
 **One note on threading.** The inner loop is ~87k solves of matrices no larger than 32×32,
 far below the size where Basic Linear Algebra Subprograms (BLAS) parallelism pays: threading
 buys no wall time and burns 3.5× the central processing unit (CPU) spinning. Setting
@@ -287,6 +300,9 @@ Run options are ordinary flags:
 |---|---|---|
 | `--config` | `config/study.json` | the study configuration |
 | `--data` | `dataset/meta_dataset.csv` | the meta-dataset to fit |
+| `--target` | `mcc` | predict MCC or one FlexFL target |
+| `--task-type` | none | restrict a FlexFL target to classification or regression; required for performance |
+| `--log-target` | off | fit `log1p` of a cost target; metrics on the log scale; outputs under `flexfl/<slug>-log1p/` |
 | `--output` | `results` | where the equations and comma-separated value (CSV) tables go |
 | `--figures` | `assets/figures` | where the figures go |
 | `--docs` | `assets/docs` | chapter directory whose generated sections are rewritten |

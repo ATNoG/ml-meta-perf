@@ -78,7 +78,7 @@ def term_effects(
                 "weight": equation.weights[index],
                 "beta": equation.standardized_weights[index],
                 "effect": float(high - low),
-                "direction": direction(equation.standardized_weights[index]),
+                "direction": direction(equation.standardized_weights[index], equation.target),
             }
         )
     return pl.DataFrame(rows).sort(pl.col("effect").abs(), descending=True)

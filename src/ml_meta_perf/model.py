@@ -35,6 +35,9 @@ class Equation:
     weights: tuple[float, ...]
     standardized_weights: tuple[float, ...]
     name: str = "equation"
+    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER)
+    #: What the equation predicts, as the first line of its text names it.
+    target: str = "MCC"
 
     def __post_init__(self) -> None:
         if not (len(self.terms) == len(self.weights) == len(self.standardized_weights)):
@@ -54,13 +57,15 @@ class Equation:
         return total
 
     def predict(self, columns: dict[str, np.ndarray]) -> np.ndarray:
-        """Apply the equation and clip into the range MCC can actually take.
+        """Apply the equation and clip into ``bounds``, the range the target can take.
 
         A linear form has no idea that MCC stops at 1.0, and the meta-dataset
         includes exact values at that bound. Clipping is the domain knowledge imposed on the
-        output, and it is applied identically during cross-validation.
+        output, and it is applied identically during cross-validation. An unbounded
+        target sets ``bounds=None`` and is returned as written.
         """
-        return np.clip(self.evaluate(columns), MCC_LOWER, MCC_UPPER)
+        values = self.evaluate(columns)
+        return values if self.bounds is None else np.clip(values, *self.bounds)
 
     def ranked_terms(self) -> list[tuple[Term, float, float]]:
         """Terms ordered by standardised weight magnitude: strongest contributor first."""
@@ -68,7 +73,7 @@ class Equation:
         return sorted(triples, key=lambda item: abs(item[2]), reverse=True)
 
     def __str__(self) -> str:
-        lines = [f"MCC = {self.intercept:+.6g}"]
+        lines = [f"{self.target} = {self.intercept:+.6g}"]
         for term, weight, standardized in self.ranked_terms():
             # Long terms overflow the column rather than being truncated, so the padding
             # has to keep a separator of its own -- ljust alone glues the comment to a
@@ -81,7 +86,7 @@ class Equation:
         parts = [f"{self.intercept:+.4g}"]
         for term, weight, _ in self.ranked_terms():
             parts.append(f"{weight:+.4g} \\cdot \\mathrm{{{_escape(term.name)}}}")
-        return "\\mathrm{MCC} = " + " ".join(parts)
+        return f"\\mathrm{{{_escape(self.target)}}} = " + " ".join(parts)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -90,6 +95,8 @@ class Equation:
             "terms": [term.to_dict() for term in self.terms],
             "weights": list(self.weights),
             "standardized_weights": list(self.standardized_weights),
+            "bounds": list(self.bounds) if self.bounds is not None else None,
+            "target": self.target,
         }
 
     @classmethod
@@ -97,6 +104,7 @@ class Equation:
         terms = payload["terms"]
         weights = payload["weights"]
         standardized = payload["standardized_weights"]
+        bounds = payload.get("bounds", [MCC_LOWER, MCC_UPPER])
         if not isinstance(terms, list) or not isinstance(weights, list) or not isinstance(standardized, list):
             raise ValueError("malformed equation payload")
         return cls(
@@ -105,6 +113,8 @@ class Equation:
             weights=tuple(float(value) for value in weights),  # pyright: ignore[reportArgumentType]
             standardized_weights=tuple(float(value) for value in standardized),  # pyright: ignore[reportArgumentType]
             name=str(payload.get("name", "equation")),
+            bounds=tuple(bounds) if bounds is not None else None,  # pyright: ignore[reportArgumentType]
+            target=str(payload.get("target", "MCC")),
         )
 
     def save(self, path: str | Path) -> None:
@@ -127,6 +137,6 @@ def _escape(name: str) -> str:
 RAISES, LOWERS = "raises MCC", "lowers MCC"
 
 
-def direction(signed: float) -> str:
-    """The word for the sign of a standardised weight or effect."""
-    return RAISES if signed > 0.0 else LOWERS
+def direction(signed: float, target: str = "MCC") -> str:
+    """The word for the sign of a standardised weight or effect, on ``target``."""
+    return f"{'raises' if signed > 0.0 else 'lowers'} {target}"

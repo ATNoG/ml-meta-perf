@@ -38,7 +38,7 @@ from ml_meta_perf.report import (
     term_sentences,
     unstable_majors,
 )
-from ml_meta_perf.search import SearchResult, prune, search
+from ml_meta_perf.search import SearchResult, prune, pruning_threshold, search
 from ml_meta_perf.selection import (
     floor_argmax,
     floor_curve,
@@ -117,6 +117,7 @@ __all__ = [
     "plateau_knee",
     "protocol_spread",
     "prune",
+    "pruning_threshold",
     "ranking_report",
     "ratio_of_sums_terms",
     "redundancy_groups",

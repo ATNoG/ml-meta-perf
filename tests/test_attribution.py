@@ -1,6 +1,7 @@
 """Term effects, group shares and the identity-based variance decomposition."""
 
 import unittest
+from dataclasses import replace
 
 import numpy as np
 
@@ -82,6 +83,13 @@ class TestTermEffects(unittest.TestCase):
         for row in self.table.iter_rows(named=True):
             expected = RAISES if row["beta"] > 0 else LOWERS
             self.assertEqual(row["direction"], expected)
+
+    def test_direction_is_written_on_the_equations_target(self) -> None:
+        labelled = replace(equation(), target="total_time_s")
+        table = term_effects(labelled, columns(), DATASET, MODEL)
+        for row in table.iter_rows(named=True):
+            expected = "raises" if row["beta"] > 0 else "lowers"
+            self.assertEqual(row["direction"], f"{expected} total_time_s")
 
     def test_groups_are_labelled(self) -> None:
         self.assertEqual(set(self.table["group"].to_list()), {DATASET_ONLY, MODEL_ONLY, MIXED})

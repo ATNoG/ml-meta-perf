@@ -13,7 +13,9 @@ takes, how its terms are generated and chosen, what the fitted equation says, ho
 does, and how it compares against the best practices the tabular-ML literature already
 states. Figures are produced by `python -m ml_meta_perf`.
 
-**Six chapters, each self-contained**, plus the related-work chapter that positions them.
+**Six chapters, each self-contained**, plus the related-work chapter that positions them and a
+seventh, [other targets](07-generic-targets.md), that states the mathematics of the rules that
+let the method predict something other than MCC.
 Every chapter ends with its own limitations, so a reader never has to hold two places at once.
 
 This page, and chapters 1, 3, 4, 5 and 6, each carry a **generated section**, rewritten by
@@ -41,6 +43,7 @@ ground from the implementation side.
 | 4 | [The equation](04-equation.md) — the three equations, the ceilings that bound them, and what interpretability buys | `ml_meta_perf.experiment`, `ml_meta_perf.validate` |
 | 5 | [Evaluation](05-evaluation.md) — protocols, metrics, baselines, and the ranking and threshold decisions | `ml_meta_perf.validate`, `ml_meta_perf.stats` |
 | 6 | [Best practices against the equation](06-practices.md) — published guidance checked term by term | `ml_meta_perf.practices`, `ml_meta_perf.attribution`, `ml_meta_perf.guidance` |
+| 7 | [Other targets](07-generic-targets.md) — bounds, cross-validation clipping and discrete features when the target is not MCC | `ml_meta_perf.model`, `ml_meta_perf.validate`, `ml_meta_perf.data` |
 
 
 ## The argument, in one page

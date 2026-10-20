@@ -3,11 +3,12 @@
 import json
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 
-from ml_meta_perf.model import Equation
+from ml_meta_perf.model import MCC_LOWER, MCC_UPPER, Equation, direction
 from ml_meta_perf.terms import Atom, Term
 
 
@@ -41,6 +42,28 @@ class TestEvaluation(unittest.TestCase):
         # evaluate is deliberately unclipped, so the two differ
         self.assertGreater(float(wild.evaluate(columns)[0]), 1.0)
 
+    def test_predict_does_not_clip_when_bounds_is_none(self) -> None:
+        wild = Equation(
+            intercept=0.0,
+            terms=(Term("atom", (Atom("a"),)),),
+            weights=(100.0,),
+            standardized_weights=(1.0,),
+            bounds=None,
+        )
+        columns = {"a": np.array([5.0, -5.0])}
+        np.testing.assert_allclose(wild.predict(columns), [500.0, -500.0])
+
+    def test_predict_uses_the_bounds_it_was_given(self) -> None:
+        wild = Equation(
+            intercept=0.0,
+            terms=(Term("atom", (Atom("a"),)),),
+            weights=(100.0,),
+            standardized_weights=(1.0,),
+            bounds=(-20.0, 20.0),
+        )
+        columns = {"a": np.array([5.0, -5.0])}
+        np.testing.assert_allclose(wild.predict(columns), [20.0, -20.0])
+
     def test_an_equation_with_no_terms_is_a_constant(self) -> None:
         constant = Equation(intercept=0.3, terms=(), weights=(), standardized_weights=())
         np.testing.assert_allclose(constant.evaluate({"a": np.zeros(4)}), np.full(4, 0.3))
@@ -71,6 +94,16 @@ class TestRendering(unittest.TestCase):
         self.assertIn("MCC =", rendered)
         self.assertIn("[a] / [b]", rendered)
         self.assertIn("beta=", rendered)
+
+    def test_the_left_hand_side_names_the_target(self) -> None:
+        costly = replace(equation(), target="log1p(total_time_s)")
+        self.assertTrue(str(costly).startswith("log1p(total_time_s) = "))
+        self.assertNotIn("MCC", str(costly))
+        self.assertIn(r"\mathrm{log1p(total\_time\_s)}", costly.to_latex())
+
+    def test_direction_names_the_target(self) -> None:
+        self.assertEqual(direction(0.3), "raises MCC")
+        self.assertEqual(direction(-0.3, "total_time_s"), "lowers total_time_s")
 
     def test_latex_escapes_underscores(self) -> None:
         latex = Equation(
@@ -108,6 +141,46 @@ class TestSerialisation(unittest.TestCase):
         original = equation()
         columns = {"a": np.array([1.0, 3.0, 7.0]), "b": np.array([2.0, 5.0, 9.0])}
         np.testing.assert_allclose(Equation.from_dict(original.to_dict()).predict(columns), original.predict(columns))
+
+    def test_round_trips_custom_bounds(self) -> None:
+        original = Equation(
+            intercept=0.5,
+            terms=(Term("atom", (Atom("a"),)),),
+            weights=(0.25,),
+            standardized_weights=(0.1,),
+            bounds=(-7.5, 12.5),
+        )
+        restored = Equation.from_dict(json.loads(json.dumps(original.to_dict())))
+        self.assertEqual(restored.bounds, (-7.5, 12.5))
+        self.assertEqual(restored, original)
+
+    def test_round_trips_an_unbounded_equation(self) -> None:
+        original = Equation(
+            intercept=0.5,
+            terms=(Term("atom", (Atom("a"),)),),
+            weights=(0.25,),
+            standardized_weights=(0.1,),
+            bounds=None,
+        )
+        restored = Equation.from_dict(json.loads(json.dumps(original.to_dict())))
+        self.assertIsNone(restored.bounds)
+        self.assertEqual(restored, original)
+
+    def test_a_payload_without_bounds_defaults_to_the_mcc_range(self) -> None:
+        payload = equation().to_dict()
+        del payload["bounds"]
+        self.assertEqual(Equation.from_dict(payload).bounds, (MCC_LOWER, MCC_UPPER))
+
+    def test_round_trips_the_target_label(self) -> None:
+        original = replace(equation(), target="comm_bytes_total", bounds=None)
+        restored = Equation.from_dict(json.loads(json.dumps(original.to_dict())))
+        self.assertEqual(restored.target, "comm_bytes_total")
+        self.assertEqual(restored, original)
+
+    def test_a_payload_without_a_target_is_an_mcc_equation(self) -> None:
+        payload = equation().to_dict()
+        del payload["target"]
+        self.assertEqual(Equation.from_dict(payload).target, "MCC")
 
     def test_malformed_payload_is_rejected(self) -> None:
         with self.assertRaises(ValueError):

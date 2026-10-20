@@ -35,8 +35,18 @@ from ml_meta_perf.config import (
     SelectionConfig,
     SweepConfig,
 )
-from ml_meta_perf.data import DATASET_FEATURES, DEFAULT_PATH, MODEL_FEATURES, columns_as_arrays, load, target
-from ml_meta_perf.experiment import Report, run
+from ml_meta_perf.data import (
+    DATASET_FEATURES,
+    DEFAULT_PATH,
+    MODEL_FEATURES,
+    add_target_arguments,
+    check_target_arguments,
+    columns_as_arrays,
+    flexfl_schema,
+    load,
+    target,
+)
+from ml_meta_perf.experiment import Report, run, run_flexfl
 from ml_meta_perf.practices import render as render_practices
 from ml_meta_perf.report import term_importance, write_into_chapters
 
@@ -219,6 +229,7 @@ def build_parser() -> ArgumentParser:
     parser.add_argument(
         "--data", type=str | None, default=None, help="meta-dataset CSV (default: dataset/meta_dataset.csv)"
     )
+    add_target_arguments(parser)
     parser.add_argument("--output", type=str, default="results", help="directory for the equations and CSV tables")
     parser.add_argument("--figures", type=str, default="assets/figures", help="directory for the generated figures")
     # The generated results go *into* the chapters that discuss them, between markers, rather
@@ -239,6 +250,44 @@ def build_parser() -> ArgumentParser:
         help=f"comma-separated phases to run (default: all): {', '.join(PHASES)}",
     )
     return parser
+
+
+def _run_flexfl_cli(arguments: Namespace) -> int:
+    """Fit one FlexFL E3 equation and write its outputs."""
+    schema = flexfl_schema(arguments.target, arguments.task_type, arguments.log_target)
+    ignored = [
+        flag
+        for flag, given in (
+            ("--phase", arguments.phase is not None),
+            ("--no-figures", arguments.no_figures),
+            ("--no-report", arguments.no_report),
+            ("--no-tables", arguments.no_tables),
+        )
+        if given
+    ]
+    if ignored:
+        print(f"ignored with a FlexFL --target: {', '.join(ignored)}", file=sys.stderr)
+    started = time.perf_counter()
+    report = run_flexfl(arguments.data, schema, arguments.search, arguments.selection)
+    elapsed = time.perf_counter() - started
+    if not arguments.quiet:
+        _section(f"E3: {schema.label}")
+        print(report.equation.equation)
+        print(f"\nIS: {report.equation.in_sample}")
+        for label, scores in report.equation.cross_validated.items():
+            print(f"{PROTOCOL_LABELS.get(label, label)}: R2={scores['r2']:.3f}, MAE={scores['mae']:.3f}")
+        _show(report.shares)
+    if arguments.output:
+        destination = Path(arguments.output) / "flexfl" / schema.slug
+        destination.mkdir(parents=True, exist_ok=True)
+        report.equation.equation.save(destination / "equation.json")
+        (destination / "equation.txt").write_text(f"{report.equation.equation}\n", encoding="utf-8")
+        report.equation.curve.write_csv(destination / "curve.csv")
+        report.effects.write_csv(destination / "term_effects.csv")
+        report.shares.write_csv(destination / "group_shares.csv")
+        print(f"\nequation written to {destination}")
+    print(f"\ncompleted in {elapsed:.1f}s")
+    return 0
 
 
 def phases_of(arguments: Namespace) -> frozenset[str]:
@@ -268,6 +317,9 @@ def main(argv: list[str] | None = None) -> int:
     _configure_windows_output()
     parser = build_parser()
     arguments = parser.instantiate(parser.parse_args(argv))
+    check_target_arguments(parser, arguments)
+    if arguments.target != "mcc":
+        return _run_flexfl_cli(arguments)
     phases = phases_of(arguments)
 
     config: Configuration = arguments.search

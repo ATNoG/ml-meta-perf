@@ -17,7 +17,8 @@ $$\mathrm{MCC} = w_0 + \sum_{i=1}^{k} w_i \, t_i(\mathbf{f})$$
 
 Each $t_i$ is a simple expression over one to three raw features; each $w_i$ is a real
 number **in the features' own units**, so the printed equation evaluates as written.
-Predictions are clipped to $[-1, 1]$.
+Predictions are clipped to the bounds of the target: $[-1, 1]$ for MCC, no clip for an unbounded
+target such as a cost ([chapter 7](07-generic-targets.md)).
 
 The form is **linear in the weights** but not in the features. That distinction is the
 whole design:
