@@ -119,7 +119,7 @@ def evaluate(
     schema = schema or default_schema()
     is_mcc = (schema == default_schema()) if with_tasks is None else with_tasks
     frame = load(data, schema)
-    if not is_mcc:
+    if schema.drop_constant_features:
         schema = drop_constant_features(frame, schema)
     truth, datasets = target(frame, schema), groups(frame, schema.dataset_column)
     fitted = fit_path(frame, schema.dataset_features, schema.model_features, config, schema.tag("E3"), schema=schema)
@@ -199,6 +199,7 @@ def build_parser() -> ArgumentParser:
     parser.add_argument(
         "--side_files", type=SideFilesConfig, help="static facts about the corpus (taxonomy, ordinals, glossary)"
     )
+    parser.add_argument("--equations", type=tuple[str, ...], help="which equations to fit: E1, E2, E3")
     parser.add_argument("--search", type=Configuration, help="the base configuration the grid varies")
     parser.add_argument("--selection", type=SelectionConfig, help="the length rule applied to every point")
     parser.add_argument("--opaque", type=OpaqueConfig, help="carried into the proposal unchanged")
@@ -224,6 +225,7 @@ def main(argv: list[str] | None = None) -> int:
         response=arguments.response,
         features=arguments.features,
         side_files=arguments.side_files,
+        equations=tuple(arguments.equations),
         search=arguments.search,
         selection=arguments.selection,
         opaque=arguments.opaque,

@@ -80,7 +80,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from ml_meta_perf.config import Schema, default_schema, load_config
+from ml_meta_perf.config import RequiredColumn, RowFilter, Schema, default_schema, load_config
 from ml_meta_perf.model import MCC_LOWER, MCC_UPPER
 
 if TYPE_CHECKING:
@@ -191,8 +191,16 @@ def flexfl_schema(target: str, task_type: str | None = None, log_target: bool = 
         model_features=FLEXFL_MODEL_FEATURES,
         target_column=target,
         bounds=bounds,
-        task_type=task_type,
-        log_target=log_target,
+        transform="log1p" if log_target else "none",
+        row_filter=None
+        if task_type is None
+        else RowFilter("is_classification", task_type == "classification", label=task_type),
+        required=(
+            RequiredColumn(FLEXFL_EPOCH_CAP_COLUMN, "re-assemble it with FlexFL's scripts/assemble_meta_dataset.py"),
+        ),
+        single_valued=FLEXFL_EARLY_STOP_RULE_COLUMNS,
+        drop_missing_response=target in FLEXFL_DECOMPOSITION_TARGETS,
+        drop_constant_features=True,
     )
 
 
@@ -337,28 +345,22 @@ def load(path: str | Path | None = None, schema: Schema | None = None) -> pl.Dat
     frame = pl.read_csv(resolved)
     expected = (schema.dataset_column, schema.model_column, *schema.features, schema.target_column)
     missing = [column for column in expected if column not in frame.columns]
-    if FLEXFL_EPOCH_CAP_COLUMN in missing:
-        raise SchemaError(
-            f"stale FlexFL meta-dataset {resolved}: no {FLEXFL_EPOCH_CAP_COLUMN} column; "
-            "re-assemble it with FlexFL's scripts/assemble_meta_dataset.py"
-        )
-    if schema.task_type is not None:
-        if "is_classification" not in frame.columns:
-            raise SchemaError("missing columns: ['is_classification']")
-        wanted = schema.task_type == "classification"
-        frame = frame.filter(pl.col("is_classification").cast(pl.Boolean) == wanted)
-        if frame.is_empty():
-            raise SchemaError(f"meta-dataset has no {schema.task_type} rows")
-    rule_columns = [column for column in FLEXFL_EARLY_STOP_RULE_COLUMNS if column in frame.columns]
-    if rule_columns:
+    for requirement in schema.required:
+        if requirement.column not in frame.columns:
+            hint = f"; {requirement.hint}" if requirement.hint else ""
+            raise SchemaError(f"stale meta-dataset {resolved}: no {requirement.column} column{hint}")
+    if schema.row_filter is not None:
+        frame = _filtered(frame, schema.row_filter)
+    present = [column for column in schema.single_valued if column in frame.columns]
+    if present:
         fitted = frame
-        if schema.target_column in FLEXFL_DECOMPOSITION_TARGETS and schema.target_column in frame.columns:
+        if schema.drop_missing_response and schema.target_column in frame.columns:
             fitted = frame.filter(pl.col(schema.target_column).is_not_null())
-        rules = sorted(str(rule) for rule in fitted.select(rule_columns).unique().iter_rows())
-        if len(rules) > 1:
+        values = sorted(str(row) for row in fitted.select(present).unique().iter_rows())
+        if len(values) > 1:
             raise SchemaError(
-                f"FlexFL meta-dataset {resolved} mixes early-stop rules {', '.join(rules)}; "
-                "fit runs of one rule at a time"
+                f"meta-dataset {resolved} mixes values of {', '.join(present)}: {', '.join(values)}; "
+                "fit runs that share one value at a time"
             )
     if missing:
         raise SchemaError(f"missing columns: {missing}")
@@ -367,30 +369,50 @@ def load(path: str | Path | None = None, schema: Schema | None = None) -> pl.Dat
         [pl.col(column).cast(pl.Float64) for column in (*schema.features, schema.target_column)]
     )
 
-    droppable = schema.target_column in FLEXFL_DECOMPOSITION_TARGETS
-    checked = frame.drop(schema.target_column) if droppable else frame
+    checked = frame.drop(schema.target_column) if schema.drop_missing_response else frame
     nulls = sum(checked.null_count().row(0))
     if nulls:
-        raise SchemaError(f"meta-dataset contains {nulls} null values")
-    if droppable:
-        kept = frame.drop_nulls(schema.target_column)
-        dropped = frame.height - kept.height
-        if dropped:
-            empty = frame.filter(pl.col(schema.target_column).is_null())
-            breakdown = "; ".join(
-                f"by {column}: "
-                + ", ".join(f"{name} {count}" for name, count in empty.group_by(column).len().sort(column).iter_rows())
-                for column in (schema.dataset_column, schema.model_column)
-            )
-            print(
-                f"dropped {dropped} of {frame.height} rows with an empty {schema.target_column} from {resolved} "
-                f"({breakdown})",
-                file=sys.stderr,
-            )
-            if kept.is_empty():
-                raise SchemaError(f"meta-dataset has no rows with a {schema.target_column} value")
-        frame = kept
+        empty_response = not schema.drop_missing_response and frame[schema.target_column].null_count() > 0
+        hint = "; set corpus.drop_missing_response to drop the rows with an empty response" if empty_response else ""
+        raise SchemaError(f"meta-dataset contains {nulls} null values{hint}")
+    if schema.drop_missing_response:
+        frame = _without_empty_response(frame, schema, resolved)
     return frame
+
+
+def _filtered(frame: pl.DataFrame, row_filter: RowFilter) -> pl.DataFrame:
+    """The rows where the filter's column equals its value, or a SchemaError saying why that is impossible."""
+    if row_filter.column not in frame.columns:
+        raise SchemaError(f"missing columns: {[row_filter.column]}")
+    column = pl.col(row_filter.column)
+    if isinstance(row_filter.equals, bool):
+        kept = frame.filter(column.cast(pl.Boolean) == row_filter.equals)
+    elif isinstance(row_filter.equals, str):
+        kept = frame.filter(column.cast(pl.String) == row_filter.equals)
+    else:
+        kept = frame.filter(column.cast(pl.Float64) == float(row_filter.equals))
+    if kept.is_empty():
+        name = row_filter.label or f"{row_filter.column} == {row_filter.equals}"
+        raise SchemaError(f"meta-dataset has no {name} rows")
+    return kept
+
+
+def _without_empty_response(frame: pl.DataFrame, schema: Schema, source: Path) -> pl.DataFrame:
+    """Drop the rows with an empty response and say, on stderr, how many and where they were."""
+    kept = frame.drop_nulls(schema.target_column)
+    dropped = frame.height - kept.height
+    if dropped:
+        empty = frame.filter(pl.col(schema.target_column).is_null())
+        breakdown = "; ".join(
+            f"by {column}: "
+            + ", ".join(f"{name} {count}" for name, count in empty.group_by(column).len().sort(column).iter_rows())
+            for column in (schema.dataset_column, schema.model_column)
+        )
+        message = f"dropped {dropped} of {frame.height} rows with an empty {schema.target_column} from {source}"
+        print(f"{message} ({breakdown})", file=sys.stderr)
+        if kept.is_empty():
+            raise SchemaError(f"meta-dataset has no rows with a {schema.target_column} value")
+    return kept
 
 
 def aggregate_by_dataset(frame: pl.DataFrame, schema: Schema | None = None) -> pl.DataFrame:

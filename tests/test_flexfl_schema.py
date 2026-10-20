@@ -106,7 +106,7 @@ class FlexFLSchemaTests(unittest.TestCase):
             pl.read_csv(FIXTURE).drop(FLEXFL_EPOCH_CAP_COLUMN).write_csv(stale)
             with self.assertRaisesRegex(
                 SchemaError,
-                f"stale FlexFL meta-dataset .*: no {FLEXFL_EPOCH_CAP_COLUMN} column; "
+                f"stale meta-dataset .*: no {FLEXFL_EPOCH_CAP_COLUMN} column; "
                 r"re-assemble it with FlexFL's scripts/assemble_meta_dataset\.py",
             ):
                 load(stale, flexfl_schema("comm_bytes_total"))
@@ -114,6 +114,7 @@ class FlexFLSchemaTests(unittest.TestCase):
             without = dataclasses.replace(
                 schema,
                 model_features=tuple(name for name in schema.model_features if name != FLEXFL_EPOCH_CAP_COLUMN),
+                required=(),
             )
             self.assertNotIn(FLEXFL_EPOCH_CAP_COLUMN, load(stale, without).columns)
 
@@ -142,7 +143,8 @@ class FlexFLSchemaTests(unittest.TestCase):
             mixed.write_csv(path)
             with self.assertRaisesRegex(
                 SchemaError,
-                r"mixes early-stop rules \('loss', 10\), \('metric', 0\); fit runs of one rule at a time",
+                r"mixes values of early_stop_on, min_epochs: \('loss', 10\), \('metric', 0\); "
+                r"fit runs that share one value at a time",
             ):
                 load(path, flexfl_schema("comm_bytes_total"))
 
@@ -161,7 +163,7 @@ class FlexFLSchemaTests(unittest.TestCase):
                         pl.Series("early_stop_on", [rule[0] for rule in rules]),
                         pl.Series("min_epochs", [rule[1] for rule in rules]),
                     ).write_csv(path)
-                    with self.assertRaisesRegex(SchemaError, "mixes early-stop rules"):
+                    with self.assertRaisesRegex(SchemaError, "mixes values of early_stop_on, min_epochs"):
                         load(path, flexfl_schema("comm_bytes_total"))
 
     def test_load_rejects_mixed_rules_within_the_selected_task_type(self) -> None:
@@ -178,7 +180,7 @@ class FlexFLSchemaTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "mixed.csv"
             mixed.write_csv(path)
-            with self.assertRaisesRegex(SchemaError, "mixes early-stop rules"):
+            with self.assertRaisesRegex(SchemaError, "mixes values of early_stop_on, min_epochs"):
                 load(path, flexfl_schema("comm_bytes_total", "classification"))
 
     def test_load_ignores_a_rule_only_on_rows_with_an_empty_decomposition_target(self) -> None:
@@ -198,7 +200,7 @@ class FlexFLSchemaTests(unittest.TestCase):
             with redirect_stderr(io.StringIO()):
                 loaded = load(path, flexfl_schema("compute_time_total_s"))
             self.assertEqual(loaded.height, legacy.count(False))
-            with self.assertRaisesRegex(SchemaError, "mixes early-stop rules"):
+            with self.assertRaisesRegex(SchemaError, "mixes values of early_stop_on, min_epochs"):
                 load(path, flexfl_schema("comm_bytes_total"))
 
     def test_load_accepts_one_early_stop_rule(self) -> None:
@@ -221,7 +223,7 @@ class FlexFLSchemaTests(unittest.TestCase):
             by_task.write_csv(path)
             loaded = load(path, flexfl_schema("comm_bytes_total", "classification"))
             self.assertEqual(loaded.height, int(classification.sum()))
-            with self.assertRaisesRegex(SchemaError, "mixes early-stop rules"):
+            with self.assertRaisesRegex(SchemaError, "mixes values of early_stop_on, min_epochs"):
                 load(path, flexfl_schema("comm_bytes_total"))
 
     def test_mixed_epoch_caps_survive_the_constant_drop(self) -> None:
@@ -421,8 +423,8 @@ class FlexFLSchemaTests(unittest.TestCase):
 
     def test_log_target_schema_requires_unbounded_target(self) -> None:
         with self.assertRaises(ValueError):
-            dataclasses.replace(flexfl_schema("performance", "classification"), log_target=True)
-        dataclasses.replace(flexfl_schema("comm_bytes_total"), log_target=True)
+            dataclasses.replace(flexfl_schema("performance", "classification"), transform="log1p")
+        dataclasses.replace(flexfl_schema("comm_bytes_total"), transform="log1p")
 
     def test_target_applies_log1p(self) -> None:
         for name in ("total_time_s", "comm_bytes_total"):

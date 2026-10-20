@@ -337,7 +337,8 @@ def run_flexfl(
     """
     config, selection = _resolve(config, selection)
     frame = load(path, schema)
-    schema = drop_constant_features(frame, schema)
+    if schema.drop_constant_features:
+        schema = drop_constant_features(frame, schema)
     report = run_equation(
         frame,
         schema.dataset_features,

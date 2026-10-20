@@ -64,6 +64,17 @@ class TestFlags(unittest.TestCase):
             path.write_text(json.dumps(payload), encoding="utf-8")
             self.assertEqual(parse("--config", str(path)).search.max_terms, 12)
 
+    def test_the_problem_description_is_the_study_file_and_each_field_overrides(self) -> None:
+        arguments, study = parse(), load_config()
+        self.assertEqual(arguments.corpus, study.corpus)
+        self.assertEqual(arguments.response, study.response)
+        self.assertEqual(arguments.features, study.features)
+        self.assertEqual(arguments.side_files, study.side_files)
+        self.assertEqual(tuple(arguments.equations), study.equations)
+        changed = parse("--response.transform", "log1p", "--response.bounds", "null", "--equations", '["E3"]')
+        self.assertEqual((changed.response.transform, changed.response.bounds), ("log1p", None))
+        self.assertEqual(tuple(changed.equations), ("E3",))
+
     def test_the_published_length_is_not_a_flag(self) -> None:
         """The selected length is derived from the curve rather than set by a flag."""
         with self.assertRaises(SystemExit), redirect_stderr(io.StringIO()):

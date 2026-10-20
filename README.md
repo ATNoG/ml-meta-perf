@@ -273,16 +273,17 @@ defaults of its own for them. The file is read with `jsonargparse`, so `--config
 replaces it, any field can be overridden as a dotted flag, and `--print_config` prints the
 effective configuration. E1, E2 and E3 share every one of these values.
 
-The same file **describes the problem**, in four sections that hold no tuned value:
+The same file **describes the problem**, in four sections that hold no tuned value, and says which equations to fit:
 
 | section | keys | what it says |
 |---|---|---|
 | `corpus` | `path`, `dataset_column`, `model_column` | the CSV, and the two columns that name the groups held out by the protocols |
-| `response` | `column`, `bounds` | the target, and the `[low, high]` it can take (`null` for a cost, which is then never clipped) |
+| `corpus` (optional) | `row_filter`, `require`, `single_valued`, `drop_missing_response`, `drop_constant_features` | how to read a corpus that is not clean: keep one subset of rows (`{column, equals, label}`), reject a stale corpus that lacks a column (`{column, hint}`), insist that some columns hold one value over the rows fitted, drop and report rows with an empty target, remove features that never vary |
+| `response` | `column`, `bounds`, `transform` | the target, the `[low, high]` it can take (`null` for a cost, which is then never clipped), and `none` or `log1p` to fit `log(1 + y)` ([chapter 7](assets/docs/07-generic-targets.md), section 7.5) |
 | `features` | `dataset`, `model` | which columns describe a dataset and which describe a model |
 | `side_files` | `taxonomy`, `ordinals`, `glossary` | static facts that are not columns of the corpus: the learner family of every model, the assigned ordinal behind each model-descriptor column (with its provenance), and the meaning of each feature; each a JSON file in `dataset/`, or `null` when the study has none |
 
-A study of another target or another corpus is another file of this shape; nothing about a problem
+`equations` lists which of E1, E2 and E3 to fit (`["E1", "E2", "E3"]` for the MCC study). A study of another target or another corpus is another file of this shape; nothing about a problem
 is in the code. The mathematics of the description is in [chapter 7](assets/docs/07-generic-targets.md).
 
 | setting | value | what it does |

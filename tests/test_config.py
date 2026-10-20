@@ -1,11 +1,20 @@
 """Tests for the study configuration file and its schema."""
 
+import dataclasses
 import json
 import tempfile
 import unittest
 from pathlib import Path
 
-from ml_meta_perf.config import DEFAULT_CONFIG_PATH, ConfigError, Schema, load_config, parse_config
+from ml_meta_perf.config import (
+    DEFAULT_CONFIG_PATH,
+    ConfigError,
+    RequiredColumn,
+    RowFilter,
+    Schema,
+    load_config,
+    parse_config,
+)
 from ml_meta_perf.data import resolve_path
 
 
@@ -59,8 +68,8 @@ class TestStudyDescription(unittest.TestCase):
         self.assertIsInstance(schema, Schema)
         self.assertEqual(schema.target_column, "MCC")
         self.assertEqual(schema.features, schema.dataset_features + schema.model_features)
-        self.assertFalse(schema.log_target)
-        self.assertIsNone(schema.task_type)
+        self.assertEqual(schema.transform, "none")
+        self.assertIsNone(schema.row_filter)
 
     def test_a_target_without_bounds_is_unbounded(self) -> None:
         self.payload["response"] = {"column": "total_time_s", "bounds": None}
@@ -121,13 +130,111 @@ class TestStudyDescription(unittest.TestCase):
         with self.assertRaises(TypeError):
             parse_config(self.payload)
 
+    def test_the_shipped_study_fits_the_three_equations_on_an_untransformed_target(self) -> None:
+        study = load_config()
+        self.assertEqual(study.equations, ("E1", "E2", "E3"))
+        self.assertEqual(study.response.transform, "none")
+        self.assertIsNone(study.corpus.row_filter)
+        self.assertEqual((study.corpus.require, study.corpus.single_valued), ((), ()))
+        self.assertFalse(study.corpus.drop_missing_response or study.corpus.drop_constant_features)
+
+    def test_the_transform_is_optional_and_defaults_to_none(self) -> None:
+        del self.payload["response"]["transform"]
+        self.assertEqual(parse_config(self.payload).response.transform, "none")
+
+    def test_a_log_target_is_read_and_reaches_the_schema(self) -> None:
+        self.payload["response"] = {"column": "total_time_s", "bounds": None, "transform": "log1p"}
+        schema = parse_config(self.payload).schema()
+        self.assertEqual(
+            (schema.transform, schema.log_target, schema.label, schema.slug),
+            ("log1p", True, "log1p(total_time_s)", "total_time_s-log1p"),
+        )
+        self.assertEqual(schema.tag("E3"), "E3_log1p")
+
+    def test_a_transform_that_does_not_exist_or_cannot_apply_is_an_error(self) -> None:
+        self.payload["response"]["transform"] = "sqrt"
+        with self.assertRaisesRegex(ConfigError, "response.transform must be one of"):
+            parse_config(self.payload)
+        self.payload["response"]["transform"] = "log1p"  # the MCC target is bounded
+        with self.assertRaisesRegex(ConfigError, "needs response.bounds null"):
+            parse_config(self.payload)
+
+    def test_a_response_key_that_does_not_exist_is_an_error(self) -> None:
+        self.payload["response"]["scale"] = "log"
+        with self.assertRaisesRegex(TypeError, "unexpected response keys"):
+            parse_config(self.payload)
+
+    def test_the_equations_are_validated(self) -> None:
+        for bad in ([], ["E4"], ["E3", "E3"], ["e3"]):
+            self.payload["equations"] = bad
+            with self.subTest(bad), self.assertRaisesRegex(ConfigError, "equations must be"):
+                parse_config(self.payload)
+        self.payload["equations"] = ["E3"]
+        self.assertEqual(parse_config(self.payload).equations, ("E3",))
+
+    def test_a_study_without_equations_is_an_error(self) -> None:
+        del self.payload["equations"]
+        with self.assertRaises(KeyError):
+            parse_config(self.payload)
+
+    def test_the_corpus_options_are_read_and_reach_the_schema(self) -> None:
+        self.payload["corpus"].update(
+            {
+                "row_filter": {"column": "is_classification", "equals": True, "label": "classification"},
+                "require": [{"column": "epoch_cap", "hint": "rebuild"}, {"column": "other"}],
+                "single_valued": ["early_stop_on", "min_epochs"],
+                "drop_missing_response": True,
+                "drop_constant_features": True,
+            }
+        )
+        study = parse_config(self.payload)
+        self.assertEqual(study.corpus.row_filter, RowFilter("is_classification", True, "classification"))
+        self.assertEqual(study.corpus.require, (RequiredColumn("epoch_cap", "rebuild"), RequiredColumn("other")))
+        schema = study.schema()
+        self.assertEqual(schema.single_valued, ("early_stop_on", "min_epochs"))
+        self.assertTrue(schema.drop_missing_response and schema.drop_constant_features)
+        self.assertEqual(schema.slug, "MCC-classification")
+
+    def test_the_corpus_options_survive_a_round_trip_through_json(self) -> None:
+        self.payload["corpus"].update(
+            {
+                "row_filter": {"column": "k", "equals": "a"},
+                "require": [{"column": "c", "hint": "h"}],
+                "single_valued": ["s"],
+            }
+        )
+        study = parse_config(self.payload)
+        self.assertEqual(parse_config(json.loads(json.dumps(dataclasses.asdict(study)))), study)
+
+    def test_bad_corpus_options_are_named(self) -> None:
+        cases = {
+            "unknown filter key": ({"row_filter": {"column": "k", "equal": 1}}, TypeError, "equal"),
+            "empty filter column": (
+                {"row_filter": {"column": "", "equals": 1}},
+                ConfigError,
+                "row_filter.column is empty",
+            ),
+            "empty requirement": ({"require": [{"column": ""}]}, ConfigError, "require holds an empty"),
+            "empty single valued": ({"single_valued": [""]}, ConfigError, "single_valued holds an empty"),
+        }
+        for name, (options, error, message) in cases.items():
+            payload = json.loads(json.dumps(self.payload))
+            payload["corpus"].update(options)
+            with self.subTest(name), self.assertRaisesRegex(error, message):
+                parse_config(payload)
+
+    def test_the_schema_rejects_a_log_scale_on_a_bounded_target_and_unknown_transforms(self) -> None:
+        base = parse_config(self.payload).schema()
+        with self.assertRaisesRegex(ValueError, "bounded target"):
+            dataclasses.replace(base, transform="log1p")
+        with self.assertRaisesRegex(ValueError, "unknown transform"):
+            dataclasses.replace(base, transform="cbrt")
+
     def test_a_config_error_is_a_value_error(self) -> None:
         self.assertTrue(issubclass(ConfigError, ValueError))
 
     def test_the_description_survives_a_round_trip_through_json(self) -> None:
         """A sweep proposal is `dataclasses.asdict` of the study; it must parse back to the same study."""
-        import dataclasses
-
         study = load_config()
         self.assertEqual(parse_config(json.loads(json.dumps(dataclasses.asdict(study)))), study)
 

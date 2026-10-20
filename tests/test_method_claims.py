@@ -8,6 +8,7 @@ import unittest
 
 import numpy as np
 
+from ml_meta_perf.config import Schema
 from ml_meta_perf.data import flexfl_schema
 from ml_meta_perf.terms import build_library
 from ml_meta_perf.validate import _clip_to_training  # pyright: ignore[reportPrivateUsage]
@@ -51,6 +52,41 @@ class TestFoldRange(unittest.TestCase):
     def test_the_fold_range_uses_the_training_rows_only(self) -> None:
         clipped = _clip_to_training(np.array([-9.0, 9.0]), np.array([2.0, 3.0, 4.0]), (-1.0, 1.0))
         np.testing.assert_array_equal(clipped, [2.0, 4.0])
+
+
+class TestLogScale(unittest.TestCase):
+    """Section 7.5: fitting a cost on a log scale."""
+
+    def test_the_back_transform_inverts_the_transform(self) -> None:
+        y = np.array([0.0, 0.5, 3.0, 1e4, 1e9])
+        np.testing.assert_allclose(np.expm1(np.log1p(y)), y, rtol=1e-12)
+
+    def test_the_prediction_is_a_product_of_term_factors(self) -> None:
+        rng = np.random.default_rng(5)
+        t = rng.normal(size=(6, 3))
+        w0, w = 0.7, np.array([0.4, -0.2, 0.9])
+        z = w0 + t @ w
+        product = np.exp(w0) * np.prod(np.exp(t * w), axis=1) - 1.0
+        np.testing.assert_allclose(np.expm1(z), product, rtol=1e-12)
+
+    def test_a_power_law_is_recovered_as_weights_on_log_terms(self) -> None:
+        rng = np.random.default_rng(6)
+        x1, x2 = rng.uniform(1e2, 1e4, 200), rng.uniform(1e2, 1e4, 200)
+        y = 3.0 * x1**1.5 * x2**-0.5
+        design = np.column_stack([np.ones(200), np.log(x1), np.log(x2)])
+        weights = np.linalg.lstsq(design, np.log1p(y), rcond=None)[0]
+        np.testing.assert_allclose(weights[1:], [1.5, -0.5], atol=2e-2)
+        self.assertAlmostEqual(weights[0], np.log(3.0), delta=0.2)
+
+    def test_a_log_error_is_a_relative_error(self) -> None:
+        y = np.array([1e3, 1e5, 1e7])
+        predicted = y * 1.1
+        np.testing.assert_allclose(np.log1p(predicted) - np.log1p(y), np.log(1.1), atol=2e-3)
+
+    def test_the_rule_for_bounded_targets_is_checked_when_the_study_is_read(self) -> None:
+        with self.assertRaises(ValueError):
+            Schema("d", "m", ("a",), ("b",), "y", (-1.0, 1.0), transform="log1p")
+        self.assertTrue(Schema("d", "m", ("a",), ("b",), "y", None, transform="log1p").log_target)
 
 
 class TestIndicatorColumns(unittest.TestCase):

@@ -151,3 +151,28 @@ where $r$ is the repository root of the running source and $w$ the working direc
 comes first so that an editable install and `PYTHONPATH=src` find the shipped corpus; the working
 directory covers a regular install run from a clone. A path given on the command line with
 `--data` is not resolved: it is used as written.
+
+## 7.5 Fitting a cost on a log scale
+
+A cost (a time, bytes sent, energy) spans orders of magnitude and grows multiplicatively: doubling
+the data roughly doubles the time. An additive equation fitted by least squares on the raw cost
+spends nearly all of its error budget on the few largest runs. `response.transform = "log1p"` fits
+the transformed target instead,
+
+$$z = \log(1 + y), \qquad \hat{z} = w_0 + \sum_{i=1}^{k} w_i\, t_i(\mathbf{f}), \qquad
+\hat{y} = e^{\hat{z}} - 1 = e^{w_0} \prod_{i=1}^{k} e^{\,w_i t_i(\mathbf{f})} - 1 .$$
+
+The equation is still a sum and is still read term by term, but on the log scale: every term
+*multiplies* the prediction by $e^{w_i t_i}$. With the grammar's $\log$ transform a term
+$w \log x$ contributes the factor $x^{w}$, so for a cost that follows a power law
+$y = c\, x_1^{a} x_2^{b}$ the fit recovers the exponents $a$ and $b$ as weights, because for
+$y \gg 1$
+
+$$\log(1 + y) = \log y + \log\!\Big(1 + \tfrac{1}{y}\Big) \approx \log c + a \log x_1 + b \log x_2 .$$
+
+A transform needs a target it is defined on. `log1p` requires $y \ge 0$ and an unbounded target
+($B = \varnothing$): a bounded target such as MCC has no log scale, and both rules are checked, the
+second when the study file is read and the first when the data is. $R^2$ and MAE of a transformed
+target are on the scale of $z$, which is also the scale the equation was fitted on; a mean absolute
+error on $z$ is approximately a relative error on $y$, since $\log(1+y) - \log(1+\hat{y}) \approx
+\log(y/\hat{y})$ for large values.

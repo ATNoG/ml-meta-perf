@@ -86,8 +86,8 @@ class TestTheShippedStudyFile(unittest.TestCase):
 
     def test_the_target_and_its_bounds(self) -> None:
         self.assertEqual((self.schema.target_column, self.schema.bounds), ("MCC", (-1.0, 1.0)))
-        self.assertIsNone(self.schema.task_type)
-        self.assertFalse(self.schema.log_target)
+        self.assertEqual(self.schema.transform, "none")
+        self.assertIsNone(self.schema.row_filter)
 
     def test_the_groups(self) -> None:
         self.assertEqual((self.schema.dataset_column, self.schema.model_column), ("Dataset", "Model"))

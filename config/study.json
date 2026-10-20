@@ -9,7 +9,8 @@
     "bounds": [
       -1.0,
       1.0
-    ]
+    ],
+    "transform": "none"
   },
   "features": {
     "dataset": [
@@ -40,6 +41,11 @@
     "ordinals": "dataset/model_ordinals.json",
     "glossary": "dataset/feature_glossary.json"
   },
+  "equations": [
+    "E1",
+    "E2",
+    "E3"
+  ],
   "search": {
     "max_abs_zscore": 3.5,
     "penalty": 0.1,

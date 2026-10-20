@@ -47,9 +47,35 @@ def _default_config_path() -> Path:
 DEFAULT_CONFIG_PATH = _default_config_path()
 
 
+#: The transforms a target can be fitted on. ``log1p`` fits ``log(1 + y)``: a cost spanning orders
+#: of magnitude becomes a relative error, and the equation's terms multiply (chapter 7).
+TRANSFORMS = ("none", "log1p")
+
+#: The equations a study can fit: E1 the dataset features, E2 the model features, E3 both.
+EQUATIONS = ("E1", "E2", "E3")
+
+
+@dataclass(frozen=True)
+class RowFilter:
+    """Keep the rows whose ``column`` equals ``equals``: one task type of a mixed corpus."""
+
+    column: str
+    equals: bool | int | float | str
+    #: Names the subset in output folders (``classification``); optional.
+    label: str | None = None
+
+
+@dataclass(frozen=True)
+class RequiredColumn:
+    """A column the corpus must have, with what to do when it is missing (a stale corpus)."""
+
+    column: str
+    hint: str = ""
+
+
 @dataclass(frozen=True)
 class Schema:
-    """Which columns a meta-dataset's rows, groups, features and target live in.
+    """Which columns a meta-dataset's rows, groups, features and target live in, and how to read it.
 
     The runtime form of a study's data description: `StudyConfig.schema` builds it from the
     ``corpus``, ``response`` and ``features`` sections of the study file.
@@ -61,21 +87,35 @@ class Schema:
     model_features: tuple[str, ...]
     target_column: str
     bounds: tuple[float, float] | None
-    task_type: str | None = None
-    log_target: bool = False
+    transform: str = "none"
+    row_filter: RowFilter | None = None
+    required: tuple[RequiredColumn, ...] = ()
+    single_valued: tuple[str, ...] = ()
+    drop_missing_response: bool = False
+    drop_constant_features: bool = False
 
     def __post_init__(self) -> None:
-        if self.log_target and self.bounds is not None:
-            raise ValueError("log1p requires bounds=None; only the unbounded FlexFL cost targets support it")
+        if self.transform not in TRANSFORMS:
+            raise ValueError(f"unknown transform {self.transform!r}; expected one of {TRANSFORMS}")
+        if self.transform == "log1p" and self.bounds is not None:
+            raise ValueError("log1p requires bounds=None: a bounded target cannot be fitted on a log scale")
 
     @property
     def features(self) -> tuple[str, ...]:
         return self.dataset_features + self.model_features
 
     @property
+    def log_target(self) -> bool:
+        return self.transform == "log1p"
+
+    @property
     def slug(self) -> str:
-        base = self.target_column if self.task_type is None else f"{self.target_column}-{self.task_type}"
-        return f"{base}-log1p" if self.log_target else base
+        parts = [self.target_column]
+        if self.row_filter is not None and self.row_filter.label:
+            parts.append(self.row_filter.label)
+        if self.log_target:
+            parts.append("log1p")
+        return "-".join(parts)
 
     @property
     def label(self) -> str:
@@ -96,6 +136,16 @@ class CorpusConfig:
     dataset_column: str
     #: The column naming the model, the second grouping factor (leave-one-model-out).
     model_column: str
+    #: Keep only the rows where a column has a value: one task type of a mixed corpus.
+    row_filter: RowFilter | None = None
+    #: Columns the corpus must have; a missing one is reported with its hint (a stale corpus).
+    require: tuple[RequiredColumn, ...] = ()
+    #: Columns that must hold a single value over the rows fitted (one early-stopping rule).
+    single_valued: tuple[str, ...] = ()
+    #: Drop (and report) rows with an empty response instead of rejecting the corpus.
+    drop_missing_response: bool = False
+    #: Remove the features that take one value in the rows fitted before the library is built.
+    drop_constant_features: bool = False
 
 
 @dataclass(frozen=True)
@@ -106,6 +156,8 @@ class ResponseConfig:
     #: ``[low, high]`` when the target cannot leave a range (MCC, a bounded error); ``None`` for
     #: a cost, a time or a count, which is then never clipped (chapter 7, section 7.1).
     bounds: tuple[float, float] | None
+    #: ``none``, or ``log1p`` to fit ``log(1 + y)`` (an unbounded, non-negative target).
+    transform: str = "none"
 
 
 @dataclass(frozen=True)
@@ -220,6 +272,8 @@ class StudyConfig:
     response: ResponseConfig
     features: FeaturesConfig
     side_files: SideFilesConfig
+    #: Which equations to fit: E1 (dataset features), E2 (model features), E3 (both).
+    equations: tuple[str, ...]
     search: Configuration
     selection: SelectionConfig
     opaque: OpaqueConfig
@@ -234,15 +288,27 @@ class StudyConfig:
             model_features=self.features.model,
             target_column=self.response.column,
             bounds=self.response.bounds,
+            transform=self.response.transform,
+            row_filter=self.corpus.row_filter,
+            required=self.corpus.require,
+            single_valued=self.corpus.single_valued,
+            drop_missing_response=self.corpus.drop_missing_response,
+            drop_constant_features=self.corpus.drop_constant_features,
         )
 
 
 def _validated(
-    corpus: CorpusConfig, response: ResponseConfig, features: FeaturesConfig, side_files: SideFilesConfig
+    corpus: CorpusConfig,
+    response: ResponseConfig,
+    features: FeaturesConfig,
+    side_files: SideFilesConfig,
+    equations: tuple[str, ...],
 ) -> None:
     """Reject a study description that cannot describe a corpus, before any file is read."""
     if not corpus.path:
         raise ConfigError("corpus.path is empty")
+    if not equations or any(name not in EQUATIONS for name in equations) or len(set(equations)) != len(equations):
+        raise ConfigError(f"equations must be a non-empty list without repeats drawn from {EQUATIONS}, got {equations}")
     for kind, path in (
         ("taxonomy", side_files.taxonomy),
         ("ordinals", side_files.ordinals),
@@ -267,28 +333,60 @@ def _validated(
         raise ConfigError(f"a feature cannot also be a group or the response: {reserved}")
     if response.column in identifiers:
         raise ConfigError(f"the response column {response.column!r} is also a group column")
+    if response.transform not in TRANSFORMS:
+        raise ConfigError(f"response.transform must be one of {TRANSFORMS}, got {response.transform!r}")
+    if response.transform == "log1p" and response.bounds is not None:
+        raise ConfigError("response.transform log1p needs response.bounds null: a bounded target has no log scale")
+    if corpus.row_filter is not None and not corpus.row_filter.column:
+        raise ConfigError("corpus.row_filter.column is empty")
+    for requirement in corpus.require:
+        if not requirement.column:
+            raise ConfigError("corpus.require holds an empty column name")
+    for rule in corpus.single_valued:
+        if not rule:
+            raise ConfigError("corpus.single_valued holds an empty column name")
+
+
+def _corpus(payload: dict[str, Any]) -> CorpusConfig:
+    """The ``corpus`` section, with its nested filter and requirements; unknown keys are an error."""
+    options = dict(payload)
+    row_filter = options.pop("row_filter", None)
+    require = options.pop("require", ())
+    single_valued = options.pop("single_valued", ())
+    return CorpusConfig(
+        row_filter=None if row_filter is None else RowFilter(**row_filter),
+        require=tuple(RequiredColumn(**item) for item in require),
+        single_valued=tuple(str(name) for name in single_valued),
+        **options,
+    )
 
 
 def parse_config(payload: dict[str, Any]) -> StudyConfig:
     """Build the typed configuration from the file's JSON object; unknown keys are an error."""
     sweep = payload["sweep"]
     bounds = payload["response"]["bounds"]
-    corpus = CorpusConfig(**payload["corpus"])
+    corpus = _corpus(payload["corpus"])
     response = ResponseConfig(
         column=payload["response"]["column"],
         bounds=None if bounds is None else (float(bounds[0]), float(bounds[1])),
+        **{key: value for key, value in payload["response"].items() if key == "transform"},
     )
+    unknown = set(payload["response"]) - {"column", "bounds", "transform"}
+    if unknown:
+        raise TypeError(f"unexpected response keys: {sorted(unknown)}")
     features = FeaturesConfig(
         dataset=tuple(str(name) for name in payload["features"]["dataset"]),
         model=tuple(str(name) for name in payload["features"]["model"]),
     )
     side_files = SideFilesConfig(**payload["side_files"])
-    _validated(corpus, response, features, side_files)
+    equations = tuple(str(name) for name in payload["equations"])
+    _validated(corpus, response, features, side_files, equations)
     return StudyConfig(
         corpus=corpus,
         response=response,
         features=features,
         side_files=side_files,
+        equations=equations,
         search=Configuration(**payload["search"]),
         selection=SelectionConfig(**payload["selection"]),
         opaque=OpaqueConfig(**payload["opaque"]),
