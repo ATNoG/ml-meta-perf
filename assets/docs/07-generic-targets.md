@@ -84,3 +84,33 @@ by $w$"* and never as a quantity whose effect scales with its value. When a corp
 categorical factor (for example the training mode of a federated run) the equation's terms over
 those columns are offsets between modes, and the factor is a candidate for a protocol that
 holds a whole mode out, not for a leave-one-model-out reading of it (see chapter 5).
+
+## 7.4 What a study is made of
+
+Everything the method needs to know about a problem is a *study description*, and the aim of
+this tool is that nothing of it lives in the code. Formally, a corpus is a set of rows
+
+$$\mathcal{D} = \{(d_i,\; m_i,\; \mathbf{u}_i,\; \mathbf{v}_i,\; y_i)\}_{i=1}^{n},$$
+
+where $d_i$ names the dataset (the first grouping factor), $m_i$ names the model or
+configuration (the second), $\mathbf{u}_i \in \mathbb{R}^{p}$ are the features of the dataset,
+$\mathbf{v}_i \in \mathbb{R}^{q}$ are the features of the model, and $y_i$ is the target. A study
+description is the tuple
+
+$$\mathcal{S} = \big(c_d,\; c_m,\; F_d,\; F_m,\; c_y,\; B\big),$$
+
+with $c_d, c_m$ the columns that hold the two group labels, $F_d, F_m$ the feature columns of
+each kind, $c_y$ the target column and $B$ the bounds of section 7.1. The three equations of
+the MCC study differ only in which features they may use:
+
+$$\text{E1: } F_d, \qquad \text{E2: } F_m, \qquad \text{E3: } F_d \cup F_m .$$
+
+A study with a single grouping factor (one NN family trained in several ways, as in FlexFL) has
+no $c_m$; it fits E3 over its features and its protocols are the ones defined by the groups it
+has (section 5).
+
+Today $\mathcal{S}$ is the `Schema` object in `ml_meta_perf.data`: the MCC study builds it from
+constants and a FlexFL study builds it from `flexfl_schema`. The migration to a study file
+replaces both with one reader of `config/study.json`. Its safety net is `tests/test_data_surface.py`,
+which pins the public names of `ml_meta_perf.data` and the content of the MCC schema, so that the
+schema read from the file can be compared with the one it replaces, item by item.
