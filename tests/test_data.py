@@ -97,7 +97,7 @@ class TestLoadFromTheStudyFile(unittest.TestCase):
     """The corpus, its columns and its path come from ``config/study.json``, not from the code."""
 
     def test_a_bare_load_equals_reading_the_csv_with_the_pinned_columns(self) -> None:
-        """TEMPORARY ORACLE (removed with the MCC constants, step 2.3): the new path equals the old one."""
+        """`load` is the CSV read directly, with the columns the study lists, as Float64."""
         study = load_config()
         columns = [DATASET_COLUMN, MODEL_COLUMN, *DATASET_FEATURES, *MODEL_FEATURES, TARGET_COLUMN]
         oracle = pl.read_csv(resolve_path(study.corpus.path)).select(columns)
