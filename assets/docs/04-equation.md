@@ -32,18 +32,18 @@ equation the study publishes.
 
 ### One process, three feature sets
 
-All three are fitted by the same function on the same 484 observed rows, scored under
+All three are fitted by the same function on the same observed rows, scored under
 the same four protocols, and use one configuration (`config/study.json`) and one length
 rule. Each searches every feature in its permitted block.
 
 All three are fitted on individual pairs, rather than aggregated dataset or model means.
-An R² over 20 dataset averages has a different denominator from an R² over 484 pairs.
+An R² over dataset averages has a different denominator from an R² over every observed pair.
 Aggregating model features would also discard the within-model variation in `Processing
 Units Number`. The generated results use the common pair-level scale.
 
 ## Headline comparison
 
-Every equation is fitted on all 484 rows and scored on all 484 rows, so there is one
+Every equation is fitted on all observed rows and scored on all observed rows, so there is one
 scale and one table:
 
 Each equation, the group-identity references, and the additive mean-based reference are in one generated
@@ -565,4 +565,3 @@ The correction is a diagnostic reference rather than the study's published equat
 It uses model history, while the primary representation aims to expose relationships
 through recorded descriptors. Comparing them requires matching the information available
 under each protocol.
-

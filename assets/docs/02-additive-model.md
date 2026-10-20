@@ -172,12 +172,12 @@ preferable to an indicator that switches on it.
 ## Library sizes
 
 Library sizes depend on the corpus, feature group, arity, and `max_abs_zscore`. The
-revised configuration uses a stability cap of 3.5. The run regenerates the admissible
+stability cap is set in `config/study.json`. The run regenerates the admissible
 libraries rather than retaining counts from an earlier corpus.
 
 The cap rejects a term when one row lies too many standard deviations from its mean.
 It is sample-size dependent: a lone outlier among $n$ rows can approach $\sqrt{n}$.
-All three primary equations use the same 484 observed rows and the same selected cap.
+All three primary equations use the same observed rows and the same selected cap.
 
 ## Which transforms are admitted, and why not others
 
@@ -236,4 +236,3 @@ The equation is additive in its selected terms; mixed terms can represent some
 interactions between dataset and model descriptors. The identity and interaction
 references in [chapter 4](04-equation.md) assess what those terms recover on this corpus.
 They do not establish a universal upper bound on alternative symbolic forms.
-

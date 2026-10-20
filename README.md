@@ -19,22 +19,22 @@ The project prioritises a readable equation and compares its fixed-form coeffici
 with reference regressors under the same exclusions. The resulting equation can be inspected
 alongside its prediction errors and representation assumptions.
 
-> **Status:** research prototype for an academic study. The corpus contains 484 observed pairs
-> from a grid of 20 datasets and 25 models, which is small. The headline equation scores are
+> **Status:** research prototype for an academic study. The corpus is a small grid
+> of datasets and models (its size is in the generated headline below). The headline equation scores are
 > reported both under IS and held-out cross-validation because the two differ a lot
 > at this size.
 
 The revised corpus covers six network-slicing or service-quality datasets and fourteen
 network-traffic or security datasets. It includes synthetic 6G slicing data and a centralized
-application-layer representation of OCPP 1.6 intrusion-detection data. Sixteen cells are
-excluded by the minimum-training-size policy; the complete grid covers eighteen datasets.
+application-layer representation of OCPP 1.6 intrusion-detection data. Some cells are
+excluded by the minimum-training-size policy; chapter 1 counts them per dataset.
 
 ## Headline results
 
 The equation labels are **E1** (dataset features only), **E2** (model features only),
 **E3-Valid** (the retained equation, using both feature groups), and **E3-MAX** (the raw-floor
-length comparison at the configured capability arity). In the current configuration both
-use arity three; their length-selection rules differ.
+length comparison at the configured capability arity). Their arities are configured (see
+the generated headline) and their length-selection rules differ.
 
 The table below is **generated**: `ml-meta-perf` rewrites it on every run, like the result
 sections of the chapters, so it cannot drift from the code.
@@ -43,7 +43,7 @@ sections of the chapters, so it cannot drift from the code.
 
 ## The headline
 
-The one table the study is summarised by, so that the summary cannot drift from the chapters. Every row is scored on the same 484 rows under the same protocols. E1, E2, and E3-Valid share the retained base configuration; E3-MAX takes the raw floor maximum at the configured capability arity; the current primary and capability arities both equal three.
+The one table the study is summarised by, so that the summary cannot drift from the chapters. Every row is scored on the same 484 rows under the same protocols. E1, E2, and E3-Valid share the retained base configuration; E3-MAX takes the raw floor maximum at the configured capability arity (primary arity 3, capability arity 3).
 
 | equation | features | terms | IS R2 | LODO R2 | LOMO R2 | DHO R2 | own ceiling | reached |
 |---|---|---|---|---|---|---|---|---|
@@ -59,9 +59,9 @@ The one table the study is summarised by, so that the summary cannot drift from 
 <!-- end generated -->
 
 The three primary equations differ only in which features they may draw on. All three are
-fitted on the same 484 rows by the same function, under **one** hyperparameter configuration
+fitted on the same observed rows by the same function, under **one** hyperparameter configuration
 (`config/study.json`), have their length chosen by **one** rule, and are scored on the same
-484 rows under the same four protocols, so the gaps between them measure the features and
+observed rows under the same four protocols, so the gaps between them measure the features and
 nothing else.
 
 **Their coefficient of determination (R²) values share a scale but not a ceiling, and this

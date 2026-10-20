@@ -16,10 +16,10 @@ leave-one-model-out (**LOMO**), and doubly held out (**DHO**).
 
 | protocol | fitted on | scored on | question answered |
 |---|---|---|---|
-| **IS** | all 484 rows | the same 484 rows | how well does the equation *describe* the data |
+| **IS** | all observed rows | the same observed rows | how well does the equation *describe* the data |
 | **LODO** | 19 datasets | the held-out 20th, rotated | what will these models score on a dataset nobody has run |
 | **LOMO** | 24 models | the held-out 25th, rotated | what will a new model score on datasets we know |
-| **DHO** | every row sharing neither the dataset nor the model | one observed (dataset, model) cell, rotated over all 484 | what will *this* model score on *this* dataset, when neither has been run |
+| **DHO** | every row sharing neither the dataset nor the model | one observed (dataset, model) cell, rotated over all observed cells | what will *this* model score on *this* dataset, when neither has been run |
 
 **The fourth is the question the study is actually for**, and it is the strictest of the
 four: LODO still shows a predictor the held-out learner on nineteen other
@@ -91,10 +91,10 @@ same recommendation made by community reporting standards (Walsh et al., 2021).
 | **MAE** | MCC | the honest error headline — what a practitioner actually asks |
 | RMSE | MCC | outlier-sensitive companion to MAE |
 | SMAPE | % | scale-free, but see the caveat below |
-| Spearman | — | rank quality over all 484 rows, insensitive to the MCC ceiling |
+| Spearman | — | rank quality over all observed rows, insensitive to the MCC ceiling |
 
 Spearman is reported for the regression task and **not** used to compare model rankings.
-Computed over all 484 rows, it mixes between-dataset and within-dataset order and can assign
+Computed over all observed rows, it mixes between-dataset and within-dataset order and can assign
 correlation even to a predictor that is constant within each held-out group. Average
 precision, reciprocal rank, hit@1, and regret instead evaluate each dataset's model list and
 weight its head, which is where a recommendation is actually read.
@@ -119,7 +119,7 @@ are reported, which is what the `at both centres` sub-table below is for.
 
 R² uses the mean of the evaluated targets in its denominator. Scores over aggregated
 dataset means and scores over observed pairs therefore measure different quantities.
-All three primary equations here are fitted and scored on the same 484 pairs.
+All three primary equations here are fitted and scored on the same observed pairs.
 
 ### A caveat on SMAPE
 
@@ -321,21 +321,21 @@ R² is the wrong question for a practitioner, who asks whether a model will work
 | RidgeCV (linear) (IS) | 0.7000 | 0.7996 | 0.6921 | 0.8993 | 0.8000 | 0.5681 | 0.8468 | 0.9387 | 335 |
 | RidgeCV (linear) (IS) | 0.8000 | 0.7128 | 0.6632 | 0.9099 | 0.6293 | 0.4805 | 0.7440 | 0.9362 | 321 |
 | RidgeCV (linear) (IS) | 0.9000 | 0.6839 | 0.5496 | 0.9065 | 0.4737 | 0.4553 | 0.6222 | 0.9189 | 266 |
-| RidgeCV (linear) (LODO) | 0.5000 | 0.7645 | 0.7831 | 0.8354 | 0.8707 | 0.2678 | 0.8527 | 0.9223 | 379 |
+| RidgeCV (linear) (LODO) | 0.5000 | 0.7624 | 0.7831 | 0.8350 | 0.8681 | 0.2638 | 0.8512 | 0.9223 | 379 |
 | RidgeCV (linear) (LODO) | 0.6000 | 0.7211 | 0.7479 | 0.8252 | 0.7956 | 0.2862 | 0.8101 | 0.8879 | 362 |
 | RidgeCV (linear) (LODO) | 0.7000 | 0.6901 | 0.6921 | 0.8136 | 0.7164 | 0.3286 | 0.7619 | 0.9127 | 335 |
 | RidgeCV (linear) (LODO) | 0.8000 | 0.6529 | 0.6632 | 0.8283 | 0.6012 | 0.3366 | 0.6968 | 0.9035 | 321 |
 | RidgeCV (linear) (LODO) | 0.9000 | 0.6426 | 0.5496 | 0.7925 | 0.4737 | 0.3414 | 0.5929 | 0.8896 | 266 |
-| RidgeCV (linear) (LOMO) | 0.5000 | 0.8492 | 0.7831 | 0.8732 | 0.9446 | 0.5146 | 0.9075 | 0.9216 | 379 |
-| RidgeCV (linear) (LOMO) | 0.6000 | 0.8244 | 0.7479 | 0.8837 | 0.8812 | 0.5355 | 0.8824 | 0.9002 | 362 |
-| RidgeCV (linear) (LOMO) | 0.7000 | 0.7624 | 0.6921 | 0.8846 | 0.7552 | 0.5011 | 0.8148 | 0.9019 | 335 |
-| RidgeCV (linear) (LOMO) | 0.8000 | 0.6901 | 0.6632 | 0.9052 | 0.5950 | 0.4501 | 0.7180 | 0.9002 | 321 |
-| RidgeCV (linear) (LOMO) | 0.9000 | 0.6529 | 0.5496 | 0.8828 | 0.4248 | 0.4016 | 0.5736 | 0.8775 | 266 |
-| RidgeCV (linear) (DHO) | 0.5000 | 0.7479 | 0.7831 | 0.8303 | 0.8522 | 0.2321 | 0.8411 | 0.8902 | 379 |
-| RidgeCV (linear) (DHO) | 0.6000 | 0.7128 | 0.7479 | 0.8270 | 0.7790 | 0.2811 | 0.8023 | 0.8623 | 362 |
-| RidgeCV (linear) (DHO) | 0.7000 | 0.6756 | 0.6921 | 0.8134 | 0.6896 | 0.3130 | 0.7464 | 0.8839 | 335 |
-| RidgeCV (linear) (DHO) | 0.8000 | 0.6405 | 0.6632 | 0.8267 | 0.5794 | 0.3223 | 0.6813 | 0.8735 | 321 |
-| RidgeCV (linear) (DHO) | 0.9000 | 0.6302 | 0.5496 | 0.7843 | 0.4511 | 0.3208 | 0.5728 | 0.8568 | 266 |
+| RidgeCV (linear) (LOMO) | 0.5000 | 0.8492 | 0.7831 | 0.8732 | 0.9446 | 0.5146 | 0.9075 | 0.9214 | 379 |
+| RidgeCV (linear) (LOMO) | 0.6000 | 0.8244 | 0.7479 | 0.8837 | 0.8812 | 0.5355 | 0.8824 | 0.9000 | 362 |
+| RidgeCV (linear) (LOMO) | 0.7000 | 0.7624 | 0.6921 | 0.8846 | 0.7552 | 0.5011 | 0.8148 | 0.9016 | 335 |
+| RidgeCV (linear) (LOMO) | 0.8000 | 0.6901 | 0.6632 | 0.9052 | 0.5950 | 0.4501 | 0.7180 | 0.8998 | 321 |
+| RidgeCV (linear) (LOMO) | 0.9000 | 0.6508 | 0.5496 | 0.8819 | 0.4211 | 0.3984 | 0.5700 | 0.8767 | 266 |
+| RidgeCV (linear) (DHO) | 0.5000 | 0.7500 | 0.7831 | 0.8308 | 0.8549 | 0.2358 | 0.8427 | 0.8904 | 379 |
+| RidgeCV (linear) (DHO) | 0.6000 | 0.7087 | 0.7479 | 0.8240 | 0.7762 | 0.2707 | 0.7994 | 0.8627 | 362 |
+| RidgeCV (linear) (DHO) | 0.7000 | 0.6756 | 0.6921 | 0.8134 | 0.6896 | 0.3130 | 0.7464 | 0.8844 | 335 |
+| RidgeCV (linear) (DHO) | 0.8000 | 0.6426 | 0.6632 | 0.8304 | 0.5794 | 0.3282 | 0.6826 | 0.8740 | 321 |
+| RidgeCV (linear) (DHO) | 0.9000 | 0.6343 | 0.5496 | 0.7908 | 0.4549 | 0.3297 | 0.5776 | 0.8608 | 266 |
 | RandomForest (100 trees) (IS) | 0.5000 | 0.9814 | 0.7831 | 0.9818 | 0.9947 | 0.9448 | 0.9882 | 0.9997 | 379 |
 | RandomForest (100 trees) (IS) | 0.6000 | 0.9773 | 0.7479 | 0.9808 | 0.9890 | 0.9394 | 0.9849 | 0.9991 | 362 |
 | RandomForest (100 trees) (IS) | 0.7000 | 0.9587 | 0.6921 | 0.9730 | 0.9672 | 0.9034 | 0.9701 | 0.9935 | 335 |
@@ -402,8 +402,8 @@ Ranking models within a held-out dataset:
 | per-model median (LODO) | 0.8471 | 0.8738 | 0.8000 | 0.0077 | 20 | 0.6072 | no |
 | RidgeCV (linear) (IS) | 0.7649 | 0.8350 | 0.7500 | 0.0106 | 20 | 0.0414 | no |
 | RidgeCV (linear) (LODO) | 0.7136 | 0.7953 | 0.7000 | 0.0142 | 20 | 0.0118 | yes |
-| RidgeCV (linear) (LOMO) | 0.7089 | 0.8071 | 0.7000 | 0.0347 | 20 | 0.0118 | yes |
-| RidgeCV (linear) (DHO) | 0.6670 | 0.7607 | 0.6500 | 0.0664 | 20 | 0.0118 | yes |
+| RidgeCV (linear) (LOMO) | 0.7030 | 0.8071 | 0.7000 | 0.0347 | 20 | 0.0118 | yes |
+| RidgeCV (linear) (DHO) | 0.6665 | 0.7690 | 0.6500 | 0.0664 | 20 | 0.0118 | yes |
 | RandomForest (100 trees) (IS) | 0.9026 | 0.9417 | 0.9000 | 0.0014 | 20 | 0.0127 | yes |
 | RandomForest (100 trees) (LODO) | 0.8281 | 0.8500 | 0.7500 | 0.0133 | 20 | 0.3323 | no |
 | RandomForest (100 trees) (LOMO) | 0.7200 | 0.7171 | 0.5500 | 0.0490 | 20 | 0.0075 | yes |
@@ -421,7 +421,7 @@ The other side of the trade, priced. Three standard regressors on all eighteen r
 
 | model | features | r2_IS | mae_IS | r2_LODO | mae_LODO | r2_LOMO | mae_LOMO | r2_DHO | mae_DHO |
 |---|---|---|---|---|---|---|---|---|---|
-| RidgeCV (linear) | 18 | 0.4835 | 0.1745 | -0.0993 | 0.2465 | 0.4165 | 0.1887 | -0.1343 | 0.2547 |
+| RidgeCV (linear) | 18 | 0.4836 | 0.1745 | -0.1012 | 0.2470 | 0.4166 | 0.1886 | -0.1302 | 0.2543 |
 | RandomForest (100 trees) | 18 | 0.9586 | 0.0385 | 0.2045 | 0.2208 | 0.6455 | 0.1170 | 0.1091 | 0.2367 |
 | GradientBoosting (50 stages) | 18 | 0.8164 | 0.0913 | 0.1833 | 0.2168 | 0.6086 | 0.1311 | 0.1049 | 0.2264 |
 
@@ -465,4 +465,3 @@ unmatched means, support any claim about which ranking method performs better.
 | outer grouped discovery and configuration selection | would assess the complete procedure independently |
 | recording eligibility and failed runs | would distinguish execution feasibility from observed performance |
 | controlled training-size interventions | would separate source-size associations from the effect of more training data |
-

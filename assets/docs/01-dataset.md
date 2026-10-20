@@ -53,8 +53,8 @@ Its shape, and which pairs are absent, are in the generated section below.
 Audited against [`meta_dataset_pipeline/`](../../meta_dataset_pipeline/), especially
 `exp_stage_create_meta_dataset.py`. Every observed (dataset, model) pair has five seed
 records (5, 7, 11, 13, 42), and the row kept here is the one with the **highest** MCC
-(`groupby(["Dataset","Model"]).MCC.idxmax()`). The revised corpus contains 484 selected
-pairs and 2,420 seed evaluation records.
+(`groupby(["Dataset","Model"]).MCC.idxmax()`). The corpus therefore holds one selected
+pair per observed cell and five seed records behind each.
 
 The target is **best-observed performance**, rather than the mean or a typical seed.
 Seed selection can raise absolute performance and affect comparisons between learners;
@@ -165,9 +165,9 @@ learning. Their source-specific preparation is documented in the supplied datase
 All datasets use the same evaluation pipeline, models, checkpoints, and five seeds.
 
 Eight GPU/deep learners are excluded before fitting on KPI-KQI and UNAC by the minimum
-training-size policy. These 16 absent cells leave 484 observed pairs; they should not be
-described as failed training runs. The 18 complete datasets supply 450 pairs for matched
-family comparisons.
+training-size policy. These absent cells leave the observed pairs counted in the tables of this
+chapter; they should not be described as failed training runs. The datasets with every model
+supply the pairs for matched family comparisons.
 
 ## Two facts that drive the whole design
 
@@ -274,4 +274,3 @@ remain valid results, distinct from the excluded cells.
 The negative MCC observation is retained alongside the zero and positive observations.
 Removing a difficult observed result would change the target population; bounded
 prediction and error reporting therefore include it.
-

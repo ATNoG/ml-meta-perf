@@ -18,7 +18,7 @@ chapter used to make.
 **A best practice is not a property of an equation.** It is general, transferable advice —
 short enough to remember, cheap enough to apply — that already circulates in the field and
 that evidence can support, qualify or challenge. "Higher `nr_norm` went with lower MCC on
-these twenty datasets" is not that. It is a *measurement*: it names a column rather than an
+these datasets" is not that. It is a *measurement*: it names a column rather than an
 action, it is true only of this corpus, and [chapter 4](04-equation.md) shows that its
 sign can change when the equation changes — the [limitations](#limitations-of-the-practice-comparison)
 record a column that flipped sign between two equations fitted on the same data.
@@ -309,7 +309,14 @@ should act on is better left unwritten.
 `confidence` combines effect size with fold stability: *strong* is ≥0.85 stability and
 ≥0.10 effect; *moderate* is ≥0.50 and ≥0.05; anything else is *weak*.
 
-![Feature effects](../figures/05_practice_effects.png)
+**Fold stability here means exact-term re-selection.** It is the mean share of leave-one-dataset-out
+folds in which the *same terms* that contain the feature are chosen again when selection is re-run.
+With a large, redundant term library the same features recombine into different terms from fold to
+fold, so this measure is stricter than asking whether the *feature* is re-selected inside any term.
+A feature can therefore be used in almost every fold and still fail the stability filter, and the
+table can be empty without the features being unstable. The filter is kept as defined rather than
+loosened after seeing an empty result. When no practice survives, the feature-effects figure is
+not produced.
 
 ### What the measurements are not
 
@@ -375,4 +382,3 @@ The extraction applies effect, correlation, and fold-stability filters and check
 between direction and signed decile effect. These restrictions do not establish stability
 across alternative configurations. Further work should assess coefficient and feature-sign
 stability across such configurations before turning an association into general advice.
-

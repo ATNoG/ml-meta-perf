@@ -90,7 +90,7 @@ identity against the literal definition across penalties and subset sizes.
 Every candidate refit is a $k \times k$ solve against a precomputed Gram matrix rather
 than a least-squares call against the full design. The selected run evaluates four
 fixed forms and all four protocols; DHO requires one coefficient refit per observed
-pair, currently 484. The opaque references use the same partition structure.
+pair. The opaque references use the same partition structure.
 
 The timing and profiling measurements below are historical implementation benchmarks,
 not timings of the updated corpus or the complete 70-configuration search. They describe
@@ -265,10 +265,10 @@ not asked to stay readable. It uses the configured capability arity
 (`selection.floor_argmax`) — no smoothing and no complexity penalty, because a bound should not
 be discounted for being long. A maximum at the horizon means the bound belongs to the horizon,
 and the generated summary flags it. E3-MAX is reported as a bound and is not used for the
-downstream prediction and model-ranking results. In the current run, primary and
-capability arities both equal three: E3-Valid selects 15 terms by the smoothed plateau
-rule, while E3-MAX selects 24 terms at the raw four-protocol floor maximum. It does
-not use a wider grammar than E3-Valid in this configuration.
+downstream prediction and model-ranking results. The generated summary gives the primary
+and capability arities and the term count each rule selects: E3-Valid by the smoothed plateau
+rule, E3-MAX at the raw four-protocol floor maximum. E3-MAX uses a wider grammar than
+E3-Valid only when the configured capability arity exceeds the primary one.
 
 ### How the configuration itself was chosen
 
@@ -284,8 +284,8 @@ separates configurations R² cannot: at the same floor, ranking precision varies
 one configuration to the next. The sweep writes every candidate's scores and a proposal;
 adopting it is a reviewed edit to the file. The unchanged grid contains seven stability
 caps, five penalties, and arities two and three: 70 configurations. Repeating that full
-procedure on the updated corpus retained a stability cap of 3.5, penalty 0.1, and arity
-three; the selection criteria and length rule were not changed.
+procedure on the updated corpus retained the configuration now in `config/study.json`;
+the selection criteria and length rule were not changed.
 
 The paired per-dataset table in the generated section compares other lengths with E3-Valid as
 a sensitivity analysis. It does not define additional E3-Valid equations.

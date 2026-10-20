@@ -15,9 +15,9 @@ and neural network (**NN**).
 
 The equation labels are **E1** (dataset features only), **E3-Valid** (the plateau-selected
 equation using dataset and model features), and **E3-MAX** (the maximum-capability equation
-using those feature groups). The updated corpus contains 484 observed pairs across
-20 network-oriented datasets and 25 classifiers. E3-Valid has 15 terms; E3-MAX has
-24 terms, with both using the retained arity-three grammar.
+using those feature groups). The corpus size, the term count of each equation and the
+arity of the grammar are in the generated headline of [chapter 1](01-dataset.md); they
+are not repeated here, so they cannot go stale.
 
 Notes gathered while building `ml-meta-perf`, organised around the question the project
 actually faces: *why choose a short additive equation over an accurate opaque regressor,
@@ -160,8 +160,9 @@ LODO question.
 standard remedy and are included by default rather than discovered, which is consistent
 with this study’s inclusion of mixed dataset×model terms. Their sampling
 literature exists because *which* configurations you measure dominates model quality — the
-analogue here is which (dataset, model) pairs get run. The updated corpus observes
-484 of 500 possible pairs; the 16 missing cells follow the declared eligibility rule.
+analogue here is which (dataset, model) pairs get run. The corpus observes most, not all,
+of the possible pairs; the missing cells follow the declared eligibility rule and are
+counted per dataset in [chapter 1](01-dataset.md).
 
 **Where we differ.** They report accuracy on held-out configurations of the *same* system;
 our LODO protocol holds out a dataset, corresponding to a new workload in this analogy,
@@ -281,13 +282,13 @@ coefficient-refitting protocols whose selection dependence is stated explicitly.
 ## 9. Open threads
 
 - **Interaction-aware but interpretable terms.** The performance-influence literature
-  (§5) motivates mixed terms. The retained arity-three vocabulary includes symmetric
+  (§5) motivates mixed terms. The retained grammar includes symmetric
   `sum_ratio` expressions; richer interaction representations and measured learner
   descriptors remain possible extensions.
 - **Ranking.** Historical classifier means and medians are available under LODO;
   descriptor-based prediction remains usable when the classifier itself is excluded.
   Ranking comparisons require matched information availability, as in chapter 5.
-- **More datasets.** Twenty dataset groups limit the independent dataset-level evidence.
+- **More datasets.** The number of dataset groups limits the independent dataset-level evidence.
   Broader coverage would assess whether the observed relationships persist beyond the
   current network-oriented corpus.
 - **Interaction structure.** Compare the fitted equation with the current additive and

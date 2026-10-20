@@ -83,7 +83,7 @@ unequal representation and selection procedures limit superiority claims.
 
 ## The headline
 
-The one table the study is summarised by, so that the summary cannot drift from the chapters. Every row is scored on the same 484 rows under the same protocols. E1, E2, and E3-Valid share the retained base configuration; E3-MAX takes the raw floor maximum at the configured capability arity; the current primary and capability arities both equal three.
+The one table the study is summarised by, so that the summary cannot drift from the chapters. Every row is scored on the same 484 rows under the same protocols. E1, E2, and E3-Valid share the retained base configuration; E3-MAX takes the raw floor maximum at the configured capability arity (primary arity 3, capability arity 3).
 
 | equation | features | terms | IS R2 | LODO R2 | LOMO R2 | DHO R2 | own ceiling | reached |
 |---|---|---|---|---|---|---|---|---|
