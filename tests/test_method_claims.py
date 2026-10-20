@@ -31,6 +31,26 @@ class TestBoundsTable(unittest.TestCase):
             self.assertIsNone(flexfl_schema(cost).bounds, cost)
 
 
+class TestOpenBounds(unittest.TestCase):
+    """Section 7.1: a bound may be open on one side."""
+
+    def test_an_open_side_is_the_infinite_clip(self) -> None:
+        z = np.array([-5.0, 0.5, 9.0])
+        np.testing.assert_array_equal(np.clip(z, 0.0, None), np.maximum(z, 0.0))
+        np.testing.assert_array_equal(np.clip(z, None, 1.0), np.minimum(z, 1.0))
+        np.testing.assert_array_equal(np.clip(z, 0.0, np.inf), np.clip(z, 0.0, None))
+
+    def test_the_bounds_of_a_time_move_to_the_log_scale(self) -> None:
+        """A time floored at y = 0 is floored at z = log(1 + 0) = 0; a ceiling b becomes log(1 + b)."""
+        schema = Schema("d", "m", ("a",), ("b",), "t", (0.0, 99.0), transform="log1p")
+        assert schema.fit_bounds is not None
+        low, high = schema.fit_bounds
+        assert low is not None and high is not None
+        self.assertEqual(low, 0.0)
+        self.assertAlmostEqual(high, float(np.log1p(99.0)))
+        np.testing.assert_allclose(np.expm1([low, high]), [0.0, 99.0])
+
+
 class TestFoldRange(unittest.TestCase):
     """Section 7.2: the training-range clip, and its absence for an unbounded target."""
 

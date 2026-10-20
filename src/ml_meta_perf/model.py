@@ -20,6 +20,7 @@ from pathlib import Path
 
 import numpy as np
 
+from ml_meta_perf.config import Bounds
 from ml_meta_perf.terms import Term
 
 MCC_LOWER = -1.0
@@ -35,7 +36,7 @@ class Equation:
     weights: tuple[float, ...]
     standardized_weights: tuple[float, ...]
     name: str = "equation"
-    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER)
+    bounds: Bounds | None = (MCC_LOWER, MCC_UPPER)
     #: What the equation predicts, as the first line of its text names it.
     target: str = "MCC"
 

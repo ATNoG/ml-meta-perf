@@ -55,6 +55,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ml_meta_perf.config import Bounds
 from ml_meta_perf.fit import RIDGE_DEFAULT, Standardizer, Subset, to_equation
 from ml_meta_perf.model import MCC_LOWER, MCC_UPPER, Equation
 from ml_meta_perf.stats import pearson, pearson_columns, rank_columns, rankdata, spearman
@@ -431,7 +432,7 @@ def search(
     candidates: int = CANDIDATE_POOL_DEFAULT,
     refine_rounds: int = REFINE_ROUNDS_DEFAULT,
     name: str = "equation",
-    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
+    bounds: Bounds | None = (MCC_LOWER, MCC_UPPER),
     label: str = "MCC",
 ) -> SearchResult:
     """Search for the best subset of every size up to ``max_terms`` over the given library.
@@ -468,15 +469,16 @@ def search(
 MIN_CONTRIBUTION = 0.002
 
 
-def pruning_threshold(bounds: tuple[float, float] | None, target: np.ndarray) -> float:
+def pruning_threshold(bounds: Bounds | None, target: np.ndarray) -> float:
     """The ``min_contribution`` ``prune`` should use for a target with these bounds.
 
-    A bounded target keeps ``MIN_CONTRIBUTION``. An unbounded one scales it by the target's
+    A target bounded on both sides scales ``MIN_CONTRIBUTION`` by its span over the MCC span (so MCC
+    and a [0, 2] error keep it as it is). A target open on either side scales it by the target's
     1st-to-99th percentile spread over the MCC span, so a term has to move the prediction by
     the same share of the target's spread that ``MIN_CONTRIBUTION`` is of MCC's.
     """
-    if bounds is not None:
-        return MIN_CONTRIBUTION
+    if bounds is not None and bounds[0] is not None and bounds[1] is not None:
+        return MIN_CONTRIBUTION * (bounds[1] - bounds[0]) / (MCC_UPPER - MCC_LOWER)
     with np.errstate(invalid="ignore"):
         low, high = np.percentile(target, [1.0, 99.0])
     spread = float(high - low)

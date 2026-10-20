@@ -2,6 +2,7 @@
 
 import dataclasses
 import json
+import math
 import tempfile
 import unittest
 from pathlib import Path
@@ -155,8 +156,8 @@ class TestStudyDescription(unittest.TestCase):
         self.payload["response"]["transform"] = "sqrt"
         with self.assertRaisesRegex(ConfigError, "response.transform must be one of"):
             parse_config(self.payload)
-        self.payload["response"]["transform"] = "log1p"  # the MCC target is bounded
-        with self.assertRaisesRegex(ConfigError, "needs response.bounds null"):
+        self.payload["response"]["transform"] = "log1p"  # the MCC target can be negative
+        with self.assertRaisesRegex(ConfigError, "cannot be negative"):
             parse_config(self.payload)
 
     def test_a_response_key_that_does_not_exist_is_an_error(self) -> None:
@@ -225,10 +226,51 @@ class TestStudyDescription(unittest.TestCase):
 
     def test_the_schema_rejects_a_log_scale_on_a_bounded_target_and_unknown_transforms(self) -> None:
         base = parse_config(self.payload).schema()
-        with self.assertRaisesRegex(ValueError, "bounded target"):
+        with self.assertRaisesRegex(ValueError, "cannot be negative"):
             dataclasses.replace(base, transform="log1p")
         with self.assertRaisesRegex(ValueError, "unknown transform"):
             dataclasses.replace(base, transform="cbrt")
+
+    def test_bounds_may_be_open_on_either_side(self) -> None:
+        cases = {
+            "time": ([0, None], (0.0, None)),
+            "ceiling": ([None, 5], (None, 5.0)),
+            "both": ([-1, 1], (-1.0, 1.0)),
+            "open": ([None, None], None),
+            "none": (None, None),
+        }
+        for name, (raw, expected) in cases.items():
+            self.payload["response"]["bounds"] = raw
+            with self.subTest(name):
+                self.assertEqual(parse_config(self.payload).response.bounds, expected)
+
+    def test_bounds_must_be_a_pair(self) -> None:
+        for bad in ([1], [1, 2, 3], "0,1", 5):
+            self.payload["response"]["bounds"] = bad
+            with self.subTest(bad), self.assertRaisesRegex(ConfigError, "null or a .low, high. pair"):
+                parse_config(self.payload)
+
+    def test_a_log_scale_needs_a_target_that_cannot_be_negative(self) -> None:
+        self.payload["response"]["transform"] = "log1p"
+        for bounds, ok in (([0, None], True), ([2, 9], True), (None, True), ([None, 5], False), ([-1, 1], False)):
+            self.payload["response"]["bounds"] = bounds
+            with self.subTest(bounds):
+                if ok:
+                    self.assertEqual(parse_config(self.payload).response.transform, "log1p")
+                else:
+                    with self.assertRaisesRegex(ConfigError, "cannot be negative"):
+                        parse_config(self.payload)
+
+    def test_the_fit_bounds_are_the_bounds_on_the_scale_the_equation_is_fitted(self) -> None:
+        base = parse_config(self.payload).schema()
+        self.assertEqual(base.fit_bounds, (-1.0, 1.0))
+        timed = dataclasses.replace(base, bounds=(0.0, None))
+        self.assertEqual(timed.fit_bounds, (0.0, None))
+        logged = dataclasses.replace(timed, transform="log1p")
+        self.assertEqual(logged.fit_bounds, (0.0, None))
+        capped = dataclasses.replace(base, bounds=(0.0, math.e - 1.0), transform="log1p")
+        self.assertEqual(capped.fit_bounds, (0.0, 1.0))
+        self.assertIsNone(dataclasses.replace(base, bounds=None, transform="log1p").fit_bounds)
 
     def test_a_config_error_is_a_value_error(self) -> None:
         self.assertTrue(issubclass(ConfigError, ValueError))

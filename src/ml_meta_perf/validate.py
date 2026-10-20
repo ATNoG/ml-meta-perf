@@ -32,6 +32,7 @@ from math import comb
 import numpy as np
 import polars as pl
 
+from ml_meta_perf.config import Bounds
 from ml_meta_perf.fit import Standardizer
 from ml_meta_perf.model import MCC_LOWER, MCC_UPPER, Equation
 from ml_meta_perf.search import Selector, guided_screen
@@ -370,16 +371,16 @@ def cross_validate_doubly_held_out(
     return results
 
 
-def _clip_to_training(
-    prediction: np.ndarray, training_target: np.ndarray, bounds: tuple[float, float] | None
-) -> np.ndarray:
+def _clip_to_training(prediction: np.ndarray, training_target: np.ndarray, bounds: Bounds | None) -> np.ndarray:
     """Bound a fold's predictions by the target range that fold was trained on.
 
-    **Only for a bounded target.** ``bounds=None`` declares the target unbounded (a cost, a
-    time, a count) and the predictions are returned as fitted: clamping them to the training
-    range would forbid exactly the extrapolation a held-out group needs -- the costliest
-    dataset, held out, could never be predicted above the second costliest. For a bounded
-    target the rule below applies unchanged.
+    **Only for a target bounded on both sides.** ``bounds=None`` declares the target unbounded (a
+    cost, a time, a count) and the predictions are returned as fitted: clamping them to the
+    training range would forbid exactly the extrapolation a held-out group needs -- the costliest
+    dataset, held out, could never be predicted above the second costliest. A target bounded on
+    one side only (a time, which cannot be negative but has no ceiling) is clipped at that bound
+    and nowhere else, for the same reason. For a target bounded on both sides the rule below
+    applies unchanged.
 
     `model.predict` already clips to ``[MCC_LOWER, MCC_UPPER]``, the range MCC can take in
     principle. That is the right bound for the equation as published and too loose here: this
@@ -392,6 +393,9 @@ def _clip_to_training(
     """
     if bounds is None:
         return prediction
+    low, high = bounds
+    if low is None or high is None:
+        return np.clip(prediction, low, high)
     return np.clip(prediction, float(training_target.min()), float(training_target.max()))
 
 
@@ -409,7 +413,7 @@ def baseline_group_centre(
     inner: np.ndarray | None = None,
     *,
     centre: str = "mean",
-    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
+    bounds: Bounds | None = (MCC_LOWER, MCC_UPPER),
 ) -> np.ndarray:
     """Predict a training-fold centre, optionally conditioned on a second grouping.
 
@@ -448,7 +452,7 @@ def baseline_group_mean(
     outer: np.ndarray,
     inner: np.ndarray | None = None,
     *,
-    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
+    bounds: Bounds | None = (MCC_LOWER, MCC_UPPER),
 ) -> np.ndarray:
     """`baseline_group_centre` at the mean. Kept as the name the rest of the study uses."""
     return baseline_group_centre(target, outer, inner, centre="mean", bounds=bounds)
@@ -459,7 +463,7 @@ def additive_mean_reference(
     first: np.ndarray,
     second: np.ndarray,
     *,
-    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
+    bounds: Bounds | None = (MCC_LOWER, MCC_UPPER),
 ) -> np.ndarray:
     """Dataset and model target means combined into a descriptive IS reference.
 
@@ -483,7 +487,7 @@ def interaction_oracle(
     second: np.ndarray,
     rank: int,
     *,
-    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
+    bounds: Bounds | None = (MCC_LOWER, MCC_UPPER),
 ) -> np.ndarray:
     """The additive mean-based reference plus the best rank-``rank`` approximation of what it misses.
 
@@ -538,7 +542,7 @@ def oracle_ladder(
     second: np.ndarray,
     ranks: tuple[int, ...] = (0, 1, 2, 3, 4, 6, 8),
     *,
-    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
+    bounds: Bounds | None = (MCC_LOWER, MCC_UPPER),
 ) -> pl.DataFrame:
     """How much each additional interaction component would be worth."""
     rows: list[dict[str, object]] = []

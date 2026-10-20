@@ -30,6 +30,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ml_meta_perf.config import Bounds
 from ml_meta_perf.model import MCC_LOWER, MCC_UPPER, Equation
 from ml_meta_perf.terms import Library
 
@@ -99,7 +100,7 @@ def to_equation(
     offset: float,
     name: str,
     *,
-    bounds: tuple[float, float] | None = (MCC_LOWER, MCC_UPPER),
+    bounds: Bounds | None = (MCC_LOWER, MCC_UPPER),
     target: str = "MCC",
 ) -> Equation:
     """Fold the standardisation back into the weights so the equation reads in raw units."""

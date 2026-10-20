@@ -83,6 +83,16 @@ class TestConsistency(unittest.TestCase):
             )
 
 
+class TestOneSidedBounds(unittest.TestCase):
+    def test_predict_clips_only_the_closed_side(self) -> None:
+        columns = {"a": np.array([-100.0, 1.0, 100.0]), "b": np.array([1.0, 1.0, 1.0])}
+        floor = replace(equation(), bounds=(0.0, None))
+        ceiling = replace(equation(), bounds=(None, 1.0))
+        raw = equation().evaluate(columns)
+        np.testing.assert_allclose(floor.predict(columns), np.maximum(raw, 0.0))
+        np.testing.assert_allclose(ceiling.predict(columns), np.minimum(raw, 1.0))
+
+
 class TestRendering(unittest.TestCase):
     def test_ranked_terms_order_by_standardised_magnitude(self) -> None:
         ranked = equation().ranked_terms()
@@ -153,6 +163,13 @@ class TestSerialisation(unittest.TestCase):
         restored = Equation.from_dict(json.loads(json.dumps(original.to_dict())))
         self.assertEqual(restored.bounds, (-7.5, 12.5))
         self.assertEqual(restored, original)
+
+    def test_round_trips_bounds_open_on_one_side(self) -> None:
+        for bounds in ((0.0, None), (None, 7.5)):
+            original = replace(equation(), bounds=bounds)
+            restored = Equation.from_dict(json.loads(json.dumps(original.to_dict())))
+            self.assertEqual(restored.bounds, bounds)
+            self.assertEqual(restored, original)
 
     def test_round_trips_an_unbounded_equation(self) -> None:
         original = Equation(

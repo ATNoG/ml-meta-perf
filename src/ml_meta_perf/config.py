@@ -28,6 +28,7 @@ Study chapter: [3. Term generation and selection][study-chapter] -- the rational
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
@@ -46,6 +47,9 @@ def _default_config_path() -> Path:
 
 DEFAULT_CONFIG_PATH = _default_config_path()
 
+
+#: ``(low, high)``, either end ``None`` when that side is open: MCC is ``(-1, 1)``, a time is ``(0, None)``.
+Bounds = tuple[float | None, float | None]
 
 #: The transforms a target can be fitted on. ``log1p`` fits ``log(1 + y)``: a cost spanning orders
 #: of magnitude becomes a relative error, and the equation's terms multiply (chapter 7).
@@ -86,7 +90,7 @@ class Schema:
     dataset_features: tuple[str, ...]
     model_features: tuple[str, ...]
     target_column: str
-    bounds: tuple[float, float] | None
+    bounds: Bounds | None
     transform: str = "none"
     row_filter: RowFilter | None = None
     required: tuple[RequiredColumn, ...] = ()
@@ -97,12 +101,20 @@ class Schema:
     def __post_init__(self) -> None:
         if self.transform not in TRANSFORMS:
             raise ValueError(f"unknown transform {self.transform!r}; expected one of {TRANSFORMS}")
-        if self.transform == "log1p" and self.bounds is not None:
-            raise ValueError("log1p requires bounds=None: a bounded target cannot be fitted on a log scale")
+        if self.transform == "log1p" and self.bounds is not None and (self.bounds[0] is None or self.bounds[0] < 0.0):
+            raise ValueError("log1p needs a target that cannot be negative: bounds=None, or a low bound of 0 or more")
 
     @property
     def features(self) -> tuple[str, ...]:
         return self.dataset_features + self.model_features
+
+    @property
+    def fit_bounds(self) -> Bounds | None:
+        """The bounds on the scale the equation is fitted on: ``log1p`` of the target's own bounds."""
+        if self.bounds is None or self.transform == "none":
+            return self.bounds
+        low, high = self.bounds
+        return (None if low is None else math.log1p(low), None if high is None else math.log1p(high))
 
     @property
     def log_target(self) -> bool:
@@ -155,7 +167,7 @@ class ResponseConfig:
     column: str
     #: ``[low, high]`` when the target cannot leave a range (MCC, a bounded error); ``None`` for
     #: a cost, a time or a count, which is then never clipped (chapter 7, section 7.1).
-    bounds: tuple[float, float] | None
+    bounds: Bounds | None
     #: ``none``, or ``log1p`` to fit ``log(1 + y)`` (an unbounded, non-negative target).
     transform: str = "none"
 
@@ -319,7 +331,8 @@ def _validated(
     identifiers = (corpus.dataset_column, corpus.model_column)
     if not all(identifiers) or corpus.dataset_column == corpus.model_column:
         raise ConfigError(f"corpus needs two different, non-empty group columns, got {identifiers}")
-    if response.bounds is not None and not response.bounds[0] < response.bounds[1]:
+    low, high = response.bounds or (None, None)
+    if low is not None and high is not None and not low < high:
         raise ConfigError(f"response.bounds must satisfy low < high, got {response.bounds}")
     for kind, names in (("dataset", features.dataset), ("model", features.model)):
         if not names:
@@ -335,8 +348,11 @@ def _validated(
         raise ConfigError(f"the response column {response.column!r} is also a group column")
     if response.transform not in TRANSFORMS:
         raise ConfigError(f"response.transform must be one of {TRANSFORMS}, got {response.transform!r}")
-    if response.transform == "log1p" and response.bounds is not None:
-        raise ConfigError("response.transform log1p needs response.bounds null: a bounded target has no log scale")
+    if response.transform == "log1p" and response.bounds is not None and (low is None or low < 0.0):
+        raise ConfigError(
+            "response.transform log1p needs a target that cannot be negative: "
+            "response.bounds null, or a low of 0 or more"
+        )
     if corpus.row_filter is not None and not corpus.row_filter.column:
         raise ConfigError("corpus.row_filter.column is empty")
     for requirement in corpus.require:
@@ -345,6 +361,16 @@ def _validated(
     for rule in corpus.single_valued:
         if not rule:
             raise ConfigError("corpus.single_valued holds an empty column name")
+
+
+def _bounds(raw: Any) -> Bounds | None:
+    """``[low, high]`` from the file; an end may be null (open), and both open is no bounds at all."""
+    if raw is None:
+        return None
+    if not isinstance(raw, list | tuple) or len(raw) != 2:
+        raise ConfigError(f"response.bounds must be null or a [low, high] pair, got {raw!r}")
+    low, high = (None if end is None else float(end) for end in raw)
+    return None if low is None and high is None else (low, high)
 
 
 def _corpus(payload: dict[str, Any]) -> CorpusConfig:
@@ -364,11 +390,11 @@ def _corpus(payload: dict[str, Any]) -> CorpusConfig:
 def parse_config(payload: dict[str, Any]) -> StudyConfig:
     """Build the typed configuration from the file's JSON object; unknown keys are an error."""
     sweep = payload["sweep"]
-    bounds = payload["response"]["bounds"]
+    bounds = _bounds(payload["response"]["bounds"])
     corpus = _corpus(payload["corpus"])
     response = ResponseConfig(
         column=payload["response"]["column"],
-        bounds=None if bounds is None else (float(bounds[0]), float(bounds[1])),
+        bounds=bounds,
         **{key: value for key, value in payload["response"].items() if key == "transform"},
     )
     unknown = set(payload["response"]) - {"column", "bounds", "transform"}

@@ -35,6 +35,16 @@ class TestPruningThreshold(unittest.TestCase):
         for bounds in ((-1.0, 1.0), (0.0, 2.0)):
             self.assertEqual(pruning_threshold(bounds, np.linspace(0, 1e9, 101)), MIN_CONTRIBUTION)
 
+    def test_a_target_bounded_on_both_sides_scales_with_its_span(self) -> None:
+        self.assertAlmostEqual(pruning_threshold((0.0, 4.0), np.linspace(0, 1e9, 101)), 2.0 * MIN_CONTRIBUTION)
+        self.assertAlmostEqual(pruning_threshold((10.0, 11.0), np.linspace(0, 1e9, 101)), 0.5 * MIN_CONTRIBUTION)
+
+    def test_a_target_open_on_one_side_scales_with_the_spread(self) -> None:
+        truth = np.linspace(0.0, 100.0, 1001)
+        expected = pruning_threshold(None, truth)
+        self.assertAlmostEqual(pruning_threshold((0.0, None), truth), expected)
+        self.assertAlmostEqual(pruning_threshold((None, 5.0), truth), expected)
+
     def test_unbounded_threshold_scales_with_the_spread(self) -> None:
         truth = np.linspace(-1.0, 1.0, 1001)
         expected = MIN_CONTRIBUTION * (np.percentile(truth, 99) - np.percentile(truth, 1)) / 2.0

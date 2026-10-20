@@ -22,18 +22,25 @@ and the published prediction applies the *bounds of the target*, $B$:
 $$\hat{y}(\mathbf{f}) = \operatorname{clip}_B\!\big(\hat{y}_{\text{raw}}(\mathbf{f})\big), \qquad
 \operatorname{clip}_{[a,b]}(z) = \min\!\big(\max(z, a), b\big).$$
 
-$B$ is a property of the target and is stored with the equation:
+$B = [a, b]$ is a property of the target and is stored with the equation. Either end may be open
+(written `null` in the study file): $a = -\infty$ or $b = +\infty$, so that
+
+$$\operatorname{clip}_{[a,\infty)}(z) = \max(z, a), \qquad \operatorname{clip}_{(-\infty,b]}(z) = \min(z, b),$$
+
+and a target open on both sides has $B = \varnothing$ and is never clipped. The target dictates its
+bounds:
 
 | target | $B$ |
 |---|---|
 | MCC | $[-1, 1]$ |
 | FlexFL performance, classification (MCC) | $[-1, 1]$ |
 | FlexFL performance, regression (SMAPE) | $[0, 2]$ |
-| a cost: time, bytes, energy, counts | none, written $B = \varnothing$ |
+| a time, a byte count, an epoch count: cannot be negative, has no ceiling | $[0, \infty)$ |
+| a quantity with neither limit | $\varnothing$ |
 
-For $B = \varnothing$ the prediction is returned as written: $\hat{y} = \hat{y}_{\text{raw}}$.
-A cost has no upper limit and a clip at zero would hide a fit that goes negative, which is a
-fault worth seeing.
+A prediction for a cost that goes below zero is a fault of the fit and is floored at zero rather
+than reported; one that goes above anything seen is the extrapolation the equation exists to make
+and is never capped.
 
 ## 7.2 Cross-validation and the bounds
 
@@ -48,9 +55,12 @@ This is tighter than $B$ and uses no held-out information: the interval $[m_g, M
 fold's own equation was shown. It exists because a single fold predicted at the theoretical
 floor once accounted for 89% of the total squared error of the MCC corpus.
 
-For an **unbounded** target ($B = \varnothing$) the fold range is not applied:
+The fold range is applied only to a target bounded on **both** sides. For any other target the
+prediction is clipped at the bounds it has and nowhere else,
 
-$$\hat{y}_i^{\text{cv}} = \hat{y}_{\text{raw},i}.$$
+$$\hat{y}_i^{\text{cv}} = \operatorname{clip}_B\!\big(\hat{y}_{\text{raw},i}\big)
+\quad (B \text{ open on at least one side}), \qquad
+\hat{y}_i^{\text{cv}} = \hat{y}_{\text{raw},i} \quad (B = \varnothing).$$
 
 Clipping to $[m_g, M_g]$ would forbid extrapolation. If the costliest dataset is held out,
 $y_i > M_g$ for every one of its rows, so a clipped prediction has error at least
@@ -170,9 +180,11 @@ $y \gg 1$
 
 $$\log(1 + y) = \log y + \log\!\Big(1 + \tfrac{1}{y}\Big) \approx \log c + a \log x_1 + b \log x_2 .$$
 
-A transform needs a target it is defined on. `log1p` requires $y \ge 0$ and an unbounded target
-($B = \varnothing$): a bounded target such as MCC has no log scale, and both rules are checked, the
-second when the study file is read and the first when the data is. $R^2$ and MAE of a transformed
+A transform needs a target it is defined on. `log1p` requires $y \ge 0$: the study file must say
+so, with $B = \varnothing$ or a low bound $a \ge 0$, and the data is checked as it is read. A
+target that can be negative, such as MCC, has no log scale. The bounds are carried to the scale of
+the fit: the equation predicts $\hat{z}$, so it is clipped at $\log(1 + a)$ and $\log(1 + b)$ for
+$B = [a, b]$, and a time with $B = [0, \infty)$ is floored at $z = 0$, which is $y = 0$. $R^2$ and MAE of a transformed
 target are on the scale of $z$, which is also the scale the equation was fitted on; a mean absolute
 error on $z$ is approximately a relative error on $y$, since $\log(1+y) - \log(1+\hat{y}) \approx
 \log(y/\hat{y})$ for large values.

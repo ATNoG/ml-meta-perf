@@ -174,6 +174,24 @@ class TestCrossValidation(unittest.TestCase):
         self.assertEqual(free.clipped, 0)
         self.assertGreater(bounded.clipped, 0)
 
+    def test_a_target_open_on_one_side_is_clipped_at_that_side_only(self) -> None:
+        """A time cannot be negative but has no ceiling: floor at 0, nothing above."""
+        floored = {size: replace(equation, bounds=(0.0, None)) for size, equation in self.equations.items()}
+        result = cross_validate_fixed_form(self.library, self.columns, self.target, self.outer, floored, penalty=1.0)[2]
+        self.assertTrue(np.all(result.predictions >= 0.0))
+        last = self.outer == "d5"
+        self.assertGreater(result.predictions[last].max(), self.target[~last].max())
+
+    def test_the_clip_rule_by_kind_of_bound(self) -> None:
+        from ml_meta_perf.validate import _clip_to_training  # pyright: ignore[reportPrivateUsage]
+
+        training = np.array([2.0, 3.0, 4.0])
+        wild = np.array([-9.0, 3.5, 99.0])
+        np.testing.assert_array_equal(_clip_to_training(wild, training, None), wild)
+        np.testing.assert_array_equal(_clip_to_training(wild, training, (0.0, None)), [0.0, 3.5, 99.0])
+        np.testing.assert_array_equal(_clip_to_training(wild, training, (None, 50.0)), [-9.0, 3.5, 50.0])
+        np.testing.assert_array_equal(_clip_to_training(wild, training, (-1.0, 100.0)), [2.0, 3.5, 4.0])
+
     def test_records_one_fold_score_per_group(self) -> None:
         result = self.path()[2]
         self.assertEqual(set(result.per_fold), set(np.unique(self.outer).tolist()))

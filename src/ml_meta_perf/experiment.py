@@ -215,7 +215,7 @@ def fit_path(
         pool_size=config.pool_size,
         beam_width=config.beam_width,
         name=name,
-        bounds=schema.bounds,
+        bounds=schema.fit_bounds,
         label=schema.label,
     )
     # Fixed form: the terms are chosen once, here, and only the weights are refit in each
@@ -256,7 +256,7 @@ def finalise(fitted: FittedPath, size: int) -> EquationReport:
         fitted.columns,
         truth,
         penalty=config.penalty,
-        min_contribution=pruning_threshold(fitted.schema.bounds, truth),
+        min_contribution=pruning_threshold(fitted.schema.fit_bounds, truth),
     )
 
     return EquationReport(

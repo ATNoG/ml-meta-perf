@@ -672,6 +672,14 @@ class FlexFLSchemaTests(unittest.TestCase):
         shares = result.shares["share"]
         self.assertTrue(abs(shares.sum() - 1) < 1e-9 or all(value == 0 for value in shares))
 
+    def test_a_cost_bounded_below_by_zero_carries_that_bound_on_the_fitted_scale(self) -> None:
+        plain = dataclasses.replace(flexfl_schema("comm_bytes_total"), bounds=(0.0, None))
+        report = experiment.run_flexfl(FIXTURE, plain, TINY).equation
+        self.assertEqual(report.equation.bounds, (0.0, None))
+        self.assertTrue(np.all(report.equation.predict(columns_as_arrays(load(FIXTURE, plain), plain.features)) >= 0.0))
+        logged = dataclasses.replace(plain, transform="log1p")
+        self.assertEqual(experiment.run_flexfl(FIXTURE, logged, TINY).equation.equation.bounds, (0.0, None))
+
     def test_the_equation_prints_the_schema_label(self) -> None:
         plain = experiment.run_flexfl(FIXTURE, flexfl_schema("comm_bytes_total"), TINY).equation.equation
         logged = experiment.run_flexfl(FIXTURE, flexfl_schema("comm_bytes_total", log_target=True), TINY).equation
