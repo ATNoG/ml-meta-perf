@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import io
 import json
+import os
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -694,6 +695,24 @@ class FlexFLSchemaTests(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertIn("ignored with a FlexFL --target: --phase, --no-figures", errors.getvalue())
 
+    def test_a_flexfl_run_prints_the_equation_and_its_scores(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            shown = io.StringIO()
+            with redirect_stdout(shown):
+                code = cli.main(
+                    [
+                        *("--target", "comm_bytes_total", "--log-target", "--data", str(FIXTURE)),
+                        *("--output", directory, *TINY_FLAGS),
+                    ]
+                )
+            self.assertEqual(code, 0)
+            text = shown.getvalue()
+            self.assertIn("log1p(comm_bytes_total) = ", text)
+            self.assertIn("IS:", text)
+            self.assertIn("R2=", text)
+            written = (Path(directory) / "flexfl" / "comm_bytes_total-log1p" / "equation.txt").read_text()
+            self.assertTrue(written.startswith("log1p(comm_bytes_total) = "))
+
     def test_a_flexfl_run_is_silent_when_nothing_is_ignored(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             errors = io.StringIO()
@@ -711,6 +730,59 @@ class FlexFLSchemaTests(unittest.TestCase):
                     ]
                 )
             self.assertNotIn("ignored", errors.getvalue())
+
+    def test_an_unknown_task_type_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "unknown task type"):
+            flexfl_schema("total_time_s", "clustering")
+
+    def test_a_task_type_filter_needs_the_is_classification_column(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "no_task.csv"
+            pl.read_csv(FIXTURE).drop("is_classification").write_csv(path)
+            with self.assertRaisesRegex(SchemaError, "is_classification"):
+                load(path, flexfl_schema("performance", "classification"))
+
+    def test_a_task_type_with_no_rows_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "classification_only.csv"
+            pl.read_csv(FIXTURE).filter(pl.col("is_classification").cast(pl.Boolean)).write_csv(path)
+            self.assertGreater(load(path, flexfl_schema("performance", "classification")).height, 0)
+            with self.assertRaisesRegex(SchemaError, "no regression rows"):
+                load(path, flexfl_schema("performance", "regression"))
+
+    def test_a_sweep_on_several_jobs_uses_a_process_pool(self) -> None:
+        """The pool is replaced by a serial stand-in: forking after BLAS threads started can hang a test run."""
+        calls: list[dict[str, object]] = []
+
+        class SerialPool:
+            def __init__(self, **options: object) -> None:
+                calls.append(options)
+
+            def __enter__(self) -> SerialPool:
+                return self
+
+            def __exit__(self, *_exc: object) -> None:
+                return None
+
+            def map(self, function, *iterables, **options: object):
+                return map(function, *iterables)
+
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            argv = [*search_argv(out)]
+            argv[argv.index("--jobs") + 1] = "2"
+            with mock.patch.object(sweep, "ProcessPoolExecutor", SerialPool), redirect_stdout(io.StringIO()):
+                self.assertEqual(sweep.main(argv), 0)
+            swept(out)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["max_workers"], 2)
+        self.assertIs(calls[0]["initializer"], sweep._worker_initialiser)  # pyright: ignore[reportPrivateUsage]
+
+    def test_a_sweep_worker_pins_every_thread_pool_to_one(self) -> None:
+        with mock.patch.dict("os.environ", {}, clear=False):
+            sweep._worker_initialiser()  # pyright: ignore[reportPrivateUsage]
+            for variable in sweep.THREAD_VARIABLES:
+                self.assertEqual(os.environ[variable], "1")
 
     def test_a_sweep_writes_to_a_folder_of_its_own_target(self) -> None:
         self.assertEqual(sweep.default_output(MCC_SCHEMA), "results/sweep")
