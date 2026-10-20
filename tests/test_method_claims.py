@@ -8,9 +8,10 @@ import unittest
 
 import numpy as np
 
-from ml_meta_perf.data import MCC_SCHEMA, flexfl_schema
+from ml_meta_perf.data import flexfl_schema
 from ml_meta_perf.terms import build_library
 from ml_meta_perf.validate import _clip_to_training  # pyright: ignore[reportPrivateUsage]
+from tests.study import SCHEMA
 
 
 def indicator_columns(n: int = 40, seed: int = 0) -> dict[str, np.ndarray]:
@@ -22,7 +23,7 @@ class TestBoundsTable(unittest.TestCase):
     """Section 7.1: the bounds of each target."""
 
     def test_each_row_of_the_table(self) -> None:
-        self.assertEqual(MCC_SCHEMA.bounds, (-1.0, 1.0))
+        self.assertEqual(SCHEMA.bounds, (-1.0, 1.0))
         self.assertEqual(flexfl_schema("performance", "classification").bounds, (-1.0, 1.0))
         self.assertEqual(flexfl_schema("performance", "regression").bounds, (0.0, 2.0))
         for cost in ("total_time_s", "comm_bytes_total", "compute_time_total_s", "n_epochs"):

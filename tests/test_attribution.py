@@ -17,6 +17,7 @@ from ml_meta_perf.attribution import (
 )
 from ml_meta_perf.model import LOWERS, RAISES, Equation
 from ml_meta_perf.terms import Atom, Term
+from tests.study import DATASET_COLUMN, MODEL_COLUMN
 
 DATASET = ("d1", "d2")
 MODEL = ("m1", "m2")
@@ -147,7 +148,7 @@ class TestVarianceDecomposition(unittest.TestCase):
 
     def test_real_data_puts_dataset_above_model(self) -> None:
         # The empirical answer to "does model choice matter more than the data".
-        from ml_meta_perf.data import DATASET_COLUMN, MODEL_COLUMN, groups, load, target
+        from ml_meta_perf.data import groups, load, target
 
         frame = load()
         table = variance_decomposition(target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN))

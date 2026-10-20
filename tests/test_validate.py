@@ -39,6 +39,7 @@ from ml_meta_perf.validate import (
     term_stability,
 )
 from tests import corpus
+from tests.study import DATASET_COLUMN, DATASET_FEATURES, MODEL_FEATURES
 
 
 def grid(n_groups: int = 6, per_group: int = 5, seed: int = 4):
@@ -544,7 +545,7 @@ class TestGrammarReach(unittest.TestCase):
 
     def setUp(self) -> None:
         from ml_meta_perf.config import default_configuration
-        from ml_meta_perf.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays, load
+        from ml_meta_perf.data import columns_as_arrays, load
         from ml_meta_perf.data import target as load_target
 
         DEFAULT = default_configuration()
@@ -628,7 +629,7 @@ class TestSaturatedFit(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         from ml_meta_perf.config import default_configuration
-        from ml_meta_perf.data import DATASET_COLUMN, DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays, groups, load
+        from ml_meta_perf.data import columns_as_arrays, groups, load
         from ml_meta_perf.data import target as load_target
 
         DEFAULT = default_configuration()

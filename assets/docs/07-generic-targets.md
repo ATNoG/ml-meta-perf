@@ -118,12 +118,14 @@ $\mathcal{S}$ is read from three sections of `config/study.json`:
 | $c_y$ | `response.column` |
 | $B$ | `response.bounds` (`null` for $B = \varnothing$) |
 
-`StudyConfig.schema()` turns them into the `Schema` object the loader and the fit consume. The
-file is checked when it is read, before any data is: the two group columns must differ, the
-bounds must satisfy $a < b$, each feature list must be non-empty, no column may be listed twice
-or play two roles ($F_d \cap F_m = \varnothing$, and neither contains $c_d$, $c_m$ or $c_y$). The
-constants that used to hold the MCC description stay in `ml_meta_perf.data` only until every
-caller reads the file, and `tests/test_data_surface.py` asserts that the two agree item by item.
+`StudyConfig.schema()` turns them into the `Schema` object the loader and the fit consume, and
+`default_schema()` returns the one `config/study.json` describes. The file is checked when it is
+read, before any data is: the two group columns must differ, the bounds must satisfy $a < b$,
+each feature list must be non-empty, no column may be listed twice or play two roles
+($F_d \cap F_m = \varnothing$, and neither contains $c_d$, $c_m$ or $c_y$). No part of
+$\mathcal{S}$ is a constant in the code: the MCC columns and feature lists that used to be
+module constants of `ml_meta_perf.data` are gone, and `tests/test_data_surface.py` pins what the
+shipped file must say for the MCC study to be the study the chapters describe.
 
 ### Where the corpus is
 

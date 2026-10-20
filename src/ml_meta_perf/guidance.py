@@ -44,13 +44,10 @@ import numpy as np
 import polars as pl
 
 from ml_meta_perf.attribution import contributions as attribution_contributions
+from ml_meta_perf.config import default_schema
 from ml_meta_perf.data import (
-    DATASET_COLUMN,
-    DATASET_FEATURES,
-    MODEL_COLUMN,
     MODEL_FAMILY,
     NEURAL_FAMILIES,
-    TARGET_COLUMN,
     TREE_FAMILIES,
 )
 from ml_meta_perf.experiment import Report
@@ -186,11 +183,11 @@ def _mean_ranking(table: pl.DataFrame) -> dict[str, float]:
 
 def _family_means(frame: pl.DataFrame) -> pl.DataFrame:
     return (
-        frame.with_columns(pl.col(MODEL_COLUMN).replace(MODEL_FAMILY).alias("family"))
+        frame.with_columns(pl.col(default_schema().model_column).replace(MODEL_FAMILY).alias("family"))
         .group_by("family")
         .agg(
-            pl.col(TARGET_COLUMN).mean().alias("mcc"),
-            pl.col(MODEL_COLUMN).n_unique().alias("models"),
+            pl.col(default_schema().target_column).mean().alias("mcc"),
+            pl.col(default_schema().model_column).n_unique().alias("models"),
             pl.len().alias("n"),
         )
         .sort("mcc", descending=True)
@@ -199,8 +196,8 @@ def _family_means(frame: pl.DataFrame) -> pl.DataFrame:
 
 def _model_means(frame: pl.DataFrame) -> pl.DataFrame:
     return (
-        frame.group_by(MODEL_COLUMN)
-        .agg(pl.col(TARGET_COLUMN).mean().alias("mcc"), pl.len().alias("n"))
+        frame.group_by(default_schema().model_column)
+        .agg(pl.col(default_schema().target_column).mean().alias("mcc"), pl.len().alias("n"))
         .sort("mcc", descending=True)
     )
 
@@ -217,25 +214,30 @@ def gather(frame: pl.DataFrame, report: Report) -> Evidence:
     from ml_meta_perf.stats import spearman
     from ml_meta_perf.validate import baseline_group_mean, ranking_report
 
-    n_models = frame[MODEL_COLUMN].n_unique()
-    counts = frame.select(DATASET_COLUMN, MODEL_COLUMN).unique().group_by(DATASET_COLUMN).len()
-    complete = counts.filter(pl.col("len") == n_models)[DATASET_COLUMN].to_list()
+    n_models = frame[default_schema().model_column].n_unique()
+    counts = (
+        frame.select(default_schema().dataset_column, default_schema().model_column)
+        .unique()
+        .group_by(default_schema().dataset_column)
+        .len()
+    )
+    complete = counts.filter(pl.col("len") == n_models)[default_schema().dataset_column].to_list()
     # No dataset ran every model: there is no complete grid to restrict to, so the family
     # comparisons fall back to every row and the agreement figure is undefined rather than
     # silently computed over an empty subset.
-    subset = frame.filter(pl.col(DATASET_COLUMN).is_in(complete)) if complete else frame
+    subset = frame.filter(pl.col(default_schema().dataset_column).is_in(complete)) if complete else frame
 
-    every = _model_means(frame).sort(MODEL_COLUMN)
-    restricted = _model_means(subset).sort(MODEL_COLUMN)
+    every = _model_means(frame).sort(default_schema().model_column)
+    restricted = _model_means(subset).sort(default_schema().model_column)
     agreement = (
         spearman(every["mcc"].to_numpy(), restricted["mcc"].to_numpy())
         if complete and every.height == restricted.height
         else float("nan")
     )
 
-    truth = frame[TARGET_COLUMN].to_numpy().astype(np.float64)
-    datasets = frame[DATASET_COLUMN].to_numpy().astype(str)
-    models = frame[MODEL_COLUMN].to_numpy().astype(str)
+    truth = frame[default_schema().target_column].to_numpy().astype(np.float64)
+    datasets = frame[default_schema().dataset_column].to_numpy().astype(str)
+    models = frame[default_schema().model_column].to_numpy().astype(str)
     baseline = ranking_report(truth, baseline_group_mean(truth, datasets, models), datasets)
 
     selection = report.selection
@@ -248,9 +250,9 @@ def gather(frame: pl.DataFrame, report: Report) -> Evidence:
         ranking_agreement=agreement,
         # Distinct pairs, not rows: a meta-dataset with a repeated (dataset, model) cell
         # would otherwise report a negative number of missing ones.
-        missing_cells=n_models * frame[DATASET_COLUMN].n_unique()
-        - frame.select(DATASET_COLUMN, MODEL_COLUMN).unique().height,
-        total_cells=n_models * frame[DATASET_COLUMN].n_unique(),
+        missing_cells=n_models * frame[default_schema().dataset_column].n_unique()
+        - frame.select(default_schema().dataset_column, default_schema().model_column).unique().height,
+        total_cells=n_models * frame[default_schema().dataset_column].n_unique(),
         decomposition=report.decomposition,
         comparison=report.comparison,
         leakage=report.leakage,
@@ -431,7 +433,7 @@ def _profile_the_data_first(evidence: Evidence) -> Verdict:
         evidence=(
             f"Knowing only which dataset a row came from explains {dataset:.1%} of MCC variance; "
             f"knowing only which model, {model:.1%}. "
-            f"{len(DATASET_FEATURES)} dataset meta-features reach {captured_dataset:.0%} of what "
+            f"{len(default_schema().dataset_features)} dataset meta-features reach {captured_dataset:.0%} of what "
             "dataset identity explains. The model-mean reference does not bound E2, because "
             "Processing Units Number can vary with dataset shape; its score is reported "
             "separately without a fraction-of-ceiling claim."
@@ -464,7 +466,7 @@ def _pretrained_tabular_baseline(evidence: Evidence) -> Verdict:
     foundation = evidence.family("tabular foundation")
     best_tree = evidence.complete_family_means.filter(pl.col("family").is_in(list(TREE_FAMILIES)))
     top = float(np.max(best_tree["mcc"].to_numpy())) if best_tree.height else float("nan")
-    order = evidence.complete_model_means[MODEL_COLUMN].to_list()
+    order = evidence.complete_model_means[default_schema().model_column].to_list()
     ranks = {name: index + 1 for index, name in enumerate(order)}
     placings = sorted(ranks.get(name, 0) for name in ("TabICL", "TabPFN") if name in ranks)
     return Verdict(
@@ -674,7 +676,7 @@ def _report_excluded_runs(evidence: Evidence) -> Verdict:
 
 
 def _use_a_balanced_metric(evidence: Evidence) -> Verdict:
-    truth = evidence.frame[TARGET_COLUMN].to_numpy().astype(np.float64)
+    truth = evidence.frame[default_schema().target_column].to_numpy().astype(np.float64)
     zeros = int(np.sum(truth == 0.0))
     return Verdict(
         practice=_BY_ID["use-a-balanced-metric"],

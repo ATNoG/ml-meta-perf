@@ -36,15 +36,12 @@ from sklearn.dummy import DummyRegressor
 
 from ml_meta_perf.config import Configuration, SelectionConfig
 from ml_meta_perf.data import (
-    DATASET_COLUMN,
-    DATASET_FEATURES,
-    MODEL_COLUMN,
-    MODEL_FEATURES,
     columns_as_arrays,
     load,
 )
 from ml_meta_perf.experiment import EquationReport, Report
 from ml_meta_perf.opaque import Builder
+from tests.study import DATASET_COLUMN, DATASET_FEATURES, MODEL_COLUMN, MODEL_FEATURES
 
 #: Eight of the twenty datasets, spread across the alphabetical order rather than taken from
 #: one end, since the corpus is ordered by name and adjacent names are not independent.

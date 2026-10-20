@@ -339,13 +339,12 @@ ml-meta-perf-search --output results/sweep
 ## Using it as a library
 
 ```python
-from ml_meta_perf import (
-    DATASET_FEATURES, MODEL_FEATURES, build_library, columns_as_arrays, load, load_config, search, target,
-)
+from ml_meta_perf import build_library, columns_as_arrays, default_schema, load, load_config, search, target
 
+schema = default_schema()          # the columns and features config/study.json describes
 frame = load()
-columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
-library = build_library(DATASET_FEATURES, MODEL_FEATURES, columns, max_arity=2, max_abs_zscore=4.0)
+columns = columns_as_arrays(frame, schema.features)
+library = build_library(schema.dataset_features, schema.model_features, columns, max_arity=2, max_abs_zscore=4.0)
 
 config = load_config().search
 equation = search(library, target(frame), max_terms=config.max_terms, penalty=config.penalty).best()

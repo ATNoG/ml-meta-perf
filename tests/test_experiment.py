@@ -9,21 +9,20 @@ import dataclasses
 import re
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import numpy as np
 import polars as pl
 
 from ml_meta_perf.config import load_config
 from ml_meta_perf.data import (
-    DATASET_COLUMN,
-    DATASET_FEATURES,
-    MODEL_FEATURES,
     load,
 )
 from ml_meta_perf.experiment import (
     baselines,
     comparison,
     correlation_analysis,
+    decision_quality,
     leakage_demonstration,
     model_selection,
     run_e1,
@@ -31,6 +30,7 @@ from ml_meta_perf.experiment import (
     run_e3,
 )
 from tests import corpus
+from tests.study import DATASET_COLUMN, DATASET_FEATURES, MODEL_FEATURES
 
 
 def scored(table, prefix: str) -> float:
@@ -315,6 +315,19 @@ class TestDocumentedDefaults(unittest.TestCase):
             section, name = key.split(".")
             with self.subTest(key=key):
                 self.assertEqual(float(value), float(getattr(getattr(self.study, section), name)))
+
+
+class TestDecisionQualityFallback(unittest.TestCase):
+    """When the doubly-held-out fit cannot be built the decision is scored on the LODO path."""
+
+    def test_the_known_path_is_used_when_there_is_no_doubly_held_out_fit(self) -> None:
+        frame = corpus.sample()
+        tiny = dataclasses.replace(load_config().search, max_terms=2, pool_size=20, beam_width=1, max_arity=1)
+        with mock.patch("ml_meta_perf.experiment.doubly_held_out_predictions", return_value=None) as spy:
+            table = decision_quality(frame, 2, tiny)
+        spy.assert_called_once()
+        self.assertGreater(table.height, 0)
+        self.assertIn("accuracy", table.columns)
 
 
 if __name__ == "__main__":

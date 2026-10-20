@@ -39,14 +39,9 @@ import numpy as np
 import polars as pl
 
 from ml_meta_perf.attribution import classify, contributions
-from ml_meta_perf.config import Configuration, SelectionConfig, load_config
+from ml_meta_perf.config import Configuration, SelectionConfig, default_schema, load_config
 from ml_meta_perf.data import (
-    ALL_FEATURES,
-    DATASET_COLUMN,
-    DATASET_FEATURES,
     FEATURE_GLOSSARY,
-    MODEL_COLUMN,
-    MODEL_FEATURES,
     corpus_summary,
     missing_cells,
     target_summary,
@@ -575,8 +570,8 @@ def single_prediction(
     total = equation.intercept + float(shares.sum())
 
     lines = [
-        f"dataset  : {frame[DATASET_COLUMN][row]}",
-        f"model    : {frame[MODEL_COLUMN][row]}",
+        f"dataset  : {frame[default_schema().dataset_column][row]}",
+        f"model    : {frame[default_schema().model_column][row]}",
         f"actual   : {truth[row]:+.4f}",
         f"predicted: {predicted[row]:+.4f}",
         "",
@@ -691,7 +686,9 @@ def _shared_terms_note(report: Report) -> str:
             + " |"
         )
     mixed = sum(
-        1 for term in report.e3.equation.terms if classify(term.features, DATASET_FEATURES, MODEL_FEATURES) == "mixed"
+        1
+        for term in report.e3.equation.terms
+        if classify(term.features, default_schema().dataset_features, default_schema().model_features) == "mixed"
     )
     return (
         "How much of each control survives into E3-Valid, counting terms shared *exactly*:\n\n"
@@ -1010,7 +1007,7 @@ def _reach_note(report: Report) -> str:
         "| level | terms | R² |",
         "|---|---|---|",
         f"| every raw term admitted by the grammar | {n_raw} | {raw:.4f} |",
-        f"| the best single-feature term per feature | {len(ALL_FEATURES)} | {best:.4f} |",
+        f"| the best single-feature term per feature | {len(default_schema().features)} | {best:.4f} |",
         f"| every single-feature term at once | {n_single} | {single:.4f} |",
         f"| **the fitted equation (E3-Valid)** | **{n_terms}** | **{fitted:.4f}** |",
         "",
@@ -1207,7 +1204,7 @@ def render(
     # Counted from the corpus rather than written into the prose below it. A generated
     # sentence carrying a literal "20 datasets" is the same staleness the generated sections
     # exist to prevent, one level further in.
-    datasets = int(frame[DATASET_COLUMN].n_unique()) if frame is not None else 0
+    datasets = int(frame[default_schema().dataset_column].n_unique()) if frame is not None else 0
 
     parts: list[str] = []
     parts.append("# ml-meta-perf — fitted equation and extracted practices\n")
@@ -1826,7 +1823,7 @@ def write_into_chapters(
 def glossary() -> pl.DataFrame:
     """The feature glossary as a table, for appending to a report or a paper.
 
-    Restricted to `ALL_FEATURES`, which is the generated corpus schema and exactly the set
+    Restricted to the study file's features, which are the generated corpus schema and exactly the set
     of columns the equations may draw on.
     """
-    return pl.DataFrame([{"feature": name, "meaning": FEATURE_GLOSSARY[name]} for name in ALL_FEATURES])
+    return pl.DataFrame([{"feature": name, "meaning": FEATURE_GLOSSARY[name]} for name in default_schema().features])

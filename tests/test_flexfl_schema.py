@@ -18,12 +18,10 @@ import polars as pl
 from ml_meta_perf import cli, experiment, sweep
 from ml_meta_perf.config import default_configuration, load_config, parse_config
 from ml_meta_perf.data import (
-    ALL_FEATURES,
     FLEXFL_COST_TARGETS,
     FLEXFL_DECOMPOSITION_TARGETS,
     FLEXFL_EPOCH_CAP_COLUMN,
     FLEXFL_MODEL_FEATURES,
-    MCC_SCHEMA,
     Schema,
     SchemaError,
     aggregate_by_dataset,
@@ -38,6 +36,7 @@ from ml_meta_perf.model import Equation
 from ml_meta_perf.search import MIN_CONTRIBUTION, pruning_threshold, search
 from ml_meta_perf.terms import build_library
 from ml_meta_perf.validate import score
+from tests.study import ALL_FEATURES, SCHEMA
 
 FIXTURE = Path(__file__).parent / "fixtures" / "flexfl_meta_dataset_sample.csv"
 TINY = dataclasses.replace(default_configuration(), max_terms=2, pool_size=20, beam_width=1, max_arity=1)
@@ -99,7 +98,7 @@ class FlexFLSchemaTests(unittest.TestCase):
     def test_epoch_cap_is_a_flexfl_model_feature(self) -> None:
         self.assertIn(FLEXFL_EPOCH_CAP_COLUMN, FLEXFL_MODEL_FEATURES)
         self.assertIn(FLEXFL_EPOCH_CAP_COLUMN, flexfl_schema("n_epochs").model_features)
-        self.assertNotIn(FLEXFL_EPOCH_CAP_COLUMN, MCC_SCHEMA.features)
+        self.assertNotIn(FLEXFL_EPOCH_CAP_COLUMN, SCHEMA.features)
 
     def test_load_rejects_a_stale_flexfl_csv(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -245,8 +244,8 @@ class FlexFLSchemaTests(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             flexfl_schema("performance", "classification", True)
-        self.assertFalse(MCC_SCHEMA.log_target)
-        self.assertEqual(MCC_SCHEMA.label, "MCC")
+        self.assertFalse(SCHEMA.log_target)
+        self.assertEqual(SCHEMA.label, "MCC")
         self.assertEqual(flexfl_schema("comm_bytes_total").label, "comm_bytes_total")
         self.assertEqual(
             FLEXFL_COST_TARGETS,
@@ -574,10 +573,10 @@ class FlexFLSchemaTests(unittest.TestCase):
             self.assertNotEqual(swept(raw)["smoothed_floor"].to_list(), swept(logged)["smoothed_floor"].to_list())
 
     def test_mcc_schema_does_not_transform_target(self) -> None:
-        self.assertEqual(MCC_SCHEMA.label, MCC_SCHEMA.target_column)
-        self.assertEqual(MCC_SCHEMA.slug, MCC_SCHEMA.target_column)
+        self.assertEqual(SCHEMA.label, SCHEMA.target_column)
+        self.assertEqual(SCHEMA.slug, SCHEMA.target_column)
         with mock.patch.object(np, "log1p", wraps=np.log1p) as spy:
-            target(load(None, MCC_SCHEMA), MCC_SCHEMA)
+            target(load(None, SCHEMA), SCHEMA)
         self.assertEqual(spy.call_count, 0)
 
     def test_load_accepts_each_target(self) -> None:
@@ -634,8 +633,8 @@ class FlexFLSchemaTests(unittest.TestCase):
             ("performance", "regression", (0.0, 2.0)),
         ):
             self.assertEqual(flexfl_schema(name, task_type).bounds, expected)
-        self.assertEqual(MCC_SCHEMA.features, ALL_FEATURES)
-        self.assertTrue(load().equals(load(None, MCC_SCHEMA)))
+        self.assertEqual(SCHEMA.features, ALL_FEATURES)
+        self.assertTrue(load().equals(load(None, SCHEMA)))
 
     def test_drop_constant_features(self) -> None:
         schema = flexfl_schema("performance", "classification")
@@ -786,14 +785,16 @@ class FlexFLSchemaTests(unittest.TestCase):
                 self.assertEqual(os.environ[variable], "1")
 
     def test_a_sweep_writes_to_a_folder_of_its_own_target(self) -> None:
-        self.assertEqual(sweep.default_output(MCC_SCHEMA), "results/sweep")
-        self.assertEqual(sweep.default_output(flexfl_schema("total_time_s")), "results/sweep_total_time_s")
+        self.assertEqual(sweep.default_output(SCHEMA), "results/sweep")
+        own = flexfl_schema("total_time_s")
+        self.assertEqual(sweep.default_output(own, study=False), "results/sweep_total_time_s")
         self.assertEqual(
-            sweep.default_output(flexfl_schema("total_time_s", log_target=True)), "results/sweep_total_time_s-log1p"
+            sweep.default_output(flexfl_schema("total_time_s", log_target=True), study=False),
+            "results/sweep_total_time_s-log1p",
         )
         self.assertNotEqual(
-            sweep.default_output(flexfl_schema("performance", "classification")),
-            sweep.default_output(flexfl_schema("performance", "regression")),
+            sweep.default_output(flexfl_schema("performance", "classification"), study=False),
+            sweep.default_output(flexfl_schema("performance", "regression"), study=False),
         )
 
     def test_the_sweep_summary_omits_a_missing_ranking_metric(self) -> None:

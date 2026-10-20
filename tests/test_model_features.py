@@ -22,14 +22,11 @@ import numpy as np
 import polars as pl
 
 from ml_meta_perf.data import (
-    DATASET_COLUMN,
-    DATASET_FEATURES,
-    MODEL_COLUMN,
-    MODEL_FEATURES,
     MODEL_ORDINALS,
     load,
 )
 from tests import corpus
+from tests.study import ALL_FEATURES, DATASET_COLUMN, DATASET_FEATURES, MODEL_COLUMN, MODEL_FEATURES, TARGET_COLUMN
 
 
 class TestModelFeatures(unittest.TestCase):
@@ -82,7 +79,7 @@ class TestModelFeatures(unittest.TestCase):
         import polars as pl
 
         from ml_meta_perf.config import load_config
-        from ml_meta_perf.data import ALL_FEATURES, DATASET_COLUMN, TARGET_COLUMN, resolve_path
+        from ml_meta_perf.data import resolve_path
 
         self.assertEqual(
             list(pl.read_csv(resolve_path(load_config().corpus.path)).columns),
@@ -205,7 +202,7 @@ class TestReportedProtocol(unittest.TestCase):
 
     def test_run_equation_reports_the_fixed_form(self) -> None:
         from ml_meta_perf.config import default_configuration
-        from ml_meta_perf.data import DATASET_FEATURES, columns_as_arrays, groups, target
+        from ml_meta_perf.data import columns_as_arrays, groups, target
         from ml_meta_perf.terms import build_library
         from ml_meta_perf.validate import cross_validate_fixed_form
 

@@ -282,6 +282,11 @@ def load_config(path: str | Path | None = None) -> StudyConfig:
     return parse_config(json.loads(resolved.read_text(encoding="utf-8")))
 
 
+def default_schema() -> Schema:
+    """The data description of the study in ``config/study.json``: what a bare call analyses."""
+    return load_config().schema()
+
+
 def default_configuration() -> Configuration:
     """The shared search configuration from the study file -- what a bare run fits under."""
     return load_config().search

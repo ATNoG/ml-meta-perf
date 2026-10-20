@@ -37,10 +37,9 @@ from ml_meta_perf.config import (
     ResponseConfig,
     SelectionConfig,
     SweepConfig,
+    default_schema,
 )
 from ml_meta_perf.data import (
-    DATASET_FEATURES,
-    MODEL_FEATURES,
     add_target_arguments,
     check_target_arguments,
     columns_as_arrays,
@@ -88,7 +87,7 @@ def render(
     wrong one whenever ``--data`` was given.
     """
     if columns is None:
-        columns = columns_as_arrays(load(), DATASET_FEATURES + MODEL_FEATURES)
+        columns = columns_as_arrays(load(), default_schema().features)
 
     if "screen" in phases:
         _section("Correlation screening -- linear vs monotone association with MCC")
@@ -132,7 +131,15 @@ def render(
         _show(report.shares)
 
         _section("Term importance -- ranked by standardised weight, major terms flagged")
-        _show(term_importance(report.e3.equation, columns, DATASET_FEATURES, MODEL_FEATURES, report.e3.stability))
+        _show(
+            term_importance(
+                report.e3.equation,
+                columns,
+                default_schema().dataset_features,
+                default_schema().model_features,
+                report.e3.stability,
+            )
+        )
 
         _section("Extracted practices")
         print(render_practices(report.practices))
@@ -340,7 +347,7 @@ def main(argv: list[str] | None = None) -> int:
 
     corpus = arguments.data or resolve_path(arguments.corpus.path)
     frame = load(corpus)
-    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+    columns = columns_as_arrays(frame, default_schema().features)
     source = arguments.data or _shown(corpus)
 
     if not arguments.quiet:
@@ -363,8 +370,8 @@ def main(argv: list[str] | None = None) -> int:
             report,
             columns,
             target(frame),
-            DATASET_FEATURES,
-            MODEL_FEATURES,
+            default_schema().dataset_features,
+            default_schema().model_features,
             arguments.docs,
             frame=frame,
             config=config,

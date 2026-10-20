@@ -220,6 +220,13 @@ class TestWhatIsPrinted(CliTestCase):
         self.assertIn("Correlation screening", printed)
         self.assertNotIn("Oracle ladder", printed)
 
+    def test_render_reads_the_study_corpus_when_it_is_given_no_columns(self) -> None:
+        """``columns`` is optional; without it the corpus ``config/study.json`` names is loaded."""
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            render(corpus.report(), frozenset({"screen"}))
+        self.assertIn("Correlation screening", buffer.getvalue())
+
     def test_render_prints_every_section(self) -> None:
         buffer = io.StringIO()
         with redirect_stdout(buffer):

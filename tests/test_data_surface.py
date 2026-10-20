@@ -1,23 +1,22 @@
-"""Pins what `ml_meta_perf.data` offers and what the MCC schema contains.
+"""Pins what `ml_meta_perf.data` offers and what the shipped study file describes.
 
-The study description is moving out of the module and into ``config/study.json``. Until that has
-happened, these tests fail on any removal or rename of a public name, or on any change to the MCC
-columns, so each one is a decision and not an accident. Once the move is done they become the
-equivalence test: the schema read from the study file must equal the one pinned here.
+A removal, a rename or an addition of a public name in the module fails the first test, so each
+one is a decision and not an accident. The rest pin the facts the chapters state about the MCC
+study's data description, which now lives in ``config/study.json``.
 """
 
 import ast
 import inspect
 import unittest
 
+import polars as pl
+
 from ml_meta_perf import data
 from ml_meta_perf.config import load_config
+from ml_meta_perf.data import resolve_path
 
 PUBLIC_NAMES = frozenset(
     {
-        "ALL_FEATURES",
-        "DATASET_COLUMN",
-        "DATASET_FEATURES",
         "FEATURE_GLOSSARY",
         "FITTING_REGIME",
         "FLEXFL_COST_TARGETS",
@@ -32,17 +31,13 @@ PUBLIC_NAMES = frozenset(
         "FLEXFL_TARGETS",
         "INPUT_DISTRIBUTION_MODELLING",
         "LOSS_MARGIN_BEHAVIOUR",
-        "MCC_SCHEMA",
         "MODEL_CAPABILITY",
-        "MODEL_COLUMN",
         "MODEL_FAMILY",
-        "MODEL_FEATURES",
         "MODEL_ORDINALS",
         "NEURAL_FAMILIES",
         "SMAPE_LOWER",
         "SMAPE_UPPER",
         "SOLUTION_STOCHASTICITY",
-        "TARGET_COLUMN",
         "TASK_TYPES",
         "TREE_FAMILIES",
         "SchemaError",
@@ -83,64 +78,47 @@ class TestDataSurface(unittest.TestCase):
         self.assertEqual(defined - PUBLIC_NAMES, set(), "a public name was added: pin it, or make it private")
 
 
-class TestMccSchemaIsFrozen(unittest.TestCase):
-    """TEMPORARY ORACLE: the pinned MCC columns, to be replaced by fixed expectations on the study file (2.3)."""
+class TestTheShippedStudyFile(unittest.TestCase):
+    """What ``config/study.json`` must describe for the MCC study to be the study it is.
 
-    def test_the_study_file_describes_the_same_schema(self) -> None:
-        """TEMPORARY ORACLE (removed with the MCC constants, step 2.3): file == constants."""
-        self.assertEqual(load_config().schema(), data.MCC_SCHEMA)
+    These replace the comparison against the old constants (removed with them, step 2.3): the
+    description is read from the file, so what is pinned here is its shape and the facts the
+    chapters state about it, not a second copy of its lists.
+    """
 
-    def test_columns(self) -> None:
-        schema = data.MCC_SCHEMA
-        self.assertEqual(
-            (schema.dataset_column, schema.model_column, schema.target_column), ("Dataset", "Model", "MCC")
-        )
-        self.assertEqual(schema.bounds, (-1.0, 1.0))
-        self.assertIsNone(schema.task_type)
-        self.assertFalse(schema.log_target)
+    def setUp(self) -> None:
+        self.schema = load_config().schema()
 
-    def test_dataset_features(self) -> None:
-        self.assertEqual(
-            data.MCC_SCHEMA.dataset_features,
-            (
-                "class_ent",
-                "eq_num_attr",
-                "gravity",
-                "inst_to_attr",
-                "nr_attr",
-                "nr_bin",
-                "nr_class",
-                "nr_cor_attr",
-                "nr_inst",
-                "nr_norm",
-                "nr_outliers",
-                "ns_ratio",
-            ),
-        )
+    def test_the_target_and_its_bounds(self) -> None:
+        self.assertEqual((self.schema.target_column, self.schema.bounds), ("MCC", (-1.0, 1.0)))
+        self.assertIsNone(self.schema.task_type)
+        self.assertFalse(self.schema.log_target)
 
-    def test_model_features(self) -> None:
-        self.assertEqual(
-            data.MCC_SCHEMA.model_features,
-            (
-                "Processing Units Number",
-                "Model Capability",
-                "Solution Stochasticity",
-                "Loss Margin Behaviour",
-                "Input Distribution Modelling",
-                "Fitting Regime",
-            ),
-        )
+    def test_the_groups(self) -> None:
+        self.assertEqual((self.schema.dataset_column, self.schema.model_column), ("Dataset", "Model"))
+
+    def test_twelve_dataset_features_and_six_model_features(self) -> None:
+        self.assertEqual((len(self.schema.dataset_features), len(self.schema.model_features)), (12, 6))
 
     def test_the_two_feature_sets_do_not_overlap(self) -> None:
-        schema = data.MCC_SCHEMA
-        self.assertEqual(set(schema.dataset_features) & set(schema.model_features), set())
-        self.assertEqual(schema.features, data.ALL_FEATURES)
+        self.assertEqual(set(self.schema.dataset_features) & set(self.schema.model_features), set())
+        self.assertEqual(self.schema.features, self.schema.dataset_features + self.schema.model_features)
+
+    def test_every_listed_column_is_in_the_corpus_and_nothing_else_is(self) -> None:
+        columns = pl.read_csv(resolve_path(load_config().corpus.path)).columns
+        expected = [
+            self.schema.dataset_column,
+            self.schema.model_column,
+            *self.schema.features,
+            self.schema.target_column,
+        ]
+        self.assertEqual(columns, expected, "the corpus carries exactly the columns the study file names")
 
     def test_the_corpus_has_the_pinned_shape(self) -> None:
         frame = data.load()
         self.assertEqual(frame.height, 484)
-        self.assertEqual(frame[data.DATASET_COLUMN].n_unique(), 20)
-        self.assertEqual(frame[data.MODEL_COLUMN].n_unique(), 25)
+        self.assertEqual(frame[self.schema.dataset_column].n_unique(), 20)
+        self.assertEqual(frame[self.schema.model_column].n_unique(), 25)
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import numpy as np
 import polars as pl
 
-from ml_meta_perf.data import DATASET_COLUMN, MODEL_FAMILY, NEURAL_FAMILIES, TREE_FAMILIES, load
+from ml_meta_perf.data import MODEL_FAMILY, NEURAL_FAMILIES, TREE_FAMILIES, load
 from ml_meta_perf.guidance import (
     CATALOGUE,
     CHALLENGED,
@@ -24,6 +24,7 @@ from ml_meta_perf.guidance import (
     render,
 )
 from tests import corpus
+from tests.study import DATASET_COLUMN, DATASET_FEATURES, MODEL_FEATURES
 
 
 def frame() -> pl.DataFrame:
@@ -290,7 +291,7 @@ class TestEquationEvidence(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        from ml_meta_perf.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays
+        from ml_meta_perf.data import columns_as_arrays
         from ml_meta_perf.guidance import equation_coverage, equation_evidence
 
         # Every assertion here is about the *pairing* -- that a term is listed against a
@@ -388,7 +389,7 @@ class TestTheCapacityReading(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        from ml_meta_perf.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays
+        from ml_meta_perf.data import columns_as_arrays
         from ml_meta_perf.guidance import equation_evidence
         from tests import corpus
 

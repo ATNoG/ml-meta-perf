@@ -423,7 +423,7 @@ class TestMarginalVersusConditional(unittest.TestCase):
 
 class TestGlossary(unittest.TestCase):
     def test_every_feature_is_explained(self) -> None:
-        from ml_meta_perf.data import ALL_FEATURES
+        from tests.study import ALL_FEATURES
 
         table = glossary()
         self.assertEqual(set(table["feature"].to_list()), set(ALL_FEATURES))

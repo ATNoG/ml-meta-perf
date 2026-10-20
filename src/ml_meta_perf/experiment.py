@@ -28,13 +28,8 @@ import polars as pl
 
 from ml_meta_perf.analysis import feature_reach, grammar_ceiling, saturated_fit, screen
 from ml_meta_perf.attribution import group_shares, term_effects, variance_decomposition
-from ml_meta_perf.config import Configuration, OpaqueConfig, SelectionConfig, load_config
+from ml_meta_perf.config import Configuration, OpaqueConfig, SelectionConfig, default_schema, load_config
 from ml_meta_perf.data import (
-    DATASET_COLUMN,
-    DATASET_FEATURES,
-    MCC_SCHEMA,
-    MODEL_COLUMN,
-    MODEL_FEATURES,
     Schema,
     columns_as_arrays,
     drop_constant_features,
@@ -138,7 +133,7 @@ def _fixed_form_path(
     labels: np.ndarray,
     config: Configuration,
     library: Library | None = None,
-    model_features: tuple[str, ...] = MODEL_FEATURES,
+    model_features: tuple[str, ...] | None = None,
 ) -> tuple[dict[int, CrossValidation], Library]:
     """Fit once, then cross-validate the resulting forms with only their weights refit.
 
@@ -148,9 +143,10 @@ def _fixed_form_path(
     would answer a different question and is never done for a reported figure.
     """
     if library is None:
+        schema = default_schema()
         library = build_library(
-            DATASET_FEATURES,
-            model_features,
+            schema.dataset_features,
+            schema.model_features if model_features is None else model_features,
             columns,
             max_arity=config.max_arity,
             max_abs_zscore=config.max_abs_zscore,
@@ -185,7 +181,7 @@ class FittedPath:
     paths: dict[str, dict[int, CrossValidation]]
     curve: pl.DataFrame
     config: Configuration
-    schema: Schema = MCC_SCHEMA
+    schema: Schema
 
 
 def fit_path(
@@ -195,9 +191,10 @@ def fit_path(
     config: Configuration,
     name: str,
     *,
-    schema: Schema = MCC_SCHEMA,
+    schema: Schema | None = None,
 ) -> FittedPath:
     """Search one grammar and cross-validate every length on it, choosing none of them."""
+    schema = schema or default_schema()
     columns = columns_as_arrays(frame, dataset_features + model_features)
     truth = target(frame, schema)
     datasets = groups(frame, schema.dataset_column)
@@ -297,7 +294,7 @@ def run_equation(
     selection: SelectionConfig,
     name: str,
     *,
-    schema: Schema = MCC_SCHEMA,
+    schema: Schema | None = None,
 ) -> EquationReport:
     """Fit one equation and validate it. The three equations differ **only** in the
     features they may draw on, and this is the single code path that says so.
@@ -369,7 +366,7 @@ def run_e1(
     twenty dataset means first would be unnecessary as well as harmful to the comparison.
     """
     config, selection = _resolve(config, selection)
-    return run_equation(frame, DATASET_FEATURES, (), config, selection, "E1")
+    return run_equation(frame, default_schema().dataset_features, (), config, selection, "E1")
 
 
 def run_e2(
@@ -387,7 +384,7 @@ def run_e2(
     it away discards real variation, and the optimum collapses to a single term.
     """
     config, selection = _resolve(config, selection)
-    return run_equation(frame, (), MODEL_FEATURES, config, selection, "E2")
+    return run_equation(frame, (), default_schema().model_features, config, selection, "E2")
 
 
 def run_e3(
@@ -399,7 +396,9 @@ def run_e3(
     restricts the search only through its hyperparameters.
     """
     config, selection = _resolve(config, selection)
-    return run_equation(frame, DATASET_FEATURES, MODEL_FEATURES, config, selection, "E3")
+    return run_equation(
+        frame, default_schema().dataset_features, default_schema().model_features, config, selection, "E3"
+    )
 
 
 def run_capability(
@@ -414,7 +413,7 @@ def run_capability(
     """
     config, selection = _resolve(config, selection)
     wider = dataclasses.replace(config, max_arity=selection.capability_arity)
-    fitted = fit_path(frame, DATASET_FEATURES, MODEL_FEATURES, wider, "E3-MAX")
+    fitted = fit_path(frame, default_schema().dataset_features, default_schema().model_features, wider, "E3-MAX")
     return finalise(fitted, floor_argmax(fitted.curve))
 
 
@@ -461,16 +460,16 @@ def reach_analysis(frame: pl.DataFrame, config: Configuration) -> tuple[pl.DataF
     Both are computed from the library alone, so they are available *before* an equation
     exists and can be read as an expectation the fitted equation is then held against.
     """
-    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+    columns = columns_as_arrays(frame, default_schema().features)
     library = build_library(
-        DATASET_FEATURES,
-        MODEL_FEATURES,
+        default_schema().dataset_features,
+        default_schema().model_features,
         columns,
         max_arity=config.max_arity,
         max_abs_zscore=config.max_abs_zscore,
     )
     truth = target(frame)
-    features = DATASET_FEATURES + MODEL_FEATURES
+    features = default_schema().features
     ladder = grammar_ceiling(library, truth, features)
     return feature_reach(library, truth, features), pl.DataFrame([ladder])
 
@@ -482,15 +481,15 @@ def saturated_analysis(frame: pl.DataFrame, config: Configuration) -> dict[str, 
     one, because the claim it supports is about the procedure the study publishes: handing
     *these* candidates to least squares in one go is what selection is being compared with.
     """
-    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+    columns = columns_as_arrays(frame, default_schema().features)
     library = build_library(
-        DATASET_FEATURES,
-        MODEL_FEATURES,
+        default_schema().dataset_features,
+        default_schema().model_features,
         columns,
         max_arity=config.max_arity,
         max_abs_zscore=config.max_abs_zscore,
     )
-    return saturated_fit(library, target(frame), groups(frame, DATASET_COLUMN))
+    return saturated_fit(library, target(frame), groups(frame, default_schema().dataset_column))
 
 
 def correlation_analysis(frame: pl.DataFrame, config: Configuration, top: int = 15) -> pl.DataFrame:
@@ -504,15 +503,15 @@ def correlation_analysis(frame: pl.DataFrame, config: Configuration, top: int = 
     term and the target are centred inside each dataset first, so a term is credited
     only for variation that dataset identity does not already account for.
     """
-    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+    columns = columns_as_arrays(frame, default_schema().features)
     library = build_library(
-        DATASET_FEATURES,
-        MODEL_FEATURES,
+        default_schema().dataset_features,
+        default_schema().model_features,
         columns,
         max_arity=config.max_arity,
         max_abs_zscore=config.max_abs_zscore,
     )
-    table = screen(library, target(frame), groups(frame, DATASET_COLUMN))
+    table = screen(library, target(frame), groups(frame, default_schema().dataset_column))
     return table.with_columns((pl.col("spearman").abs() - pl.col("pearson").abs()).alias("monotone_gap")).head(top)
 
 
@@ -528,8 +527,8 @@ def baselines(frame: pl.DataFrame) -> pl.DataFrame:
     against whichever centre is hardest to beat on it.
     """
     truth = target(frame)
-    datasets = groups(frame, DATASET_COLUMN)
-    models = groups(frame, MODEL_COLUMN)
+    datasets = groups(frame, default_schema().dataset_column)
+    models = groups(frame, default_schema().model_column)
 
     rows: list[dict[str, object]] = []
     for centre in ("mean", "median"):
@@ -568,12 +567,12 @@ def leakage_demonstration(
     subset at every size as it goes, so a path built to ``max_terms`` contains the shorter
     entry this table needs and does not have to be recomputed.
     """
-    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+    columns = columns_as_arrays(frame, default_schema().features)
     truth = target(frame)
     protocols = {
         "random 10-fold (leaky)": ("random", random_kfold_groups(truth.shape[0])),
-        "leave-one-dataset-out": ("loo_dataset", groups(frame, DATASET_COLUMN)),
-        "leave-one-model-out": ("loo_model", groups(frame, MODEL_COLUMN)),
+        "leave-one-dataset-out": ("loo_dataset", groups(frame, default_schema().dataset_column)),
+        "leave-one-model-out": ("loo_model", groups(frame, default_schema().model_column)),
     }
     library: Library | None = None
     rows: list[dict[str, object]] = []
@@ -599,10 +598,14 @@ def selection_optimism(frame: pl.DataFrame, e3: EquationReport, config: Configur
     row describes the discovery procedure rather than the published equation; it is reported
     so the fixed-form transfer numbers are read as the upper estimate they are.
     """
-    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
-    truth, datasets = target(frame), groups(frame, DATASET_COLUMN)
+    columns = columns_as_arrays(frame, default_schema().features)
+    truth, datasets = target(frame), groups(frame, default_schema().dataset_column)
     library = build_library(
-        DATASET_FEATURES, MODEL_FEATURES, columns, max_arity=config.max_arity, max_abs_zscore=config.max_abs_zscore
+        default_schema().dataset_features,
+        default_schema().model_features,
+        columns,
+        max_arity=config.max_arity,
+        max_abs_zscore=config.max_abs_zscore,
     )
     position = {name: index for index, name in enumerate(library.names)}
     nested = np.zeros_like(truth)
@@ -649,9 +652,9 @@ def identity_ceiling(frame: pl.DataFrame, e3: EquationReport) -> pl.DataFrame:
     Generated because the chapter's hand-written copy of this table had all three rows wrong
     and listed its two rungs as identical, which no run of this function can produce.
     """
-    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+    columns = columns_as_arrays(frame, default_schema().features)
     truth = target(frame)
-    datasets, models = groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)
+    datasets, models = groups(frame, default_schema().dataset_column), groups(frame, default_schema().model_column)
     path = e3.paths.get("loo_dataset")
     size = len(e3.equation.terms)
     if path is None or size not in path:
@@ -661,7 +664,7 @@ def identity_ceiling(frame: pl.DataFrame, e3: EquationReport) -> pl.DataFrame:
         f"none (E3-Valid, {size} terms)": fold.predictions,
         "per-model level": correct_out_of_fold(fold, columns, truth, datasets, models),
         "per-model level and slope": correct_out_of_fold(
-            fold, columns, truth, datasets, models, features=DATASET_FEATURES
+            fold, columns, truth, datasets, models, features=default_schema().dataset_features
         ),
     }
 
@@ -711,9 +714,9 @@ def interaction_reached(frame: pl.DataFrame, e3: EquationReport) -> pl.DataFrame
     align with a pattern under IS and lose it out of fold -- and that difference is the
     whole question for a component nobody can predict from meta-features.
     """
-    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+    columns = columns_as_arrays(frame, default_schema().features)
     truth = target(frame)
-    datasets, models = groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)
+    datasets, models = groups(frame, default_schema().dataset_column), groups(frame, default_schema().model_column)
     size = len(e3.equation.terms)
     predictions = {"in-sample": e3.equation.predict(columns)}
     path = e3.paths.get("loo_dataset")
@@ -744,10 +747,10 @@ def comparison(
     E3 scores and conclude the dataset side is weak, even when E1 is already close to its
     own structural ceiling.
     """
-    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+    columns = columns_as_arrays(frame, default_schema().features)
     truth = target(frame)
-    datasets = groups(frame, DATASET_COLUMN)
-    models = groups(frame, MODEL_COLUMN)
+    datasets = groups(frame, default_schema().dataset_column)
+    models = groups(frame, default_schema().model_column)
 
     dataset_ceiling = np.zeros_like(truth)
     for label in np.unique(datasets):
@@ -825,11 +828,11 @@ def decision_quality(
     cannot be built.
     """
     truth = target(frame)
-    datasets = groups(frame, DATASET_COLUMN)
+    datasets = groups(frame, default_schema().dataset_column)
     doubly = doubly_held_out_predictions(frame, n_terms, config)
     if doubly is not None:
         return decision_report(truth, doubly, datasets)
-    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+    columns = columns_as_arrays(frame, default_schema().features)
     path = known
     if path is None or n_terms not in path:
         path, _ = _fixed_form_path(columns, truth, datasets, config)
@@ -851,7 +854,7 @@ def length_comparison(frame: pl.DataFrame, e3: EquationReport, config: Configura
     A row marked ``worse`` differs significantly from E3-Valid under this paired comparison.
     """
     truth = target(frame)
-    datasets = groups(frame, DATASET_COLUMN)
+    datasets = groups(frame, default_schema().dataset_column)
     labels = np.unique(datasets)
     path = e3.paths.get("loo_dataset", {})
     if not path:
@@ -908,13 +911,13 @@ def doubly_held_out_predictions(frame: pl.DataFrame, n_terms: int, config: Confi
     scope for them: they are about how the equation degrades as one axis becomes unfamiliar,
     and a per-cell refit would answer a different question at 32 times the cost.
     """
-    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+    columns = columns_as_arrays(frame, default_schema().features)
     truth = target(frame)
-    datasets = groups(frame, DATASET_COLUMN)
-    models = groups(frame, MODEL_COLUMN)
+    datasets = groups(frame, default_schema().dataset_column)
+    models = groups(frame, default_schema().model_column)
     library = build_library(
-        DATASET_FEATURES,
-        MODEL_FEATURES,
+        default_schema().dataset_features,
+        default_schema().model_features,
         columns,
         max_arity=config.max_arity,
         max_abs_zscore=config.max_abs_zscore,
@@ -952,7 +955,7 @@ def _e3_predictions(frame: pl.DataFrame, e3: EquationReport, protocol: str, conf
     if protocol == "loo_cell":
         return doubly_held_out_predictions(frame, e3.n_terms, config)
     if protocol == "in_sample":
-        columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+        columns = columns_as_arrays(frame, default_schema().features)
         return e3.equation.predict(columns)
     path = e3.paths.get(protocol)
     if not path:
@@ -980,7 +983,7 @@ def model_selection(
     order. `ranking_baselines` reports every protocol side by side so that stays visible.
     """
     truth = target(frame)
-    datasets = groups(frame, DATASET_COLUMN)
+    datasets = groups(frame, default_schema().dataset_column)
     prediction = _e3_predictions(frame, e3, protocol, config)
     if prediction is None:
         return pl.DataFrame()
@@ -1027,8 +1030,8 @@ def ranking_baselines(
     question rather than an assumption.
     """
     truth = target(frame)
-    datasets = groups(frame, DATASET_COLUMN)
-    models = groups(frame, MODEL_COLUMN)
+    datasets = groups(frame, default_schema().dataset_column)
+    models = groups(frame, default_schema().model_column)
 
     candidates: dict[str, np.ndarray] = {}
     for label, protocol in (
@@ -1097,10 +1100,10 @@ def decision_baselines(
     `decision_report` already carries a majority-class column, which is the floor any rule has
     to clear; these are the harder comparison.
     """
-    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+    columns = columns_as_arrays(frame, default_schema().features)
     truth = target(frame)
-    datasets = groups(frame, DATASET_COLUMN)
-    models = groups(frame, MODEL_COLUMN)
+    datasets = groups(frame, default_schema().dataset_column)
+    models = groups(frame, default_schema().model_column)
 
     candidates: dict[str, np.ndarray] = {}
     if e3 is not None:
@@ -1216,7 +1219,7 @@ def run(
     e3 = run_e3(frame, config, selection)
     e3_capability = run_capability(frame, config, selection)
     config_e3 = config
-    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+    columns = columns_as_arrays(frame, default_schema().features)
     reach, ceiling = reach_analysis(frame, config_e3)
     # Fitted once and shared: the folds are the expensive part, and the regression table and
     # the two decision comparisons have to be scored from the same predictions or they can
@@ -1235,9 +1238,11 @@ def run(
         grammars=selection_summary(e3, e3_capability, config, selection),
         feature_practices=feature_practices(e3.equation, columns, e3.stability),
         practices=best_practices(e3.equation, columns, e3.stability),
-        effects=term_effects(e3.equation, columns, DATASET_FEATURES, MODEL_FEATURES),
-        shares=group_shares(e3.equation, columns, DATASET_FEATURES, MODEL_FEATURES),
-        decomposition=variance_decomposition(target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)),
+        effects=term_effects(e3.equation, columns, default_schema().dataset_features, default_schema().model_features),
+        shares=group_shares(e3.equation, columns, default_schema().dataset_features, default_schema().model_features),
+        decomposition=variance_decomposition(
+            target(frame), groups(frame, default_schema().dataset_column), groups(frame, default_schema().model_column)
+        ),
         correlations=correlation_analysis(frame, config_e3),
         reach=reach,
         ceiling=ceiling,
@@ -1249,7 +1254,9 @@ def run(
         ranking_baselines=ranking_baselines(frame, e3, config_e3, opaque_run),
         decision_baselines=decision_baselines(frame, config_e3, e3.paths.get("loo_dataset"), e3, opaque_run),
         length_choice=length_comparison(frame, e3, config_e3),
-        oracles=oracle_ladder(target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)),
+        oracles=oracle_ladder(
+            target(frame), groups(frame, default_schema().dataset_column), groups(frame, default_schema().model_column)
+        ),
         interaction=interaction_reached(frame, e3),
         identity=identity_ceiling(frame, e3),
     )

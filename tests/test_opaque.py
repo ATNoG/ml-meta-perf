@@ -27,11 +27,12 @@ import numpy as np
 import polars as pl
 
 from ml_meta_perf.config import OpaqueConfig, default_configuration
-from ml_meta_perf.data import DATASET_COLUMN, MODEL_COLUMN, groups, load, target
+from ml_meta_perf.data import groups, load, target
 from ml_meta_perf.opaque import OpaqueRun, _cross_validate, _design, estimators, evaluate
 from ml_meta_perf.validate import leave_one_group_out
 from tests import corpus
 from tests.corpus import DOUBLES, Stub
+from tests.study import DATASET_COLUMN, MODEL_COLUMN
 
 #: The reduced real sizes, for the handful of assertions that are claims about the *study*
 #: rather than about this module. See the module docstring: those claims are size-independent
@@ -200,7 +201,7 @@ class TestDesign(unittest.TestCase):
     def test_uses_the_raw_columns_and_nothing_else(self) -> None:
         """Handing the opaque side the grammar's transforms would compare the equation with
         itself. The comparison a reader means is against the columns."""
-        from ml_meta_perf.data import ALL_FEATURES
+        from tests.study import ALL_FEATURES
 
         frame = load()
         design = _design(frame)

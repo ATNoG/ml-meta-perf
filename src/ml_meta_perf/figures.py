@@ -11,7 +11,8 @@ from pathlib import Path
 
 import polars as pl
 
-from ml_meta_perf.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays, load, target
+from ml_meta_perf.config import default_schema
+from ml_meta_perf.data import columns_as_arrays, load, target
 from ml_meta_perf.experiment import Report
 from ml_meta_perf.plots import (
     count_below_floor,
@@ -78,7 +79,7 @@ def generate(report: Report, destination: str | Path, data: str | Path | None = 
     folder = Path(destination)
     folder.mkdir(parents=True, exist_ok=True)
     frame = load(data)
-    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+    columns = columns_as_arrays(frame, default_schema().features)
     truth = target(frame)
     predicted = report.e3.equation.predict(columns)
 
@@ -116,7 +117,7 @@ def generate(report: Report, destination: str | Path, data: str | Path | None = 
 def captions(report: Report, data: str | Path | None = None) -> dict[str, str]:
     """Suggested LaTeX captions, carrying the disclosures kept out of the images."""
     frame = load(data)
-    columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+    columns = columns_as_arrays(frame, default_schema().features)
     truth = target(frame)
     hidden = count_below_floor(truth, report.e3.equation.predict(columns))
 

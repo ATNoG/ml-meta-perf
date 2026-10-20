@@ -49,11 +49,8 @@ from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.linear_model import RidgeCV
 from sklearn.utils.parallel import Parallel, delayed
 
-from ml_meta_perf.config import OpaqueConfig, load_config
+from ml_meta_perf.config import OpaqueConfig, default_schema, load_config
 from ml_meta_perf.data import (
-    ALL_FEATURES,
-    DATASET_COLUMN,
-    MODEL_COLUMN,
     columns_as_arrays,
     groups,
     target,
@@ -138,15 +135,15 @@ def estimators(opaque: OpaqueConfig) -> tuple[tuple[str, Builder], ...]:
 
 
 def _design(frame: pl.DataFrame) -> np.ndarray:
-    """The eighteen raw meta-feature columns, in `ALL_FEATURES` order.
+    """The eighteen raw meta-feature columns, in the study file's feature order.
 
     Raw and untransformed on purpose. The grammar's transforms are part of what this study
     contributes, so handing them to the opaque side would be comparing the equation against
     itself; handing the opaque side nothing but the columns is the comparison a reader means
     by "would a forest have done better".
     """
-    columns = columns_as_arrays(frame, ALL_FEATURES)
-    return np.column_stack([columns[name] for name in ALL_FEATURES])
+    columns = columns_as_arrays(frame, default_schema().features)
+    return np.column_stack([columns[name] for name in default_schema().features])
 
 
 def _cross_validate(design: np.ndarray, truth: np.ndarray, labels: np.ndarray, build: Builder) -> np.ndarray:
@@ -197,7 +194,10 @@ def evaluate(frame: pl.DataFrame, *, models: tuple[tuple[str, Builder], ...] | N
     """
     design = _design(frame)
     truth = target(frame)
-    datasets, model_labels = groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN)
+    datasets, model_labels = (
+        groups(frame, default_schema().dataset_column),
+        groups(frame, default_schema().model_column),
+    )
     splits = {"loo_dataset": datasets, "loo_model": model_labels}
 
     rows: list[dict[str, object]] = []
@@ -215,7 +215,7 @@ def evaluate(frame: pl.DataFrame, *, models: tuple[tuple[str, Builder], ...] | N
         rows.append(
             {
                 "model": label,
-                "features": len(ALL_FEATURES),
+                "features": len(default_schema().features),
                 **{
                     key: value
                     for name, values in held.items()

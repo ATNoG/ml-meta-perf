@@ -19,6 +19,7 @@ from ml_meta_perf.terms import (
     sum_ratio_terms,
     unary_terms,
 )
+from tests.study import DATASET_FEATURES, MODEL_FEATURES
 
 
 def columns(**kwargs: list[float]) -> dict[str, np.ndarray]:
@@ -244,7 +245,7 @@ class TestDenominatorEligibility(unittest.TestCase):
     def test_no_generated_ratio_has_a_denominator_near_zero(self) -> None:
         # The structural guarantee: over the real meta-dataset, every ratio the library
         # emits has a divisor that stays clear of zero, so none of them can spike.
-        from ml_meta_perf.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays, load
+        from ml_meta_perf.data import columns_as_arrays, load
 
         data = columns_as_arrays(load(), DATASET_FEATURES + MODEL_FEATURES)
         library = build_library(DATASET_FEATURES, MODEL_FEATURES, data)
@@ -475,7 +476,7 @@ class TestCollinearTermsAreDropped(unittest.TestCase):
         self.assertNotIn(long, kept)
 
     def test_the_published_library_has_no_collinear_pair(self) -> None:
-        from ml_meta_perf.data import DATASET_FEATURES, MODEL_FEATURES, columns_as_arrays, load
+        from ml_meta_perf.data import columns_as_arrays, load
 
         columns = columns_as_arrays(load(), DATASET_FEATURES + MODEL_FEATURES)
         library = build_library(DATASET_FEATURES, MODEL_FEATURES, columns, max_arity=3, max_abs_zscore=3.0)

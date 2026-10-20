@@ -10,14 +10,8 @@ import polars as pl
 
 from ml_meta_perf.config import DEFAULT_CONFIG_PATH, Schema, load_config
 from ml_meta_perf.data import (
-    ALL_FEATURES,
-    DATASET_COLUMN,
-    DATASET_FEATURES,
     MODEL_CAPABILITY,
-    MODEL_COLUMN,
     MODEL_FAMILY,
-    MODEL_FEATURES,
-    TARGET_COLUMN,
     SchemaError,
     aggregate_by_dataset,
     columns_as_arrays,
@@ -29,6 +23,7 @@ from ml_meta_perf.data import (
     target,
     target_summary,
 )
+from tests.study import ALL_FEATURES, DATASET_COLUMN, DATASET_FEATURES, MODEL_COLUMN, MODEL_FEATURES, TARGET_COLUMN
 
 
 def synthetic() -> pl.DataFrame:

@@ -56,9 +56,9 @@ from ml_meta_perf.config import (
     SelectionConfig,
     StudyConfig,
     SweepConfig,
+    default_schema,
 )
 from ml_meta_perf.data import (
-    MCC_SCHEMA,
     Schema,
     add_target_arguments,
     check_target_arguments,
@@ -102,12 +102,21 @@ def _task_metrics(truth: np.ndarray, predictions: np.ndarray, datasets: np.ndarr
 
 
 def evaluate(
-    config: Configuration, selection: SelectionConfig, data: str | None, schema: Schema = MCC_SCHEMA
+    config: Configuration,
+    selection: SelectionConfig,
+    data: str | None,
+    schema: Schema | None = None,
+    with_tasks: bool | None = None,
 ) -> tuple[dict[str, Any], pl.DataFrame]:
-    """One configuration: its curve, its chosen length, and that length's DHO task metrics."""
+    """One configuration: its curve, its chosen length, and that length's DHO task metrics.
+
+    ``with_tasks`` says whether the target has go/no-go task metrics to score (MCC does, a cost does
+    not); by default it is whether the schema is the one ``config/study.json`` describes.
+    """
     from ml_meta_perf.experiment import fit_path
 
-    is_mcc = schema == MCC_SCHEMA
+    schema = schema or default_schema()
+    is_mcc = (schema == default_schema()) if with_tasks is None else with_tasks
     frame = load(data, schema)
     if not is_mcc:
         schema = drop_constant_features(frame, schema)
@@ -168,9 +177,12 @@ def _task_summary(chosen: dict[str, Any]) -> str:
     return "" if np.isnan(value) else f", DHO AP {value:.4f}"
 
 
-def default_output(schema: Schema) -> str:
-    """Where a sweep writes unless told otherwise: one folder per target, so runs never overwrite each other."""
-    return "results/sweep" if schema == MCC_SCHEMA else f"results/sweep_{schema.slug}"
+def default_output(schema: Schema, study: bool = True) -> str:
+    """Where a sweep writes unless told otherwise: one folder per target, so runs never overwrite each other.
+
+    ``study`` is whether the schema is the study file's own, which keeps the plain ``results/sweep``.
+    """
+    return "results/sweep" if study else f"results/sweep_{schema.slug}"
 
 
 def build_parser() -> ArgumentParser:
@@ -203,11 +215,6 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     arguments = parser.instantiate(parser.parse_args(argv))
     check_target_arguments(parser, arguments)
-    schema = (
-        MCC_SCHEMA
-        if arguments.target == "mcc"
-        else flexfl_schema(arguments.target, arguments.task_type, arguments.log_target)
-    )
     study = StudyConfig(
         corpus=arguments.corpus,
         response=arguments.response,
@@ -217,8 +224,10 @@ def main(argv: list[str] | None = None) -> int:
         opaque=arguments.opaque,
         sweep=arguments.sweep,
     )
+    own = arguments.target == "mcc"
+    schema = study.schema() if own else flexfl_schema(arguments.target, arguments.task_type, arguments.log_target)
     points = grid(study)
-    output = Path(arguments.output or default_output(schema))
+    output = Path(arguments.output or default_output(schema, own))
     output.mkdir(parents=True, exist_ok=True)
     jobs = arguments.jobs or os.cpu_count() or 1
     print(f"{len(points)} configurations on {jobs} workers", flush=True)
@@ -228,6 +237,7 @@ def main(argv: list[str] | None = None) -> int:
         itertools.repeat(study.selection),
         itertools.repeat(arguments.data),
         itertools.repeat(schema),
+        itertools.repeat(own),
     )
     # One job runs in this process: forking one whose BLAS or Polars thread pools are already
     # running (a caller that fitted before, as the test suite does) can deadlock the workers.
@@ -252,7 +262,7 @@ def main(argv: list[str] | None = None) -> int:
     (output / "proposed_study.json").write_text(json.dumps(dataclasses.asdict(proposed), indent=2) + "\n")
     elapsed = time.perf_counter() - started
     with pl.Config(tbl_rows=20, tbl_cols=12, float_precision=3):
-        leading = "dho_ap" if schema == MCC_SCHEMA else "smoothed_floor"
+        leading = "dho_ap" if own else "smoothed_floor"
         print(candidates.sort(leading, descending=True).drop("terms").head(10))
     print(
         f"\nproposed for {schema.label}: z-cap {chosen['max_abs_zscore']}, penalty {chosen['penalty']}, "

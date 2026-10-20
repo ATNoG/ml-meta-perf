@@ -10,8 +10,9 @@ and they behave very differently, which is why they are named separately here:
   meta-dataset pipeline is the source of this schema; this module loads the generated
   corpus and keeps the package-level column contract explicit.
 
-That asymmetry is the whole point of the two-equation comparison, so the split is
-part of the public API rather than something each caller re-derives.
+That asymmetry is the whole point of the two-equation comparison, so the split is part of the
+study description -- the ``features.dataset`` and ``features.model`` lists of ``config/study.json``
+(`ml_meta_perf.config.default_schema`) -- and not something each caller re-derives.
 
 **Why there are eighteen features when the equation uses fewer.**
 
@@ -54,11 +55,11 @@ equation keeps is a property of one configuration and one length. The search, no
 configuration, decides which features an equation uses: every equation is offered every
 feature it is allowed.
 
-**``nr_inst`` describes the source dataset, not the training set.** Every model was
-trained on a stratified sample capped at 100,000 rows, and ten of the twenty datasets are
-larger than that -- up to seven million. Nothing in the CSV records the sampled size,
-because it is the same cap for every dataset above it. So ``nr_inst`` and
-``inst_to_attr`` are properties of the corpus a dataset was drawn from, and no statement
+**``nr_inst`` describes the source dataset, not the training set.** The pipeline tunes each
+model on a stratified sample capped at 100,000 rows and then evaluates on the available source
+data (one dataset is capped at 1,000,000), and ten of the twenty datasets exceed 100,000 rows --
+up to seven million. Nothing in the CSV records the size a model was trained on, so ``nr_inst``
+and ``inst_to_attr`` are properties of the corpus a dataset was drawn from, and no statement
 about "more training data" can be tested against them.
 
 Study chapter: [1. The dataset][study-chapter] -- the rationale, in
@@ -77,44 +78,14 @@ from typing import TYPE_CHECKING
 import numpy as np
 import polars as pl
 
-from ml_meta_perf.config import Schema, load_config
+from ml_meta_perf.config import Schema, default_schema, load_config
 from ml_meta_perf.model import MCC_LOWER, MCC_UPPER
 
 if TYPE_CHECKING:
     import argparse
 
-DATASET_COLUMN = "Dataset"
-MODEL_COLUMN = "Model"
-TARGET_COLUMN = "MCC"
-
-DATASET_FEATURES: tuple[str, ...] = (
-    "class_ent",
-    "eq_num_attr",
-    "gravity",
-    "inst_to_attr",
-    "nr_attr",
-    "nr_bin",
-    "nr_class",
-    "nr_cor_attr",
-    "nr_inst",
-    "nr_norm",
-    "nr_outliers",
-    "ns_ratio",
-)
-
-#: The six generated columns an equation may use to describe a *learner*.
-#:
-#: This is the package-level schema expected in ``meta_dataset.csv``. The generation logic
-#: lives in ``meta_dataset_pipeline``; the package keeps only the validated feature contract
-#: used by loading, fitting, plotting and reporting.
-MODEL_FEATURES: tuple[str, ...] = (
-    "Processing Units Number",
-    "Model Capability",
-    "Solution Stochasticity",
-    "Loss Margin Behaviour",
-    "Input Distribution Modelling",
-    "Fitting Regime",
-)
+# The MCC study's columns and features are not constants here: they are the ``corpus`` and
+# ``features`` sections of ``config/study.json`` (`ml_meta_perf.config.default_schema`).
 
 
 #: Study-specific ordinal assignment of the ten learner families.
@@ -317,16 +288,6 @@ MODEL_ORDINALS: dict[str, dict[str, int]] = {
     "Input Distribution Modelling": INPUT_DISTRIBUTION_MODELLING,
     "Fitting Regime": FITTING_REGIME,
 }
-
-ALL_FEATURES: tuple[str, ...] = DATASET_FEATURES + MODEL_FEATURES
-MCC_SCHEMA = Schema(
-    dataset_column=DATASET_COLUMN,
-    model_column=MODEL_COLUMN,
-    dataset_features=DATASET_FEATURES,
-    model_features=MODEL_FEATURES,
-    target_column=TARGET_COLUMN,
-    bounds=(MCC_LOWER, MCC_UPPER),
-)
 
 FLEXFL_DATASET_COLUMN = "dataset"
 FLEXFL_MODEL_COLUMN = "fl_algo"
@@ -631,7 +592,7 @@ def load(path: str | Path | None = None, schema: Schema | None = None) -> pl.Dat
     return frame
 
 
-def aggregate_by_dataset(frame: pl.DataFrame, schema: Schema = MCC_SCHEMA) -> pl.DataFrame:
+def aggregate_by_dataset(frame: pl.DataFrame, schema: Schema | None = None) -> pl.DataFrame:
     """Collapse to one row per schema dataset: its features plus its mean target.
 
     **E1 is no longer fitted against this**, and the reason is worth recording. Least
@@ -644,6 +605,7 @@ def aggregate_by_dataset(frame: pl.DataFrame, schema: Schema = MCC_SCHEMA) -> pl
     Kept because the aggregated view is still the right one for describing the corpus --
     20 datasets, one row each -- and because chapter 6 quotes the comparison.
     """
+    schema = schema or default_schema()
     return (
         frame.group_by(schema.dataset_column)
         .agg(
@@ -662,8 +624,9 @@ def columns_as_arrays(frame: pl.DataFrame, features: tuple[str, ...]) -> dict[st
     return {name: frame[name].to_numpy().astype(np.float64) for name in features}
 
 
-def target(frame: pl.DataFrame, schema: Schema = MCC_SCHEMA) -> np.ndarray:
+def target(frame: pl.DataFrame, schema: Schema | None = None) -> np.ndarray:
     """The schema's target column as a float array, ``log1p`` of it when the schema asks."""
+    schema = schema or default_schema()
     values = frame[schema.target_column].to_numpy().astype(np.float64)
     if not schema.log_target:
         return values
@@ -691,7 +654,7 @@ def drop_constant_features(frame: pl.DataFrame, schema: Schema) -> Schema:
     )
 
 
-def corpus_summary(frame: pl.DataFrame) -> pl.DataFrame:
+def corpus_summary(frame: pl.DataFrame, schema: Schema | None = None) -> pl.DataFrame:
     """The shape of the corpus: how many rows, groups, features, and how many cells absent.
 
     Every fact a chapter would otherwise state about the size of the meta-dataset, computed
@@ -699,22 +662,23 @@ def corpus_summary(frame: pl.DataFrame) -> pl.DataFrame:
     target is `target_summary`, kept separate so each table can print at its own precision
     and neither has to render a count as ``484.0000``.
     """
-    datasets = int(frame[DATASET_COLUMN].n_unique())
-    models = int(frame[MODEL_COLUMN].n_unique())
+    schema = schema or default_schema()
+    datasets = int(frame[schema.dataset_column].n_unique())
+    models = int(frame[schema.model_column].n_unique())
     return pl.DataFrame(
         [
             {"quantity": "rows", "count": frame.height},
             {"quantity": "datasets", "count": datasets},
             {"quantity": "models", "count": models},
             {"quantity": "cells absent from the dataset-by-model grid", "count": datasets * models - frame.height},
-            {"quantity": "dataset features", "count": len(DATASET_FEATURES)},
-            {"quantity": "model features", "count": len(MODEL_FEATURES)},
+            {"quantity": "dataset features", "count": len(schema.dataset_features)},
+            {"quantity": "model features", "count": len(schema.model_features)},
         ],
         schema={"quantity": pl.String, "count": pl.Int64},
     )
 
 
-def target_summary(frame: pl.DataFrame) -> pl.DataFrame:
+def target_summary(frame: pl.DataFrame, schema: Schema | None = None) -> pl.DataFrame:
     """How MCC is distributed across the corpus, including how much of it is pinned.
 
     The counts at exactly 0 and exactly 1 are here because they are the reason MAE and not
@@ -726,7 +690,8 @@ def target_summary(frame: pl.DataFrame) -> pl.DataFrame:
     row's maximum was selected. That lives upstream, in the corpus builder, and chapter 1
     cites it as an external audit rather than pretending this file can recompute it.
     """
-    values = target(frame)
+    schema = schema or default_schema()
+    values = target(frame, schema)
     pinned = [("at exactly 1", values == 1.0), ("at exactly 0", values == 0.0), ("below 0", values < 0.0)]
     rows: list[dict[str, object]] = [
         {"quantity": "mean", "MCC": float(values.mean()), "rows": frame.height},
@@ -738,7 +703,7 @@ def target_summary(frame: pl.DataFrame) -> pl.DataFrame:
     return pl.DataFrame(rows, schema={"quantity": pl.String, "MCC": pl.Float64, "rows": pl.Int64})
 
 
-def missing_cells(frame: pl.DataFrame) -> pl.DataFrame:
+def missing_cells(frame: pl.DataFrame, schema: Schema | None = None) -> pl.DataFrame:
     """Which datasets are short of models, and how large those datasets are.
 
     The absent cells are **not** missing at random, and the table says so on its face
@@ -746,13 +711,14 @@ def missing_cells(frame: pl.DataFrame) -> pl.DataFrame:
     ones in the corpus. Reported per dataset with its instance count, so a reader can see the
     pattern instead of being told about it.
     """
-    models = int(frame[MODEL_COLUMN].n_unique())
+    schema = schema or default_schema()
+    models = int(frame[schema.model_column].n_unique())
     counts = (
-        frame.group_by(DATASET_COLUMN)
+        frame.group_by(schema.dataset_column)
         .agg(pl.len().alias("models_present"), pl.col("nr_inst").first().alias("nr_inst"))
         .filter(pl.col("models_present") < models)
         .sort("nr_inst")
     )
     return counts.with_columns((models - pl.col("models_present")).alias("models_absent")).select(
-        pl.col(DATASET_COLUMN).alias("dataset"), "nr_inst", "models_absent"
+        pl.col(schema.dataset_column).alias("dataset"), "nr_inst", "models_absent"
     )

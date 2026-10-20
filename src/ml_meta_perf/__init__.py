@@ -8,16 +8,18 @@ and doubly held-out (DHO) evaluation.
 
 from ml_meta_perf.analysis import redundancy_groups, screen
 from ml_meta_perf.attribution import group_shares, term_effects, variance_decomposition
-from ml_meta_perf.config import Configuration, OpaqueConfig, SelectionConfig, StudyConfig, load_config
+from ml_meta_perf.config import (
+    Configuration,
+    OpaqueConfig,
+    Schema,
+    SelectionConfig,
+    StudyConfig,
+    default_schema,
+    load_config,
+)
 from ml_meta_perf.data import (
-    ALL_FEATURES,
-    DATASET_COLUMN,
-    DATASET_FEATURES,
     MODEL_CAPABILITY,
-    MODEL_COLUMN,
     MODEL_FAMILY,
-    MODEL_FEATURES,
-    TARGET_COLUMN,
     aggregate_by_dataset,
     columns_as_arrays,
     groups,
@@ -63,15 +65,9 @@ from ml_meta_perf.validate import (
 __version__ = "0.1.0"
 
 __all__ = [
-    "ALL_FEATURES",
     "CATALOGUE",
-    "DATASET_COLUMN",
-    "DATASET_FEATURES",
     "MODEL_CAPABILITY",
-    "MODEL_COLUMN",
     "MODEL_FAMILY",
-    "MODEL_FEATURES",
-    "TARGET_COLUMN",
     "Atom",
     "Configuration",
     "CrossValidation",
@@ -80,6 +76,7 @@ __all__ = [
     "ModelEffects",
     "OpaqueConfig",
     "Practice",
+    "Schema",
     "Scores",
     "SearchResult",
     "SelectionConfig",
@@ -101,6 +98,7 @@ __all__ = [
     "coverage",
     "cross_validate_fixed_form",
     "decision_report",
+    "default_schema",
     "feature_practices",
     "feature_usage",
     "fit_effects",
