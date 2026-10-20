@@ -488,10 +488,9 @@ def term_effects(effects: pl.DataFrame, destination: str | Path, *, top: int | N
         alpha=0.85,
     )
     axes.set_yticks(range(len(labels)))
-    axes.set_yticklabels(labels, fontsize=7.5)
+    axes.set_yticklabels(labels)
     axes.axvline(0.0, color="black", linewidth=0.8)
     axes.set_xlabel("effect on predicted MCC")
-    axes.tick_params(axis="x", labelsize=8)
     axes.grid(axis="x", alpha=0.25, linestyle=":")
     return _finish(figure, destination, paper_width_fraction=0.99)
 
@@ -523,7 +522,7 @@ def practice_effects(practices: pl.DataFrame, destination: str | Path) -> Path:
     for index, (value, alpha) in enumerate(zip(values, alphas, strict=True)):
         axes.barh(index, value, color=POSITIVE if value > 0 else NEGATIVE, alpha=alpha)
     axes.set_yticks(range(len(labels)))
-    axes.set_yticklabels(labels, fontsize=9)
+    axes.set_yticklabels(labels)
     axes.axvline(0.0, color="black", linewidth=0.8)
     axes.set_xlabel("change in predicted MCC")
     axes.grid(axis="x", alpha=0.25, linestyle=":")
@@ -684,7 +683,7 @@ def ranking_quality(selection: pl.DataFrame, destination: str | Path) -> Path:
             label="top choice within 0.01 of best",
         )
     axes.set_yticks(positions)
-    axes.set_yticklabels([_shorten(name, 24) for name in table["group"]], fontsize=8)
+    axes.set_yticklabels([_shorten(name, 24) for name in table["group"]])
     axes.set_xlim(0.0, 1.0)
     axes.set_xticks([0.0, 0.2, 0.4, 0.6, 0.8])
     axes.set_xlabel("average precision /\nreciprocal rank")

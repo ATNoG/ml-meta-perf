@@ -118,6 +118,11 @@ MODEL_FEATURES: tuple[str, ...] = (
 #: Published tabular-ML comparisons motivate family distinctions; the exact numerical
 #: ordering is a heuristic study assumption, not calibrated capacity or expected MCC.
 #: Encoding sensitivity controls assess the consequences for the retained form.
+#: The independence is also the column's weakness, measured on the 484-row corpus (2026-10-19):
+#: the asserted order rises at only 6 of 9 steps in raw per-family mean MCC (9 would be
+#: monotone, about 4.5 unrelated). ``generic NN`` has the *lowest* family mean, 0.512, from
+#: rung 6 of 10; ``single tree`` is near the top at 0.944 from rung 5. A term over this column
+#: is therefore only loosely "capability" and must not be quoted as though it were more.
 #: The assigned values below remain fixed across datasets.
 MODEL_CAPABILITY: dict[str, int] = {
     "naive bayes": 1,
@@ -517,7 +522,7 @@ def target_summary(frame: pl.DataFrame) -> pl.DataFrame:
 def missing_cells(frame: pl.DataFrame) -> pl.DataFrame:
     """Which datasets are short of models, and how large those datasets are.
 
-    The 24 absent cells are **not** missing at random, and the table says so on its face
+    The absent cells are **not** missing at random, and the table says so on its face
     rather than in a sentence beside it: the datasets with models missing are the smallest
     ones in the corpus. Reported per dataset with its instance count, so a reader can see the
     pattern instead of being told about it.
