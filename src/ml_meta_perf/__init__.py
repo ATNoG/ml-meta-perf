@@ -18,12 +18,12 @@ from ml_meta_perf.config import (
     load_config,
 )
 from ml_meta_perf.data import (
-    MODEL_CAPABILITY,
-    MODEL_FAMILY,
     aggregate_by_dataset,
     columns_as_arrays,
     groups,
     load,
+    model_family,
+    model_ordinals,
     target,
 )
 from ml_meta_perf.guidance import CATALOGUE, Practice, Verdict, assess
@@ -66,8 +66,6 @@ __version__ = "0.1.0"
 
 __all__ = [
     "CATALOGUE",
-    "MODEL_CAPABILITY",
-    "MODEL_FAMILY",
     "Atom",
     "Configuration",
     "CrossValidation",
@@ -111,6 +109,8 @@ __all__ = [
     "load",
     "load_config",
     "marginal_versus_conditional",
+    "model_family",
+    "model_ordinals",
     "operation_usage",
     "plateau_knee",
     "protocol_spread",

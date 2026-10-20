@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import numpy as np
 import polars as pl
 
-from ml_meta_perf.data import MODEL_FAMILY, NEURAL_FAMILIES, TREE_FAMILIES, load
+from ml_meta_perf.data import load, model_family, neural_families, tree_families
 from ml_meta_perf.guidance import (
     CATALOGUE,
     CHALLENGED,
@@ -251,12 +251,12 @@ class TestEvidence(unittest.TestCase):
 class TestTaxonomy(unittest.TestCase):
     def test_every_model_in_the_meta_dataset_has_a_family(self) -> None:
         models = set(load()["Model"].unique().to_list())
-        self.assertEqual(models - set(MODEL_FAMILY), set())
+        self.assertEqual(models - set(model_family()), set())
 
     def test_tree_and_neural_families_are_disjoint_and_present(self) -> None:
-        self.assertEqual(set(TREE_FAMILIES) & set(NEURAL_FAMILIES), set())
-        assigned = set(MODEL_FAMILY.values())
-        for family in TREE_FAMILIES + NEURAL_FAMILIES:
+        self.assertEqual(set(tree_families()) & set(neural_families()), set())
+        assigned = set(model_family().values())
+        for family in tree_families() + neural_families():
             self.assertIn(family, assigned)
 
 

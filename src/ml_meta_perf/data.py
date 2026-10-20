@@ -71,9 +71,11 @@ prose, with the figures.
 from __future__ import annotations
 
 import dataclasses
+import json
 import sys
+from functools import cache
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import polars as pl
@@ -88,206 +90,9 @@ if TYPE_CHECKING:
 # ``features`` sections of ``config/study.json`` (`ml_meta_perf.config.default_schema`).
 
 
-#: Study-specific ordinal assignment of the ten learner families.
-#:
-#: This is the **provenance** of the ``Model Capability`` column, which the CSV carries like
-#: any other feature. It is kept here, and checked against the CSV by ``test_data``, so the
-#: column can be regenerated and so a reader can see where the numbers came from rather than
-#: finding twenty-five unexplained integers in a data file.
-#:
-#: Published tabular-ML comparisons motivate family distinctions; the exact numerical
-#: ordering is a heuristic study assumption, not calibrated capacity or expected MCC.
-#: Encoding sensitivity controls assess the consequences for the retained form.
-#: The independence is also the column's weakness, measured on the 484-row corpus (2026-10-19):
-#: the asserted order rises at only 6 of 9 steps in raw per-family mean MCC (9 would be
-#: monotone, about 4.5 unrelated). ``generic NN`` has the *lowest* family mean, 0.512, from
-#: rung 6 of 10; ``single tree`` is near the top at 0.944 from rung 5. A term over this column
-#: is therefore only loosely "capability" and must not be quoted as though it were more.
-#: The assigned values below remain fixed across datasets.
-MODEL_CAPABILITY: dict[str, int] = {
-    "naive bayes": 1,
-    "discriminant": 2,
-    "linear": 3,
-    "instance": 4,
-    "single tree": 5,
-    "generic NN": 6,
-    "tabular NN": 7,
-    "bagged trees": 8,
-    "boosted trees": 9,
-    "tabular foundation": 10,
-}
-
-#: The four asserted mechanism ordinals, by learner.
-#:
-#: These are the **provenance** of four columns the CSV carries like any other feature. They
-#: live here, and are checked against the CSV by ``test_data``, so the columns can be
-#: regenerated and a reader can see where the numbers came from.
-#:
-#: Each is defined for all twenty-five learners, so none carries a "this learner has no such
-#: thing" sentinel, and every rung is occupied and positive, so the whole grammar is defined
-#: on all of them. That is what distinguishes them from the sixty-one hyperparameter
-#: descriptors measured and rejected during corpus design: a hyperparameter a learner does not have
-#: has no value, and encoding that absence as zero collapses applicability into magnitude.
-#:
-#: **They are asserted, not measured**, and carry chapter 4's caveat in full: a term over one
-#: of them is evidence about the ordering claimed here, not about a quantity anyone observed.
-
-#: How deep randomisation reaches into the fitted solution, low to high.
-#:
-#: 1 deterministic given the data | 2 stochastic optimisation (random init or shuffling) |
-#: 3 randomised over training examples (bootstrap) | 4 randomised over features (subspace or
-#: column subsampling) | 5 randomised over the split or parameter values themselves.
-#:
-#: Asserted from published descriptions of the learners: Breiman (1996) on bagging, Ho (1998)
-#: on the random subspace method, Breiman (2001) on random forests, and Geurts, Ernst &
-#: Wehenkel (2006) on extremely randomized trees. The top two rungs are what separate ``DT``
-#: from ``ExtraTree`` and ``LightGBM_RF`` from ``LightGBM_ExtraTrees`` -- pairs that no
-#: measured descriptor in this corpus, and none of sixty-one proposed ones, can tell apart.
-SOLUTION_STOCHASTICITY: dict[str, int] = {
-    "BernoulliNB": 1,
-    "DT": 1,
-    "GaussianNB": 1,
-    "KNN": 1,
-    "LDA": 1,
-    "LR": 1,
-    "LinearSVC": 1,
-    "QDA": 1,
-    "Ridge": 1,
-    "DNN": 2,
-    "FT-Transformer": 2,
-    "MLP": 2,
-    "PassiveAggressive": 2,
-    "Perceptron": 2,
-    "SGD": 2,
-    "TabICL": 2,
-    "TabNet": 2,
-    "TabPFN": 2,
-    "TabTransformer": 2,
-    "AdaBoost": 3,
-    "Bagging": 3,
-    "LightGBM_RF": 4,
-    "XGBoost": 4,
-    "ExtraTree": 5,
-    "LightGBM_ExtraTrees": 5,
-}
-
-
-#: How hard the objective penalises points far from the decision boundary.
-#:
-#: 1 squared error or an impurity criterion | 2 logistic / cross-entropy | 3 exponential |
-#: 4 hinge | 5 the perceptron criterion.
-#:
-#: The standard robustness ordering over losses. This is the weakest claim of the four --
-#: placing the perceptron criterion above hinge is a choice rather than a consensus -- and
-#: chapter 4's caveat about ``Model Capability`` applies here with more force.
-LOSS_MARGIN_BEHAVIOUR: dict[str, int] = {
-    "Bagging": 1,
-    "DT": 1,
-    "ExtraTree": 1,
-    "KNN": 1,
-    "LDA": 1,
-    "QDA": 1,
-    "Ridge": 1,
-    "BernoulliNB": 2,
-    "DNN": 2,
-    "FT-Transformer": 2,
-    "GaussianNB": 2,
-    "LR": 2,
-    "LightGBM_ExtraTrees": 2,
-    "LightGBM_RF": 2,
-    "MLP": 2,
-    "TabICL": 2,
-    "TabNet": 2,
-    "TabPFN": 2,
-    "TabTransformer": 2,
-    "XGBoost": 2,
-    "AdaBoost": 3,
-    "LinearSVC": 4,
-    "PassiveAggressive": 4,
-    "SGD": 4,
-    "Perceptron": 5,
-}
-
-
-#: How much of P(x) the learner commits to modelling.
-#:
-#: 1 discriminative, models P(y|x) only | 2 instance-based, retains the sample and models no
-#: density | 3 generative assuming conditional independence | 4 generative with a shared
-#: covariance | 5 generative with a per-class covariance.
-#:
-#: Ng & Jordan (2001) on discriminative versus generative classifiers, and the classical
-#: LDA/QDA covariance hierarchy. **Lopsided**: the discriminative reference contains most rows; the other categories
-#: hold 20-40 each, so three of its five rungs sit below the ten-percent-of-rows floor the
-#: z-score cap imposes elsewhere. Every value is a real reading -- there is no
-#: not-applicable sentinel -- but a term over this column speaks mostly about one rung.
-INPUT_DISTRIBUTION_MODELLING: dict[str, int] = {
-    "AdaBoost": 1,
-    "Bagging": 1,
-    "DNN": 1,
-    "DT": 1,
-    "ExtraTree": 1,
-    "FT-Transformer": 1,
-    "LR": 1,
-    "LightGBM_ExtraTrees": 1,
-    "LightGBM_RF": 1,
-    "LinearSVC": 1,
-    "MLP": 1,
-    "PassiveAggressive": 1,
-    "Perceptron": 1,
-    "Ridge": 1,
-    "SGD": 1,
-    "TabICL": 1,
-    "TabNet": 1,
-    "TabPFN": 1,
-    "TabTransformer": 1,
-    "XGBoost": 1,
-    "KNN": 2,
-    "BernoulliNB": 3,
-    "GaussianNB": 3,
-    "LDA": 4,
-    "QDA": 5,
-}
-
-
-#: How the parameters are reached.
-#:
-#: 1 closed form | 2 batch iterative | 3 mini-batch stochastic | 4 per-sample online |
-#: 5 amortised, fitted in-context at prediction time.
-FITTING_REGIME: dict[str, int] = {
-    "BernoulliNB": 1,
-    "GaussianNB": 1,
-    "KNN": 1,
-    "LDA": 1,
-    "QDA": 1,
-    "Ridge": 1,
-    "AdaBoost": 2,
-    "Bagging": 2,
-    "DT": 2,
-    "ExtraTree": 2,
-    "LR": 2,
-    "LightGBM_ExtraTrees": 2,
-    "LightGBM_RF": 2,
-    "LinearSVC": 2,
-    "XGBoost": 2,
-    "DNN": 3,
-    "FT-Transformer": 3,
-    "MLP": 3,
-    "SGD": 3,
-    "TabNet": 3,
-    "TabTransformer": 3,
-    "PassiveAggressive": 4,
-    "Perceptron": 4,
-    "TabICL": 5,
-    "TabPFN": 5,
-}
-
-#: The four ordinals by name, for regeneration and for the test that checks them.
-MODEL_ORDINALS: dict[str, dict[str, int]] = {
-    "Solution Stochasticity": SOLUTION_STOCHASTICITY,
-    "Loss Margin Behaviour": LOSS_MARGIN_BEHAVIOUR,
-    "Input Distribution Modelling": INPUT_DISTRIBUTION_MODELLING,
-    "Fitting Regime": FITTING_REGIME,
-}
+# The learner taxonomy, the ordinals behind the model-descriptor columns and the feature glossary
+# are not constants here either: they are the files named by ``side_files`` in ``config/study.json``,
+# read by `model_family`, `model_ordinals`, `feature_glossary` and friends below.
 
 FLEXFL_DATASET_COLUMN = "dataset"
 FLEXFL_MODEL_COLUMN = "fl_algo"
@@ -424,74 +229,6 @@ def check_target_arguments(parser: argparse.ArgumentParser, arguments: argparse.
         parser.error(f"--log-target applies only to --target {' or '.join(FLEXFL_COST_TARGETS)}")
 
 
-#: Learner family for each model in the meta-dataset. Model *features* describe capacity
-#: and cost; they do not say what kind of learner a row refers to, and the tabular-ML
-#: literature states its guidance in exactly those terms ("prefer tree ensembles"), so
-#: checking that guidance against this corpus needs the taxonomy written down.
-#:
-#: The split between ``tabular NN`` and ``generic NN`` is the one that matters: an
-#: architecture designed for tabular data and a plain multilayer perceptron are both
-#: "deep learning" and behave nothing alike here.
-MODEL_FAMILY: dict[str, str] = {
-    "TabICL": "tabular foundation",
-    "TabPFN": "tabular foundation",
-    "Bagging": "bagged trees",
-    "DT": "single tree",
-    "ExtraTree": "single tree",
-    "XGBoost": "boosted trees",
-    "LightGBM_RF": "boosted trees",
-    "LightGBM_ExtraTrees": "boosted trees",
-    "AdaBoost": "boosted trees",
-    "TabNet": "tabular NN",
-    "FT-Transformer": "tabular NN",
-    "TabTransformer": "tabular NN",
-    "DNN": "generic NN",
-    "MLP": "generic NN",
-    "KNN": "instance",
-    "Ridge": "linear",
-    "LR": "linear",
-    "LinearSVC": "linear",
-    "PassiveAggressive": "linear",
-    "SGD": "linear",
-    "Perceptron": "linear",
-    "QDA": "discriminant",
-    "LDA": "discriminant",
-    "BernoulliNB": "naive bayes",
-    "GaussianNB": "naive bayes",
-}
-
-#: Families the tabular-ML literature groups together as "tree-based".
-TREE_FAMILIES = ("bagged trees", "single tree", "boosted trees")
-
-#: Families that are neural networks, split by whether the architecture targets tabular
-#: data specifically.
-NEURAL_FAMILIES = ("tabular NN", "generic NN")
-
-#: Plain-language readings of each feature, used wherever a fitted equation is turned into
-#: written guidance. Without these a "best practice" degenerates into restating a column
-#: name, which is not advice anyone can act on.
-FEATURE_GLOSSARY: dict[str, str] = {
-    "class_ent": "class entropy (how evenly the labels are spread)",
-    "eq_num_attr": "equivalent number of attributes (effective feature count)",
-    "gravity": "gravity (separation between the majority and minority class centres)",
-    "inst_to_attr": "instances per attribute",
-    "nr_attr": "number of attributes",
-    "nr_bin": "number of binary attributes",
-    "nr_class": "number of classes",
-    "nr_cor_attr": "proportion of correlated attribute pairs",
-    "nr_inst": "number of instances in the source dataset (before sampling)",
-    "nr_norm": "number of normally distributed attributes",
-    "nr_outliers": "number of attributes containing outliers",
-    "ns_ratio": "noise-to-signal ratio",
-    "Processing Units Number": "family-specific structural-size proxy",
-    "Model Capability": "heuristic study-specific learner-family code (1-10)",
-    "Solution Stochasticity": "assigned stochasticity reference category (1-5)",
-    "Loss Margin Behaviour": "assigned reference loss or decision-criterion category (1-5)",
-    "Input Distribution Modelling": "assigned distribution-modelling category (1-5)",
-    "Fitting Regime": "assigned fitting-regime category (1-5)",
-}
-
-
 def resolve_path(path: str | Path) -> Path:
     """Where a relative corpus path from the study file points: the checkout, else the working directory.
 
@@ -511,6 +248,70 @@ def resolve_path(path: str | Path) -> Path:
 
 class SchemaError(ValueError):
     """The CSV does not carry the columns the meta-model needs, or a value is out of domain for its transform."""
+
+
+@cache
+def _read_json(path: Path) -> Any:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _side_file(kind: str) -> Any:
+    """The parsed side file ``config/study.json`` names under ``side_files.<kind>``."""
+    path = getattr(load_config().side_files, kind)
+    if path is None:
+        raise SchemaError(f"this study has no {kind} file: side_files.{kind} is null in the study file")
+    resolved = resolve_path(path)
+    if not resolved.is_file():
+        raise SchemaError(f"{kind} file not found: {resolved}")
+    return _read_json(resolved)
+
+
+def _mapping(value: object, what: str, values: type) -> dict[str, Any]:
+    """``value`` as a dict of strings to ``values``, or a SchemaError saying which file part is malformed."""
+    if not isinstance(value, dict) or not all(
+        isinstance(key, str) and isinstance(item, values) for key, item in value.items()
+    ):
+        raise SchemaError(f"malformed {what}: expected a mapping from names to {values.__name__}")
+    return dict(value)
+
+
+def model_family() -> dict[str, str]:
+    """The learner family of every model, from the taxonomy file (``side_files.taxonomy``)."""
+    return _mapping(_side_file("taxonomy").get("family"), "taxonomy.family", str)
+
+
+def _family_group(name: str) -> tuple[str, ...]:
+    groups_ = _side_file("taxonomy").get("groups")
+    members = groups_.get(name) if isinstance(groups_, dict) else None
+    if not isinstance(members, list) or not all(isinstance(item, str) for item in members):
+        raise SchemaError(f"malformed taxonomy.groups.{name}: expected a list of family names")
+    return tuple(members)
+
+
+def tree_families() -> tuple[str, ...]:
+    """The families the tabular-ML literature groups together as tree-based."""
+    return _family_group("tree")
+
+
+def neural_families() -> tuple[str, ...]:
+    """The families that are neural networks, split by whether the architecture targets tabular data."""
+    return _family_group("neural")
+
+
+def model_ordinals() -> dict[str, dict[str, int]]:
+    """The assigned ordinal behind each model-descriptor column, keyed by column then by family or model."""
+    columns = _side_file("ordinals").get("columns")
+    if not isinstance(columns, dict):
+        raise SchemaError("malformed ordinals: expected a 'columns' mapping")
+    return {
+        column: _mapping(entry.get("values") if isinstance(entry, dict) else None, f"ordinals.{column}", int)
+        for column, entry in columns.items()
+    }
+
+
+def feature_glossary() -> dict[str, str]:
+    """A plain-language meaning for each feature column, from the glossary file."""
+    return _mapping(_side_file("glossary"), "glossary", str)
 
 
 def load(path: str | Path | None = None, schema: Schema | None = None) -> pl.DataFrame:

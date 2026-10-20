@@ -1,27 +1,33 @@
 """Loading, schema validation and the aggregation E1 is fitted on."""
 
+import dataclasses
+import json
 import os
 import tempfile
 import unittest
 from math import nextafter
 from pathlib import Path
+from unittest import mock
 
 import polars as pl
 
-from ml_meta_perf.config import DEFAULT_CONFIG_PATH, Schema, load_config
+from ml_meta_perf.config import DEFAULT_CONFIG_PATH, Schema, StudyConfig, load_config
 from ml_meta_perf.data import (
-    MODEL_CAPABILITY,
-    MODEL_FAMILY,
     SchemaError,
     aggregate_by_dataset,
     columns_as_arrays,
     corpus_summary,
+    feature_glossary,
     groups,
     load,
     missing_cells,
+    model_family,
+    model_ordinals,
+    neural_families,
     resolve_path,
     target,
     target_summary,
+    tree_families,
 )
 from tests.study import ALL_FEATURES, DATASET_COLUMN, DATASET_FEATURES, MODEL_COLUMN, MODEL_FEATURES, TARGET_COLUMN
 
@@ -67,11 +73,12 @@ class TestLoad(unittest.TestCase):
         # and the taxonomy that explains it from drifting apart.
         frame = load()
         for model, capability in zip(frame[MODEL_COLUMN].to_list(), frame["Model Capability"].to_list(), strict=True):
-            self.assertEqual(capability, float(MODEL_CAPABILITY[MODEL_FAMILY[model]]))
+            self.assertEqual(capability, float(model_ordinals()["Model Capability"][model_family()[model]]))
 
     def test_every_family_sits_somewhere_on_the_capability_ladder(self) -> None:
-        self.assertEqual(set(MODEL_FAMILY.values()), set(MODEL_CAPABILITY))
-        self.assertEqual(sorted(MODEL_CAPABILITY.values()), list(range(1, len(MODEL_CAPABILITY) + 1)))
+        capability = model_ordinals()["Model Capability"]
+        self.assertEqual(set(model_family().values()), set(capability))
+        self.assertEqual(sorted(capability.values()), list(range(1, len(capability) + 1)))
 
     def test_missing_column_is_reported(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -141,6 +148,87 @@ class TestLoadFromTheStudyFile(unittest.TestCase):
     def test_the_default_study_is_the_shipped_file(self) -> None:
         self.assertTrue(DEFAULT_CONFIG_PATH.is_file())
         self.assertEqual(resolve_path(load_config().corpus.path).name, "meta_dataset.csv")
+
+
+class TestSideFiles(unittest.TestCase):
+    """The taxonomy, the ordinals and the glossary come from the files ``side_files`` names."""
+
+    def study_with(self, **paths: str | None) -> StudyConfig:
+        study = load_config()
+        return dataclasses.replace(study, side_files=dataclasses.replace(study.side_files, **paths))
+
+    def test_the_taxonomy_covers_every_model_of_the_corpus(self) -> None:
+        families = model_family()
+        self.assertEqual(set(families), set(load()[MODEL_COLUMN].unique().to_list()))
+        self.assertTrue(set(tree_families()) <= set(families.values()))
+        self.assertTrue(set(neural_families()) <= set(families.values()))
+        self.assertTrue(set(tree_families()).isdisjoint(neural_families()))
+
+    def test_the_glossary_explains_every_feature(self) -> None:
+        self.assertEqual(set(feature_glossary()), set(ALL_FEATURES))
+
+    def test_the_ordinals_cover_every_model_descriptor_column_and_every_model(self) -> None:
+        ordinals = model_ordinals()
+        self.assertEqual(
+            set(ordinals),
+            {
+                "Model Capability",
+                "Solution Stochasticity",
+                "Loss Margin Behaviour",
+                "Input Distribution Modelling",
+                "Fitting Regime",
+            },
+        )
+        models = set(model_family())
+        for column, table in ordinals.items():
+            keys = set(table)
+            self.assertTrue(keys == models or keys == set(model_family().values()), column)
+
+    def test_a_study_without_a_taxonomy_says_so(self) -> None:
+        with mock.patch("ml_meta_perf.data.load_config", return_value=self.study_with(taxonomy=None)):
+            for accessor in (model_family, tree_families, neural_families):
+                with self.assertRaisesRegex(SchemaError, "no taxonomy file"):
+                    accessor()
+
+    def test_a_study_without_ordinals_or_glossary_says_so(self) -> None:
+        with mock.patch("ml_meta_perf.data.load_config", return_value=self.study_with(ordinals=None, glossary=None)):
+            with self.assertRaisesRegex(SchemaError, "no ordinals file"):
+                model_ordinals()
+            with self.assertRaisesRegex(SchemaError, "no glossary file"):
+                feature_glossary()
+
+    def test_a_missing_file_names_itself(self) -> None:
+        with (
+            mock.patch(
+                "ml_meta_perf.data.load_config", return_value=self.study_with(glossary="/nonexistent/glossary.json")
+            ),
+            self.assertRaisesRegex(SchemaError, "glossary.json"),
+        ):
+            feature_glossary()
+
+    def test_a_malformed_file_is_reported_by_part(self) -> None:
+        cases = {
+            "taxonomy": ({"family": ["not", "a", "mapping"], "groups": {}}, model_family, "taxonomy.family"),
+            "groups": ({"family": {}, "groups": {"tree": "x"}}, tree_families, "taxonomy.groups.tree"),
+            "glossary": ({"nr_attr": 3}, feature_glossary, "glossary"),
+        }
+        for name, (payload, accessor, message) in cases.items():
+            kind = "glossary" if name == "glossary" else "taxonomy"
+            with tempfile.TemporaryDirectory() as directory, self.subTest(name):
+                path = Path(directory) / f"{kind}.json"
+                path.write_text(json.dumps(payload), encoding="utf-8")
+                patched = mock.patch("ml_meta_perf.data.load_config", return_value=self.study_with(**{kind: str(path)}))
+                with patched, self.assertRaisesRegex(SchemaError, message):
+                    accessor()
+
+    def test_malformed_ordinals_are_reported(self) -> None:
+        for payload in ({"columns": []}, {"columns": {"Fitting Regime": {"values": {"DT": "x"}}}}):
+            with tempfile.TemporaryDirectory() as directory, self.subTest(payload=payload):
+                path = Path(directory) / "ordinals.json"
+                path.write_text(json.dumps(payload), encoding="utf-8")
+                patched = mock.patch("ml_meta_perf.data.load_config", return_value=self.study_with(ordinals=str(path)))
+                with patched, self.assertRaisesRegex(SchemaError, "malformed"):
+                    model_ordinals()
 
 
 class TestResolvePath(unittest.TestCase):

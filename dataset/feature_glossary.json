@@ -1,0 +1,20 @@
+{
+  "class_ent": "class entropy (how evenly the labels are spread)",
+  "eq_num_attr": "equivalent number of attributes (effective feature count)",
+  "gravity": "gravity (separation between the majority and minority class centres)",
+  "inst_to_attr": "instances per attribute",
+  "nr_attr": "number of attributes",
+  "nr_bin": "number of binary attributes",
+  "nr_class": "number of classes",
+  "nr_cor_attr": "proportion of correlated attribute pairs",
+  "nr_inst": "number of instances in the source dataset (before sampling)",
+  "nr_norm": "number of normally distributed attributes",
+  "nr_outliers": "number of attributes containing outliers",
+  "ns_ratio": "noise-to-signal ratio",
+  "Processing Units Number": "family-specific structural-size proxy",
+  "Model Capability": "heuristic study-specific learner-family code (1-10)",
+  "Solution Stochasticity": "assigned stochasticity reference category (1-5)",
+  "Loss Margin Behaviour": "assigned reference loss or decision-criterion category (1-5)",
+  "Input Distribution Modelling": "assigned distribution-modelling category (1-5)",
+  "Fitting Regime": "assigned fitting-regime category (1-5)"
+}

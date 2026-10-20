@@ -21,12 +21,14 @@ import unittest
 import numpy as np
 import polars as pl
 
-from ml_meta_perf.data import (
-    MODEL_ORDINALS,
-    load,
-)
+from ml_meta_perf.data import load, model_ordinals
 from tests import corpus
 from tests.study import ALL_FEATURES, DATASET_COLUMN, DATASET_FEATURES, MODEL_COLUMN, MODEL_FEATURES, TARGET_COLUMN
+
+
+def model_ordinals_without_capability() -> dict[str, dict[str, int]]:
+    """The four per-model ordinals (``Model Capability`` is per family and is checked in test_data)."""
+    return {name: table for name, table in model_ordinals().items() if name != "Model Capability"}
 
 
 class TestModelFeatures(unittest.TestCase):
@@ -44,7 +46,7 @@ class TestModelFeatures(unittest.TestCase):
                 self.assertGreater(float(self.values(name).min()), 0.0)
 
     def test_every_ordinal_is_a_gapless_ladder_from_one(self) -> None:
-        for name in MODEL_ORDINALS:
+        for name in model_ordinals_without_capability():
             with self.subTest(name):
                 levels = np.unique(self.values(name))
                 self.assertEqual(levels.min(), 1.0)
@@ -52,14 +54,14 @@ class TestModelFeatures(unittest.TestCase):
 
     def test_every_rung_is_occupied(self) -> None:
         """A level no learner takes is one the corpus cannot say anything about."""
-        for name, table in MODEL_ORDINALS.items():
+        for name, table in model_ordinals_without_capability().items():
             with self.subTest(name):
                 self.assertEqual(set(np.unique(self.values(name)).astype(int)), set(table.values()))
 
     def test_the_ordinals_are_constant_within_a_model(self) -> None:
         """They describe the learner, so they must not move when the dataset does."""
         models = self.frame[MODEL_COLUMN].to_numpy()
-        for name in MODEL_ORDINALS:
+        for name in model_ordinals_without_capability():
             with self.subTest(name):
                 values = self.values(name)
                 for model in np.unique(models):
@@ -68,7 +70,7 @@ class TestModelFeatures(unittest.TestCase):
     def test_the_csv_matches_the_asserted_tables(self) -> None:
         """The columns are provenance-checked, not just present."""
         models = self.frame[MODEL_COLUMN].to_numpy()
-        for name, table in MODEL_ORDINALS.items():
+        for name, table in model_ordinals_without_capability().items():
             with self.subTest(name):
                 values = self.values(name)
                 for model in np.unique(models):
@@ -89,7 +91,7 @@ class TestModelFeatures(unittest.TestCase):
     def test_every_learner_has_a_rung_in_every_ordinal(self) -> None:
         """No applicability sentinel is possible if nothing is ever missing."""
         models = {str(model) for model in self.frame[MODEL_COLUMN].unique()}
-        for name, table in MODEL_ORDINALS.items():
+        for name, table in model_ordinals_without_capability().items():
             with self.subTest(name):
                 self.assertEqual(models - set(table), set())
 

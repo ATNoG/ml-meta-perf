@@ -116,6 +116,23 @@ class FeaturesConfig:
     model: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class SideFilesConfig:
+    """Static facts about the corpus that are not columns of it, each in a file of its own.
+
+    ``None`` says the study has none: a corpus without a learner taxonomy simply cannot be
+    checked against guidance written in terms of learner families. Paths resolve like
+    ``corpus.path``.
+    """
+
+    #: Learner family of every model, and the groups of families (JSON).
+    taxonomy: str | None
+    #: The assigned ordinal behind each model-descriptor column, with its provenance (JSON).
+    ordinals: str | None
+    #: A plain-language meaning for each feature column (JSON).
+    glossary: str | None
+
+
 class ConfigError(ValueError):
     """The study file is well formed JSON but does not describe a usable study."""
 
@@ -202,6 +219,7 @@ class StudyConfig:
     corpus: CorpusConfig
     response: ResponseConfig
     features: FeaturesConfig
+    side_files: SideFilesConfig
     search: Configuration
     selection: SelectionConfig
     opaque: OpaqueConfig
@@ -219,10 +237,19 @@ class StudyConfig:
         )
 
 
-def _validated(corpus: CorpusConfig, response: ResponseConfig, features: FeaturesConfig) -> None:
+def _validated(
+    corpus: CorpusConfig, response: ResponseConfig, features: FeaturesConfig, side_files: SideFilesConfig
+) -> None:
     """Reject a study description that cannot describe a corpus, before any file is read."""
     if not corpus.path:
         raise ConfigError("corpus.path is empty")
+    for kind, path in (
+        ("taxonomy", side_files.taxonomy),
+        ("ordinals", side_files.ordinals),
+        ("glossary", side_files.glossary),
+    ):
+        if path is not None and not path:
+            raise ConfigError(f"side_files.{kind} is an empty path (use null for none)")
     identifiers = (corpus.dataset_column, corpus.model_column)
     if not all(identifiers) or corpus.dataset_column == corpus.model_column:
         raise ConfigError(f"corpus needs two different, non-empty group columns, got {identifiers}")
@@ -255,11 +282,13 @@ def parse_config(payload: dict[str, Any]) -> StudyConfig:
         dataset=tuple(str(name) for name in payload["features"]["dataset"]),
         model=tuple(str(name) for name in payload["features"]["model"]),
     )
-    _validated(corpus, response, features)
+    side_files = SideFilesConfig(**payload["side_files"])
+    _validated(corpus, response, features, side_files)
     return StudyConfig(
         corpus=corpus,
         response=response,
         features=features,
+        side_files=side_files,
         search=Configuration(**payload["search"]),
         selection=SelectionConfig(**payload["selection"]),
         opaque=OpaqueConfig(**payload["opaque"]),

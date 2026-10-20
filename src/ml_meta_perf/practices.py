@@ -26,7 +26,7 @@ import numpy as np
 import polars as pl
 
 from ml_meta_perf.attribution import contributions
-from ml_meta_perf.data import FEATURE_GLOSSARY
+from ml_meta_perf.data import feature_glossary
 from ml_meta_perf.model import Equation
 from ml_meta_perf.stats import spearman
 
@@ -100,7 +100,7 @@ def feature_practices(
         rows.append(
             {
                 "feature": feature,
-                "meaning": FEATURE_GLOSSARY.get(feature, feature),
+                "meaning": feature_glossary().get(feature, feature),
                 "n_terms": len(indices),
                 "direction": spearman(values, total),
                 "effect": effect,

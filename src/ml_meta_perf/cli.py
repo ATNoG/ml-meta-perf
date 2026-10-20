@@ -36,6 +36,7 @@ from ml_meta_perf.config import (
     OpaqueConfig,
     ResponseConfig,
     SelectionConfig,
+    SideFilesConfig,
     SweepConfig,
     default_schema,
 )
@@ -234,6 +235,9 @@ def build_parser() -> ArgumentParser:
     parser.add_argument("--corpus", type=CorpusConfig, help="the corpus CSV and its group columns")
     parser.add_argument("--response", type=ResponseConfig, help="the target column and its bounds")
     parser.add_argument("--features", type=FeaturesConfig, help="the dataset and model feature columns")
+    parser.add_argument(
+        "--side_files", type=SideFilesConfig, help="static facts about the corpus (taxonomy, ordinals, glossary)"
+    )
     parser.add_argument("--search", type=Configuration, help="search hyperparameters shared by E1, E2 and E3")
     parser.add_argument("--selection", type=SelectionConfig, help="the equation-length rule")
     parser.add_argument("--opaque", type=OpaqueConfig, help="the opaque regressors' sizes")

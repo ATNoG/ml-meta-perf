@@ -41,8 +41,8 @@ import polars as pl
 from ml_meta_perf.attribution import classify, contributions
 from ml_meta_perf.config import Configuration, SelectionConfig, default_schema, load_config
 from ml_meta_perf.data import (
-    FEATURE_GLOSSARY,
     corpus_summary,
+    feature_glossary,
     missing_cells,
     target_summary,
 )
@@ -289,7 +289,7 @@ def feature_usage(
         rows.append(
             {
                 "feature": feature,
-                "meaning": FEATURE_GLOSSARY.get(feature, feature),
+                "meaning": feature_glossary().get(feature, feature),
                 "n_terms": len(indices),
                 "share": float(sum(mass.get(equation.terms[index].name, 0.0) for index in indices)),
                 "transforms": ", ".join(transforms),
@@ -1826,4 +1826,4 @@ def glossary() -> pl.DataFrame:
     Restricted to the study file's features, which are the generated corpus schema and exactly the set
     of columns the equations may draw on.
     """
-    return pl.DataFrame([{"feature": name, "meaning": FEATURE_GLOSSARY[name]} for name in default_schema().features])
+    return pl.DataFrame([{"feature": name, "meaning": feature_glossary()[name]} for name in default_schema().features])

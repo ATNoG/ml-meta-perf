@@ -46,9 +46,9 @@ import polars as pl
 from ml_meta_perf.attribution import contributions as attribution_contributions
 from ml_meta_perf.config import default_schema
 from ml_meta_perf.data import (
-    MODEL_FAMILY,
-    NEURAL_FAMILIES,
-    TREE_FAMILIES,
+    model_family,
+    neural_families,
+    tree_families,
 )
 from ml_meta_perf.experiment import Report
 from ml_meta_perf.stats import spearman
@@ -183,7 +183,7 @@ def _mean_ranking(table: pl.DataFrame) -> dict[str, float]:
 
 def _family_means(frame: pl.DataFrame) -> pl.DataFrame:
     return (
-        frame.with_columns(pl.col(default_schema().model_column).replace(MODEL_FAMILY).alias("family"))
+        frame.with_columns(pl.col(default_schema().model_column).replace(model_family()).alias("family"))
         .group_by("family")
         .agg(
             pl.col(default_schema().target_column).mean().alias("mcc"),
@@ -443,8 +443,8 @@ def _profile_the_data_first(evidence: Evidence) -> Verdict:
 
 
 def _tree_ensembles_first(evidence: Evidence) -> Verdict:
-    trees = evidence.families(TREE_FAMILIES)
-    neural = evidence.families(NEURAL_FAMILIES)
+    trees = evidence.families(tree_families())
+    neural = evidence.families(neural_families())
     tabular_nn = evidence.family("tabular NN")
     generic_nn = evidence.family("generic NN")
     return Verdict(
@@ -464,7 +464,7 @@ def _tree_ensembles_first(evidence: Evidence) -> Verdict:
 
 def _pretrained_tabular_baseline(evidence: Evidence) -> Verdict:
     foundation = evidence.family("tabular foundation")
-    best_tree = evidence.complete_family_means.filter(pl.col("family").is_in(list(TREE_FAMILIES)))
+    best_tree = evidence.complete_family_means.filter(pl.col("family").is_in(list(tree_families())))
     top = float(np.max(best_tree["mcc"].to_numpy())) if best_tree.height else float("nan")
     order = evidence.complete_model_means[default_schema().model_column].to_list()
     ranks = {name: index + 1 for index, name in enumerate(order)}
@@ -555,7 +555,7 @@ def _prefer_outlier_robust_learners(evidence: Evidence) -> Verdict:
 
 def _capacity_is_not_free(evidence: Evidence) -> Verdict:
     generic = evidence.family("generic NN")
-    trees = evidence.families(TREE_FAMILIES)
+    trees = evidence.families(tree_families())
     capacity_terms = evidence.practice_terms("Processing Units Number")
     equation_says = (
         f" The equation says it conditionally rather than flatly: `Processing Units Number` "

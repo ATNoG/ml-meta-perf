@@ -54,6 +54,7 @@ from ml_meta_perf.config import (
     OpaqueConfig,
     ResponseConfig,
     SelectionConfig,
+    SideFilesConfig,
     StudyConfig,
     SweepConfig,
     default_schema,
@@ -195,6 +196,9 @@ def build_parser() -> ArgumentParser:
     parser.add_argument("--corpus", type=CorpusConfig, help="the corpus CSV and its group columns")
     parser.add_argument("--response", type=ResponseConfig, help="the target column and its bounds")
     parser.add_argument("--features", type=FeaturesConfig, help="the dataset and model feature columns")
+    parser.add_argument(
+        "--side_files", type=SideFilesConfig, help="static facts about the corpus (taxonomy, ordinals, glossary)"
+    )
     parser.add_argument("--search", type=Configuration, help="the base configuration the grid varies")
     parser.add_argument("--selection", type=SelectionConfig, help="the length rule applied to every point")
     parser.add_argument("--opaque", type=OpaqueConfig, help="carried into the proposal unchanged")
@@ -219,6 +223,7 @@ def main(argv: list[str] | None = None) -> int:
         corpus=arguments.corpus,
         response=arguments.response,
         features=arguments.features,
+        side_files=arguments.side_files,
         search=arguments.search,
         selection=arguments.selection,
         opaque=arguments.opaque,

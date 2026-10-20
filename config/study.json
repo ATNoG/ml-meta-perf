@@ -35,6 +35,11 @@
       "Fitting Regime"
     ]
   },
+  "side_files": {
+    "taxonomy": "dataset/model_taxonomy.json",
+    "ordinals": "dataset/model_ordinals.json",
+    "glossary": "dataset/feature_glossary.json"
+  },
   "search": {
     "max_abs_zscore": 3.5,
     "penalty": 0.1,
