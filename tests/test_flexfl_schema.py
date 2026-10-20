@@ -16,7 +16,7 @@ import numpy as np
 import polars as pl
 
 from ml_meta_perf import cli, experiment, sweep
-from ml_meta_perf.config import default_configuration, load_config
+from ml_meta_perf.config import default_configuration, load_config, parse_config
 from ml_meta_perf.data import (
     ALL_FEATURES,
     FLEXFL_COST_TARGETS,
@@ -91,6 +91,7 @@ def swept(output: Path) -> pl.DataFrame:
     proposed = json.loads((output / "proposed_study.json").read_text())
     candidates = pl.read_csv(output / "candidates.csv")
     assert proposed["search"]["penalty"] in candidates["penalty"].to_list()
+    assert parse_config(proposed).search.penalty == proposed["search"]["penalty"]  # a complete, parseable study file
     return candidates
 
 

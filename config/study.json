@@ -1,4 +1,40 @@
 {
+  "corpus": {
+    "path": "dataset/meta_dataset.csv",
+    "dataset_column": "Dataset",
+    "model_column": "Model"
+  },
+  "response": {
+    "column": "MCC",
+    "bounds": [
+      -1.0,
+      1.0
+    ]
+  },
+  "features": {
+    "dataset": [
+      "class_ent",
+      "eq_num_attr",
+      "gravity",
+      "inst_to_attr",
+      "nr_attr",
+      "nr_bin",
+      "nr_class",
+      "nr_cor_attr",
+      "nr_inst",
+      "nr_norm",
+      "nr_outliers",
+      "ns_ratio"
+    ],
+    "model": [
+      "Processing Units Number",
+      "Model Capability",
+      "Solution Stochasticity",
+      "Loss Margin Behaviour",
+      "Input Distribution Modelling",
+      "Fitting Regime"
+    ]
+  },
   "search": {
     "max_abs_zscore": 3.5,
     "penalty": 0.1,

@@ -1,6 +1,6 @@
 # 7. Other targets: the method beyond MCC
 
-*Implemented in `ml_meta_perf.model`, `ml_meta_perf.validate` and `ml_meta_perf.data`.*
+*Implemented in `ml_meta_perf.config`, `ml_meta_perf.model`, `ml_meta_perf.validate` and `ml_meta_perf.data`.*
 
 The method of chapters 2 to 5 does not depend on the target being MCC. This chapter states
 what changes when the target is something else (training time, bytes sent, energy, a
@@ -109,8 +109,18 @@ A study with a single grouping factor (one NN family trained in several ways, as
 no $c_m$; it fits E3 over its features and its protocols are the ones defined by the groups it
 has (section 5).
 
-Today $\mathcal{S}$ is the `Schema` object in `ml_meta_perf.data`: the MCC study builds it from
-constants and a FlexFL study builds it from `flexfl_schema`. The migration to a study file
-replaces both with one reader of `config/study.json`. Its safety net is `tests/test_data_surface.py`,
-which pins the public names of `ml_meta_perf.data` and the content of the MCC schema, so that the
-schema read from the file can be compared with the one it replaces, item by item.
+$\mathcal{S}$ is read from three sections of `config/study.json`:
+
+| symbol | section and key |
+|---|---|
+| $c_d,\ c_m$ | `corpus.dataset_column`, `corpus.model_column` |
+| $F_d,\ F_m$ | `features.dataset`, `features.model` |
+| $c_y$ | `response.column` |
+| $B$ | `response.bounds` (`null` for $B = \varnothing$) |
+
+`StudyConfig.schema()` turns them into the `Schema` object the loader and the fit consume. The
+file is checked when it is read, before any data is: the two group columns must differ, the
+bounds must satisfy $a < b$, each feature list must be non-empty, no column may be listed twice
+or play two roles ($F_d \cap F_m = \varnothing$, and neither contains $c_d$, $c_m$ or $c_y$). The
+constants that used to hold the MCC description stay in `ml_meta_perf.data` only until every
+caller reads the file, and `tests/test_data_surface.py` asserts that the two agree item by item.

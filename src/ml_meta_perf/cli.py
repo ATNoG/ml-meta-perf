@@ -31,7 +31,10 @@ from jsonargparse import ActionConfigFile, ArgumentParser, Namespace  # pyright:
 from ml_meta_perf.config import (
     DEFAULT_CONFIG_PATH,
     Configuration,
+    CorpusConfig,
+    FeaturesConfig,
     OpaqueConfig,
+    ResponseConfig,
     SelectionConfig,
     SweepConfig,
 )
@@ -221,6 +224,9 @@ def build_parser() -> ArgumentParser:
     )
     # The hyperparameters. Their values live only in the configuration file; each field can be
     # overridden as a dotted flag, e.g. `--search.penalty 3`.
+    parser.add_argument("--corpus", type=CorpusConfig, help="the corpus CSV and its group columns")
+    parser.add_argument("--response", type=ResponseConfig, help="the target column and its bounds")
+    parser.add_argument("--features", type=FeaturesConfig, help="the dataset and model feature columns")
     parser.add_argument("--search", type=Configuration, help="search hyperparameters shared by E1, E2 and E3")
     parser.add_argument("--selection", type=SelectionConfig, help="the equation-length rule")
     parser.add_argument("--opaque", type=OpaqueConfig, help="the opaque regressors' sizes")

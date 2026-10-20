@@ -6,7 +6,13 @@ sizes, and the grid the configuration sweep explores. The dataclasses below are 
 carry no defaults for anything that was tuned, so a value can only come from the file (or from
 a command-line override of it) and cannot drift between a constant and a chapter.
 
-The file holds **hyperparameters only**. Which features an equation may use is not one: E1
+Besides the hyperparameters the file **describes the problem**: which CSV holds the corpus, which
+columns name the datasets and the models, which column is the target and what range it can take,
+and which columns are features of the dataset and which of the model. Those are the ``corpus``,
+``response`` and ``features`` sections, and they are what makes the tool usable on a problem other
+than MCC: nothing about a problem lives in the code.
+
+The ``features`` section says which columns *are* features, not which an equation may use: E1
 searches every dataset feature, E2 every model feature, E3 both, and the search decides what
 each equation keeps. Restricting the pool would be a second, hidden search over feature
 subsets.
@@ -39,6 +45,79 @@ def _default_config_path() -> Path:
 
 
 DEFAULT_CONFIG_PATH = _default_config_path()
+
+
+@dataclass(frozen=True)
+class Schema:
+    """Which columns a meta-dataset's rows, groups, features and target live in.
+
+    The runtime form of a study's data description: `StudyConfig.schema` builds it from the
+    ``corpus``, ``response`` and ``features`` sections of the study file.
+    """
+
+    dataset_column: str
+    model_column: str
+    dataset_features: tuple[str, ...]
+    model_features: tuple[str, ...]
+    target_column: str
+    bounds: tuple[float, float] | None
+    task_type: str | None = None
+    log_target: bool = False
+
+    def __post_init__(self) -> None:
+        if self.log_target and self.bounds is not None:
+            raise ValueError("log1p requires bounds=None; only the unbounded FlexFL cost targets support it")
+
+    @property
+    def features(self) -> tuple[str, ...]:
+        return self.dataset_features + self.model_features
+
+    @property
+    def slug(self) -> str:
+        base = self.target_column if self.task_type is None else f"{self.target_column}-{self.task_type}"
+        return f"{base}-log1p" if self.log_target else base
+
+    @property
+    def label(self) -> str:
+        return f"log1p({self.target_column})" if self.log_target else self.target_column
+
+    def tag(self, name: str) -> str:
+        """``name`` with a ``_log1p`` suffix when this schema fits a log-transformed target."""
+        return f"{name}_log1p" if self.log_target else name
+
+
+@dataclass(frozen=True)
+class CorpusConfig:
+    """Where the corpus is and which columns name its rows' groups."""
+
+    #: The CSV, relative to the repository root (else the working directory) unless absolute.
+    path: str
+    #: The column naming the dataset, the first grouping factor (leave-one-dataset-out).
+    dataset_column: str
+    #: The column naming the model, the second grouping factor (leave-one-model-out).
+    model_column: str
+
+
+@dataclass(frozen=True)
+class ResponseConfig:
+    """The target: its column and the range it can take."""
+
+    column: str
+    #: ``[low, high]`` when the target cannot leave a range (MCC, a bounded error); ``None`` for
+    #: a cost, a time or a count, which is then never clipped (chapter 7, section 7.1).
+    bounds: tuple[float, float] | None
+
+
+@dataclass(frozen=True)
+class FeaturesConfig:
+    """The feature columns, by what they describe."""
+
+    dataset: tuple[str, ...]
+    model: tuple[str, ...]
+
+
+class ConfigError(ValueError):
+    """The study file is well formed JSON but does not describe a usable study."""
 
 
 @dataclass(frozen=True)
@@ -120,16 +199,67 @@ class SweepConfig:
 class StudyConfig:
     """The whole of ``config/study.json``."""
 
+    corpus: CorpusConfig
+    response: ResponseConfig
+    features: FeaturesConfig
     search: Configuration
     selection: SelectionConfig
     opaque: OpaqueConfig
     sweep: SweepConfig
 
+    def schema(self) -> Schema:
+        """The data description the loader and the fit consume."""
+        return Schema(
+            dataset_column=self.corpus.dataset_column,
+            model_column=self.corpus.model_column,
+            dataset_features=self.features.dataset,
+            model_features=self.features.model,
+            target_column=self.response.column,
+            bounds=self.response.bounds,
+        )
+
+
+def _validated(corpus: CorpusConfig, response: ResponseConfig, features: FeaturesConfig) -> None:
+    """Reject a study description that cannot describe a corpus, before any file is read."""
+    if not corpus.path:
+        raise ConfigError("corpus.path is empty")
+    identifiers = (corpus.dataset_column, corpus.model_column)
+    if not all(identifiers) or corpus.dataset_column == corpus.model_column:
+        raise ConfigError(f"corpus needs two different, non-empty group columns, got {identifiers}")
+    if response.bounds is not None and not response.bounds[0] < response.bounds[1]:
+        raise ConfigError(f"response.bounds must satisfy low < high, got {response.bounds}")
+    for kind, names in (("dataset", features.dataset), ("model", features.model)):
+        if not names:
+            raise ConfigError(f"features.{kind} is empty: an equation needs something to describe")
+    every = features.dataset + features.model
+    repeated = sorted({name for name in every if every.count(name) > 1})
+    if repeated:
+        raise ConfigError(f"features listed more than once (or as both dataset and model): {repeated}")
+    reserved = sorted({*identifiers, response.column} & set(every))
+    if reserved:
+        raise ConfigError(f"a feature cannot also be a group or the response: {reserved}")
+    if response.column in identifiers:
+        raise ConfigError(f"the response column {response.column!r} is also a group column")
+
 
 def parse_config(payload: dict[str, Any]) -> StudyConfig:
     """Build the typed configuration from the file's JSON object; unknown keys are an error."""
     sweep = payload["sweep"]
+    bounds = payload["response"]["bounds"]
+    corpus = CorpusConfig(**payload["corpus"])
+    response = ResponseConfig(
+        column=payload["response"]["column"],
+        bounds=None if bounds is None else (float(bounds[0]), float(bounds[1])),
+    )
+    features = FeaturesConfig(
+        dataset=tuple(str(name) for name in payload["features"]["dataset"]),
+        model=tuple(str(name) for name in payload["features"]["model"]),
+    )
+    _validated(corpus, response, features)
     return StudyConfig(
+        corpus=corpus,
+        response=response,
+        features=features,
         search=Configuration(**payload["search"]),
         selection=SelectionConfig(**payload["selection"]),
         opaque=OpaqueConfig(**payload["opaque"]),

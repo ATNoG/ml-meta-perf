@@ -49,7 +49,10 @@ from jsonargparse import ActionConfigFile, ArgumentParser  # pyright: ignore[rep
 from ml_meta_perf.config import (
     DEFAULT_CONFIG_PATH,
     Configuration,
+    CorpusConfig,
+    FeaturesConfig,
     OpaqueConfig,
+    ResponseConfig,
     SelectionConfig,
     StudyConfig,
     SweepConfig,
@@ -177,6 +180,9 @@ def build_parser() -> ArgumentParser:
         default_config_files=[str(DEFAULT_CONFIG_PATH)],
     )
     parser.add_argument("--config", action=ActionConfigFile, help="study configuration JSON")
+    parser.add_argument("--corpus", type=CorpusConfig, help="the corpus CSV and its group columns")
+    parser.add_argument("--response", type=ResponseConfig, help="the target column and its bounds")
+    parser.add_argument("--features", type=FeaturesConfig, help="the dataset and model feature columns")
     parser.add_argument("--search", type=Configuration, help="the base configuration the grid varies")
     parser.add_argument("--selection", type=SelectionConfig, help="the length rule applied to every point")
     parser.add_argument("--opaque", type=OpaqueConfig, help="carried into the proposal unchanged")
@@ -203,7 +209,13 @@ def main(argv: list[str] | None = None) -> int:
         else flexfl_schema(arguments.target, arguments.task_type, arguments.log_target)
     )
     study = StudyConfig(
-        search=arguments.search, selection=arguments.selection, opaque=arguments.opaque, sweep=arguments.sweep
+        corpus=arguments.corpus,
+        response=arguments.response,
+        features=arguments.features,
+        search=arguments.search,
+        selection=arguments.selection,
+        opaque=arguments.opaque,
+        sweep=arguments.sweep,
     )
     points = grid(study)
     output = Path(arguments.output or default_output(schema))

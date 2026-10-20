@@ -11,6 +11,7 @@ import inspect
 import unittest
 
 from ml_meta_perf import data
+from ml_meta_perf.config import load_config
 
 PUBLIC_NAMES = frozenset(
     {
@@ -46,7 +47,6 @@ PUBLIC_NAMES = frozenset(
         "TARGET_COLUMN",
         "TASK_TYPES",
         "TREE_FAMILIES",
-        "Schema",
         "SchemaError",
         "add_target_arguments",
         "aggregate_by_dataset",
@@ -85,6 +85,10 @@ class TestDataSurface(unittest.TestCase):
 
 
 class TestMccSchemaIsFrozen(unittest.TestCase):
+    def test_the_study_file_describes_the_same_schema(self) -> None:
+        """The equivalence the move to ``config/study.json`` rests on: file == constants."""
+        self.assertEqual(load_config().schema(), data.MCC_SCHEMA)
+
     def test_columns(self) -> None:
         schema = data.MCC_SCHEMA
         self.assertEqual(

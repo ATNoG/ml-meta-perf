@@ -77,6 +77,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import polars as pl
 
+from ml_meta_perf.config import Schema
 from ml_meta_perf.model import MCC_LOWER, MCC_UPPER
 
 if TYPE_CHECKING:
@@ -114,41 +115,6 @@ MODEL_FEATURES: tuple[str, ...] = (
     "Input Distribution Modelling",
     "Fitting Regime",
 )
-
-
-@dataclasses.dataclass(frozen=True)
-class Schema:
-    """Which columns a meta-dataset's rows, groups, features and target live in."""
-
-    dataset_column: str
-    model_column: str
-    dataset_features: tuple[str, ...]
-    model_features: tuple[str, ...]
-    target_column: str
-    bounds: tuple[float, float] | None
-    task_type: str | None = None
-    log_target: bool = False
-
-    def __post_init__(self) -> None:
-        if self.log_target and self.bounds is not None:
-            raise ValueError("log1p requires bounds=None; only the unbounded FlexFL cost targets support it")
-
-    @property
-    def features(self) -> tuple[str, ...]:
-        return self.dataset_features + self.model_features
-
-    @property
-    def slug(self) -> str:
-        base = self.target_column if self.task_type is None else f"{self.target_column}-{self.task_type}"
-        return f"{base}-log1p" if self.log_target else base
-
-    @property
-    def label(self) -> str:
-        return f"log1p({self.target_column})" if self.log_target else self.target_column
-
-    def tag(self, name: str) -> str:
-        """``name`` with a ``_log1p`` suffix when this schema fits a log-transformed target."""
-        return f"{name}_log1p" if self.log_target else name
 
 
 #: Study-specific ordinal assignment of the ten learner families.
