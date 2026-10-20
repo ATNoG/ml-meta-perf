@@ -18,8 +18,6 @@ PUBLIC_NAMES = frozenset(
         "ALL_FEATURES",
         "DATASET_COLUMN",
         "DATASET_FEATURES",
-        "DATASET_RELATIVE_PATH",
-        "DEFAULT_PATH",
         "FEATURE_GLOSSARY",
         "FITTING_REGIME",
         "FLEXFL_COST_TARGETS",
@@ -57,6 +55,7 @@ PUBLIC_NAMES = frozenset(
         "flexfl_schema",
         "groups",
         "load",
+        "resolve_path",
         "missing_cells",
         "target",
         "target_summary",
@@ -85,8 +84,10 @@ class TestDataSurface(unittest.TestCase):
 
 
 class TestMccSchemaIsFrozen(unittest.TestCase):
+    """TEMPORARY ORACLE: the pinned MCC columns, to be replaced by fixed expectations on the study file (2.3)."""
+
     def test_the_study_file_describes_the_same_schema(self) -> None:
-        """The equivalence the move to ``config/study.json`` rests on: file == constants."""
+        """TEMPORARY ORACLE (removed with the MCC constants, step 2.3): file == constants."""
         self.assertEqual(load_config().schema(), data.MCC_SCHEMA)
 
     def test_columns(self) -> None:

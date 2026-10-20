@@ -1,5 +1,6 @@
 """Loading, schema validation and the aggregation E1 is fitted on."""
 
+import os
 import tempfile
 import unittest
 from math import nextafter
@@ -7,6 +8,7 @@ from pathlib import Path
 
 import polars as pl
 
+from ml_meta_perf.config import DEFAULT_CONFIG_PATH, Schema, load_config
 from ml_meta_perf.data import (
     ALL_FEATURES,
     DATASET_COLUMN,
@@ -23,6 +25,7 @@ from ml_meta_perf.data import (
     groups,
     load,
     missing_cells,
+    resolve_path,
     target,
     target_summary,
 )
@@ -93,6 +96,84 @@ class TestLoad(unittest.TestCase):
             with self.assertRaises(SchemaError) as caught:
                 load(path)
             self.assertIn("null", str(caught.exception))
+
+
+class TestLoadFromTheStudyFile(unittest.TestCase):
+    """The corpus, its columns and its path come from ``config/study.json``, not from the code."""
+
+    def test_a_bare_load_equals_reading_the_csv_with_the_pinned_columns(self) -> None:
+        """TEMPORARY ORACLE (removed with the MCC constants, step 2.3): the new path equals the old one."""
+        study = load_config()
+        columns = [DATASET_COLUMN, MODEL_COLUMN, *DATASET_FEATURES, *MODEL_FEATURES, TARGET_COLUMN]
+        oracle = pl.read_csv(resolve_path(study.corpus.path)).select(columns)
+        oracle = oracle.with_columns(
+            [pl.col(c).cast(pl.Float64) for c in (*DATASET_FEATURES, *MODEL_FEATURES, TARGET_COLUMN)]
+        )
+        self.assertTrue(load().equals(oracle))
+
+    def test_the_study_file_decides_the_columns(self) -> None:
+        """A study naming fewer features loads fewer columns, from the same CSV."""
+        schema = Schema(
+            dataset_column=DATASET_COLUMN,
+            model_column=MODEL_COLUMN,
+            dataset_features=("nr_inst",),
+            model_features=("Fitting Regime",),
+            target_column=TARGET_COLUMN,
+            bounds=(-1.0, 1.0),
+        )
+        frame = load(None, schema)
+        self.assertEqual(frame.columns, [DATASET_COLUMN, MODEL_COLUMN, "nr_inst", "Fitting Regime", TARGET_COLUMN])
+        self.assertEqual(frame.height, load().height)
+
+    def test_an_explicit_path_is_used_as_given_with_the_study_columns(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "copy.csv"
+            synthetic().write_csv(path)
+            self.assertEqual(load(path).height, synthetic().height)
+
+    def test_a_column_the_study_names_but_the_csv_lacks_is_reported_by_name(self) -> None:
+        schema = Schema(
+            dataset_column=DATASET_COLUMN,
+            model_column=MODEL_COLUMN,
+            dataset_features=("no_such_feature",),
+            model_features=("Fitting Regime",),
+            target_column=TARGET_COLUMN,
+            bounds=None,
+        )
+        with self.assertRaisesRegex(SchemaError, "no_such_feature"):
+            load(None, schema)
+
+    def test_the_default_study_is_the_shipped_file(self) -> None:
+        self.assertTrue(DEFAULT_CONFIG_PATH.is_file())
+        self.assertEqual(resolve_path(load_config().corpus.path).name, "meta_dataset.csv")
+
+
+class TestResolvePath(unittest.TestCase):
+    """Where a relative corpus path from the study file points."""
+
+    def test_an_absolute_path_is_returned_as_it_is(self) -> None:
+        self.assertEqual(resolve_path("/nonexistent/x.csv"), Path("/nonexistent/x.csv"))
+
+    def test_a_relative_path_is_found_in_the_checkout(self) -> None:
+        found = resolve_path("dataset/meta_dataset.csv")
+        self.assertTrue(found.is_file())
+        self.assertTrue(found.is_absolute())
+
+    def test_a_relative_path_is_found_under_the_working_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / "mine.csv").write_text("a\n1\n")
+            previous = Path.cwd()
+            os.chdir(directory)
+            try:
+                self.assertEqual(resolve_path("mine.csv").resolve(), (Path(directory) / "mine.csv").resolve())
+            finally:
+                os.chdir(previous)
+
+    def test_a_missing_file_names_where_it_was_expected(self) -> None:
+        missing = resolve_path("dataset/does_not_exist.csv")
+        self.assertFalse(missing.exists())
+        self.assertEqual(missing.name, "does_not_exist.csv")
+        self.assertTrue(missing.is_absolute())
 
 
 class TestAggregate(unittest.TestCase):

@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any
 
 #: The configuration file, relative to the repository root. Resolved like the corpus
-#: (`data.DEFAULT_PATH`): the source checkout this module runs from, else the working directory.
+#: (`data.resolve_path`): the source checkout this module runs from, else the working directory.
 CONFIG_RELATIVE_PATH = Path("config") / "study.json"
 
 

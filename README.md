@@ -310,7 +310,7 @@ Run options are ordinary flags:
 | flag | default | what it does |
 |---|---|---|
 | `--config` | `config/study.json` | the study configuration |
-| `--data` | `dataset/meta_dataset.csv` | the meta-dataset to fit |
+| `--data` | `corpus.path` of the study file | the meta-dataset to fit (overrides the file; used as given, relative to the working directory) |
 | `--target` | `mcc` | predict MCC or one FlexFL target |
 | `--task-type` | none | restrict a FlexFL target to classification or regression; required for performance |
 | `--log-target` | off | fit `log1p` of a cost target; metrics on the log scale; outputs under `flexfl/<slug>-log1p/` |

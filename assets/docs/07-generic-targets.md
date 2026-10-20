@@ -124,3 +124,19 @@ bounds must satisfy $a < b$, each feature list must be non-empty, no column may 
 or play two roles ($F_d \cap F_m = \varnothing$, and neither contains $c_d$, $c_m$ or $c_y$). The
 constants that used to hold the MCC description stay in `ml_meta_perf.data` only until every
 caller reads the file, and `tests/test_data_surface.py` asserts that the two agree item by item.
+
+### Where the corpus is
+
+`corpus.path` is resolved once, by the rule
+
+$$\operatorname{resolve}(p) = \begin{cases}
+p & p \text{ absolute},\\
+r/p & p \text{ relative and } r/p \text{ is a file},\\
+w/p & p \text{ relative, } r/p \text{ is not a file and } w/p \text{ is},\\
+r/p & \text{otherwise (so the error names where the file was expected)},
+\end{cases}$$
+
+where $r$ is the repository root of the running source and $w$ the working directory. The root
+comes first so that an editable install and `PYTHONPATH=src` find the shipped corpus; the working
+directory covers a regular install run from a clone. A path given on the command line with
+`--data` is not resolved: it is used as written.

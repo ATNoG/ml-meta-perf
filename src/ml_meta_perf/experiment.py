@@ -1191,7 +1191,7 @@ class Report:
 
 
 def run(
-    path: str | None = None,
+    path: str | Path | None = None,
     *,
     config: Configuration | None = None,
     selection: SelectionConfig | None = None,

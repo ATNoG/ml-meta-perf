@@ -40,13 +40,13 @@ from ml_meta_perf.config import (
 )
 from ml_meta_perf.data import (
     DATASET_FEATURES,
-    DEFAULT_PATH,
     MODEL_FEATURES,
     add_target_arguments,
     check_target_arguments,
     columns_as_arrays,
     flexfl_schema,
     load,
+    resolve_path,
     target,
 )
 from ml_meta_perf.experiment import Report, run, run_flexfl
@@ -330,12 +330,18 @@ def main(argv: list[str] | None = None) -> int:
 
     config: Configuration = arguments.search
     started = time.perf_counter()
-    report = run(arguments.data, config=config, selection=arguments.selection, opaque=arguments.opaque)
+    report = run(
+        arguments.data or resolve_path(arguments.corpus.path),
+        config=config,
+        selection=arguments.selection,
+        opaque=arguments.opaque,
+    )
     elapsed = time.perf_counter() - started
 
-    frame = load(arguments.data)
+    corpus = arguments.data or resolve_path(arguments.corpus.path)
+    frame = load(corpus)
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
-    source = arguments.data or _shown(DEFAULT_PATH)
+    source = arguments.data or _shown(corpus)
 
     if not arguments.quiet:
         render(report, phases, columns)

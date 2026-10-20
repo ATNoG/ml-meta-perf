@@ -81,10 +81,11 @@ class TestModelFeatures(unittest.TestCase):
         """One dataset file, and nothing in it that no equation may draw on."""
         import polars as pl
 
-        from ml_meta_perf.data import ALL_FEATURES, DATASET_COLUMN, DEFAULT_PATH, TARGET_COLUMN
+        from ml_meta_perf.config import load_config
+        from ml_meta_perf.data import ALL_FEATURES, DATASET_COLUMN, TARGET_COLUMN, resolve_path
 
         self.assertEqual(
-            list(pl.read_csv(DEFAULT_PATH).columns),
+            list(pl.read_csv(resolve_path(load_config().corpus.path)).columns),
             [DATASET_COLUMN, MODEL_COLUMN, *ALL_FEATURES, TARGET_COLUMN],
         )
 

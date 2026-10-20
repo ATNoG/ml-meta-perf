@@ -77,7 +77,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import polars as pl
 
-from ml_meta_perf.config import Schema
+from ml_meta_perf.config import Schema, load_config
 from ml_meta_perf.model import MCC_LOWER, MCC_UPPER
 
 if TYPE_CHECKING:
@@ -530,41 +530,45 @@ FEATURE_GLOSSARY: dict[str, str] = {
     "Fitting Regime": "assigned fitting-regime category (1-5)",
 }
 
-#: The corpus, relative to the repository root. It lives in ``dataset/`` beside the pipeline that
-#: regenerates it, not inside the package: it is the study's data, versioned on its own.
-DATASET_RELATIVE_PATH = Path("dataset") / "meta_dataset.csv"
 
-
-def _default_path() -> Path:
-    """The corpus in the source checkout this module runs from, else under the working directory.
+def resolve_path(path: str | Path) -> Path:
+    """Where a relative corpus path from the study file points: the checkout, else the working directory.
 
     The first covers an editable install and ``PYTHONPATH=src``. The second covers a regular
     install, whose module sits in `site-packages` with no repository around it -- which is why
-    a path derived from this file alone failed there -- run from a clone, as CI does. Anywhere
-    else, pass ``--data``. When neither exists the checkout path is returned, so the error
-    `load` raises names where the file was expected.
+    a path derived from this file alone failed there -- run from a clone, as CI does. An absolute
+    path is returned as it is. Anywhere else, pass ``--data``. When no candidate exists the
+    checkout path is returned, so the error `load` raises names where the file was expected.
     """
-    checkout = Path(__file__).resolve().parents[2] / DATASET_RELATIVE_PATH
-    working = Path.cwd() / DATASET_RELATIVE_PATH
-    return next((path for path in (checkout, working) if path.is_file()), checkout)
-
-
-DEFAULT_PATH = _default_path()
+    given = Path(path)
+    if given.is_absolute():
+        return given
+    checkout = Path(__file__).resolve().parents[2] / given
+    working = Path.cwd() / given
+    return next((candidate for candidate in (checkout, working) if candidate.is_file()), checkout)
 
 
 class SchemaError(ValueError):
     """The CSV does not carry the columns the meta-model needs, or a value is out of domain for its transform."""
 
 
-def load(path: str | Path | None = None, schema: Schema = MCC_SCHEMA) -> pl.DataFrame:
+def load(path: str | Path | None = None, schema: Schema | None = None) -> pl.DataFrame:
     """Read the meta-dataset and check it has the expected shape.
+
+    With no ``path`` the corpus is the one ``config/study.json`` names, and with no ``schema``
+    the columns are the ones it lists: a bare ``load()`` is the study as configured. An explicit
+    ``path`` is used as given, relative to the working directory.
 
     The schema selects the required columns and optional task type.
     Every feature is cast to Float64. The integer-valued columns (``nr_attr``,
     ``nr_class``, ...) are still continuous as far as the equations are concerned,
     and carrying two dtypes through the term library buys nothing.
     """
-    resolved = Path(path) if path is not None else DEFAULT_PATH
+    if path is None or schema is None:
+        study = load_config()
+        schema = schema or study.schema()
+        path = path if path is not None else resolve_path(study.corpus.path)
+    resolved = Path(path)
     if not resolved.is_file():
         raise SchemaError(f"meta-dataset not found: {resolved}")
 
