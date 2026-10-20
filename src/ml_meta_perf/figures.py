@@ -67,6 +67,10 @@ def _published_length(report: Report) -> int | None:
 def generate(report: Report, destination: str | Path, data: str | Path | None = None) -> list[Path]:
     """Write every figure and return the paths, in the order they appear in the README.
 
+    ``practice_effects`` is the one conditional figure: when no practice survived the evidence
+    thresholds it would be an empty axes, so it is not written, and a stale copy from an
+    earlier run is removed so no chapter can embed a chart that says nothing.
+
     ``data`` must be the meta-dataset the report was fitted on. Defaulting it to the
     packaged one is only safe because that is the usual case; a caller who fitted on
     another file and does not pass it here would get figures drawn from the wrong rows.
@@ -89,14 +93,21 @@ def generate(report: Report, destination: str | Path, data: str | Path | None = 
         ),
         predicted_versus_actual(truth, predicted, folder / figure_name("predicted_vs_actual")),
         term_effects(report.effects, folder / figure_name("term_effects")),
-        practice_effects(report.practices, folder / figure_name("practice_effects")),
         ranking_quality(report.selection, folder / figure_name("ranking_quality")),
         decision_quality(report.decision_baselines, folder / figure_name("decision_quality")),
     ]
+    practices_path = folder / figure_name("practice_effects")
+    if report.practices.height:
+        written.insert(FIGURE_ORDER.index("practice_effects"), practice_effects(report.practices, practices_path))
+    else:
+        practices_path.unlink(missing_ok=True)
+        practices_path.with_suffix(".pdf").unlink(missing_ok=True)
     # The list is what the README and the chapters index against, so it has to come back in
     # `FIGURE_ORDER`. Asserting it here means a call added out of order fails the run rather
     # than shipping a figure numbered one thing and referenced as another.
-    expected = [folder / figure_name(stem) for stem in FIGURE_ORDER]
+    expected = [
+        folder / figure_name(stem) for stem in FIGURE_ORDER if stem != "practice_effects" or report.practices.height
+    ]
     if written != expected:
         raise AssertionError(f"figures written out of FIGURE_ORDER: {[path.name for path in written]}")
     return written

@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import numpy as np
 import polars as pl
 
+from ml_meta_perf.figures import FIGURE_ORDER
 from ml_meta_perf.model import LOWERS, RAISES
 from ml_meta_perf.plots import (
     CONFIDENCE_ALPHA,
@@ -245,6 +246,24 @@ class TestFigureSet(PlotTestCase):
         self.assertEqual(len(written), len(set(written)))
         for path in written:
             self.assertIsPng(path)
+
+    def test_no_practice_figure_when_no_practice_survived(self) -> None:
+        """An empty axes says nothing: the figure is skipped and a stale copy is removed."""
+        import dataclasses
+
+        from ml_meta_perf.figures import figure_name, generate
+
+        report = corpus.report()
+        stale = self.folder / figure_name("practice_effects")
+        stale.write_bytes(b"stale")
+        stale.with_suffix(".pdf").write_bytes(b"stale")
+        written = generate(
+            dataclasses.replace(report, practices=report.practices.head(0)), self.folder, corpus.sample_path()
+        )
+        self.assertEqual(len(written), len(FIGURE_ORDER) - 1)
+        self.assertNotIn(stale, written)
+        self.assertFalse(stale.exists())
+        self.assertFalse(stale.with_suffix(".pdf").exists())
 
 
 class TestFigureNaming(unittest.TestCase):

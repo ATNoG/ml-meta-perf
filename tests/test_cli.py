@@ -26,7 +26,7 @@ from unittest import mock
 
 from jsonargparse import Namespace
 
-from ml_meta_perf.cli import PHASES, _configure_windows_output, build_parser, main, phases_of, render
+from ml_meta_perf.cli import PHASES, _configure_windows_output, _shown, build_parser, main, phases_of, render
 from ml_meta_perf.config import DEFAULT_CONFIG_PATH, load_config
 from ml_meta_perf.model import Equation
 from ml_meta_perf.report import BEGIN, END
@@ -237,6 +237,18 @@ class TestWhatIsPrinted(CliTestCase):
         ):
             with self.subTest(section=expected):
                 self.assertIn(expected, printed)
+
+
+class TestTheSourceShownInTheChapters(unittest.TestCase):
+    """The chapters are tracked files: the line naming the corpus must not name a machine."""
+
+    def test_a_path_inside_the_working_directory_is_shown_relative(self) -> None:
+        self.assertEqual(_shown(Path.cwd() / "dataset" / "meta_dataset.csv"), "dataset/meta_dataset.csv")
+
+    def test_a_path_outside_the_working_directory_is_shown_whole(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            outside = Path(folder) / "corpus.csv"
+            self.assertEqual(_shown(outside), str(outside))
 
 
 if __name__ == "__main__":

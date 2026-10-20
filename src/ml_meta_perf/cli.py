@@ -252,6 +252,18 @@ def phases_of(arguments: Namespace) -> frozenset[str]:
     return frozenset(requested)
 
 
+def _shown(path: Path) -> str:
+    """The path as written into the chapters: relative to the working directory when inside it.
+
+    An absolute path would put the machine that ran the study into a tracked file, and rewrite
+    the line on every other machine.
+    """
+    try:
+        return path.resolve().relative_to(Path.cwd()).as_posix()
+    except ValueError:
+        return str(path)
+
+
 def main(argv: list[str] | None = None) -> int:
     _configure_windows_output()
     parser = build_parser()
@@ -265,7 +277,7 @@ def main(argv: list[str] | None = None) -> int:
 
     frame = load(arguments.data)
     columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
-    source = arguments.data or str(DEFAULT_PATH)
+    source = arguments.data or _shown(DEFAULT_PATH)
 
     if not arguments.quiet:
         render(report, phases, columns)

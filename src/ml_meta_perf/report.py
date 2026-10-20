@@ -1263,8 +1263,13 @@ def render(
         "The one table the study is summarised by, so that the summary cannot drift from "
         f"the chapters. Every row is scored on the same {int(report.e3.in_sample['n'])} rows "
         "under the same protocols. E1, E2, and E3-Valid share the retained base configuration; "
-        "E3-MAX takes the raw floor maximum at the configured capability arity; the current "
-        "primary and capability arities both equal three.\n"
+        "E3-MAX takes the raw floor maximum at the configured capability arity"
+        + (
+            f" (primary arity {config.max_arity}, capability arity {selection.capability_arity})."
+            if config is not None and selection is not None
+            else "."
+        )
+        + "\n"
     )
     parts.append(_table(_headline(report)) + "\n")
     parts.append(
@@ -1538,6 +1543,10 @@ def render(
         )
         + "\n"
     )
+    if report.practices.height:
+        # Embedded here rather than written into the chapter by hand: the figure is not
+        # produced when no practice survived, and a hand-written embed would then dangle.
+        parts.append("![Feature effects](../figures/05_practice_effects.png)\n")
 
     parts.append("### These are conditional statements, not marginal ones\n")
     conditional = marginal_versus_conditional(report.practices, columns, truth)
