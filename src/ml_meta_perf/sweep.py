@@ -48,6 +48,8 @@ from jsonargparse import ActionConfigFile, ArgumentParser  # pyright: ignore[rep
 
 from ml_meta_perf.config import (
     DEFAULT_CONFIG_PATH,
+    EQUATIONS,
+    ConfigError,
     Configuration,
     CorpusConfig,
     FeaturesConfig,
@@ -58,13 +60,11 @@ from ml_meta_perf.config import (
     StudyConfig,
     SweepConfig,
     default_schema,
+    study_of,
 )
 from ml_meta_perf.data import (
     Schema,
-    add_target_arguments,
-    check_target_arguments,
     drop_constant_features,
-    flexfl_schema,
     groups,
     load,
     target,
@@ -205,7 +205,6 @@ def build_parser() -> ArgumentParser:
     parser.add_argument("--opaque", type=OpaqueConfig, help="carried into the proposal unchanged")
     parser.add_argument("--sweep", type=SweepConfig, help="the grid and the choice among close candidates")
     parser.add_argument("--data", type=str | None, default=None, help="meta-dataset CSV")
-    add_target_arguments(parser)
     parser.add_argument(
         "--output",
         type=str | None,
@@ -219,20 +218,16 @@ def build_parser() -> ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     arguments = parser.instantiate(parser.parse_args(argv))
-    check_target_arguments(parser, arguments)
-    study = StudyConfig(
-        corpus=arguments.corpus,
-        response=arguments.response,
-        features=arguments.features,
-        side_files=arguments.side_files,
-        equations=tuple(arguments.equations),
-        search=arguments.search,
-        selection=arguments.selection,
-        opaque=arguments.opaque,
-        sweep=arguments.sweep,
-    )
-    own = arguments.target == "mcc"
-    schema = study.schema() if own else flexfl_schema(arguments.target, arguments.task_type, arguments.log_target)
+    try:
+        study = study_of(arguments)
+    except ConfigError as error:
+        parser.error(str(error))
+    if study.equations not in (EQUATIONS, ("E3",)):
+        parser.error(
+            f"equations must be {list(EQUATIONS)} (the MCC study) or ['E3'] (one equation), got {list(study.equations)}"
+        )
+    own = study.equations == EQUATIONS
+    schema = study.schema()
     points = grid(study)
     output = Path(arguments.output or default_output(schema, own))
     output.mkdir(parents=True, exist_ok=True)

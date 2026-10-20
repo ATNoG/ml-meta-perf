@@ -1,0 +1,125 @@
+{
+  "corpus": {
+    "path": "dataset/flexfl_meta_dataset.csv",
+    "dataset_column": "dataset",
+    "model_column": "fl_algo",
+    "row_filter": null,
+    "require": [
+      {
+        "column": "epoch_cap",
+        "hint": "re-assemble it with FlexFL's scripts/assemble_meta_dataset.py"
+      }
+    ],
+    "single_valued": [
+      "early_stop_on",
+      "min_epochs"
+    ],
+    "drop_missing_response": false,
+    "drop_constant_features": true
+  },
+  "response": {
+    "column": "total_time_s",
+    "bounds": [
+      0.0,
+      null
+    ],
+    "transform": "none"
+  },
+  "features": {
+    "dataset": [
+      "n_samples",
+      "n_features",
+      "n_classes",
+      "is_classification",
+      "is_categorical",
+      "total_parameters",
+      "n_layers",
+      "mean_layer_width",
+      "max_layer_width",
+      "weight_decay"
+    ],
+    "model": [
+      "fl_algo_CentralizedSync",
+      "fl_algo_CentralizedAsync",
+      "fl_algo_DecentralizedSync",
+      "fl_algo_DecentralizedAsync",
+      "strategy_iid",
+      "strategy_non_iid",
+      "strategy_dirichlet",
+      "learning_rate",
+      "batch_size",
+      "patience",
+      "delta",
+      "local_epochs",
+      "epoch_cap",
+      "alpha",
+      "distribution_percentage",
+      "feat_entropy_mean",
+      "feat_entropy_min",
+      "feat_entropy_max",
+      "feat_entropy_std",
+      "num_workers",
+      "n_atnog_test1",
+      "n_hobbit",
+      "n_samwise",
+      "worker_rate_mean",
+      "worker_rate_min",
+      "worker_rate_max",
+      "worker_rate_std",
+      "worker_rate_cv"
+    ]
+  },
+  "side_files": {
+    "taxonomy": null,
+    "ordinals": null,
+    "glossary": null
+  },
+  "equations": [
+    "E3"
+  ],
+  "search": {
+    "max_abs_zscore": 3.5,
+    "penalty": 0.1,
+    "pool_size": 600,
+    "max_terms": 30,
+    "beam_width": 6,
+    "max_arity": 3
+  },
+  "selection": {
+    "delta": 0.01,
+    "window": 4,
+    "smoothing": 3,
+    "capability_arity": 3
+  },
+  "opaque": {
+    "forest_trees": 100,
+    "forest_max_features": 0.33,
+    "boosting_stages": 50,
+    "boosting_learning_rate": 0.1,
+    "boosting_max_depth": 3
+  },
+  "sweep": {
+    "zscores": [
+      3.0,
+      3.5,
+      4.0,
+      5.0,
+      6.0,
+      7.0,
+      8.0
+    ],
+    "penalties": [
+      0.1,
+      0.3,
+      1.0,
+      3.0,
+      10.0
+    ],
+    "arities": [
+      2,
+      3
+    ],
+    "readable_terms": 20,
+    "band": 0.02
+  }
+}

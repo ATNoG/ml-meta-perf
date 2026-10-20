@@ -16,18 +16,13 @@ import numpy as np
 import polars as pl
 
 from ml_meta_perf import cli, experiment, sweep
-from ml_meta_perf.config import default_configuration, load_config, parse_config
+from ml_meta_perf.config import RowFilter, default_configuration, load_config, parse_config
 from ml_meta_perf.data import (
-    FLEXFL_COST_TARGETS,
-    FLEXFL_DECOMPOSITION_TARGETS,
-    FLEXFL_EPOCH_CAP_COLUMN,
-    FLEXFL_MODEL_FEATURES,
     Schema,
     SchemaError,
     aggregate_by_dataset,
     columns_as_arrays,
     drop_constant_features,
-    flexfl_schema,
     groups,
     load,
     target,
@@ -36,7 +31,19 @@ from ml_meta_perf.model import Equation
 from ml_meta_perf.search import MIN_CONTRIBUTION, pruning_threshold, search
 from ml_meta_perf.terms import build_library
 from ml_meta_perf.validate import score
-from tests.study import ALL_FEATURES, SCHEMA
+from tests.study import (
+    ALL_FEATURES,
+    FLEXFL_COST_TARGETS,
+    FLEXFL_DECOMPOSITION_TARGETS,
+    FLEXFL_DIR,
+    FLEXFL_EPOCH_CAP_COLUMN,
+    FLEXFL_MODEL_FEATURES,
+    FLEXFL_TARGETS,
+    SCHEMA,
+    flexfl_argv,
+    flexfl_path,
+    flexfl_schema,
+)
 
 FIXTURE = Path(__file__).parent / "fixtures" / "flexfl_meta_dataset_sample.csv"
 TINY = dataclasses.replace(default_configuration(), max_terms=2, pool_size=20, beam_width=1, max_arity=1)
@@ -65,10 +72,11 @@ N_MODEL_FEATURES = len(FLEXFL_MODEL_FEATURES)
 DECOMPOSITION_TARGETS = ("compute_time_total_s", "compute_time_max_s", "comm_time_total_s", "validation_time_s")
 
 
-def search_argv(output: Path, target: str = "comm_bytes_total") -> list[str]:
+def search_argv(
+    output: Path, target: str = "comm_bytes_total", task_type: str | None = None, log_target: bool = False
+) -> list[str]:
     return [
-        "--target",
-        target,
+        *flexfl_argv(target, task_type, log_target),
         "--data",
         str(FIXTURE),
         "--output",
@@ -85,6 +93,21 @@ def search_argv(output: Path, target: str = "comm_bytes_total") -> list[str]:
     ]
 
 
+def cli_argv(
+    output: Path, target: str = "comm_bytes_total", task_type: str | None = None, log_target: bool = False, *more: str
+) -> list[str]:
+    """The study command for a FlexFL target on the fixture, quiet unless told otherwise."""
+    return [
+        *flexfl_argv(target, task_type, log_target),
+        "--data",
+        str(FIXTURE),
+        "--output",
+        str(output),
+        *more,
+        *TINY_FLAGS,
+    ]
+
+
 def swept(output: Path) -> pl.DataFrame:
     """The candidates of a finished sweep, after checking it proposed a configuration."""
     proposed = json.loads((output / "proposed_study.json").read_text())
@@ -92,6 +115,85 @@ def swept(output: Path) -> pl.DataFrame:
     assert proposed["search"]["penalty"] in candidates["penalty"].to_list()
     assert parse_config(proposed).search.penalty == proposed["search"]["penalty"]  # a complete, parseable study file
     return candidates
+
+
+FILES = {
+    "total_time_s": ((0.0, None), False),
+    "comm_bytes_total": ((0.0, None), False),
+    "n_epochs": ((0.0, None), False),
+    "compute_time_total_s": ((0.0, None), True),
+    "compute_time_max_s": ((0.0, None), True),
+    "comm_time_total_s": ((0.0, None), True),
+    "validation_time_s": ((0.0, None), True),
+    "performance-classification": ((-1.0, 1.0), False),
+    "performance-regression": ((0.0, 2.0), False),
+}
+
+
+class FlexFLStudyFiles(unittest.TestCase):
+    """Each FlexFL target is a complete study file, and the files agree on what is shared."""
+
+    def study(self, name: str):
+        return parse_config(json.loads((FLEXFL_DIR / f"{name}.json").read_text(encoding="utf-8")))
+
+    def test_the_files_are_exactly_the_catalogue(self) -> None:
+        self.assertEqual(sorted(path.stem for path in FLEXFL_DIR.glob("*.json")), sorted(FILES))
+
+    def test_each_file_parses_and_fits_the_one_equation(self) -> None:
+        for name in FILES:
+            with self.subTest(name):
+                self.assertEqual(self.study(name).equations, ("E3",))
+
+    def test_the_target_decides_the_bounds_and_the_empty_row_policy(self) -> None:
+        for name, (bounds, drops) in FILES.items():
+            with self.subTest(name):
+                study = self.study(name)
+                self.assertEqual(study.response.bounds, bounds)
+                self.assertEqual(study.corpus.drop_missing_response, drops)
+                self.assertEqual(study.response.column, name.split("-")[0])
+
+    def test_only_the_performance_files_filter_rows_and_they_filter_opposite_ones(self) -> None:
+        filters = {name: self.study(name).corpus.row_filter for name in FILES}
+        self.assertEqual(filters["performance-classification"], RowFilter("is_classification", True, "classification"))
+        self.assertEqual(filters["performance-regression"], RowFilter("is_classification", False, "regression"))
+        self.assertTrue(all(row_filter is None for name, row_filter in filters.items() if "performance" not in name))
+
+    def test_the_corpus_reading_rules_are_shared(self) -> None:
+        for name in FILES:
+            study = self.study(name)
+            with self.subTest(name):
+                self.assertEqual(study.corpus.require[0].column, FLEXFL_EPOCH_CAP_COLUMN)
+                self.assertEqual(study.corpus.single_valued, ("early_stop_on", "min_epochs"))
+                self.assertTrue(study.corpus.drop_constant_features)
+                self.assertEqual((study.corpus.dataset_column, study.corpus.model_column), ("dataset", "fl_algo"))
+
+    def test_the_features_are_the_same_in_every_file_and_include_the_epoch_cap(self) -> None:
+        reference = self.study("total_time_s").features
+        self.assertIn(FLEXFL_EPOCH_CAP_COLUMN, reference.model)
+        for name in FILES:
+            with self.subTest(name):
+                self.assertEqual(self.study(name).features, reference)
+
+    def test_every_file_loads_the_fixture_and_a_schema_with_its_bounds(self) -> None:
+        for name, (bounds, _) in FILES.items():
+            with self.subTest(name):
+                schema = self.study(name).schema()
+                frame = load(FIXTURE, schema)
+                self.assertGreater(frame.height, 0)
+                self.assertEqual(schema.fit_bounds, bounds)
+
+    def test_a_proposal_written_by_the_sweep_replaces_the_file_it_came_from(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(sweep.main(search_argv(out, "total_time_s")), 0)
+            proposed = parse_config(json.loads((out / "proposed_study.json").read_text()))
+            original = self.study("total_time_s")
+            self.assertEqual(
+                (proposed.corpus, proposed.response, proposed.features),
+                (original.corpus, original.response, original.features),
+            )
+            self.assertEqual(proposed.equations, ("E3",))
 
 
 class FlexFLSchemaTests(unittest.TestCase):
@@ -240,7 +342,7 @@ class FlexFLSchemaTests(unittest.TestCase):
         schema = flexfl_schema("comm_bytes_total", log_target=True)
         self.assertEqual(schema.slug, "comm_bytes_total-log1p")
         self.assertEqual(schema.label, "log1p(comm_bytes_total)")
-        self.assertIsNone(schema.bounds)
+        self.assertEqual(schema.bounds, (0.0, None))
         self.assertEqual(
             flexfl_schema("total_time_s", "classification", True).slug, "total_time_s-classification-log1p"
         )
@@ -266,7 +368,7 @@ class FlexFLSchemaTests(unittest.TestCase):
             with self.subTest(target=name):
                 schema = flexfl_schema(name)
                 schema_log = flexfl_schema(name, log_target=True)
-                self.assertIsNone(schema.bounds)
+                self.assertEqual(schema.bounds, (0.0, None))
                 self.assertEqual(schema_log.slug, f"{name}-log1p")
                 np.testing.assert_array_equal(
                     target(load(FIXTURE, schema_log), schema_log),
@@ -389,39 +491,27 @@ class FlexFLSchemaTests(unittest.TestCase):
         for name in DECOMPOSITION_TARGETS:
             with self.subTest(target=name), tempfile.TemporaryDirectory() as directory:
                 out = Path(directory)
-                self.assertEqual(
-                    cli.main(
-                        [
-                            "--target",
-                            name,
-                            "--log-target",
-                            "--data",
-                            str(FIXTURE),
-                            "--output",
-                            str(out),
-                            "--quiet",
-                            *TINY_FLAGS,
-                        ]
-                    ),
-                    0,
-                )
+                self.assertEqual(cli.main(cli_argv(out, name, None, True, "--quiet")), 0)
                 equation = out / "flexfl" / f"{name}-log1p" / "equation.txt"
                 self.assertTrue(equation.read_text().startswith(f"log1p({name}) = "))
                 search_out = out / "search"
                 with redirect_stdout(io.StringIO()):
-                    self.assertEqual(sweep.main([*search_argv(search_out, name), "--log-target"]), 0)
+                    self.assertEqual(sweep.main(search_argv(search_out, name, None, True)), 0)
                 self.assertEqual(swept(search_out).height, 1)
 
-    def test_unchosen_decomposition_columns_are_not_targets(self) -> None:
-        for column in ("comm_time_max_s", "serial_time_total_s", "comm_skew_clamped"):
-            with self.subTest(target=column):
-                stderr = io.StringIO()
-                with self.assertRaises(SystemExit) as error, redirect_stderr(stderr):
-                    cli.main(["--target", column, "--data", str(FIXTURE)])
-                self.assertEqual(error.exception.code, 2)
-                self.assertIn("invalid choice", stderr.getvalue())
+    def test_the_study_files_are_the_catalogue_of_targets(self) -> None:
+        """A target is a study file; a column nobody chose to model has none."""
+        names = sorted(path.stem for path in FLEXFL_DIR.glob("*.json"))
+        expected = sorted(
+            [name for name in FLEXFL_TARGETS if name != "performance"]
+            + ["performance-classification", "performance-regression"]
+        )
+        self.assertEqual(names, expected)
+        for column in ("comm_time_max_s", "serial_time_total_s", "comm_skew_clamped", "comm_bytes_sent"):
+            with self.subTest(target=column), self.assertRaisesRegex(ValueError, "no FlexFL study file"):
+                flexfl_path(column)
 
-    def test_log_target_schema_requires_unbounded_target(self) -> None:
+    def test_log_target_schema_requires_a_target_that_cannot_be_negative(self) -> None:
         with self.assertRaises(ValueError):
             dataclasses.replace(flexfl_schema("performance", "classification"), transform="log1p")
         dataclasses.replace(flexfl_schema("comm_bytes_total"), transform="log1p")
@@ -461,12 +551,12 @@ class FlexFLSchemaTests(unittest.TestCase):
                 experiment.run_flexfl(FIXTURE, schema, TINY)
                 actual = spy.call_args.kwargs["min_contribution"]
                 truth = target(load(FIXTURE, schema), schema)
-                expected = pruning_threshold(schema.bounds, truth)
+                expected = pruning_threshold(schema.fit_bounds, truth)
                 self.assertEqual(actual, expected)
-                if schema.bounds is None:
-                    self.assertNotEqual(actual, MIN_CONTRIBUTION)
-                else:
+                if schema.fit_bounds is not None and None not in schema.fit_bounds:
                     self.assertEqual(actual, MIN_CONTRIBUTION)
+                else:
+                    self.assertNotEqual(actual, MIN_CONTRIBUTION)
 
     def test_sweep_point_fits_the_schema(self) -> None:
         selection = load_config().selection
@@ -478,7 +568,7 @@ class FlexFLSchemaTests(unittest.TestCase):
                 row, curve = sweep.evaluate(TINY, selection, str(FIXTURE), schema)
                 truth = target(load(FIXTURE, schema), schema)
                 np.testing.assert_array_equal(spy.call_args.args[1], truth)
-                self.assertIsNone(spy.call_args.kwargs["bounds"])
+                self.assertEqual(spy.call_args.kwargs["bounds"], (0.0, None))
                 self.assertIn(row["n_terms"], curve["n_terms"].to_list())
                 self.assertTrue(np.isfinite(row["smoothed_floor"]))
                 for name in TASK_METRICS:
@@ -489,7 +579,7 @@ class FlexFLSchemaTests(unittest.TestCase):
     def test_run_flexfl_on_a_log_target(self) -> None:
         schema = flexfl_schema("comm_bytes_total", log_target=True)
         result = experiment.run_flexfl(FIXTURE, schema, TINY)
-        self.assertIsNone(result.equation.equation.bounds)
+        self.assertEqual(result.equation.equation.bounds, (0.0, None))
         self.assertTrue(result.equation.equation.name.startswith("E3_log1p_k"))
         frame = load(FIXTURE, schema)
         columns = columns_as_arrays(frame, result.schema.features)
@@ -507,59 +597,38 @@ class FlexFLSchemaTests(unittest.TestCase):
     def test_run_flexfl_on_a_log_target_with_task_type(self) -> None:
         schema = flexfl_schema("total_time_s", "classification", log_target=True)
         result = experiment.run_flexfl(FIXTURE, schema, TINY)
-        self.assertIsNone(result.equation.equation.bounds)
+        self.assertEqual(result.equation.equation.bounds, (0.0, None))
         self.assertTrue(result.equation.equation.name.startswith("E3_log1p_k"))
         for row in result.effects.iter_rows(named=True):
             expected = "raises" if row["beta"] > 0 else "lowers"
             self.assertEqual(row["direction"], f"{expected} log1p(total_time_s)")
 
     def test_log_target_argument_errors(self) -> None:
+        """A log scale on a target that can be negative is refused with the study file's own message."""
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory)
             for entry, argv in (
-                (cli.main, ["--log-target"]),
-                (
-                    cli.main,
-                    [
-                        "--target",
-                        "performance",
-                        "--task-type",
-                        "classification",
-                        "--data",
-                        str(FIXTURE),
-                        "--log-target",
-                    ],
-                ),
-                (sweep.main, ["--log-target", "--output", str(out)]),
-                (
-                    sweep.main,
-                    [*search_argv(out, "performance"), "--task-type", "classification", "--log-target"],
-                ),
+                (cli.main, ["--response.transform", "log1p"]),
+                (cli.main, cli_argv(out, "performance", "classification", True)),
+                (sweep.main, ["--response.transform", "log1p", "--output", str(out)]),
+                (sweep.main, search_argv(out, "performance", "classification", True)),
             ):
-                with self.subTest(argv=argv), self.assertRaises(SystemExit) as error, redirect_stderr(io.StringIO()):
+                stderr = io.StringIO()
+                with self.subTest(argv=argv), self.assertRaises(SystemExit) as error, redirect_stderr(stderr):
                     entry(argv)
                 self.assertEqual(error.exception.code, 2)
+                self.assertIn("cannot be negative", stderr.getvalue())
 
     def test_study_cli_writes_log_target_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory)
-            argv = [
-                "--target",
-                "comm_bytes_total",
-                "--data",
-                str(FIXTURE),
-                "--output",
-                str(out),
-                "--quiet",
-                *TINY_FLAGS,
-            ]
-            self.assertEqual(cli.main(argv), 0)
-            self.assertEqual(cli.main([*argv, "--log-target"]), 0)
+            self.assertEqual(cli.main(cli_argv(out, "comm_bytes_total", None, False, "--quiet")), 0)
+            self.assertEqual(cli.main(cli_argv(out, "comm_bytes_total", None, True, "--quiet")), 0)
             folder = out / "flexfl" / "comm_bytes_total-log1p"
             for name in ("equation.json", "equation.txt", "curve.csv", "term_effects.csv", "group_shares.csv"):
                 self.assertTrue((folder / name).is_file(), name)
             self.assertTrue((folder / "equation.txt").read_text().startswith("log1p(comm_bytes_total) = "))
-            self.assertIsNone(Equation.load(folder / "equation.json").bounds)
+            self.assertEqual(Equation.load(folder / "equation.json").bounds, (0.0, None))
             self.assertTrue(
                 (out / "flexfl" / "comm_bytes_total" / "equation.txt").read_text().startswith("comm_bytes_total = ")
             )
@@ -570,7 +639,7 @@ class FlexFLSchemaTests(unittest.TestCase):
             stdout = io.StringIO()
             with redirect_stdout(stdout):
                 self.assertEqual(sweep.main(search_argv(raw)), 0)
-                self.assertEqual(sweep.main([*search_argv(logged), "--log-target"]), 0)
+                self.assertEqual(sweep.main(search_argv(logged, "comm_bytes_total", None, True)), 0)
             self.assertIn("proposed for log1p(comm_bytes_total):", stdout.getvalue())
             self.assertNotEqual(swept(raw)["smoothed_floor"].to_list(), swept(logged)["smoothed_floor"].to_list())
 
@@ -629,8 +698,8 @@ class FlexFLSchemaTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             flexfl_schema("bogus")
         for name, task_type, expected in (
-            ("total_time_s", None, None),
-            ("comm_bytes_total", None, None),
+            ("total_time_s", None, (0.0, None)),
+            ("comm_bytes_total", None, (0.0, None)),
             ("performance", "classification", (-1.0, 1.0)),
             ("performance", "regression", (0.0, 2.0)),
         ):
@@ -661,7 +730,7 @@ class FlexFLSchemaTests(unittest.TestCase):
 
     def test_run_flexfl_on_a_cost_target(self) -> None:
         result = experiment.run_flexfl(FIXTURE, flexfl_schema("comm_bytes_total"), TINY)
-        self.assertIsNone(result.equation.equation.bounds)
+        self.assertEqual(result.equation.equation.bounds, (0.0, None))
         self.assertNotIn("alpha", result.schema.features)
         for term in result.equation.equation.terms:
             self.assertTrue(set(term.features).isdisjoint(DROPPED))
@@ -697,24 +766,25 @@ class FlexFLSchemaTests(unittest.TestCase):
             errors = io.StringIO()
             with redirect_stderr(errors), redirect_stdout(io.StringIO()):
                 code = cli.main(
-                    [
-                        *("--target", "comm_bytes_total", "--data", str(FIXTURE), "--output", directory),
-                        *("--phase", "equations", "--no-figures", "--quiet", *TINY_FLAGS),
-                    ]
+                    cli_argv(
+                        Path(directory),
+                        "comm_bytes_total",
+                        None,
+                        False,
+                        "--phase",
+                        "equations",
+                        "--no-figures",
+                        "--quiet",
+                    )
                 )
             self.assertEqual(code, 0)
-            self.assertIn("ignored with a FlexFL --target: --phase, --no-figures", errors.getvalue())
+            self.assertIn("ignored when the study fits only E3: --phase, --no-figures", errors.getvalue())
 
     def test_a_flexfl_run_prints_the_equation_and_its_scores(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             shown = io.StringIO()
             with redirect_stdout(shown):
-                code = cli.main(
-                    [
-                        *("--target", "comm_bytes_total", "--log-target", "--data", str(FIXTURE)),
-                        *("--output", directory, *TINY_FLAGS),
-                    ]
-                )
+                code = cli.main(cli_argv(Path(directory), "comm_bytes_total", None, True))
             self.assertEqual(code, 0)
             text = shown.getvalue()
             self.assertIn("log1p(comm_bytes_total) = ", text)
@@ -727,23 +797,8 @@ class FlexFLSchemaTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             errors = io.StringIO()
             with redirect_stderr(errors), redirect_stdout(io.StringIO()):
-                cli.main(
-                    [
-                        "--target",
-                        "comm_bytes_total",
-                        "--data",
-                        str(FIXTURE),
-                        "--output",
-                        directory,
-                        "--quiet",
-                        *TINY_FLAGS,
-                    ]
-                )
+                cli.main(cli_argv(Path(directory), "comm_bytes_total", None, False, "--quiet"))
             self.assertNotIn("ignored", errors.getvalue())
-
-    def test_an_unknown_task_type_is_rejected(self) -> None:
-        with self.assertRaisesRegex(ValueError, "unknown task type"):
-            flexfl_schema("total_time_s", "clustering")
 
     def test_a_task_type_filter_needs_the_is_classification_column(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -812,35 +867,20 @@ class FlexFLSchemaTests(unittest.TestCase):
         self.assertEqual(sweep._task_summary({"dho_ap": 0.8}), ", DHO AP 0.8000")
 
     def test_study_cli_argument_errors(self) -> None:
-        for argv in (
-            ["--target", "performance", "--data", str(FIXTURE)],
-            ["--target", "comm_bytes_total"],
-            ["--task-type", "regression"],
-        ):
-            with self.subTest(argv=argv), self.assertRaises(SystemExit) as error:
+        for argv in (["--equations", '["E1"]'], ["--equations", '["E4"]'], ["--equations", "[]"]):
+            with self.subTest(argv=argv), self.assertRaises(SystemExit) as error, redirect_stderr(io.StringIO()):
                 cli.main(argv)
             self.assertEqual(error.exception.code, 2)
 
     def test_study_cli_writes_flexfl_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory)
-            code = cli.main(
-                [
-                    "--target",
-                    "comm_bytes_total",
-                    "--data",
-                    str(FIXTURE),
-                    "--output",
-                    str(out),
-                    "--quiet",
-                    *TINY_FLAGS,
-                ]
-            )
+            code = cli.main(cli_argv(out, "comm_bytes_total", None, False, "--quiet"))
             self.assertEqual(code, 0)
             folder = out / "flexfl" / "comm_bytes_total"
             for name in ("equation.json", "equation.txt", "curve.csv", "term_effects.csv", "group_shares.csv"):
                 self.assertTrue((folder / name).is_file(), name)
-            self.assertIsNone(Equation.load(folder / "equation.json").bounds)
+            self.assertEqual(Equation.load(folder / "equation.json").bounds, (0.0, None))
             self.assertTrue((folder / "equation.txt").read_text().startswith("comm_bytes_total = "))
             self.assertFalse((out / "e1.json").exists())
             self.assertFalse((out / "e3.json").exists())
@@ -848,11 +888,7 @@ class FlexFLSchemaTests(unittest.TestCase):
     def test_search_cli_argument_errors(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory)
-            for argv in (
-                ["--target", "performance", "--data", str(FIXTURE), "--output", str(out)],
-                ["--target", "comm_bytes_total", "--output", str(out)],
-                ["--task-type", "regression", "--output", str(out)],
-            ):
+            for argv in (["--equations", '["E1"]', "--output", str(out)], ["--equations", "[]", "--output", str(out)]):
                 with self.subTest(argv=argv), self.assertRaises(SystemExit) as error, redirect_stderr(io.StringIO()):
                     sweep.main(argv)
                 self.assertEqual(error.exception.code, 2)
@@ -871,7 +907,7 @@ class FlexFLSchemaTests(unittest.TestCase):
     def test_search_cli_runs_performance(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory)
-            argv = [*search_argv(out, "performance"), "--task-type", "classification"]
+            argv = search_argv(out, "performance", "classification")
             stdout = io.StringIO()
             with redirect_stdout(stdout):
                 self.assertEqual(sweep.main(argv), 0)
@@ -909,14 +945,13 @@ class FlexFLSchemaTests(unittest.TestCase):
 
     def test_n_epochs_target(self) -> None:
         schema = flexfl_schema("n_epochs")
-        self.assertIsNone(schema.bounds)
+        self.assertEqual(schema.bounds, (0.0, None))
         self.assertEqual((schema.slug, schema.label), ("n_epochs", "n_epochs"))
         self.assertEqual(flexfl_schema("n_epochs", "regression").slug, "n_epochs-regression")
         frame = load(FIXTURE, schema)
         self.assertEqual(frame.height, 24)
         self.assertEqual(frame["n_epochs"].dtype, pl.Float64)
-        with self.assertRaisesRegex(ValueError, "log1p applies only to the cost targets"):
-            flexfl_schema("n_epochs", log_target=True)
+        self.assertEqual(flexfl_schema("n_epochs", log_target=True).label, "log1p(n_epochs)")
         for name in ("comm_bytes_sent", "comm_bytes_recv"):
             with self.subTest(target=name), self.assertRaises(ValueError):
                 flexfl_schema(name)
@@ -926,8 +961,8 @@ class FlexFLSchemaTests(unittest.TestCase):
         with mock.patch.object(experiment, "prune", wraps=experiment.prune) as spy:
             result = experiment.run_flexfl(FIXTURE, schema, TINY)
         truth = target(load(FIXTURE, schema), schema)
-        self.assertEqual(spy.call_args.kwargs["min_contribution"], pruning_threshold(None, truth))
-        self.assertIsNone(result.equation.equation.bounds)
+        self.assertEqual(spy.call_args.kwargs["min_contribution"], pruning_threshold(schema.fit_bounds, truth))
+        self.assertEqual(result.equation.equation.bounds, (0.0, None))
         self.assertNotIn("log1p", result.equation.equation.name)
         self.assertGreater(result.effects.height, 0)
         for row in result.effects.iter_rows(named=True):
@@ -937,22 +972,11 @@ class FlexFLSchemaTests(unittest.TestCase):
     def test_n_epochs_cli_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory)
-            code = cli.main(
-                [
-                    "--target",
-                    "n_epochs",
-                    "--data",
-                    str(FIXTURE),
-                    "--output",
-                    str(out),
-                    "--quiet",
-                    *TINY_FLAGS,
-                ]
-            )
+            code = cli.main(cli_argv(out, "n_epochs", None, False, "--quiet"))
             self.assertEqual(code, 0)
             folder = out / "flexfl" / "n_epochs"
             self.assertTrue((folder / "equation.txt").read_text().startswith("n_epochs = "))
-            self.assertIsNone(Equation.load(folder / "equation.json").bounds)
+            self.assertEqual(Equation.load(folder / "equation.json").bounds, (0.0, None))
             search_out = out / "search"
             stdout = io.StringIO()
             with redirect_stdout(stdout):
@@ -960,26 +984,15 @@ class FlexFLSchemaTests(unittest.TestCase):
             self.assertIn("proposed for n_epochs:", stdout.getvalue())
             self.assertEqual(swept(search_out).height, 1)
 
-    def test_n_epochs_argument_errors(self) -> None:
+    def test_a_count_can_be_fitted_on_a_log_scale_and_a_missing_study_file_is_refused(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory)
-            log_error = (
-                "--log-target applies only to --target total_time_s or comm_bytes_total or "
-                "compute_time_total_s or compute_time_max_s or comm_time_total_s or validation_time_s"
+            self.assertEqual(cli.main(cli_argv(out, "n_epochs", None, True, "--quiet")), 0)
+            self.assertTrue(
+                (out / "flexfl" / "n_epochs-log1p" / "equation.txt").read_text().startswith("log1p(n_epochs) = ")
             )
-            for entry, argv, messages in (
-                (cli.main, ["--target", "n_epochs", "--data", str(FIXTURE), "--log-target"], (log_error,)),
-                (sweep.main, [*search_argv(out, "n_epochs"), "--log-target"], (log_error,)),
-                (
-                    cli.main,
-                    ["--target", "comm_bytes_sent", "--data", str(FIXTURE)],
-                    ("invalid choice", "comm_bytes_sent"),
-                ),
-                (sweep.main, search_argv(out, "comm_bytes_recv"), ("invalid choice", "comm_bytes_recv")),
-            ):
-                stderr = io.StringIO()
-                with self.subTest(argv=argv), self.assertRaises(SystemExit) as error, redirect_stderr(stderr):
-                    entry(argv)
-                self.assertEqual(error.exception.code, 2)
-                for message in messages:
-                    self.assertIn(message, stderr.getvalue())
+            stderr = io.StringIO()
+            with self.assertRaises(SystemExit) as error, redirect_stderr(stderr):
+                sweep.main(["--config", str(FLEXFL_DIR / "comm_bytes_recv.json"), "--output", str(out)])
+            self.assertEqual(error.exception.code, 2)
+            self.assertIn("comm_bytes_recv", stderr.getvalue())

@@ -30,6 +30,8 @@ from jsonargparse import ActionConfigFile, ArgumentParser, Namespace  # pyright:
 
 from ml_meta_perf.config import (
     DEFAULT_CONFIG_PATH,
+    EQUATIONS,
+    ConfigError,
     Configuration,
     CorpusConfig,
     FeaturesConfig,
@@ -39,12 +41,10 @@ from ml_meta_perf.config import (
     SideFilesConfig,
     SweepConfig,
     default_schema,
+    study_of,
 )
 from ml_meta_perf.data import (
-    add_target_arguments,
-    check_target_arguments,
     columns_as_arrays,
-    flexfl_schema,
     load,
     resolve_path,
     target,
@@ -247,7 +247,6 @@ def build_parser() -> ArgumentParser:
     parser.add_argument(
         "--data", type=str | None, default=None, help="meta-dataset CSV (default: dataset/meta_dataset.csv)"
     )
-    add_target_arguments(parser)
     parser.add_argument("--output", type=str, default="results", help="directory for the equations and CSV tables")
     parser.add_argument("--figures", type=str, default="assets/figures", help="directory for the generated figures")
     # The generated results go *into* the chapters that discuss them, between markers, rather
@@ -270,9 +269,9 @@ def build_parser() -> ArgumentParser:
     return parser
 
 
-def _run_flexfl_cli(arguments: Namespace) -> int:
-    """Fit one FlexFL E3 equation and write its outputs."""
-    schema = flexfl_schema(arguments.target, arguments.task_type, arguments.log_target)
+def _run_fit_cli(arguments: Namespace) -> int:
+    """Fit the one E3 equation of a study that asks for it, and write its outputs."""
+    schema = study_of(arguments).schema()
     ignored = [
         flag
         for flag, given in (
@@ -284,9 +283,10 @@ def _run_flexfl_cli(arguments: Namespace) -> int:
         if given
     ]
     if ignored:
-        print(f"ignored with a FlexFL --target: {', '.join(ignored)}", file=sys.stderr)
+        print(f"ignored when the study fits only E3: {', '.join(ignored)}", file=sys.stderr)
     started = time.perf_counter()
-    report = run_flexfl(arguments.data, schema, arguments.search, arguments.selection)
+    corpus = arguments.data or resolve_path(arguments.corpus.path)
+    report = run_flexfl(corpus, schema, arguments.search, arguments.selection)
     elapsed = time.perf_counter() - started
     if not arguments.quiet:
         _section(f"E3: {schema.label}")
@@ -335,9 +335,16 @@ def main(argv: list[str] | None = None) -> int:
     _configure_windows_output()
     parser = build_parser()
     arguments = parser.instantiate(parser.parse_args(argv))
-    check_target_arguments(parser, arguments)
-    if arguments.target != "mcc":
-        return _run_flexfl_cli(arguments)
+    try:
+        equations = study_of(arguments).equations
+    except ConfigError as error:
+        parser.error(str(error))
+    if equations == ("E3",):
+        return _run_fit_cli(arguments)
+    if equations != EQUATIONS:
+        parser.error(
+            f"equations must be {list(EQUATIONS)} (the MCC study) or ['E3'] (one equation), got {list(equations)}"
+        )
     phases = phases_of(arguments)
 
     config: Configuration = arguments.search

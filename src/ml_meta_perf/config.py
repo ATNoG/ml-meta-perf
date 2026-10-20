@@ -435,6 +435,27 @@ def load_config(path: str | Path | None = None) -> StudyConfig:
     return parse_config(json.loads(resolved.read_text(encoding="utf-8")))
 
 
+def study_of(arguments: Any) -> StudyConfig:
+    """The study a command line describes: the study file's sections, each possibly overridden by a flag.
+
+    A flag can make the description unusable (a log scale on MCC, say), and a file's own checks
+    ran only on the file; they run again here, so the command line gets the same `ConfigError`.
+    """
+    equations = tuple(arguments.equations)
+    _validated(arguments.corpus, arguments.response, arguments.features, arguments.side_files, equations)
+    return StudyConfig(
+        corpus=arguments.corpus,
+        response=arguments.response,
+        features=arguments.features,
+        side_files=arguments.side_files,
+        equations=equations,
+        search=arguments.search,
+        selection=arguments.selection,
+        opaque=arguments.opaque,
+        sweep=arguments.sweep,
+    )
+
+
 def default_schema() -> Schema:
     """The data description of the study in ``config/study.json``: what a bare call analyses."""
     return load_config().schema()

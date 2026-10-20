@@ -80,11 +80,10 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import polars as pl
 
-from ml_meta_perf.config import RequiredColumn, RowFilter, Schema, default_schema, load_config
-from ml_meta_perf.model import MCC_LOWER, MCC_UPPER
+from ml_meta_perf.config import RowFilter, Schema, default_schema, load_config
 
 if TYPE_CHECKING:
-    import argparse
+    pass
 
 # The MCC study's columns and features are not constants here: they are the ``corpus`` and
 # ``features`` sections of ``config/study.json`` (`ml_meta_perf.config.default_schema`).
@@ -93,148 +92,6 @@ if TYPE_CHECKING:
 # The learner taxonomy, the ordinals behind the model-descriptor columns and the feature glossary
 # are not constants here either: they are the files named by ``side_files`` in ``config/study.json``,
 # read by `model_family`, `model_ordinals`, `feature_glossary` and friends below.
-
-FLEXFL_DATASET_COLUMN = "dataset"
-FLEXFL_MODEL_COLUMN = "fl_algo"
-FLEXFL_TARGETS: tuple[str, ...] = (
-    "performance",
-    "total_time_s",
-    "comm_bytes_total",
-    "n_epochs",
-    "compute_time_total_s",
-    "compute_time_max_s",
-    "comm_time_total_s",
-    "validation_time_s",
-)
-FLEXFL_COST_TARGETS: tuple[str, ...] = (
-    "total_time_s",
-    "comm_bytes_total",
-    "compute_time_total_s",
-    "compute_time_max_s",
-    "comm_time_total_s",
-    "validation_time_s",
-)
-FLEXFL_DECOMPOSITION_TARGETS: tuple[str, ...] = (
-    "compute_time_total_s",
-    "compute_time_max_s",
-    "comm_time_total_s",
-    "validation_time_s",
-)
-TASK_TYPES: tuple[str, ...] = ("classification", "regression")
-FLEXFL_DATASET_FEATURES: tuple[str, ...] = (
-    "n_samples",
-    "n_features",
-    "n_classes",
-    "is_classification",
-    "is_categorical",
-    "total_parameters",
-    "n_layers",
-    "mean_layer_width",
-    "max_layer_width",
-    "weight_decay",
-)
-FLEXFL_EPOCH_CAP_COLUMN = "epoch_cap"
-FLEXFL_EARLY_STOP_RULE_COLUMNS = ("early_stop_on", "min_epochs")
-FLEXFL_MODEL_FEATURES: tuple[str, ...] = (
-    "fl_algo_CentralizedSync",
-    "fl_algo_CentralizedAsync",
-    "fl_algo_DecentralizedSync",
-    "fl_algo_DecentralizedAsync",
-    "strategy_iid",
-    "strategy_non_iid",
-    "strategy_dirichlet",
-    "learning_rate",
-    "batch_size",
-    "patience",
-    "delta",
-    "local_epochs",
-    FLEXFL_EPOCH_CAP_COLUMN,
-    "alpha",
-    "distribution_percentage",
-    "feat_entropy_mean",
-    "feat_entropy_min",
-    "feat_entropy_max",
-    "feat_entropy_std",
-    "num_workers",
-    "n_atnog_test1",
-    "n_hobbit",
-    "n_samwise",
-    "worker_rate_mean",
-    "worker_rate_min",
-    "worker_rate_max",
-    "worker_rate_std",
-    "worker_rate_cv",
-)
-SMAPE_LOWER = 0.0
-SMAPE_UPPER = 2.0
-FLEXFL_PERFORMANCE_BOUNDS: dict[str, tuple[float, float]] = {
-    "classification": (MCC_LOWER, MCC_UPPER),
-    "regression": (SMAPE_LOWER, SMAPE_UPPER),
-}
-
-
-def flexfl_schema(target: str, task_type: str | None = None, log_target: bool = False) -> Schema:
-    """The FlexFL per-run schema for one target, optionally restricted to one task type and fitted on ``log1p``."""
-    if target not in FLEXFL_TARGETS:
-        raise ValueError(f"unknown FlexFL target {target!r}; expected one of {FLEXFL_TARGETS}")
-    if task_type is not None and task_type not in TASK_TYPES:
-        raise ValueError(f"unknown task type {task_type!r}; expected one of {TASK_TYPES}")
-    if target == "performance" and task_type is None:
-        raise ValueError("the performance target needs a task type: MCC and SMAPE do not share a scale")
-    if log_target and target not in FLEXFL_COST_TARGETS:
-        raise ValueError(f"log1p applies only to the cost targets {FLEXFL_COST_TARGETS}")
-    bounds = FLEXFL_PERFORMANCE_BOUNDS[task_type] if target == "performance" and task_type is not None else None
-    return Schema(
-        dataset_column=FLEXFL_DATASET_COLUMN,
-        model_column=FLEXFL_MODEL_COLUMN,
-        dataset_features=FLEXFL_DATASET_FEATURES,
-        model_features=FLEXFL_MODEL_FEATURES,
-        target_column=target,
-        bounds=bounds,
-        transform="log1p" if log_target else "none",
-        row_filter=None
-        if task_type is None
-        else RowFilter("is_classification", task_type == "classification", label=task_type),
-        required=(
-            RequiredColumn(FLEXFL_EPOCH_CAP_COLUMN, "re-assemble it with FlexFL's scripts/assemble_meta_dataset.py"),
-        ),
-        single_valued=FLEXFL_EARLY_STOP_RULE_COLUMNS,
-        drop_missing_response=target in FLEXFL_DECOMPOSITION_TARGETS,
-        drop_constant_features=True,
-    )
-
-
-def add_target_arguments(parser: argparse.ArgumentParser) -> None:
-    """The ``--target``, ``--task-type`` and ``--log-target`` flags both commands share."""
-    parser.add_argument(
-        "--target",
-        choices=("mcc", *FLEXFL_TARGETS),
-        default="mcc",
-        help="what the equation predicts: MCC, or one FlexFL per-run outcome (needs --data)",
-    )
-    parser.add_argument(
-        "--task-type",
-        choices=TASK_TYPES,
-        default=None,
-        help="restrict a FlexFL target to one task type; required with --target performance",
-    )
-    parser.add_argument(
-        "--log-target",
-        action="store_true",
-        help="fit log1p of a cost target; metrics are then on the log scale",
-    )
-
-
-def check_target_arguments(parser: argparse.ArgumentParser, arguments: argparse.Namespace) -> None:
-    """Reject incompatible target and task type arguments."""
-    if arguments.target == "mcc" and arguments.task_type is not None:
-        parser.error("--task-type applies only to a FlexFL --target")
-    if arguments.target == "performance" and arguments.task_type is None:
-        parser.error("--task-type is required with --target performance")
-    if arguments.target != "mcc" and arguments.data is None:
-        parser.error("--data is required with a FlexFL --target")
-    if arguments.log_target and arguments.target not in FLEXFL_COST_TARGETS:
-        parser.error(f"--log-target applies only to --target {' or '.join(FLEXFL_COST_TARGETS)}")
 
 
 def resolve_path(path: str | Path) -> Path:

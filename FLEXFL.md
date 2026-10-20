@@ -5,18 +5,29 @@ assembled by FlexFL's `scripts/assemble_meta_dataset.py`. The abbreviations used
 coefficient of determination (**R²**), mean absolute error (**MAE**), leave-one-dataset-out
 (**LODO**), leave-one-model-out (**LOMO**) and doubly held out (**DHO**).
 
-## Targets
+## One study file per target
 
-Use `--target performance`, `--target total_time_s`, `--target comm_bytes_total`,
-`--target n_epochs`, `--target compute_time_total_s`, `--target compute_time_max_s`,
-`--target comm_time_total_s`, or `--target validation_time_s` with a FlexFL CSV supplied
-by `--data`. Performance also requires
-`--task-type classification` or `--task-type regression`. A task type on any other target
-filters the input rows as well. `n_epochs` is the last epoch a run logged before it
-stopped, at most the run's global epoch cap, the `epoch_cap` column.
-`comm_bytes_sent` and `comm_bytes_recv` are not targets:
-each is half of `comm_bytes_total` to within 1%, so a fit on either repeats the
-`comm_bytes_total` fit.
+A target is a study file in `config/flexfl/`, and the file holds everything about the problem:
+the corpus and how to read it, the target and the range it can take, the features, which
+equation to fit and the tuned hyperparameters. Bounds and tuned values differ per target, so
+each target has a complete file of its own.
+
+| study file | target | bounds | notes |
+|---|---|---|---|
+| `total_time_s.json` | total wall time of the run | `[0, null]` | |
+| `comm_bytes_total.json` | bytes sent plus received | `[0, null]` | |
+| `n_epochs.json` | last epoch logged | `[0, null]` | at most the run's `epoch_cap` |
+| `compute_time_total_s.json` | summed worker work time | `[0, null]` | empty rows dropped |
+| `compute_time_max_s.json` | work time of the busiest worker | `[0, null]` | empty rows dropped |
+| `comm_time_total_s.json` | summed worker communication time | `[0, null]` | empty rows dropped |
+| `validation_time_s.json` | summed validation time | `[0, null]` | empty rows dropped |
+| `performance-classification.json` | MCC on the classification runs | `[-1, 1]` | keeps `is_classification = true` |
+| `performance-regression.json` | SMAPE on the regression runs | `[0, 2]` | keeps `is_classification = false` |
+
+The corpus is `dataset/flexfl_meta_dataset.csv`, or any CSV given with `--data`. A column that
+is nobody's target has no file: `comm_bytes_sent` and `comm_bytes_recv` are not targets, since
+each is half of `comm_bytes_total` to within 1%, so a fit on either repeats that fit. To model a
+new quantity, copy the closest file, change `response`, and run the sweep to tune it.
 
 FlexFL's assembler produces the decomposition columns, clipped to the master's first `start`
 and last `end`. `compute_time_total_s` sums worker work time, while
@@ -24,35 +35,39 @@ and last `end`. `compute_time_total_s` sums worker work time, while
 worker communication time. Its timings pair a master and a worker clock, so positive
 clock skew is not detectable. `validation_time_s` sums validation time and mostly follows
 validation-set size and the number of validations. The assembler leaves the decomposition
-columns empty for a run with no worker logs or no work inside that window. Loading one of
-these four targets drops the rows whose target is empty, after any task-type filter, and
-prints the number dropped to stderr, with counts by dataset and by `fl_algo`; it fails if
-dropping removes every row. An empty feature, or an empty value in any other selected
-target, still fails the load. Constant-feature removal runs after the drop, so for these
-targets it sees only the kept rows.
+columns empty for a run with no worker logs or no work inside that window. The study files of
+these four targets set `corpus.drop_missing_response`: the rows whose target is empty are dropped
+after any row filter, and the number dropped is printed to stderr, with counts by dataset and by
+`fl_algo`; the load fails if dropping removes every row. An empty feature, or an empty value in
+any other target, still fails the load. Constant-feature removal (`corpus.drop_constant_features`)
+runs after the drop, so for these targets it sees only the kept rows.
 
-A corpus that mixes early-stopping rules is rejected: fit the runs of one rule at a time.
+A corpus that mixes early-stopping rules is rejected (`corpus.single_valued` lists
+`early_stop_on` and `min_epochs`): fit the runs of one rule at a time.
 
 ## Log scale
 
-`--log-target` with `total_time_s`, `comm_bytes_total`, `compute_time_total_s`,
-`compute_time_max_s`, `comm_time_total_s`, or `validation_time_s` fits `log1p` of the target,
-so R² and MAE are on the log scale. It is rejected for `mcc`, `performance` and `n_epochs`.
-Equations are labelled `log1p(<target>)` and named `E3_log1p_k<n>`.
+`--response.transform log1p` on a study file fits `log(1 + y)` of the target, so R² and MAE are on
+the log scale (chapter 7, section 7.5). It needs a target that cannot be negative, which the study
+file states as a low bound of 0 or more (or no bounds): every file above qualifies except
+`performance-classification.json`, whose MCC bounds include negative values. A log scale on SMAPE
+(`performance-regression.json`) passes that check but rarely makes sense, since the error is
+already relative. Equations are labelled `log1p(<target>)` and named `E3_log1p_k<n>`, and the output
+folder gets a `-log1p` suffix. A transform that does not apply is refused when the command starts.
 
 ## What is fitted
 
-A FlexFL target runs E3 only, over every FlexFL dataset and model feature, under the
-configuration in `config/study.json` and the study's length rule. There is no E1, E2 or E3-MAX,
+A FlexFL study runs E3 only (`equations` is `["E3"]`), over every FlexFL dataset and model feature, under
+its own tuned configuration and the study's length rule. There is no E1, E2 or E3-MAX,
 and none of the MCC study's baselines, practices, figures or chapters. Features constant in the
 loaded frame are removed before the term library is built.
-The MCC study's flags `--phase`, `--no-figures`, `--no-report` and `--no-tables` have no meaning here;
+The MCC study's flags `--phase`, `--no-figures`, `--no-report` and `--no-tables` have no meaning when only E3 is fitted;
 giving one prints a warning on stderr and is otherwise ignored. The saved `equation.json` carries
 the equation's `target` label and its `bounds`.
 
-Unbounded targets, the cost targets and `n_epochs`, prune terms whose contribution spans
-less than 0.002 times the target's 1st-to-99th percentile spread divided by 2, while
-bounded targets keep 0.002.
+A target open on one side (every cost) prunes terms whose contribution spans less than 0.002 times
+the target's 1st-to-99th percentile spread divided by 2; a target bounded on both sides scales 0.002
+by its span over MCC's.
 
 `epoch_cap` is a FlexFL model feature: the global epoch cap each run trained under. Loading a
 FlexFL CSV without the column fails with a stale-corpus error; re-assemble it with FlexFL's
@@ -66,14 +81,14 @@ a one-hot encoding of the very group that LOMO holds out. In each fold the held-
 indicator is zero on every training row, so its ridge weight is exactly zero and the held-out
 runs are predicted as "none of the trained algorithms": the score measures how the other terms
 extrapolate with that mode's own effect removed, not transfer to a new learner. DHO inherits
-this. The fit still computes them today; a later release lets `config/study.json` declare which
-protocols a study runs, and FlexFL declares IS and LODO only. The values are not comparable
+this. The fit still computes them today; a later release lets the study file declare which protocols it
+runs, and FlexFL will declare IS and LODO only. The values are not comparable
 with the MCC study's LOMO in any case, which has model descriptors shared across models.
 
-**Unbounded targets are not clipped in cross-validation.** For the cost targets and
-`n_epochs` the prediction of a held-out dataset is returned as fitted, so a dataset costlier
-than every training dataset can be predicted above them. Bounded targets (MCC, SMAPE) are still
-limited to the range of each fold's training rows. The rule is written out in
+**A cost is floored at zero and never capped in cross-validation.** The prediction of a held-out
+dataset is clipped at the bounds the study file gives and nowhere else, so a dataset costlier than
+every training dataset can be predicted above them. Only a target bounded on both sides (MCC,
+SMAPE) is limited to the range of each fold's training rows. The rule is written out in
 [chapter 7](assets/docs/07-generic-targets.md).
 
 **Indicator columns are offsets, not independent features.** See the note in the README and
@@ -85,13 +100,18 @@ are read as group offsets.
 ```bash
 # one E3 fit; writes equation.json, equation.txt, curve.csv, term_effects.csv and
 # group_shares.csv under results/flexfl/<slug>/
-ml-meta-perf --target total_time_s --log-target --data meta_dataset.csv
+ml-meta-perf --config config/flexfl/total_time_s.json --data meta_dataset.csv
 
-# the configuration sweep on the same target
-ml-meta-perf-search --target total_time_s --log-target --data meta_dataset.csv
+# the same target on the log scale
+ml-meta-perf --config config/flexfl/total_time_s.json --response.transform log1p --data meta_dataset.csv
+
+# tune its hyperparameters; writes a complete proposed study file for review
+ml-meta-perf-search --config config/flexfl/total_time_s.json --data meta_dataset.csv
 ```
 
-The sweep fits the same grid as for MCC and writes to `results/sweep_<slug>/` unless `--output` says otherwise, so it never overwrites the MCC proposal. FlexFL targets have no go/no-go threshold and no
-model ranking to score, so the DHO task-metric columns of `candidates.csv` are empty, and
-among the configurations tied on R² at a readable length the proposal goes to fewer terms,
-then lower arity, then the heavier penalty.
+The sweep fits the same grid as for MCC and writes to `results/sweep_<slug>/` unless `--output`
+says otherwise, so it never overwrites the MCC proposal. Its `proposed_study.json` is the study
+file with the tuned values, ready to replace the one it came from. FlexFL targets have no
+go/no-go threshold and no model ranking to score, so the DHO task-metric columns of
+`candidates.csv` are empty, and among the configurations tied on R² at a readable length the
+proposal goes to fewer terms, then lower arity, then the heavier penalty.

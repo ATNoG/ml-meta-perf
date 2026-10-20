@@ -250,7 +250,7 @@ adopting it is a reviewed edit to `config/study.json`.
 
 FlexFL targets are available in both commands; see [the FlexFL guide](FLEXFL.md). The study CLI writes `equation.json`, `equation.txt`, `curve.csv`,
 `term_effects.csv` and `group_shares.csv` under `<output>/flexfl/<slug>/`.
-`--log-target` writes to `<output>/flexfl/<slug>-log1p/`.
+A FlexFL target is a study file in `config/flexfl/` (`--config config/flexfl/total_time_s.json`); `--response.transform log1p` writes to `<output>/flexfl/<slug>-log1p/`.
 
 **Discrete and binary features do not work as independent features here.** The equation is a sum
 of terms, each a product of transformed features. A 0/1 indicator inside a product switches the
@@ -312,10 +312,8 @@ Run options are ordinary flags:
 | flag | default | what it does |
 |---|---|---|
 | `--config` | `config/study.json` | the study configuration |
+| `--response.transform` | `none` | `log1p` fits `log(1 + y)` of a target that cannot be negative; any field of the study file can be overridden as a dotted flag |
 | `--data` | `corpus.path` of the study file | the meta-dataset to fit (overrides the file; used as given, relative to the working directory) |
-| `--target` | `mcc` | predict MCC or one FlexFL target |
-| `--task-type` | none | restrict a FlexFL target to classification or regression; required for performance |
-| `--log-target` | off | fit `log1p` of a cost target; metrics on the log scale; outputs under `flexfl/<slug>-log1p/` |
 | `--output` | `results` | where the equations and comma-separated value (CSV) tables go |
 | `--figures` | `assets/figures` | where the figures go |
 | `--docs` | `assets/docs` | chapter directory whose generated sections are rewritten |
