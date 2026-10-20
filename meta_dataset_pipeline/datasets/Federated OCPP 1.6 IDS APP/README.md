@@ -1,36 +1,38 @@
 # Federated OCPP 1.6 IDS APP
 
-Representación tabular de capa de aplicación del corpus Federated OCPP 1.6 Intrusion Detection Dataset. El problema distingue tráfico normal y cuatro familias de ataques contra infraestructura de carga de vehículos eléctricos.
+Tabular application-layer representation of the Federated OCPP 1.6 Intrusion Detection Dataset. The problem separates normal traffic from four families of attacks against electric-vehicle charging infrastructure.
 
-## Fuente y reproducibilidad
+## Source and reproducibility
 
-- Fuente oficial: https://zenodo.org/records/14887131
-- Archivo original: https://zenodo.org/records/14887131/files/Balanced_OCPP16_APP_Layer.zip?download=1
-- DOI del dataset: https://doi.org/10.21227/v1f0-9t13
-- Publicación asociada: https://doi.org/10.48550/arXiv.2502.01569
-- MD5 oficial/verificado del ZIP: `CBFAAB0941629CB2CB093AA7EF7891E8`
-- SHA-256 del CSV preparado: `A343A11A556A9A169EEFE3641EE4F05B09CE10BB1B92BE4593845D4AC1748619`
-- Archivo listo para el experimento: `federated_ocpp16_app_ids.csv`
+- Official source: https://zenodo.org/records/14887131
+- Original file: https://zenodo.org/records/14887131/files/Balanced_OCPP16_APP_Layer.zip?download=1
+- Dataset DOI: https://doi.org/10.21227/v1f0-9t13
+- Associated publication: https://doi.org/10.48550/arXiv.2502.01569
+- Official, verified MD5 of the ZIP: `CBFAAB0941629CB2CB093AA7EF7891E8`
+- SHA-256 of the prepared CSV: `A343A11A556A9A169EEFE3641EE4F05B09CE10BB1B92BE4593845D4AC1748619`
+- File ready for the experiment: `federated_ocpp16_app_ids.csv`
 
-## Esquema preparado
+## Prepared schema
 
-- Filas: **4.255**.
-- Columnas: **42** (41 predictores y el target).
-- Target de clasificación: `label`.
-- Clases: tres con 863 filas, `normal` con 861 y `cyberattack_ocpp16_fdi_chargingprofile` con 805.
+- Rows: **4,255**.
+- Columns: **42** (41 predictors and the target).
+- Classification target: `label`.
+- Classes: three with 863 rows, `normal` with 861 and `cyberattack_ocpp16_fdi_chargingprofile` with 805.
 
-## Preparación aplicada
+## Preparation applied
 
-- Se unieron solamente `Combined/Train.csv` y `Combined/Test.csv`. Las particiones `Client_1` a `Client_3` son vistas federadas del mismo corpus y no se volvieron a contar.
-- Se retiraron `flow_id`, IP de origen/destino y timestamps de inicio/fin.
-- Se eliminaron ocho variables constantes.
-- Se eliminaron 60 repeticiones exactas que aparecían tras retirar identificadores; no había firmas de predictores con etiquetas contradictorias.
-- Los puertos se dividieron por 65.535; la duración se convirtió de microsegundos a segundos; las tasas se convirtieron a unidades por segundo. Después se aplicó `log1p` a magnitudes no negativas. Son transformaciones fijas, sin estadísticos del conjunto completo y sin fuga entre train y test.
+- Only `Combined/Train.csv` and `Combined/Test.csv` were joined. The `Client_1` to `Client_3` partitions are federated views of the same corpus and were not counted again.
+- `flow_id`, source/destination IP and start/end timestamps were removed.
+- Eight constant variables were removed.
+- 60 exact repetitions that appeared after removing the identifiers were dropped; there were no predictor signatures with contradictory labels.
+- Ports were divided by 65,535; duration was converted from microseconds to seconds; rates were converted to units per second. `log1p` was then applied to non-negative magnitudes. These are fixed transformations, with no full-dataset statistics and no train/test leakage.
+- The source is the "Balanced" variant of the corpus.
+- The preparation was done by hand; the steps above and the SHA-256 are its only record. A script that reproduces the prepared CSV from the original archive is still missing.
 
-## Validación local
+## Local validation
 
-- 0 valores faltantes, 0 infinitos y 0 filas duplicadas.
-- Todos los predictores son numéricos y finitos; después de la transformación quedan en un rango compacto.
-- El split estratificado 80/20 deja 3.404 filas de entrenamiento.
-- La clase minoritaria deja 644 filas en train y 161 en test con `random_state=5`.
-- Compatible con cinco folds estratificados; al tener menos de 10.000 filas, los modelos con contexto limitado no vuelven a muestrearlo.
+- 0 missing values, 0 infinities and 0 duplicate rows.
+- All predictors are numeric and finite; after the transformation they lie in a compact range.
+- The stratified 80/20 split leaves 3,404 training rows.
+- The minority class leaves 644 rows in train and 161 in test with `random_state=5`.
+- Compatible with five stratified folds; with fewer than 10,000 rows, models with a limited context do not resample it.

@@ -38,140 +38,26 @@ experiment_name = f"testing_{run_gpu_dl_models}_seeds_{seed_list}"
 
 # format: [name, [features to be removed], output]] # dimension
 dataset_list = [
-    [
-        "BoTNeTIoT-L01",
-        [
-            "Device_Name",
-            "Attack",
-            "Attack_subType"
-        ],
-        "label"
-    ],
-    [
-        "DDOS-ANL",
-        [],
-        "PKT_CLASS"
-    ],
-    [
-        "X-IIoTID",
-        [
-            "Date",
-            "Timestamp",
-            "class1",
-            "class2"
-        ],
-        "class3"
-    ],
-    [
-        "IoTID20",
-        [
-            "Flow_ID",
-            "Cat",
-            "Sub_Cat"
-        ],
-        "Label"
-    ],
-    [
-        "5G_Slicing",
-        [],
-        "Slice Type (Output)"
-    ],
-    [
-        "IoT-DNL",
-        [],
-        "normality"
-    ],
-    [
-        "MQTTEEB-D",
-        [
-            "timestamp"
-        ],
-        "label"
-    ],
-    [
-        "NSL-KDD",
-        [],
-        "class"
-    ],
-    [
-        "UAVIDS-2025",
-        [
-            "FlowID"
-        ],
-        "label"
-    ],
-    [
-        "RT-IoT2022",
-        [
-            "no"
-        ],
-        "Attack_type"
-    ],
-    [
-        "QoS-QoE",
-        [
-            "RebufferingRatio",
-            "AvgVideoBitRate",
-            "AvgVideoQualityVariation"
-        ],
-        "StallLabel"
-    ],
-    [
-        "DeepSlice",
-        [
-            "no"
-        ],
-        "slice Type"
-    ],
-    [
-        "NSR",
-        [],
-        "slice Type"
-    ],
-    [
-        "IoTNet24",
-        [
-            "id"
-        ],
-        "label"
-    ],
-    [
-        "IoT-APD",
-        [
-            "second"
-        ],
-        "label"
-    ],
-    [
-        "ASNM-CDX-2009",
-        [
-            "id",
-            "label_poly"
-        ],
-        "label_2"
-    ],
-    [
-        "UNAC",
-        [
-            "file"
-        ],
-        "output"
-    ],
-    [
-        "KPI-KQI",
-        [],
-        "Service"
-    ],
-    [
-        "6G Network Slicing Classification",
-        [],
-        "Slice Type"
-    ],
-    [
-        "Federated OCPP 1.6 IDS APP",
-        [],
-        "label"
-    ]
+    ['BoTNeTIoT-L01', ['Device_Name', 'Attack', 'Attack_subType'], 'label'],  # 7,062,606 x 27
+    ['DDOS-ANL', [], 'PKT_CLASS'],  # 2,160,668 x 28
+    ['X-IIoTID', ['Date', 'Timestamp', 'class1', 'class2'], 'class3'],  # 820,834 x 68
+    ['IoTID20', ['Flow_ID', 'Cat', 'Sub_Cat'], 'Label'],  # 625,783 x 86
+    ['5G_Slicing', [], 'Slice Type (Output)'],  # 466,739 x 9
+    ['IoT-DNL', [], 'normality'],  # 477,426 x 14
+    ['MQTTEEB-D', ['timestamp'], 'label'],  # 222,813 x 13
+    ['NSL-KDD', [], 'class'],  # 148,517 x 42
+    ['UAVIDS-2025', ['FlowID'], 'label'],  # 122,171 x 23
+    ['RT-IoT2022', ['no'], 'Attack_type'],  # 123,117 x 84
+    ['QoS-QoE', ['RebufferingRatio', 'AvgVideoBitRate', 'AvgVideoQualityVariation'], 'StallLabel'],  # 69,129 x 38
+    ['DeepSlice', ['no'], 'slice Type'],  # 63,167 x 10
+    ['NSR', [], 'slice Type'],  # 31,583 x 17
+    ['IoTNet24', ['id'], 'label'],  # 23,145 x 17
+    ['IoT-APD', ['second'], 'label'],  # 10,845 x 17
+    ['ASNM-CDX-2009', ['id', 'label_poly'], 'label_2'],  # 5,771 x 877
+    ['UNAC', ['file'], 'output'],  # 389 x 23
+    ['KPI-KQI', [], 'Service'],  # 165 x 14
+    ['6G Network Slicing Classification', [], 'Slice Type'],  # 10,000 x 11
+    ['Federated OCPP 1.6 IDS APP', [], 'label'],  # 4,255 x 42
 ]
 cpu_models = [
     'SGD',
