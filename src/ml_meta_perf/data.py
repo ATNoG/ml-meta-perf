@@ -305,14 +305,40 @@ def columns_as_arrays(frame: pl.DataFrame, features: tuple[str, ...]) -> dict[st
 
 
 def target(frame: pl.DataFrame, schema: Schema | None = None) -> np.ndarray:
-    """The schema's target column as a float array, ``log1p`` of it when the schema asks."""
+    """The schema's target column as a float array, on the scale the equation is fitted on."""
     schema = schema or default_schema()
     values = frame[schema.target_column].to_numpy().astype(np.float64)
-    if not schema.log_target:
+    return to_fit_scale(values, schema)
+
+
+def to_fit_scale(values: np.ndarray, schema: Schema) -> np.ndarray:
+    """``values`` on the fitted scale: unchanged, ``log(1 + y)`` for ``log1p`` or ``log(y)`` for ``log``."""
+    if schema.transform == "none":
         return values
-    if not np.all(np.isfinite(values)) or np.any(values < 0.0):
-        raise SchemaError(f"{schema.target_column} has negative or non-finite values; log1p needs non-negative costs")
-    return np.log1p(values)
+    if not np.all(np.isfinite(values)):
+        raise SchemaError(
+            f"{schema.target_column} has non-finite values; a {schema.transform} scale needs finite costs"
+        )
+    if schema.transform == "log1p":
+        if np.any(values < 0.0):
+            raise SchemaError(f"{schema.target_column} has negative values; log1p needs non-negative costs")
+        return np.log1p(values)
+    if np.any(values <= 0.0):
+        raise SchemaError(f"{schema.target_column} has zero or negative values; log needs strictly positive costs")
+    return np.log(values)
+
+
+def from_fit_scale(values: np.ndarray, schema: Schema) -> np.ndarray:
+    """The inverse of `to_fit_scale`: predictions on the fitted scale back on the target's own scale.
+
+    ``exp`` of a mean on the log scale is the geometric mean, which sits below the arithmetic mean
+    of a skewed cost (retransformation bias, chapter 7 section 7.5); no smearing correction is applied.
+    """
+    if schema.transform == "log1p":
+        return np.expm1(values)
+    if schema.transform == "log":
+        return np.exp(values)
+    return values
 
 
 def groups(frame: pl.DataFrame, column: str) -> np.ndarray:

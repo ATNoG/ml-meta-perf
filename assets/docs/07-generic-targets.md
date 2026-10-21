@@ -237,6 +237,26 @@ target are on the scale of $z$, which is also the scale the equation was fitted 
 error on $z$ is approximately a relative error on $y$, since $\log(1+y) - \log(1+\hat{y}) \approx
 \log(y/\hat{y})$ for large values.
 
+`response.transform = "log"` fits $z = \log y$ for a target that is strictly positive, with the same reading
+(each term multiplies the prediction, now by $e^{w_i t_i}$ with no offset: $\hat{y} = e^{w_0}\prod_i e^{w_i t_i}$).
+It needs $y > 0$ on every row, which the data check enforces by name, and a low bound above zero (or $B = \varnothing$);
+a cost that can be exactly zero (a count of zero epochs, zero bytes) uses `log1p`. The fitted-scale bounds are
+$\log a$ and $\log b$.
+
+**Scores on the target's own scale.** $R^2$ on $z$ is a statement about ratios. A study of a transformed target
+therefore also reports every protocol's score on $y$ itself, from the held-out predictions mapped back,
+
+$$\hat{y}_i = g^{-1}(\hat{z}_i), \qquad g^{-1} = \exp\ (\log),\quad \exp(\cdot) - 1\ (\log1p),$$
+
+$$R^2_y = 1 - \frac{\sum_i (y_i - \hat{y}_i)^2}{\sum_i (y_i - \bar{y})^2},$$
+
+in `scores.csv` (columns variant, protocol, scale, r2, mae, smape; `scale` is `fit` or `original`, and the two
+coincide for an untransformed target). The back-transform is not unbiased: $\exp$ of the mean of $\log y$ is the geometric
+mean, so for a skewed cost $\hat{y}$ sits below the conditional mean of $y$ (retransformation bias). No smearing
+correction is applied, so $R^2_y$ is conservative for the large runs; the fit-scale $R^2_z$ is the number the length rule
+reads. `tests/test_transforms.py` checks the inverse of each scale, the domain errors, and that the original-scale scores
+equal an independent computation on the raw target.
+
 ## 7.6 Choosing the arity and the number of terms
 
 Two published variants of the all-features equation (E3) are always distinguished.

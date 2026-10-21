@@ -33,6 +33,7 @@ from ml_meta_perf.data import (
     Schema,
     columns_as_arrays,
     drop_constant_features,
+    from_fit_scale,
     groups,
     load,
     target,
@@ -74,6 +75,10 @@ from ml_meta_perf.validate import (
 #: only ever predict that group's mean anyway. That was true and still the wrong choice: it put
 #: E1's R2 on a 20-point denominator, so its headline could not be compared with E3's without a
 #: paragraph of explanation. See [chapter 4][study-chapter].
+
+
+#: The protocol a `FittedPath.paths` key stands for, as the user names it.
+PROTOCOL_NAMES = {"loo_dataset": "LODO", "loo_model": "LOMO", "loo_cell": "DHO"}
 
 
 @dataclass
@@ -351,6 +356,9 @@ class FlexFLReport:
     shares: pl.DataFrame
     #: E3-MAX, when the study asks for it (``equations`` lists it): the best score at the capability arity.
     maximum: EquationReport | None = None
+    #: Each variant's scores under every protocol, on the fitted scale and on the target's own
+    #: (`original_scale_scores`).
+    scores: pl.DataFrame = field(default_factory=pl.DataFrame)
 
 
 def run_flexfl(
@@ -386,7 +394,44 @@ def run_flexfl(
     effects = term_effects(report.equation, columns, schema.dataset_features, schema.model_features)
     shares = group_shares(report.equation, columns, schema.dataset_features, schema.model_features)
     maximum = run_capability(frame, config, selection, schema=schema) if with_maximum else None
-    return FlexFLReport(schema, report, effects, shares, maximum)
+    variants = {"E3-Valid": report} | ({"E3-MAX": maximum} if maximum is not None else {})
+    scores = pl.concat([original_scale_scores(variant, frame, schema, label) for label, variant in variants.items()])
+    return FlexFLReport(schema, report, effects, shares, maximum, scores)
+
+
+def original_scale_scores(report: EquationReport, frame: pl.DataFrame, schema: Schema, variant: str) -> pl.DataFrame:
+    """One row per protocol and scale: the equation's scores on the fitted scale and on the target's own.
+
+    An equation fitted on ``log(y)`` predicts ``log(y)``; its R2 there is a statement about ratios, and
+    the question a user asks is usually about ``y`` itself. Each protocol's held-out predictions are
+    mapped back with `data.from_fit_scale` and scored against the raw target. For an untransformed
+    target the two scales coincide. ``exp`` of a mean on the log scale is the geometric mean, so the
+    back-transformed predictions of a skewed cost sit below its arithmetic mean (chapter 7, 7.5).
+    """
+    truth_fit = target(frame, schema)
+    truth = frame[schema.target_column].to_numpy().astype(np.float64)
+    columns = columns_as_arrays(frame, schema.features)
+    predictions = {"IS": report.equation.predict(columns)} | {
+        PROTOCOL_NAMES.get(label, label): path[report.n_terms].predictions for label, path in report.paths.items()
+    }
+    rows: list[dict[str, object]] = []
+    for protocol, fitted in predictions.items():
+        for scale, observed, predicted in (
+            ("fit", truth_fit, fitted),
+            ("original", truth, from_fit_scale(fitted, schema)),
+        ):
+            scores = score(observed, predicted)
+            rows.append(
+                {
+                    "variant": variant,
+                    "protocol": protocol,
+                    "scale": scale,
+                    "r2": scores.r2,
+                    "mae": scores.mae,
+                    "smape": scores.smape,
+                }
+            )
+    return pl.DataFrame(rows)
 
 
 def run_e1(

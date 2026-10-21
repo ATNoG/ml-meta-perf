@@ -51,13 +51,12 @@ from ml_meta_perf.data import (
     resolve_path,
     target,
 )
-from ml_meta_perf.experiment import Report, run, run_flexfl
+from ml_meta_perf.experiment import PROTOCOL_NAMES, Report, run, run_flexfl
 from ml_meta_perf.practices import render as render_practices
 from ml_meta_perf.report import term_importance, write_into_chapters
 
 #: What ``--phase`` accepts. ``all`` is the default and is what the study runs.
 PHASES = ("screen", "equations", "validation", "practices", "figures", "report")
-PROTOCOL_LABELS = {"loo_dataset": "LODO", "loo_model": "LOMO", "loo_cell": "DHO"}
 
 
 def _section(title: str) -> None:
@@ -105,7 +104,7 @@ def render(
         print(report.e1.equation)
         print(f"\nIS: {report.e1.in_sample}")
         for label, scores in report.e1.cross_validated.items():
-            print(f"{PROTOCOL_LABELS.get(label, label)}: {scores}")
+            print(f"{PROTOCOL_NAMES.get(label, label)}: {scores}")
         print("\naccuracy vs number of terms:")
         _show(report.e1.curve)
 
@@ -113,13 +112,13 @@ def render(
         print(report.e2.equation)
         print(f"\nIS: {report.e2.in_sample}")
         for label, scores in report.e2.cross_validated.items():
-            print(f"{PROTOCOL_LABELS.get(label, label)}: {scores}")
+            print(f"{PROTOCOL_NAMES.get(label, label)}: {scores}")
 
         _section("E3 -- dataset + model features (fitted on all rows)")
         print(report.e3.equation)
         print(f"\nIS: {report.e3.in_sample}")
         for label, scores in report.e3.cross_validated.items():
-            print(f"{PROTOCOL_LABELS.get(label, label)}: {scores}")
+            print(f"{PROTOCOL_NAMES.get(label, label)}: {scores}")
         print("\naccuracy vs number of terms:")
         _show(report.e3.curve)
         if report.e3.stability is not None:
@@ -298,13 +297,16 @@ def _run_fit_cli(arguments: Namespace) -> int:
         print(report.equation.equation)
         print(f"\nIS: {report.equation.in_sample}")
         for label, scores in report.equation.cross_validated.items():
-            print(f"{PROTOCOL_LABELS.get(label, label)}: R2={scores['r2']:.3f}, MAE={scores['mae']:.3f}")
+            print(f"{PROTOCOL_NAMES.get(label, label)}: R2={scores['r2']:.3f}, MAE={scores['mae']:.3f}")
         _show(report.shares)
+        if schema.log_target:
+            _section(f"scores on {schema.target_column} itself (back-transformed)")
+            _show(report.scores.filter(pl.col("scale") == "original").drop("scale"))
         if report.maximum is not None:
             _section(f"E3-MAX: {schema.label}")
             print(report.maximum.equation)
             for label, scores in report.maximum.cross_validated.items():
-                print(f"{PROTOCOL_LABELS.get(label, label)}: R2={scores['r2']:.3f}, MAE={scores['mae']:.3f}")
+                print(f"{PROTOCOL_NAMES.get(label, label)}: R2={scores['r2']:.3f}, MAE={scores['mae']:.3f}")
     if arguments.output:
         destination = Path(arguments.output) / "flexfl" / schema.slug
         destination.mkdir(parents=True, exist_ok=True)
@@ -313,6 +315,7 @@ def _run_fit_cli(arguments: Namespace) -> int:
         report.equation.curve.write_csv(destination / "curve.csv")
         report.effects.write_csv(destination / "term_effects.csv")
         report.shares.write_csv(destination / "group_shares.csv")
+        report.scores.write_csv(destination / "scores.csv")
         if report.maximum is not None:
             ceiling = destination / "e3-max"
             ceiling.mkdir(exist_ok=True)

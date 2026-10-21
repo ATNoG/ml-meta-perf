@@ -51,9 +51,10 @@ DEFAULT_CONFIG_PATH = _default_config_path()
 #: ``(low, high)``, either end ``None`` when that side is open: MCC is ``(-1, 1)``, a time is ``(0, None)``.
 Bounds = tuple[float | None, float | None]
 
-#: The transforms a target can be fitted on. ``log1p`` fits ``log(1 + y)``: a cost spanning orders
+#: The transforms a target can be fitted on. ``log`` fits ``log(y)`` for a strictly positive target and
+#: ``log1p`` fits ``log(1 + y)`` for a non-negative one (zeros allowed): a cost spanning orders
 #: of magnitude becomes a relative error, and the equation's terms multiply (chapter 7).
-TRANSFORMS = ("none", "log1p")
+TRANSFORMS = ("none", "log1p", "log")
 
 #: The equations a study can fit: E1 the dataset features, E2 the model features, E3 both.
 EQUATIONS = ("E1", "E2", "E3")
@@ -76,6 +77,15 @@ PROTOCOLS = ("IS", "LODO", "LOMO", "DHO")
 
 #: The protocols that need a model group: a corpus without one cannot hold a model out.
 MODEL_PROTOCOLS = ("LOMO", "DHO")
+
+
+def _transform_bounds_problem(transform: str, low: float | None) -> str:
+    """Why a target bounded below by ``low`` cannot be fitted on ``transform``'s scale, or an empty string."""
+    if transform == "log1p" and (low is None or low < 0.0):
+        return "log1p needs a target that cannot be negative: bounds=None, or a low bound of 0 or more"
+    if transform == "log" and (low is None or low <= 0.0):
+        return "log needs a target that is always positive: bounds=None, or a low bound above 0"
+    return ""
 
 
 @dataclass(frozen=True)
@@ -125,8 +135,10 @@ class Schema:
     def __post_init__(self) -> None:
         if self.transform not in TRANSFORMS:
             raise ValueError(f"unknown transform {self.transform!r}; expected one of {TRANSFORMS}")
-        if self.transform == "log1p" and self.bounds is not None and (self.bounds[0] is None or self.bounds[0] < 0.0):
-            raise ValueError("log1p needs a target that cannot be negative: bounds=None, or a low bound of 0 or more")
+        if self.transform != "none" and self.bounds is not None:
+            problem = _transform_bounds_problem(self.transform, self.bounds[0])
+            if problem:
+                raise ValueError(problem)
 
     @property
     def excluded(self) -> dict[str, tuple[str, ...]]:
@@ -155,11 +167,13 @@ class Schema:
         if self.bounds is None or self.transform == "none":
             return self.bounds
         low, high = self.bounds
-        return (None if low is None else math.log1p(low), None if high is None else math.log1p(high))
+        forward = math.log1p if self.transform == "log1p" else math.log
+        return (None if low is None else forward(low), None if high is None else forward(high))
 
     @property
     def log_target(self) -> bool:
-        return self.transform == "log1p"
+        """Whether the equation is fitted on a logarithm of the target (``log1p`` or ``log``)."""
+        return self.transform != "none"
 
     @property
     def slug(self) -> str:
@@ -167,16 +181,16 @@ class Schema:
         if self.row_filter is not None and self.row_filter.label:
             parts.append(self.row_filter.label)
         if self.log_target:
-            parts.append("log1p")
+            parts.append(self.transform)
         return "-".join(parts)
 
     @property
     def label(self) -> str:
-        return f"log1p({self.target_column})" if self.log_target else self.target_column
+        return f"{self.transform}({self.target_column})" if self.log_target else self.target_column
 
     def tag(self, name: str) -> str:
-        """``name`` with a ``_log1p`` suffix when this schema fits a log-transformed target."""
-        return f"{name}_log1p" if self.log_target else name
+        """``name`` with the transform as a suffix when this schema fits a log-transformed target."""
+        return f"{name}_{self.transform}" if self.log_target else name
 
 
 @dataclass(frozen=True)
@@ -210,7 +224,7 @@ class ResponseConfig:
     #: ``[low, high]`` when the target cannot leave a range (MCC, a bounded error); ``None`` for
     #: a cost, a time or a count, which is then never clipped (chapter 7, section 7.1).
     bounds: Bounds | None
-    #: ``none``, or ``log1p`` to fit ``log(1 + y)`` (an unbounded, non-negative target).
+    #: ``none``, ``log1p`` to fit ``log(1 + y)`` (non-negative target) or ``log`` to fit ``log(y)`` (positive target).
     transform: str = "none"
 
 
@@ -429,11 +443,10 @@ def _validated(
         raise ConfigError(f"the response column {response.column!r} is also a group column")
     if response.transform not in TRANSFORMS:
         raise ConfigError(f"response.transform must be one of {TRANSFORMS}, got {response.transform!r}")
-    if response.transform == "log1p" and response.bounds is not None and (low is None or low < 0.0):
-        raise ConfigError(
-            "response.transform log1p needs a target that cannot be negative: "
-            "response.bounds null, or a low of 0 or more"
-        )
+    if response.transform != "none" and response.bounds is not None:
+        problem = _transform_bounds_problem(response.transform, low)
+        if problem:
+            raise ConfigError(f"response.transform {response.transform}: {problem}")
     if corpus.row_filter is not None and not corpus.row_filter.column:
         raise ConfigError("corpus.row_filter.column is empty")
     for requirement in corpus.require:

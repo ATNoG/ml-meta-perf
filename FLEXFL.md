@@ -103,8 +103,8 @@ are read as group offsets.
 ## Commands
 
 ```bash
-# E3-Valid and E3-MAX; writes equation.json, equation.txt, curve.csv, term_effects.csv and
-# group_shares.csv under results/flexfl/<slug>/, and the E3-MAX equation under .../e3-max/
+# E3-Valid and E3-MAX; writes equation.json, equation.txt, curve.csv, term_effects.csv,
+# group_shares.csv and scores.csv (fit scale and the target's own scale) under results/flexfl/<slug>/, and the E3-MAX equation under .../e3-max/
 ml-meta-perf --config config/flexfl/total_time_s.json --data meta_dataset.csv
 
 # the same target on the log scale

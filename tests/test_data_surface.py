@@ -22,6 +22,7 @@ PUBLIC_NAMES = frozenset(
         "columns_as_arrays",
         "corpus_summary",
         "drop_constant_features",
+        "from_fit_scale",
         "groups",
         "feature_glossary",
         "load",
@@ -33,6 +34,7 @@ PUBLIC_NAMES = frozenset(
         "missing_cells",
         "target",
         "target_summary",
+        "to_fit_scale",
     }
 )
 
