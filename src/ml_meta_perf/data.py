@@ -54,7 +54,7 @@ class SchemaError(ValueError):
 def load(path: str | Path | None = None, schema: Schema | None = None) -> pl.DataFrame:
     """Read the meta-dataset and check it has the expected shape.
 
-    With no ``path`` the corpus is the one ``config/study.json`` names, and with no ``schema``
+    With no ``path`` the corpus is the one ``config/mcc.json`` names, and with no ``schema``
     the columns are the ones it lists: a bare ``load()`` is the study as configured. An explicit
     ``path`` is used as given, relative to the working directory.
 

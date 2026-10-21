@@ -3,7 +3,7 @@
 Fits equations of the form ``y = w0 + w1*t1 + ... + wk*tk`` where each term is a simple
 expression over dataset and model meta-features, and reports what they are actually worth
 under in-sample (IS), leave-one-dataset-out (LODO), leave-one-model-out (LOMO) and doubly
-held-out (DHO) evaluation. A study is described by a file (``config/study.json``); the
+held-out (DHO) evaluation. A study is described by a file (``config/mcc.json``); the
 command line is ``ml-meta-perf fit | sweep | init``.
 """
 

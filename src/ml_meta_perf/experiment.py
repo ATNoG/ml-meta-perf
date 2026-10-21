@@ -278,7 +278,7 @@ def finalise(fitted: FittedPath, size: int) -> EquationReport:
 
 
 def _resolve(config: Configuration | None, selection: SelectionConfig | None) -> tuple[Configuration, SelectionConfig]:
-    """Fill whichever of the two was not given from ``config/study.json``."""
+    """Fill whichever of the two was not given from ``config/mcc.json``."""
     if config is None or selection is None:
         study = load_config()
         return config or study.search, selection or study.selection

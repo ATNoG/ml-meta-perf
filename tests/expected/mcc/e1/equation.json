@@ -1,0 +1,98 @@
+{
+  "name": "E1_k5",
+  "intercept": 1.4042423615643265,
+  "terms": [
+    {
+      "operation": "ratio",
+      "operands": [
+        {
+          "feature": "class_ent",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_class",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "product",
+      "operands": [
+        {
+          "feature": "eq_num_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_class",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "product",
+      "operands": [
+        {
+          "feature": "nr_class",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_cor_attr",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "gravity",
+          "transform": "log"
+        },
+        {
+          "feature": "ns_ratio",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_outliers",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "nr_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_outliers",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_inst",
+          "transform": "log"
+        }
+      ]
+    }
+  ],
+  "weights": [
+    0.04193840612201756,
+    -0.17047926579258527,
+    -0.025059480529318473,
+    -0.03829193181211962,
+    -0.3036537729762046
+  ],
+  "standardized_weights": [
+    0.04558130360296556,
+    -0.2057319298067122,
+    -0.033992882313401335,
+    -0.13637180041984037,
+    -0.08182863863838842
+  ],
+  "bounds": [
+    -1.0,
+    1.0
+  ],
+  "target": "MCC"
+}

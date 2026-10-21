@@ -1,0 +1,284 @@
+{
+  "name": "E3_k15",
+  "intercept": 1.8644461566095256,
+  "terms": [
+    {
+      "operation": "atom",
+      "operands": [
+        {
+          "feature": "gravity",
+          "transform": "inv"
+        }
+      ]
+    },
+    {
+      "operation": "product",
+      "operands": [
+        {
+          "feature": "eq_num_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_class",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "product",
+      "operands": [
+        {
+          "feature": "gravity",
+          "transform": "log"
+        },
+        {
+          "feature": "Model Capability",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "class_ent",
+          "transform": "log"
+        },
+        {
+          "feature": "ns_ratio",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_class",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "eq_num_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "gravity",
+          "transform": "log"
+        },
+        {
+          "feature": "Processing Units Number",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "eq_num_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_cor_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "Processing Units Number",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "eq_num_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "Fitting Regime",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_outliers",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "eq_num_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "Loss Margin Behaviour",
+          "transform": "log"
+        },
+        {
+          "feature": "Processing Units Number",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "gravity",
+          "transform": "log"
+        },
+        {
+          "feature": "inst_to_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_outliers",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "nr_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "Fitting Regime",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_cor_attr",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "nr_class",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_cor_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_inst",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "nr_class",
+          "transform": "log"
+        },
+        {
+          "feature": "Fitting Regime",
+          "transform": "log"
+        },
+        {
+          "feature": "Processing Units Number",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "nr_class",
+          "transform": "log"
+        },
+        {
+          "feature": "Model Capability",
+          "transform": "log"
+        },
+        {
+          "feature": "eq_num_attr",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "Input Distribution Modelling",
+          "transform": "log"
+        },
+        {
+          "feature": "Loss Margin Behaviour",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_class",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "Input Distribution Modelling",
+          "transform": "log"
+        },
+        {
+          "feature": "Model Capability",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_class",
+          "transform": "log"
+        }
+      ]
+    }
+  ],
+  "weights": [
+    0.14170874166999953,
+    -0.19205099335112452,
+    0.009353200505708974,
+    -0.05054635905373309,
+    -0.041160270246270156,
+    -1.445945504048843,
+    0.44122635147553274,
+    0.4906051429137757,
+    -0.034491985098171106,
+    0.11350451842271808,
+    3.7391318774101268,
+    -1.3465996725821099,
+    -0.07611787612325209,
+    -0.15248019537630927,
+    0.06971210146467414
+  ],
+  "standardized_weights": [
+    0.027567945793044082,
+    -0.2317643808455525,
+    0.18904855501831785,
+    -0.06261390390649489,
+    -0.08593347049926893,
+    -0.21449337171694743,
+    0.16284375854429559,
+    0.11158429014754824,
+    -0.14090006425285595,
+    0.0669938485837593,
+    0.27500930575525145,
+    -0.23991277813287948,
+    -0.11667193200169398,
+    -0.09666958593609859,
+    0.05648979548045431
+  ],
+  "bounds": [
+    -1.0,
+    1.0
+  ],
+  "target": "MCC"
+}

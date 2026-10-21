@@ -4,7 +4,7 @@ Given a corpus and the names of its group columns and its response, the skeleton
 other numeric column as a feature: a column that takes one value within each dataset describes the
 dataset, one that varies within a dataset describes the model (or the configuration the run used).
 Columns that never vary carry nothing an equation can use and are left out and reported. Every tuned
-value is copied from ``config/study.json``, so the skeleton is a complete study file that runs.
+value is copied from ``config/mcc.json``, so the skeleton is a complete study file that runs.
 """
 
 from __future__ import annotations

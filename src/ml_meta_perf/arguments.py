@@ -1,6 +1,6 @@
 """The command-line flags every command that reads a study shares.
 
-A study is the file ``config/study.json`` (or any file of the same shape); each of its sections is
+A study is the file ``config/mcc.json`` (or any file of the same shape); each of its sections is
 also a flag, so ``--search.penalty 3`` overrides one field of the file for one run, ``--config
 other.json`` replaces the file, and ``--print_config`` shows the effective study. The values live
 in the file and nowhere in the code: the flags carry no default of their own.

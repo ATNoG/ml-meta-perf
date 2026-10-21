@@ -1,0 +1,455 @@
+{
+  "name": "E3-MAX_k24",
+  "intercept": 2.17248756724044,
+  "terms": [
+    {
+      "operation": "atom",
+      "operands": [
+        {
+          "feature": "gravity",
+          "transform": "inv"
+        }
+      ]
+    },
+    {
+      "operation": "product",
+      "operands": [
+        {
+          "feature": "eq_num_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_class",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "product",
+      "operands": [
+        {
+          "feature": "gravity",
+          "transform": "log"
+        },
+        {
+          "feature": "Model Capability",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "class_ent",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_class",
+          "transform": "log"
+        },
+        {
+          "feature": "Loss Margin Behaviour",
+          "transform": "id"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "class_ent",
+          "transform": "log"
+        },
+        {
+          "feature": "ns_ratio",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_class",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "class_ent",
+          "transform": "log"
+        },
+        {
+          "feature": "Processing Units Number",
+          "transform": "log"
+        },
+        {
+          "feature": "Fitting Regime",
+          "transform": "id"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "eq_num_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "gravity",
+          "transform": "log"
+        },
+        {
+          "feature": "Processing Units Number",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "eq_num_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_cor_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "inst_to_attr",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "eq_num_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_cor_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "Processing Units Number",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "eq_num_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_cor_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "Solution Stochasticity",
+          "transform": "id"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "eq_num_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "Fitting Regime",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_outliers",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "eq_num_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "Loss Margin Behaviour",
+          "transform": "log"
+        },
+        {
+          "feature": "Processing Units Number",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "gravity",
+          "transform": "log"
+        },
+        {
+          "feature": "inst_to_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_attr",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "gravity",
+          "transform": "log"
+        },
+        {
+          "feature": "ns_ratio",
+          "transform": "log"
+        },
+        {
+          "feature": "Loss Margin Behaviour",
+          "transform": "id"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "nr_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "Fitting Regime",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_cor_attr",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "nr_class",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_cor_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_inst",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "nr_class",
+          "transform": "log"
+        },
+        {
+          "feature": "Fitting Regime",
+          "transform": "log"
+        },
+        {
+          "feature": "Processing Units Number",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "nr_cor_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "Loss Margin Behaviour",
+          "transform": "log"
+        },
+        {
+          "feature": "eq_num_attr",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "nr_cor_attr",
+          "transform": "log"
+        },
+        {
+          "feature": "Model Capability",
+          "transform": "log"
+        },
+        {
+          "feature": "Solution Stochasticity",
+          "transform": "id"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "nr_inst",
+          "transform": "log"
+        },
+        {
+          "feature": "ns_ratio",
+          "transform": "log"
+        },
+        {
+          "feature": "Fitting Regime",
+          "transform": "id"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "Fitting Regime",
+          "transform": "log"
+        },
+        {
+          "feature": "Input Distribution Modelling",
+          "transform": "log"
+        },
+        {
+          "feature": "Model Capability",
+          "transform": "id"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "Input Distribution Modelling",
+          "transform": "log"
+        },
+        {
+          "feature": "Loss Margin Behaviour",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_class",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "Input Distribution Modelling",
+          "transform": "log"
+        },
+        {
+          "feature": "Solution Stochasticity",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_attr",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "Model Capability",
+          "transform": "log"
+        },
+        {
+          "feature": "Solution Stochasticity",
+          "transform": "log"
+        },
+        {
+          "feature": "nr_class",
+          "transform": "log"
+        }
+      ]
+    }
+  ],
+  "weights": [
+    0.15774153023869728,
+    -0.16554475024459847,
+    0.00797783104558435,
+    0.08275442736859304,
+    -0.05368630663196737,
+    -0.03814577058585464,
+    -0.05240095559006963,
+    0.17895108274727975,
+    -1.2818185250918779,
+    -0.09074068245945771,
+    0.2856474353835484,
+    0.4437796978223269,
+    -0.0534473284586751,
+    0.01237838215013645,
+    0.2247138124561708,
+    2.3759148193434556,
+    -1.4613230526506027,
+    0.15352622668899812,
+    0.1678741436159977,
+    0.015264714114194026,
+    0.36262115831449016,
+    -0.13140751058945657,
+    -0.2260343384278627,
+    0.04569803108008036
+  ],
+  "standardized_weights": [
+    0.03068695624338363,
+    -0.19977702730505736,
+    0.16124934244993777,
+    0.07821601237238099,
+    -0.06650348922214529,
+    -0.08558025286229796,
+    -0.10940151618029768,
+    0.024667327980822988,
+    -0.190146569567337,
+    -0.053252251817090236,
+    0.10542412492100502,
+    0.10093421008450534,
+    -0.20082628905939903,
+    0.10691654519380944,
+    0.13263298532576148,
+    0.17474609252183626,
+    -0.2603521153683102,
+    0.10690906413015251,
+    0.14210499241731595,
+    0.0622531880260395,
+    0.1108974169361557,
+    -0.08330989874603695,
+    -0.03699115097639108,
+    0.06255975404994701
+  ],
+  "bounds": [
+    -1.0,
+    1.0
+  ],
+  "target": "MCC"
+}

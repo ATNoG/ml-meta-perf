@@ -2,7 +2,7 @@
 
 A removal, a rename or an addition of a public name in the module fails the first test, so each
 one is a decision and not an accident. The rest pin the facts the chapters state about the MCC
-study's data description, which now lives in ``config/study.json``.
+study's data description, which now lives in ``config/mcc.json``.
 """
 
 import ast
@@ -51,7 +51,7 @@ class TestDataSurface(unittest.TestCase):
 
 
 class TestTheShippedStudyFile(unittest.TestCase):
-    """What ``config/study.json`` must describe for the MCC study to be the study it is.
+    """What ``config/mcc.json`` must describe for the MCC study to be the study it is.
 
     These replace the comparison against the old constants (removed with them, step 2.3): the
     description is read from the file, so what is pinned here is its shape and the facts the

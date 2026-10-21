@@ -19,7 +19,7 @@ from ml_meta_perf.config import (
 
 
 class TestStudyConfiguration(unittest.TestCase):
-    """``config/study.json`` is the only source of the tuned hyperparameters."""
+    """``config/mcc.json`` is the only source of the tuned hyperparameters."""
 
     def setUp(self) -> None:
         self.payload = json.loads(DEFAULT_CONFIG_PATH.read_text(encoding="utf-8"))
@@ -169,7 +169,7 @@ class TestStudyDescription(unittest.TestCase):
 
     def test_the_shipped_studies_exclude_nothing(self) -> None:
         root = Path(__file__).resolve().parents[1] / "config"
-        for path in (root / "study.json", *sorted((root / "flexfl").glob("*.json"))):
+        for path in (root / "mcc.json", *sorted((root / "flexfl").glob("*.json"))):
             with self.subTest(path.name):
                 self.assertEqual(load_config(path).grammar.exclude, {})
 

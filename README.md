@@ -15,7 +15,7 @@ opaque regressors reach a higher in-sample score on this kind of meta-data, and 
 off them.
 
 Everything about a problem — the corpus, the target and the range it can take, the features, the
-protocols, the hyperparameters — is in one **study file** (`config/study.json`). Nothing about a
+protocols, the hyperparameters — is in one **study file** (`config/mcc.json`). Nothing about a
 problem is in the code; a study of another target is another file of the same shape.
 
 ## The result of a study
@@ -99,7 +99,7 @@ The pieces are public too: the term library, the beam search and one equation by
 ```python
 from ml_meta_perf import build_library, columns_as_arrays, default_schema, load, load_config, search, target
 
-schema = default_schema()          # the columns and features config/study.json describes
+schema = default_schema()          # the columns and features config/mcc.json describes
 frame = load()
 columns = columns_as_arrays(frame, schema.features)
 library = build_library(schema.dataset_features, schema.model_features, columns, max_arity=2, max_abs_zscore=4.0)
@@ -110,9 +110,26 @@ print(equation)                    # human-readable, with standardised betas
 print(equation.to_latex())         # for a paper
 ```
 
+## Reproducing the MCC experiment
+
+`config/mcc.json` is the experiment of the paper's corpus with the values the work started from: the
+search (`max_abs_zscore` 3.5, `penalty` 0.1, `pool_size` 600, `max_terms` 30, `beam_width` 6, `max_arity` 3),
+the plateau rule (`delta` 0.01, `window` 4, `smoothing` 3), the four protocols and E1, E2, E3-Valid and
+E3-MAX. `tests/expected/mcc/` holds the equations, curves and scores it produced then (E1, E2 and E3 are
+byte-identical to the original pipeline's), and a change to the file or the code that moves them is
+caught:
+
+```bash
+ml-meta-perf fit --config config/mcc.json --output /tmp/mcc --quiet        # about 30 s
+python -m tests.regression /tmp/mcc/meta_dataset/MCC                          # same terms, numbers to 1e-6
+```
+
+CI runs both after every push. To try another rule on the same corpus, override one field
+(`--selection.method auto`); the other values stay.
+
 ## The study file
 
-`config/study.json` describes the problem and holds every tuned value; the command line holds no
+`config/mcc.json` describes the problem and holds every tuned value; the command line holds no
 default of its own.
 
 | section | keys | what it says |
@@ -182,7 +199,7 @@ src/ml_meta_perf/
     skeleton.py     `ml-meta-perf init`
     sweep.py        `ml-meta-perf sweep`
     cli.py          `ml-meta-perf fit | sweep | init`
-config/             study.json, and flexfl/ with one study file per target
+config/             mcc.json (the MCC experiment), and flexfl/ with one study file per target
 dataset/            meta_dataset.csv, the versioned MCC corpus
 assets/docs/        the method chapters (2, 3, 5, 7)
 meta_dataset_pipeline/  raw-corpus pipeline used to regenerate meta_dataset.csv

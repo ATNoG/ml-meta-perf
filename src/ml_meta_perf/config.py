@@ -1,4 +1,4 @@
-"""The study's hyperparameters, read from ``config/study.json``.
+"""The study's hyperparameters, read from ``config/mcc.json``.
 
 **Every tuned value lives in that one file**, and nowhere in the code: the search settings all
 equations share, the rule that chooses an equation's length, and the grid the configuration
@@ -18,7 +18,7 @@ each equation keeps. Restricting the pool would be a second, hidden search over 
 subsets.
 
 `ml-meta-perf-search` (`ml_meta_perf.sweep`) proposes a replacement file; adopting it is a
-reviewed change to ``config/study.json`` rather than something a run does to itself.
+reviewed change to ``config/mcc.json`` rather than something a run does to itself.
 
 Study chapter: [3. Term generation and selection][study-chapter] -- the rationale, in prose.
 
@@ -36,7 +36,7 @@ from typing import Any
 
 #: The configuration file, relative to the repository root. Resolved like the corpus
 #: (`data.resolve_path`): the source checkout this module runs from, else the working directory.
-CONFIG_RELATIVE_PATH = Path("config") / "study.json"
+CONFIG_RELATIVE_PATH = Path("config") / "mcc.json"
 
 
 def _default_config_path() -> Path:
@@ -364,7 +364,7 @@ class SweepConfig:
 
 @dataclass(frozen=True)
 class StudyConfig:
-    """The whole of ``config/study.json``."""
+    """The whole of ``config/mcc.json``."""
 
     corpus: CorpusConfig
     response: ResponseConfig
@@ -538,7 +538,7 @@ def parse_config(payload: dict[str, Any]) -> StudyConfig:
 
 @cache
 def load_config(path: str | Path | None = None) -> StudyConfig:
-    """Read and validate ``config/study.json`` (or ``path``). Cached: the file is read once."""
+    """Read and validate ``config/mcc.json`` (or ``path``). Cached: the file is read once."""
     resolved = Path(path) if path is not None else DEFAULT_CONFIG_PATH
     if not resolved.is_file():
         raise FileNotFoundError(f"study configuration not found: {resolved} (pass --config)")
@@ -574,7 +574,7 @@ def study_of(arguments: Any) -> StudyConfig:
 
 
 def default_schema() -> Schema:
-    """The data description of the study in ``config/study.json``: what a bare call analyses."""
+    """The data description of the study in ``config/mcc.json``: what a bare call analyses."""
     return load_config().schema()
 
 

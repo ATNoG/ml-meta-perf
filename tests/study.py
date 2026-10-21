@@ -1,4 +1,4 @@
-"""The MCC study's data description as the tests read it: from ``config/study.json``.
+"""The MCC study's data description as the tests read it: from ``config/mcc.json``.
 
 The tests used to import these names from ``ml_meta_perf.data``, where they were constants. They
 are the shipped study file's columns and features now, so a test that needs "the dataset features"

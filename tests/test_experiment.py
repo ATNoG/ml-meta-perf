@@ -76,7 +76,7 @@ class TestEquationReports(unittest.TestCase):
 
 
 class TestDocumentedDefaults(unittest.TestCase):
-    """The README's configuration table must state the values ``config/study.json`` holds.
+    """The README's configuration table must state the values ``config/mcc.json`` holds.
 
     A README table of defaults once stated four numbers that had all moved, and nothing was
     checking because the README is the one document the pipeline does not write. The values

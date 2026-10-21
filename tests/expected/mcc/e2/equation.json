@@ -1,0 +1,116 @@
+{
+  "name": "E2_k7",
+  "intercept": 0.08920020268104545,
+  "terms": [
+    {
+      "operation": "atom",
+      "operands": [
+        {
+          "feature": "Input Distribution Modelling",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "atom",
+      "operands": [
+        {
+          "feature": "Loss Margin Behaviour",
+          "transform": "inv"
+        }
+      ]
+    },
+    {
+      "operation": "atom",
+      "operands": [
+        {
+          "feature": "Model Capability",
+          "transform": "sq"
+        }
+      ]
+    },
+    {
+      "operation": "atom",
+      "operands": [
+        {
+          "feature": "Processing Units Number",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "Fitting Regime",
+          "transform": "log"
+        },
+        {
+          "feature": "Solution Stochasticity",
+          "transform": "log"
+        },
+        {
+          "feature": "Model Capability",
+          "transform": "id"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "Input Distribution Modelling",
+          "transform": "log"
+        },
+        {
+          "feature": "Loss Margin Behaviour",
+          "transform": "log"
+        },
+        {
+          "feature": "Processing Units Number",
+          "transform": "log"
+        }
+      ]
+    },
+    {
+      "operation": "sum_ratio",
+      "operands": [
+        {
+          "feature": "Model Capability",
+          "transform": "log"
+        },
+        {
+          "feature": "Solution Stochasticity",
+          "transform": "log"
+        },
+        {
+          "feature": "Processing Units Number",
+          "transform": "log"
+        }
+      ]
+    }
+  ],
+  "weights": [
+    -0.3539720541702066,
+    1.0839493855111082,
+    0.010298898853429581,
+    -0.038751632751231384,
+    0.31118903342272525,
+    1.563675487871708,
+    -0.9541114753299185
+  ],
+  "standardized_weights": [
+    -0.17588251448103817,
+    0.29887615432199,
+    0.3376673355932151,
+    -0.1628135780992283,
+    0.06173291812996184,
+    0.18725649979939063,
+    -0.17209358403104213
+  ],
+  "bounds": [
+    -1.0,
+    1.0
+  ],
+  "target": "MCC"
+}

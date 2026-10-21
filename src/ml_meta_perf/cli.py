@@ -6,7 +6,7 @@
 * ``init`` writes a study file for a CSV (`ml_meta_perf.skeleton`).
 
 Every hyperparameter comes from the study file -- the command line holds no tuned default of its
-own -- so a bare ``ml-meta-perf fit`` reproduces ``config/study.json``. The file is read with
+own -- so a bare ``ml-meta-perf fit`` reproduces ``config/mcc.json``. The file is read with
 `jsonargparse`: ``--config other.json`` replaces it, any field can be overridden as a dotted flag
 (``--search.penalty 3``) and ``--print_config`` shows the effective study.
 

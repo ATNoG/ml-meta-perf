@@ -78,7 +78,7 @@ class TestLoad(unittest.TestCase):
 
 
 class TestLoadFromTheStudyFile(unittest.TestCase):
-    """The corpus, its columns and its path come from ``config/study.json``, not from the code."""
+    """The corpus, its columns and its path come from ``config/mcc.json``, not from the code."""
 
     def test_a_bare_load_equals_reading_the_csv_with_the_pinned_columns(self) -> None:
         """`load` is the CSV read directly, with the columns the study lists, as Float64."""

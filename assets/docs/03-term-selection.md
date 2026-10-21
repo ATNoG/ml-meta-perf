@@ -225,7 +225,7 @@ length after which the smoothed floor gains at most `delta` over the next `windo
 the start of the first sustained plateau, the shortest equation that has stopped improving.
 The smoothed maximum is always a candidate too, since nothing after it gains; when every knee
 is still followed by real gains, the plateau starts there. `delta`, `window` and the smoothing
-width are hyperparameters in `config/study.json`, stated rather than implied; `report.md` names the length rule a study used.
+width are hyperparameters in `config/mcc.json`, stated rather than implied; `report.md` names the length rule a study used.
 
 A rule that looked only at a threshold on raw steps — the "first gain below 0.001" rule this
 replaced — reads noise: a threshold far below the length-to-length variation stops wherever
@@ -257,7 +257,7 @@ E3-Valid only when the configured capability arity exceeds the primary one.
 
 The rule chooses a length *given* a configuration; the configuration is chosen by the same
 criterion. `ml-meta-perf-search` fits E3 once for every point of the grid in
-`config/study.json`'s `sweep` section (stability cap × ridge penalty × arity), applies the rule
+`config/mcc.json`'s `sweep` section (stability cap × ridge penalty × arity), applies the rule
 to each, and keeps the configurations whose chosen equation is readable (`sweep.readable_terms`
 terms at most). Among those, configurations whose smoothed floor is within `sweep.band` of the
 best remain eligible under this numerical tolerance, and the one whose
@@ -267,7 +267,7 @@ separates configurations R² cannot: at the same floor, ranking precision varies
 one configuration to the next. The sweep writes every candidate's scores and a proposal;
 adopting it is a reviewed edit to the file. The unchanged grid contains seven stability
 caps, five penalties, and arities two and three: 70 configurations. Repeating that full
-procedure on the updated corpus retained the configuration now in `config/study.json`;
+procedure on the updated corpus retained the configuration now in `config/mcc.json`;
 the selection criteria and length rule were not changed.
 
 Lengths other than E3-Valid's are a sensitivity analysis and define no additional equations.

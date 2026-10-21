@@ -165,7 +165,7 @@ A study with a single grouping factor (one NN family trained in several ways, as
 leave $c_m$ out (`null`); it fits E3 over its features and its protocols are the ones the groups it
 has can define (section 7.2a).
 
-$\mathcal{S}$ is read from the sections of `config/study.json`:
+$\mathcal{S}$ is read from the sections of `config/mcc.json`:
 
 | symbol | section and key |
 |---|---|
@@ -177,7 +177,7 @@ $\mathcal{S}$ is read from the sections of `config/study.json`:
 | $X$ | `grammar.exclude` |
 
 `StudyConfig.schema()` turns them into the `Schema` object the loader and the fit consume, and
-`default_schema()` returns the one `config/study.json` describes. The file is checked when it is
+`default_schema()` returns the one `config/mcc.json` describes. The file is checked when it is
 read, before any data is: the two group columns must differ, the bounds must satisfy $a < b$,
 each feature list must be non-empty, no column may be listed twice or play two roles
 ($F_d \cap F_m = \varnothing$, and neither contains $c_d$, $c_m$ or $c_y$). No part of

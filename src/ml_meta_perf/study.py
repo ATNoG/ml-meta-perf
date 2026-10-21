@@ -1,6 +1,6 @@
 """Run a study: fit the equations its file lists, under the protocols it names, and score them.
 
-A study file (``config/study.json`` or ``config/flexfl/*.json``) says which corpus, which target,
+A study file (``config/mcc.json`` or ``config/flexfl/*.json``) says which corpus, which target,
 which features, which protocols and which equations; nothing about the problem is in the code. The
 equations are E1 (the dataset features alone), E2 (the model features alone), E3-Valid (both: the
 smaller, explainable equation) and E3-MAX (both, at the capability arity, at the raw maximum of the
@@ -96,7 +96,7 @@ def run_schema(
 ) -> StudyReport:
     """Load the corpus ``schema`` describes and fit ``equations`` on it.
 
-    ``config`` and ``selection`` default to ``config/study.json``. **One configuration serves every
+    ``config`` and ``selection`` default to ``config/mcc.json``. **One configuration serves every
     equation**, so an override changes the study consistently.
     """
     if config is None or selection is None:

@@ -57,8 +57,11 @@ jobs:
       - name: Run tests
         run: python -m unittest discover -s tests
 
-      - name: The shipped study reproduces end to end
+      - name: The MCC experiment reproduces end to end
         # The tests cover the parts; this covers the whole, which is what a reader cloning the
         # repository actually runs. It also fails loudly if the shipped meta-dataset and the code
-        # disagree about the schema. The result folder goes to the runner's temporary directory.
-        run: ml-meta-perf fit --quiet --output "${RUNNER_TEMP}/results"
+        # disagree about the schema. The result folder goes to the runner's temporary directory,
+        # and `tests/regression.py` compares it with the results of the start of the work.
+        run: |
+          ml-meta-perf fit --config config/mcc.json --quiet --output "${RUNNER_TEMP}/results"
+          python -m tests.regression "${RUNNER_TEMP}/results/meta_dataset/MCC"

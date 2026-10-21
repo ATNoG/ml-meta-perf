@@ -21,7 +21,7 @@ classifiers = [
 dependencies = [
     "polars>=1.20.0",
     "numpy>=2.0.0",
-    # Reads `config/study.json` -- the one file holding every tuned hyperparameter -- into the
+    # Reads `config/mcc.json` -- the one file holding every tuned hyperparameter -- into the
     # typed configuration dataclasses, and lets a command line override any field of it.
     "jsonargparse>=4.40.0",
     # Knee detection (Kneedle, multi-knee) for the equation-length rules in `selection` and `lengths`.

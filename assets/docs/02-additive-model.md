@@ -91,7 +91,7 @@ Arity 2 offers atoms, ratios and products. Arity 3 adds `sum_ratio`, the ratio-o
 ### The arity is a hyperparameter, and E3-MAX compares length rules
 
 The arity belongs to the **one configuration** shared by E1, E2 and E3
-(`search.max_arity` in `config/study.json`). The configuration sweep searches arities 2 and
+(`search.max_arity` in `config/mcc.json`). The configuration sweep searches arities 2 and
 3 alongside the stability cap and ridge penalty. The revised corpus retains **arity 3**.
 
 **E3-MAX** uses `selection.capability_arity` and the raw maximum of its worst-protocol
@@ -176,7 +176,7 @@ preferable to an indicator that switches on it.
 ## Library sizes
 
 Library sizes depend on the corpus, feature group, arity, and `max_abs_zscore`. The
-stability cap is set in `config/study.json`. The run regenerates the admissible
+stability cap is set in `config/mcc.json`. The run regenerates the admissible
 libraries rather than retaining counts from an earlier corpus.
 
 The cap rejects a term when one row lies too many standard deviations from its mean.
