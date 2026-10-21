@@ -236,3 +236,44 @@ $B = [a, b]$, and a time with $B = [0, \infty)$ is floored at $z = 0$, which is 
 target are on the scale of $z$, which is also the scale the equation was fitted on; a mean absolute
 error on $z$ is approximately a relative error on $y$, since $\log(1+y) - \log(1+\hat{y}) \approx
 \log(y/\hat{y})$ for large values.
+
+## 7.6 Choosing the arity and the number of terms
+
+Two published variants of the all-features equation (E3) are always distinguished.
+**E3-MAX** is the best value of the score the configuration can reach: the length that
+maximises the floor of section 7.2a, taken raw. It bounds what the additive form can do and is not
+meant to be read. **E3-Valid** is the smaller, explainable equation that performs similarly at a
+simpler package. Choosing it is a joint decision about the grammar (the *arity* $a$, how many raw
+features one term may name) and the length $n$ (the number of terms), because both spend the
+reader's attention.
+
+A candidate $(a, n)$ has a cost and a score,
+
+$$c(a, n) = a\,n \quad\text{(feature slots)}, \qquad s(a, n) = \operatorname{med}_{|j - n| \le 1}\ \text{floor}_a(j),$$
+
+with $\text{floor}_a$ the floor of section 7.2a for the grammar of arity $a$ and the median taken
+along the length within one arity (adjacent lengths differ by 0.03 to 0.05 for reasons that
+belong to a fold, so no rule reads the raw curve). The **Pareto front** is the set of candidates
+no cheaper candidate matches,
+
+$$\mathcal{P} = \{(a, n) : s(a, n) > s(a', n')\ \ \text{for every } (a', n') \text{ with } c(a', n') < c(a, n)\},$$
+
+ordered by cost; candidates of equal cost keep the better score, then the fewer terms. A rule
+reads $\mathcal{P}$ and returns one of its points. All are scale-free (R² is a fraction of variance,
+and a distance is taken on the front rescaled to the unit square):
+
+- `pareto_knee`: the Kneedle knee of the front, the point where the gain per extra slot bends
+  (Satopää et al. via the `kneeliverse` library). A front without a knee returns its last point.
+- `pareto_elbow`: the point of the rescaled front farthest from the chord joining its ends,
+  $\arg\max_i \lvert (x_e - x_0)(y_i - y_0) - (y_e - y_0)(x_i - x_0) \rvert$.
+- `pareto_within_delta`: the cheapest front point with $s \ge \max_{\mathcal{P}} s - \delta$.
+- `plateau_pareto`: the plateau rule of chapter 3 at every arity, then the cheapest of those picks
+  within $\delta$ of the best.
+- `plateau_knee`: the plateau rule at the one arity the study was configured with.
+
+A knee rather than the maximum is the point of E3-Valid: the maximum of a saturating curve sits
+on the plateau, where every extra term buys nothing readable; a knee sits where the returns
+begin to stop. `selection.method` in the study file names the rule; a name outside
+`lengths.LENGTH_RULES` is rejected when the file is read. The toy curves with a known answer
+that fix each definition are in `tests/test_lengths.py`; the choice of the default was measured
+on planted corpora with a known number of terms (`tests/synthetic.py`) and on the MCC corpus.
