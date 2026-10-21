@@ -35,6 +35,7 @@ from ml_meta_perf.config import (
     Configuration,
     CorpusConfig,
     FeaturesConfig,
+    GrammarConfig,
     OpaqueConfig,
     ResponseConfig,
     SelectionConfig,
@@ -240,6 +241,7 @@ def build_parser() -> ArgumentParser:
     )
     parser.add_argument("--equations", type=tuple[str, ...], help="which equations to fit: E1, E2, E3")
     parser.add_argument("--protocols", type=tuple[str, ...], help="the protocols to score under: IS, LODO, LOMO, DHO")
+    parser.add_argument("--grammar", type=GrammarConfig, help="operations a feature may not take part in")
     parser.add_argument("--search", type=Configuration, help="search hyperparameters shared by E1, E2 and E3")
     parser.add_argument("--selection", type=SelectionConfig, help="the equation-length rule")
     parser.add_argument("--opaque", type=OpaqueConfig, help="the opaque regressors' sizes")

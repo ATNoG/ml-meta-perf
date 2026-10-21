@@ -151,6 +151,32 @@ class TestStudyDescription(unittest.TestCase):
             with self.subTest(path.name):
                 self.assertEqual(load_config(path).protocols, ("IS", "LODO"))
 
+    def test_every_way_the_grammar_exclusions_can_be_unusable_is_named(self) -> None:
+        cases = {
+            "unknown feature": ({"nope": ["log"]}, "listed feature"),
+            "unknown operation": ({"nr_attr": ["cube"]}, "distinct operations"),
+            "identity is not excludable": ({"nr_attr": ["id"]}, "distinct operations"),
+            "empty list": ({"nr_attr": []}, "distinct operations"),
+            "repeated": ({"nr_attr": ["log", "log"]}, "distinct operations"),
+        }
+        for name, (exclude, message) in cases.items():
+            payload = json.loads(json.dumps(self.payload))
+            payload["grammar"]["exclude"] = exclude
+            with self.subTest(name), self.assertRaisesRegex(ConfigError, message):
+                parse_config(payload)
+
+    def test_exclusions_reach_the_schema_sorted_by_feature(self) -> None:
+        self.payload["grammar"]["exclude"] = {"nr_inst": ["inv", "log"], "class_ent": ["sq"]}
+        schema = parse_config(self.payload).schema()
+        self.assertEqual(schema.exclusions, (("class_ent", ("sq",)), ("nr_inst", ("inv", "log"))))
+        self.assertEqual(schema.excluded, {"class_ent": ("sq",), "nr_inst": ("inv", "log")})
+
+    def test_the_shipped_studies_exclude_nothing(self) -> None:
+        root = Path(__file__).resolve().parents[1] / "config"
+        for path in (root / "study.json", *sorted((root / "flexfl").glob("*.json"))):
+            with self.subTest(path.name):
+                self.assertEqual(load_config(path).grammar.exclude, {})
+
     def test_a_study_may_have_no_side_files(self) -> None:
         self.payload["side_files"] = {"taxonomy": None, "ordinals": None, "glossary": None}
         study = parse_config(self.payload)

@@ -58,6 +58,9 @@ TRANSFORMS = ("none", "log1p")
 #: The equations a study can fit: E1 the dataset features, E2 the model features, E3 both.
 EQUATIONS = ("E1", "E2", "E3")
 
+#: What a study may forbid for a feature: `terms.EXCLUDABLE`, repeated so the file is checked before any term is built.
+EXCLUDABLE = ("log", "sqrt", "inv", "sq")
+
 #: The protocols an equation can be scored under: in-sample, then leave-one-dataset-out, leave-one-model-out
 #: and doubly held-out. The last two hold out a model, so they need a model group (chapter 7, section 7.2).
 PROTOCOLS = ("IS", "LODO", "LOMO", "DHO")
@@ -107,12 +110,19 @@ class Schema:
     drop_constant_features: bool = False
     #: The protocols the equations are scored under; `selection.floor_curve` judges a length on the worst.
     protocols: tuple[str, ...] = PROTOCOLS
+    #: ``(feature, operations)`` pairs the term grammar may not use, sorted by feature (`GrammarConfig`).
+    exclusions: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
     def __post_init__(self) -> None:
         if self.transform not in TRANSFORMS:
             raise ValueError(f"unknown transform {self.transform!r}; expected one of {TRANSFORMS}")
         if self.transform == "log1p" and self.bounds is not None and (self.bounds[0] is None or self.bounds[0] < 0.0):
             raise ValueError("log1p needs a target that cannot be negative: bounds=None, or a low bound of 0 or more")
+
+    @property
+    def excluded(self) -> dict[str, tuple[str, ...]]:
+        """The grammar exclusions as the map `terms.build_library` takes."""
+        return dict(self.exclusions)
 
     @property
     def group_columns(self) -> tuple[str, ...]:
@@ -268,6 +278,16 @@ class SelectionConfig:
 
 
 @dataclass(frozen=True)
+class GrammarConfig:
+    """Which operations a feature may not take part in, so the search never builds an unacceptable term."""
+
+    #: Feature -> operations from ``EXCLUDABLE``: ``log``, ``sqrt``, ``sq`` remove that transform of the
+    #: feature everywhere, ``inv`` removes it from every denominator. A feature that can reach zero in
+    #: future data should not be inverted or logged even if this corpus never shows it.
+    exclude: dict[str, tuple[str, ...]]
+
+
+@dataclass(frozen=True)
 class OpaqueConfig:
     """The opaque regressors the equation is compared against (`ml_meta_perf.opaque`).
 
@@ -311,6 +331,7 @@ class StudyConfig:
     equations: tuple[str, ...]
     #: The protocols every equation is scored under, drawn from `PROTOCOLS`; a length is judged on the worst.
     protocols: tuple[str, ...]
+    grammar: GrammarConfig
     search: Configuration
     selection: SelectionConfig
     opaque: OpaqueConfig
@@ -332,6 +353,7 @@ class StudyConfig:
             drop_missing_response=self.corpus.drop_missing_response,
             drop_constant_features=self.corpus.drop_constant_features,
             protocols=self.protocols,
+            exclusions=tuple(sorted((feature, tuple(ops)) for feature, ops in self.grammar.exclude.items())),
         )
 
 
@@ -342,6 +364,7 @@ def _validated(
     side_files: SideFilesConfig,
     equations: tuple[str, ...],
     protocols: tuple[str, ...],
+    grammar: GrammarConfig,
 ) -> None:
     """Reject a study description that cannot describe a corpus, before any file is read."""
     if not corpus.path:
@@ -362,6 +385,14 @@ def _validated(
         )
     identifiers = tuple(name for name in (corpus.dataset_column, corpus.model_column) if name)
     _validated_protocols(protocols, has_model_group=corpus.model_column is not None)
+    known = set(features.dataset) | set(features.model)
+    for feature, operations in grammar.exclude.items():
+        unknown = sorted(set(operations) - set(EXCLUDABLE))
+        if feature not in known or unknown or not operations or len(set(operations)) != len(operations):
+            raise ConfigError(
+                f"grammar.exclude[{feature!r}] must name a listed feature and distinct operations drawn from "
+                f"{EXCLUDABLE}, got {list(operations)}"
+            )
     low, high = response.bounds or (None, None)
     if low is not None and high is not None and not low < high:
         raise ConfigError(f"response.bounds must satisfy low < high, got {response.bounds}")
@@ -449,7 +480,10 @@ def parse_config(payload: dict[str, Any]) -> StudyConfig:
     side_files = SideFilesConfig(**payload["side_files"])
     equations = tuple(str(name) for name in payload["equations"])
     protocols = tuple(str(name) for name in payload["protocols"])
-    _validated(corpus, response, features, side_files, equations, protocols)
+    grammar = GrammarConfig(
+        exclude={str(k): tuple(str(o) for o in v) for k, v in payload["grammar"]["exclude"].items()}
+    )
+    _validated(corpus, response, features, side_files, equations, protocols, grammar)
     return StudyConfig(
         corpus=corpus,
         response=response,
@@ -457,6 +491,7 @@ def parse_config(payload: dict[str, Any]) -> StudyConfig:
         side_files=side_files,
         equations=equations,
         protocols=protocols,
+        grammar=grammar,
         search=Configuration(**payload["search"]),
         selection=SelectionConfig(**payload["selection"]),
         opaque=OpaqueConfig(**payload["opaque"]),
@@ -486,7 +521,15 @@ def study_of(arguments: Any) -> StudyConfig:
     ran only on the file; they run again here, so the command line gets the same `ConfigError`.
     """
     equations, protocols = tuple(arguments.equations), tuple(arguments.protocols)
-    _validated(arguments.corpus, arguments.response, arguments.features, arguments.side_files, equations, protocols)
+    _validated(
+        arguments.corpus,
+        arguments.response,
+        arguments.features,
+        arguments.side_files,
+        equations,
+        protocols,
+        arguments.grammar,
+    )
     return StudyConfig(
         corpus=arguments.corpus,
         response=arguments.response,
@@ -494,6 +537,7 @@ def study_of(arguments: Any) -> StudyConfig:
         side_files=arguments.side_files,
         equations=equations,
         protocols=protocols,
+        grammar=arguments.grammar,
         search=arguments.search,
         selection=arguments.selection,
         opaque=arguments.opaque,

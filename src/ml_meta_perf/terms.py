@@ -33,6 +33,7 @@ prose, with the figures.
 from __future__ import annotations
 
 import itertools
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from typing import Literal
 
@@ -53,6 +54,14 @@ COLLINEARITY_TOLERANCE = 1.0 - 1e-9
 
 #: Every elementary transform a unary term may use.
 TRANSFORMS: tuple[Transform, ...] = ("id", "log", "sqrt", "inv", "sq")
+
+#: What a study may forbid for one feature: ``log``, ``sqrt`` and ``sq`` each remove that transform of
+#: the feature wherever it would appear in a term, ``inv`` removes the feature from every denominator
+#: (``1/f``, ``a/f`` and the divisor of a sum). ``id`` cannot be forbidden: a feature must stay usable.
+EXCLUDABLE: tuple[Transform, ...] = ("log", "sqrt", "inv", "sq")
+
+#: Per feature, the operations it may not take part in.
+Exclusions = Mapping[str, Collection[str]]
 
 _TRANSFORM_FORMAT: dict[Transform, str] = {
     "id": "{0}",
@@ -242,17 +251,22 @@ def _guard(denominator: np.ndarray) -> np.ndarray:
     return np.where(denominator >= 0.0, 1.0, -1.0) * (np.abs(denominator) + DENOMINATOR_FLOOR)
 
 
-def composition_atom(feature: str, columns: dict[str, np.ndarray]) -> Atom:
+def _forbids(exclude: Exclusions | None, feature: str, operation: str) -> bool:
+    return exclude is not None and operation in exclude.get(feature, ())
+
+
+def composition_atom(feature: str, columns: dict[str, np.ndarray], exclude: Exclusions | None = None) -> Atom:
     """The operand used when a feature appears as a numerator or inside a sum.
 
     Strictly positive features enter log-compressed; the rest enter raw. This is the
-    single decision that keeps composite terms on a comparable scale.
+    single decision that keeps composite terms on a comparable scale. A feature whose log
+    the study forbids enters raw.
     """
     values = columns[feature]
-    return Atom(feature, "log" if bool(np.all(values > 0.0)) else "id")
+    return Atom(feature, "log" if bool(np.all(values > 0.0)) and not _forbids(exclude, feature, "log") else "id")
 
 
-def denominator_atom(feature: str, columns: dict[str, np.ndarray]) -> Atom | None:
+def denominator_atom(feature: str, columns: dict[str, np.ndarray], exclude: Exclusions | None = None) -> Atom | None:
     """The operand to divide by, or ``None`` when this feature cannot safely be one.
 
     Division is the one operation in the vocabulary that can manufacture a term no
@@ -282,8 +296,10 @@ def denominator_atom(feature: str, columns: dict[str, np.ndarray]) -> Atom | Non
     (165 to 7.1M) in raw form -- though ``log(nr_inst)`` qualifies comfortably, which is
     the compression the preference order exists to find.
     """
+    if _forbids(exclude, feature, "inv"):
+        return None
     for candidate in (Atom(feature, "log"), Atom(feature, "id")):
-        if not candidate.is_defined_on(columns):
+        if _forbids(exclude, feature, candidate.transform) or not candidate.is_defined_on(columns):
             continue
         with np.errstate(all="ignore"):
             evaluated = np.abs(candidate.evaluate(columns))
@@ -297,13 +313,15 @@ def denominator_atom(feature: str, columns: dict[str, np.ndarray]) -> Atom | Non
     return None
 
 
-def unary_terms(features: tuple[str, ...], columns: dict[str, np.ndarray]) -> list[Term]:
+def unary_terms(
+    features: tuple[str, ...], columns: dict[str, np.ndarray], exclude: Exclusions | None = None
+) -> list[Term]:
     """``f``, ``log(f)``, ``sqrt(f)``, ``1/f`` and ``f^2`` for each feature that admits them."""
     terms: list[Term] = []
     for feature in features:
         for transform in TRANSFORMS:
             atom = Atom(feature, transform)
-            if atom.is_defined_on(columns):
+            if not _forbids(exclude, feature, transform) and atom.is_defined_on(columns):
                 terms.append(Term("atom", (atom,)))
     return terms
 
@@ -314,6 +332,7 @@ def pairwise_terms(
     columns: dict[str, np.ndarray],
     *,
     both_directions: bool,
+    exclude: Exclusions | None = None,
 ) -> list[Term]:
     """Ratios and products over two feature groups.
 
@@ -327,14 +346,14 @@ def pairwise_terms(
     for first, second in pairs:
         if first == second:
             continue
-        a, b = composition_atom(first, columns), composition_atom(second, columns)
+        a, b = composition_atom(first, columns, exclude), composition_atom(second, columns, exclude)
         # Products are always safe; ratios only exist when the divisor is eligible.
         candidates = [Term("product", (a, b))]
-        denominator_b = denominator_atom(second, columns)
+        denominator_b = denominator_atom(second, columns, exclude)
         if denominator_b is not None:
             candidates.append(Term("ratio", (a, denominator_b)))
         if both_directions:
-            denominator_a = denominator_atom(first, columns)
+            denominator_a = denominator_atom(first, columns, exclude)
             if denominator_a is not None:
                 candidates.append(Term("ratio", (b, denominator_a)))
         for term in candidates:
@@ -344,7 +363,9 @@ def pairwise_terms(
     return terms
 
 
-def sum_ratio_terms(features: tuple[str, ...], columns: dict[str, np.ndarray]) -> list[Term]:
+def sum_ratio_terms(
+    features: tuple[str, ...], columns: dict[str, np.ndarray], exclude: Exclusions | None = None
+) -> list[Term]:
     """``(f1 + f2) / f3`` over distinct features, with ``f1`` and ``f2`` unordered.
 
     Pass **every** feature, not one group. An earlier version was called with the dataset
@@ -357,19 +378,21 @@ def sum_ratio_terms(features: tuple[str, ...], columns: dict[str, np.ndarray]) -
         for third in features:
             if third in (first, second):
                 continue
-            divisor = denominator_atom(third, columns)
+            divisor = denominator_atom(third, columns, exclude)
             if divisor is None:
                 continue
             operands = (
-                composition_atom(first, columns),
-                composition_atom(second, columns),
+                composition_atom(first, columns, exclude),
+                composition_atom(second, columns, exclude),
                 divisor,
             )
             terms.append(Term("sum_ratio", operands))
     return terms
 
 
-def ratio_of_sums_terms(features: tuple[str, ...], columns: dict[str, np.ndarray]) -> list[Term]:
+def ratio_of_sums_terms(
+    features: tuple[str, ...], columns: dict[str, np.ndarray], exclude: Exclusions | None = None
+) -> list[Term]:
     """``(f1 + f2) / (f3 + f4)`` -- the four-feature operation.
 
     Included so that "three features per term is enough" can be **measured** rather than
@@ -381,11 +404,13 @@ def ratio_of_sums_terms(features: tuple[str, ...], columns: dict[str, np.ndarray
     for numerator in itertools.combinations(features, 2):
         rest = [feature for feature in features if feature not in numerator]
         for divisor in itertools.combinations(rest, 2):
+            if any(_forbids(exclude, feature, "inv") for feature in divisor):
+                continue
             operands = (
-                composition_atom(numerator[0], columns),
-                composition_atom(numerator[1], columns),
-                composition_atom(divisor[0], columns),
-                composition_atom(divisor[1], columns),
+                composition_atom(numerator[0], columns, exclude),
+                composition_atom(numerator[1], columns, exclude),
+                composition_atom(divisor[0], columns, exclude),
+                composition_atom(divisor[1], columns, exclude),
             )
             with np.errstate(all="ignore"):
                 bottom = operands[2].evaluate(columns) + operands[3].evaluate(columns)
@@ -581,6 +606,7 @@ def build_library(
     include_sum_ratio: bool = True,
     max_arity: int = 3,
     max_abs_zscore: float = MAX_ABS_ZSCORE,
+    exclude: Exclusions | None = None,
 ) -> Library:
     """Assemble the full candidate vocabulary.
 
@@ -593,6 +619,11 @@ def build_library(
     ratios and products only, 3 to add ``(f1+f2)/f3``, 4 to add ``(f1+f2)/(f3+f4)``. It is
     a parameter rather than a constant because "three is enough" is a claim that has to be
     measured, and measuring it means being able to build the alternatives.
+
+    ``exclude`` maps a feature to the operations it may not take part in (`EXCLUDABLE`): the
+    study's way of saying that ``log`` of a feature that can reach zero, or a division by it,
+    is not an acceptable term even where this corpus happens not to show it. The terms are
+    never generated, so the search cannot select them.
     """
     # Sorted, so the library is a function of the feature *sets* and not of the order the
     # caller happened to pass them in. It was not, and the consequence was not cosmetic:
@@ -607,15 +638,15 @@ def build_library(
     dataset_features = tuple(sorted(dataset_features))
     model_features = tuple(sorted(model_features))
     features = dataset_features + model_features
-    terms = unary_terms(features, columns)
-    terms += pairwise_terms(dataset_features, dataset_features, columns, both_directions=False)
+    terms = unary_terms(features, columns, exclude)
+    terms += pairwise_terms(dataset_features, dataset_features, columns, both_directions=False, exclude=exclude)
     if model_features:
-        terms += pairwise_terms(model_features, model_features, columns, both_directions=False)
-        terms += pairwise_terms(dataset_features, model_features, columns, both_directions=True)
+        terms += pairwise_terms(model_features, model_features, columns, both_directions=False, exclude=exclude)
+        terms += pairwise_terms(dataset_features, model_features, columns, both_directions=True, exclude=exclude)
     if include_sum_ratio and max_arity >= 3:
         # Every feature, not just the dataset ones: the highest-arity operation must be
         # able to mix the two groups like every other operation can.
-        terms += sum_ratio_terms(features, columns)
+        terms += sum_ratio_terms(features, columns, exclude)
     if max_arity >= 4:
-        terms += ratio_of_sums_terms(features, columns)
+        terms += ratio_of_sums_terms(features, columns, exclude)
     return Library(terms, columns, max_abs_zscore=max_abs_zscore)

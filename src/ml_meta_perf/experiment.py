@@ -150,6 +150,7 @@ def _fixed_form_path(
             columns,
             max_arity=config.max_arity,
             max_abs_zscore=config.max_abs_zscore,
+            exclude=schema.excluded,
         )
     result = search(
         library,
@@ -205,6 +206,7 @@ def fit_path(
         columns,
         max_arity=config.max_arity,
         max_abs_zscore=config.max_abs_zscore,
+        exclude=schema.excluded,
     )
     result = search(
         library,
@@ -474,6 +476,7 @@ def reach_analysis(frame: pl.DataFrame, config: Configuration) -> tuple[pl.DataF
         columns,
         max_arity=config.max_arity,
         max_abs_zscore=config.max_abs_zscore,
+        exclude=default_schema().excluded,
     )
     truth = target(frame)
     features = default_schema().features
@@ -495,6 +498,7 @@ def saturated_analysis(frame: pl.DataFrame, config: Configuration) -> dict[str, 
         columns,
         max_arity=config.max_arity,
         max_abs_zscore=config.max_abs_zscore,
+        exclude=default_schema().excluded,
     )
     return saturated_fit(library, target(frame), groups(frame, default_schema().dataset_column))
 
@@ -517,6 +521,7 @@ def correlation_analysis(frame: pl.DataFrame, config: Configuration, top: int = 
         columns,
         max_arity=config.max_arity,
         max_abs_zscore=config.max_abs_zscore,
+        exclude=default_schema().excluded,
     )
     table = screen(library, target(frame), groups(frame, default_schema().dataset_column))
     return table.with_columns((pl.col("spearman").abs() - pl.col("pearson").abs()).alias("monotone_gap")).head(top)
@@ -613,6 +618,7 @@ def selection_optimism(frame: pl.DataFrame, e3: EquationReport, config: Configur
         columns,
         max_arity=config.max_arity,
         max_abs_zscore=config.max_abs_zscore,
+        exclude=default_schema().excluded,
     )
     position = {name: index for index, name in enumerate(library.names)}
     nested = np.zeros_like(truth)
@@ -928,6 +934,7 @@ def doubly_held_out_predictions(frame: pl.DataFrame, n_terms: int, config: Confi
         columns,
         max_arity=config.max_arity,
         max_abs_zscore=config.max_abs_zscore,
+        exclude=default_schema().excluded,
     )
     result = search(
         library,

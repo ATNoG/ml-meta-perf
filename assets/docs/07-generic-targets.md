@@ -95,6 +95,26 @@ constant in training, its standardised column is identically zero, the ridge wei
 zero, and the held-out prediction cannot move with a value the fold never saw. No fold is skipped
 and none is extrapolated through that feature; the test pins the zero weight.
 
+## 7.2b Operations a feature may not take part in
+
+The term grammar builds each term from a feature $f$ through an operation in
+$\{\mathrm{id}, \log, \sqrt{\cdot}, (\cdot)^2, 1/\cdot\}$ and combines the results by product, ratio and
+sum-ratio. The library already refuses an operation the *observed* values cannot support (no
+$\log f$ unless $f > 0$ on every row, no divisor whose range exceeds twenty, chapter 2). That is a
+statement about this corpus, and a feature that can reach zero in future data should not be
+inverted because the corpus happens not to show it. The study says so explicitly:
+
+$$X : F \to 2^{\{\log,\ \sqrt{\cdot},\ (\cdot)^2,\ \mathrm{inv}\}} .$$
+
+For $f$ with $\log \in X(f)$, no term contains $\log f$ -- not as $\log(f)$ itself, not as a
+numerator or summand (where the feature enters raw instead), not as a divisor. $\sqrt{\cdot}$ and
+$(\cdot)^2$ remove those unary terms. $\mathrm{inv} \in X(f)$ removes $f$ from every denominator:
+$1/f$, $a/f$, $a/\log f$, and a divisor $f + g$. $\mathrm{id}$ is not excludable, so a feature can
+be restricted but never removed (to remove it, delete it from `features`). The terms are never
+generated; nothing is screened afterwards, so the search cannot pick one. With $X = \varnothing$ the
+library is the one built without the argument (`tests/test_grammar_exclusions.py` checks both, and
+that no library term ever contains an excluded operation, for every feature and operation).
+
 ## 7.3 Discrete and binary features are not independent features here
 
 A feature that takes only the values 0 and 1 (an indicator, such as "the run was
@@ -131,12 +151,12 @@ configuration (the second), $\mathbf{u}_i \in \mathbb{R}^{p}$ are the features o
 $\mathbf{v}_i \in \mathbb{R}^{q}$ are the features of the model, and $y_i$ is the target. A study
 description is the tuple
 
-$$\mathcal{S} = \big(c_d,\; c_m,\; F_d,\; F_m,\; c_y,\; B,\; \Pi\big),$$
+$$\mathcal{S} = \big(c_d,\; c_m,\; F_d,\; F_m,\; c_y,\; B,\; \Pi,\; X\big),$$
 
 with $c_d, c_m$ the columns that hold the two group labels ($c_m$ may be absent), $F_d, F_m$ the
 feature columns of each kind, $c_y$ the target column, $B$ the bounds of section 7.1 and
 $\Pi \subseteq \{\text{IS}, \text{LODO}, \text{LOMO}, \text{DHO}\}$ the protocols of
-section 7.2a. The three equations of
+section 7.2a and $X$ the operations the grammar may not use (section 7.2b). The three equations of
 the MCC study differ only in which features they may use:
 
 $$\text{E1: } F_d, \qquad \text{E2: } F_m, \qquad \text{E3: } F_d \cup F_m .$$
@@ -154,6 +174,7 @@ $\mathcal{S}$ is read from three sections of `config/study.json`, and the facts 
 | $c_y$ | `response.column` |
 | $B$ | `response.bounds` (`null` for $B = \varnothing$) |
 | $\Pi$ | `protocols` |
+| $X$ | `grammar.exclude` |
 
 Static facts about the corpus that are not columns of it sit in the `side_files` section, each a
 JSON file beside the CSV: a taxonomy $\varphi : M \to \Phi$ giving the learner family of every

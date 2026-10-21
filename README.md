@@ -283,7 +283,7 @@ The same file **describes the problem**, in four sections that hold no tuned val
 | `features` | `dataset`, `model` | which columns describe a dataset and which describe a model |
 | `side_files` | `taxonomy`, `ordinals`, `glossary` | static facts that are not columns of the corpus: the learner family of every model, the assigned ordinal behind each model-descriptor column (with its provenance), and the meaning of each feature; each a JSON file in `dataset/`, or `null` when the study has none |
 
-`equations` lists which of E1, E2 and E3 to fit (`["E1", "E2", "E3"]` for the MCC study). `protocols` lists the protocols every equation is scored under, from `IS`, `LODO`, `LOMO`, `DHO` (all four for MCC; `["IS", "LODO"]` for FlexFL, whose model factor is a training mode; LOMO and DHO need a model column). A study of another target or another corpus is another file of this shape; nothing about a problem
+`equations` lists which of E1, E2 and E3 to fit (`["E1", "E2", "E3"]` for the MCC study). `protocols` lists the protocols every equation is scored under, from `IS`, `LODO`, `LOMO`, `DHO` (all four for MCC; `["IS", "LODO"]` for FlexFL, whose model factor is a training mode; LOMO and DHO need a model column). `grammar.exclude` maps a feature to the operations it may not take part in (`log`, `sqrt`, `sq`, `inv`; `inv` means never a divisor), for features that could reach zero in future data; empty for every shipped study ([chapter 7](assets/docs/07-generic-targets.md), section 7.2b). A study of another target or another corpus is another file of this shape; nothing about a problem
 is in the code. The mathematics of the description is in [chapter 7](assets/docs/07-generic-targets.md).
 
 | setting | value | what it does |
