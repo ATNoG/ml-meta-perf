@@ -269,22 +269,80 @@ no cheaper candidate matches,
 
 $$\mathcal{P} = \{(a, n) : s(a, n) > s(a', n')\ \ \text{for every } (a', n') \text{ with } c(a', n') < c(a, n)\},$$
 
-ordered by cost; candidates of equal cost keep the better score, then the fewer terms. A rule
-reads $\mathcal{P}$ and returns one of its points. All are scale-free (R² is a fraction of variance,
-and a distance is taken on the front rescaled to the unit square):
+ordered by cost; candidates of equal cost keep the better score, then the fewer terms. A rule reads
+the table of candidates and returns one. `selection.method` names it; a name outside the list is
+rejected when the file is read, and `auto` runs them all. Every rule is scale-free: $R^2$ is a fraction
+of variance, and a distance is taken on the front rescaled to the unit square.
 
-- `pareto_knee`: the Kneedle knee of the front, the point where the gain per extra slot bends
-  (Satopää et al. via the `kneeliverse` library). A front without a knee returns its last point.
+**The shape of the front.** These read only $(c, s)$.
+
+- `plateau_knee`: the plateau rule of chapter 3 at the one arity the study was configured with
+  (multi-Kneedle on the Pareto front of the smoothed curve, then the first knee after which the
+  curve gains at most $\delta$ over the next $w$ lengths). It is the only rule that does not fit the
+  smaller arities, so it is the fast path and the one the MCC study keeps.
+- `pareto_knee`: the Kneedle knee of $\mathcal{P}$ (Satopää et al. 2011, via `kneeliverse`); a front
+  without a knee returns its last point.
 - `pareto_elbow`: the point of the rescaled front farthest from the chord joining its ends,
   $\arg\max_i \lvert (x_e - x_0)(y_i - y_0) - (y_e - y_0)(x_i - x_0) \rvert$.
+- `l_method`: two straight lines are least-squares fitted to the front on either side of every split
+  and the split minimising the point-weighted RMSE of the two fits is the knee (Salvador and Chan 2004).
+- `bend_angle`: the front point with the largest turning angle between its two neighbouring segments
+  (the discrete curvature of a bi-objective front; the ends are never chosen).
+- `log_slope`: the point maximising $-(\ln e_i - \ln e_{i-1}) / (c_i - c_{i-1})$ with $e = 1 - s$, the
+  relative drop in error per feature slot (the default score of symbolic-regression libraries).
 - `pareto_within_delta`: the cheapest front point with $s \ge \max_{\mathcal{P}} s - \delta$.
-- `plateau_pareto`: the plateau rule of chapter 3 at every arity, then the cheapest of those picks
-  within $\delta$ of the best.
-- `plateau_knee`: the plateau rule at the one arity the study was configured with.
+- `plateau_pareto`: the plateau rule at every arity, then the cheapest of those picks within $\delta$
+  of the best.
+
+**The noise of the datasets.** Let $u_{c,g}$ be the squared error of dataset $g$ under the protocol that
+binds the floor of candidate $c$, divided by the total variance, so $\sum_g u_{c,g} = 1 - \text{floor}_c$
+exactly. The datasets are the units that would change with a different draw.
+
+- `one_se`: with $c^\ast$ the candidate of least $\sum_g u_{c,g}$ and
+  $\mathrm{SE}^\ast = \sqrt{G}\,\mathrm{sd}_g(u_{c^\ast,g})$, the cheapest $c$ with
+  $\sum_g u_{c,g} \le \sum_g u_{c^\ast,g} + m\,\mathrm{SE}^\ast$, $m$ = `selection.se_multiple`.
+- `projection`: the same reference $c^\ast$, but the test is paired,
+  $\sum_g (u_{c,g} - u_{c^\ast,g}) \le m\sqrt{G}\,\mathrm{sd}_g(u_{c,g} - u_{c^\ast,g})$. A candidate that is
+  worse by a constant on every dataset is rejected, because pairing removes the variation the two share
+  (the projection-predictive recipe of Piironen and Vehtari, with the richest candidate as the reference).
+- `mcs`: the model confidence set of Hansen, Lunde and Nason (2011). From all candidates, test equal
+  predictive ability with $T = \max_i t_i$, $t_i = \bar d_i / \widehat{\mathrm{sd}}(\bar d_i)$,
+  $\bar d_i$ the mean over datasets of $u_{i,g}$ minus the mean over the candidates left, by a bootstrap
+  over datasets (`selection.bootstrap_rounds`, `selection.seed`); while rejected at
+  $\alpha$ = `selection.alpha`, drop the candidate with the largest $t_i$. The cheapest survivor is taken.
+- `stable_within_delta`: among candidates within $\delta$ of the best floor, those whose weakest term
+  keeps its sign in at least `selection.stability_min` of the leave-one-dataset-out refits; the
+  cheapest. When none is stable, the cheapest within $\delta$.
+
+**Information criteria**, on the in-sample residual $\mathrm{RSS}$ of $n$ rows with $k = j + 1$ weights
+for $j$ terms from a library of $P$ terms:
+
+$$\mathrm{AIC} = n\ln\tfrac{\mathrm{RSS}}{n} + 2k, \qquad
+\mathrm{AICc} = \mathrm{AIC} + \tfrac{2k(k+1)}{n-k-1}, \qquad
+\mathrm{BIC} = n\ln\tfrac{\mathrm{RSS}}{n} + k\ln n,$$
+
+$$\mathrm{EBIC} = \mathrm{BIC} + 2\gamma\ln\binom{P}{j}, \quad \gamma = \operatorname{clip}_{[0,1]}\!\Big(1 - \tfrac{\ln n}{2\ln P}\Big)
+\quad \text{(Chen and Chen 2008)},$$
+
+$$\mathrm{MDL} = \tfrac{n}{2}\ln\tfrac{\mathrm{RSS}}{n} + \tfrac{k}{2}\ln n + \sum_{\text{terms}} \ell(t),$$
+
+with $\ell(t)$ the nats to name a term in the grammar: $\ln 5$ for its operation, then $\ln F + \ln 5$
+for each operand ($F$ features, five transforms), so a ratio of sums costs more than an atom. The rule
+takes the lowest value. MDL here is a two-part code in the spirit of Bartlett et al.; their
+parameter-precision term is not included. These criteria see the in-sample fit only, and treat the rows as
+independent although the rows of a dataset share its features, so they over-select when transfer is what
+matters (measured in `.agents/notes/length-rules.md`); they are a second opinion next to the grouped-CV
+rules, and `ebic` and `mdl`, which charge for the library and the structure, are the usable ones.
+
+**`auto`** runs every rule above on the same table and takes the pick closest to E3-MAX: the highest
+smoothed floor $s$; picks within `selection.tolerance` of the highest count as equally close; among
+those, the fewest terms, then the lowest arity, then the rule listed first. With the default
+tolerance of zero only exact ties are broken by parsimony, which tends to the most saturated pick of the
+rules; a tolerance of 0.005 to 0.01 trades that last fraction of the floor for a much smaller
+equation. The study report lists every rule's pick (`rules.csv` beside each equation).
 
 A knee rather than the maximum is the point of E3-Valid: the maximum of a saturating curve sits
 on the plateau, where every extra term buys nothing readable; a knee sits where the returns
-begin to stop. `selection.method` in the study file names the rule; a name outside
-`lengths.LENGTH_RULES` is rejected when the file is read. The toy curves with a known answer
-that fix each definition are in `tests/test_lengths.py`; the choice of the default was measured
-on planted corpora with a known number of terms (`tests/synthetic.py`) and on the MCC corpus.
+begin to stop. The toy tables with a known answer that fix each definition are in `tests/test_lengths.py` and
+`tests/test_length_rules.py`; the rules were compared on planted corpora with a known number of terms
+(`tests/synthetic.py`) and on the MCC corpus.

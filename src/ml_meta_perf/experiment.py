@@ -23,11 +23,11 @@ import polars as pl
 
 from ml_meta_perf.config import Configuration, SelectionConfig, default_schema, load_config
 from ml_meta_perf.data import Schema, columns_as_arrays, groups, target
-from ml_meta_perf.lengths import LENGTH_RULES, candidate_table
+from ml_meta_perf.lengths import LENGTH_RULES, auto_choice, candidate_table, rule_table
 from ml_meta_perf.model import Equation
 from ml_meta_perf.search import prune, pruning_threshold, search
 from ml_meta_perf.selection import floor_argmax, plateau_knee
-from ml_meta_perf.terms import Library, build_library
+from ml_meta_perf.terms import Library, build_library, description_length
 from ml_meta_perf.validate import (
     CrossValidation,
     Scores,
@@ -61,6 +61,9 @@ class EquationReport:
     #: ``leakage_demonstration`` and ``decision_quality`` ask for the same folds at the
     #: same settings, and recomputing them was a third of the study's runtime.
     paths: dict[str, dict[int, CrossValidation]] = field(default_factory=dict)
+    #: What each length rule picked, when the equation was chosen among several arities
+    #: (`lengths.rule_table`): the rule that ran, or every rule under ``auto``.
+    rules: pl.DataFrame | None = None
 
 
 def _curve(
@@ -172,6 +175,69 @@ def fit_path(
     return FittedPath(library, columns, truth, datasets, result.equations, paths, curve, config, schema)
 
 
+def _group_losses(fitted: FittedPath, size: int, protocol: str) -> np.ndarray:
+    """Squared error of every dataset's rows under ``protocol`` ("in_sample", or a key of ``paths``)."""
+    if protocol == "in_sample":
+        predicted = fitted.equations[size].predict(fitted.columns)
+    else:
+        predicted = fitted.paths[protocol][size].predictions
+    _, inverse = np.unique(fitted.datasets, return_inverse=True)
+    return np.bincount(inverse, weights=(fitted.truth - predicted) ** 2)
+
+
+def _sign_stability(fitted: FittedPath, size: int) -> float:
+    """The share of held-out datasets under which the weakest term keeps the sign it has in the full fit.
+
+    The folds refit the weights of the same form, so a term whose sign flips when one dataset leaves
+    is a term the data does not pin down. NaN when the study does not run LODO.
+    """
+    path = fitted.paths.get("loo_dataset", {}).get(size)
+    if path is None or not path.equations:
+        return float("nan")
+    full = np.sign(np.array(fitted.equations[size].weights))
+    folds = np.array([np.sign(np.array(equation.weights)) for equation in path.equations.values()])
+    return float((folds == full).mean(axis=0).min())
+
+
+def candidate_details(fitted: FittedPath) -> pl.DataFrame:
+    """What the length rules beyond the curve's shape need, per length of one arity.
+
+    * ``loss``: the squared error of every dataset under the protocol that binds the floor at that
+      length, so ``1 - sum(loss) / sst`` is exactly the floor and the datasets are the units a rule
+      can resample;
+    * ``rss``, ``n_rows``, ``library`` and ``code``: the in-sample residual, the rows, the size of
+      the term library and the description length of the terms (`terms.description_length`), for
+      the information criteria and the description-length rule;
+    * ``sign_stability``: see `_sign_stability`.
+    """
+    sst = float(((fitted.truth - fitted.truth.mean()) ** 2).sum())
+    names = {
+        "r2_in_sample": "in_sample",
+        "r2_loo_dataset": "loo_dataset",
+        "r2_loo_model": "loo_model",
+        "r2_loo_cell": "loo_cell",
+    }
+    present = [column for column in names if column in fitted.curve.columns]
+    rows: list[dict[str, object]] = []
+    for row in fitted.curve.iter_rows(named=True):
+        size = int(row["n_terms"])
+        binding = min(present, key=lambda column: row[column])
+        in_sample = fitted.equations[size].predict(fitted.columns)
+        rows.append(
+            {
+                "n_terms": size,
+                "loss": _group_losses(fitted, size, names[binding]).tolist(),
+                "sst": sst,
+                "rss": float(((fitted.truth - in_sample) ** 2).sum()),
+                "n_rows": len(fitted.truth),
+                "library": len(fitted.library.terms),
+                "code": sum(description_length(term, len(fitted.columns)) for term in fitted.equations[size].terms),
+                "sign_stability": _sign_stability(fitted, size),
+            }
+        )
+    return pl.DataFrame(rows)
+
+
 def finalise(fitted: FittedPath, size: int) -> EquationReport:
     """Publish one length of a fitted path: prune it, and measure how stable its form is."""
     if size not in fitted.equations:
@@ -249,8 +315,8 @@ def run_equation(
     fitted = fit_path(frame, dataset_features, model_features, config, name, schema=schema)
     if selection.method == "plateau_knee":
         return finalise(fitted, select_length(fitted.curve, selection))
-    # The Pareto rules choose the arity too: every grammar up to the configured one is fitted, and
-    # the rule reads their curves as one table of (arity, n_terms) candidates (`ml_meta_perf.lengths`).
+    # Every other rule chooses the arity too: each grammar up to the configured one is fitted, and the
+    # rule reads their curves as one table of (arity, n_terms) candidates (`ml_meta_perf.lengths`).
     by_arity = {
         arity: fitted
         if arity == config.max_arity
@@ -259,15 +325,31 @@ def run_equation(
         )
         for arity in range(1, config.max_arity + 1)
     }
-    table = candidate_table({arity: path.curve for arity, path in by_arity.items()}, selection.smoothing)
-    pick = LENGTH_RULES[selection.method](
-        table,
-        delta=selection.delta,
-        window=selection.window,
-        smoothing=selection.smoothing,
-        fixed_arity=config.max_arity,
+    table = candidate_table(
+        {arity: path.curve for arity, path in by_arity.items()},
+        selection.smoothing,
+        {arity: candidate_details(path) for arity, path in by_arity.items()},
     )
-    return finalise(by_arity[pick.arity], pick.n_terms)
+    params = {
+        "delta": selection.delta,
+        "window": selection.window,
+        "smoothing": selection.smoothing,
+        "fixed_arity": config.max_arity,
+        "alpha": selection.alpha,
+        "se_multiple": selection.se_multiple,
+        "bootstrap_rounds": selection.bootstrap_rounds,
+        "seed": selection.seed,
+        "stability_min": selection.stability_min,
+        "tolerance": selection.tolerance,
+    }
+    if selection.method == "auto":
+        chosen, pick, picks = auto_choice(table, **params)
+    else:
+        chosen, pick = selection.method, LENGTH_RULES[selection.method](table, **params)
+        picks = {chosen: pick}
+    report = finalise(by_arity[pick.arity], pick.n_terms)
+    report.rules = rule_table(table, picks, chosen)
+    return report
 
 
 def run_capability(

@@ -7,6 +7,7 @@ import polars as pl
 
 from ml_meta_perf.lengths import (
     MEASURED_RULES,
+    MissingColumns,
     Pick,
     candidate_table,
     floor_argmax,
@@ -116,7 +117,10 @@ class TestRuleContracts(unittest.TestCase):
             members = {(r["arity"], r["n_terms"]) for r in frame.iter_rows(named=True)}
             for name, rule in MEASURED_RULES.items():
                 with self.subTest(rule=name, rows=frame.height):
-                    pick = rule(frame, **PARAMS)
+                    try:
+                        pick = rule(frame, **PARAMS)
+                    except MissingColumns:  # needs the per-dataset losses: tests/test_length_rules.py
+                        continue
                     self.assertIn((pick.arity, pick.n_terms), members)
 
     def test_no_rule_spends_more_than_the_reference(self) -> None:

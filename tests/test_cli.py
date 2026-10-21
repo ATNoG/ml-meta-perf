@@ -199,6 +199,21 @@ class TestFit(Corpus):
         ).row(0, named=True)
         self.assertIn(f"{row['r2']:.4g}", text)
 
+    def test_the_auto_method_writes_what_every_rule_picked(self) -> None:
+        self.assertEqual(self.fit(*QUICK, "--selection.method", "auto")[0], 0)
+        rules = pl.read_csv(self.folder / "e3" / "rules.csv")
+        self.assertEqual(rules["chosen"].sum(), 1)
+        self.assertIn("bic", rules["rule"].to_list())
+        text = (self.folder / "report.md").read_text()
+        self.assertIn("Length rules (`chosen` is the one used)", text)
+        self.assertEqual(json.loads((self.folder / "manifest.json").read_text())["selection_method"], "auto")
+
+    def test_a_single_rule_writes_its_own_row_and_the_plateau_default_writes_none(self) -> None:
+        self.assertEqual(self.fit(*QUICK, "--selection.method", "one_se")[0], 0)
+        self.assertEqual(pl.read_csv(self.folder / "e3" / "rules.csv")["rule"].to_list(), ["one_se"])
+        self.assertEqual(self.fit(*QUICK, "--selection.method", "plateau_knee")[0], 0)
+        self.assertFalse((self.folder / "e3" / "rules.csv").exists())  # no stale table from the earlier run
+
     def test_a_second_run_on_the_same_corpus_replaces_the_folder(self) -> None:
         self.assertEqual(self.fit(*QUICK)[0], 0)
         self.assertEqual(self.fit(*QUICK)[0], 0)

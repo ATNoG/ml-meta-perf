@@ -60,9 +60,9 @@ folder gets a `-log1p` suffix. A transform that does not apply is refused when t
 A FlexFL study fits the all-features equation (`equations` is `["E3", "E3-MAX"]`) over every FlexFL
 dataset and model feature, under its own tuned configuration, and publishes two variants of it.
 **E3-Valid** is the smaller, explainable equation that performs similarly: the study's length rule
-(`selection.method`, `pareto_knee`) reads the Pareto front of cost (arity times terms) and the
+(`selection.method`, `pareto_knee` here) reads the Pareto front of cost (arity times terms) and the
 worst-protocol score over arities 1 to `search.max_arity`, and takes its knee, so both the arity and
-the number of terms come from it (chapter 7, section 7.6). **E3-MAX** is the best score the
+the number of terms come from it; any other rule, or `auto`, can be named in the file (chapter 7, section 7.6). **E3-MAX** is the best score the
 configuration reaches: the raw maximum of the floor at `selection.capability_arity`; it bounds what
 the additive form can do and is written to `e3-max/`. There is no E1 or E2,
 Features constant in the

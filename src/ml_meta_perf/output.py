@@ -86,7 +86,12 @@ def _equation_files(destination: Path, report: EquationReport) -> list[Path]:
     report.equation.save(destination / "equation.json")
     (destination / "equation.txt").write_text(f"{report.equation}\n", encoding="utf-8")
     report.curve.write_csv(destination / "curve.csv")
-    return [destination / name for name in ("equation.json", "equation.txt", "curve.csv")]
+    files = [destination / name for name in ("equation.json", "equation.txt", "curve.csv")]
+    (destination / "rules.csv").unlink(missing_ok=True)  # never leave the table of an earlier method
+    if report.rules is not None:
+        report.rules.write_csv(destination / "rules.csv")
+        files.append(destination / "rules.csv")
+    return files
 
 
 def write_study(
@@ -159,6 +164,9 @@ def render_report(report: StudyReport, manifest: dict[str, object]) -> str:
     lines += [markdown_table(summary), ""]
     for name in names:
         lines += [f"### {VARIANT_NAMES[name]}", "", "```", str(report.equations[name].equation), "```", ""]
+        rules = report.equations[name].rules
+        if rules is not None and rules.height > 1:
+            lines += ["Length rules (`chosen` is the one used):", "", markdown_table(rules), ""]
     scale = "original" if schema.log_target else "fit"
     lines += [f"## Scores ({'on the target itself' if schema.log_target else 'on the target'})", ""]
     lines += [markdown_table(report.scores.filter(pl.col("scale") == scale).drop("scale")), ""]

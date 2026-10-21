@@ -70,7 +70,26 @@ SINGLE_EQUATIONS = (("E3",), ("E3", E3_MAX))
 ALLOWED_EQUATIONS = (*SINGLE_EQUATIONS, EQUATIONS, (*EQUATIONS, E3_MAX))
 
 #: The rules choosing an equation's arity and length (`lengths.LENGTH_RULES`), repeated so the file is checked on read.
-LENGTH_METHODS = ("plateau_knee", "pareto_knee", "pareto_elbow", "pareto_within_delta", "plateau_pareto")
+LENGTH_METHODS = (
+    "plateau_knee",
+    "pareto_knee",
+    "pareto_elbow",
+    "pareto_within_delta",
+    "plateau_pareto",
+    "l_method",
+    "bend_angle",
+    "log_slope",
+    "one_se",
+    "projection",
+    "mcs",
+    "stable_within_delta",
+    "aic",
+    "aicc",
+    "bic",
+    "ebic",
+    "mdl",
+    "auto",
+)
 
 #: What a study may forbid for a feature: `terms.EXCLUDABLE`, repeated so the file is checked before any term is built.
 EXCLUDABLE = ("log", "sqrt", "inv", "sq")
@@ -283,15 +302,38 @@ class SelectionConfig:
     window: int
     smoothing: int
     #: The rule choosing E3-Valid's arity and length, from `LENGTH_METHODS`. ``plateau_knee`` fits the
-    #: configured arity only; the Pareto rules fit every arity up to it and choose among them (chapter 7, 7.6).
+    #: configured arity only; every other rule fits each arity up to it and chooses among them, and
+    #: ``auto`` runs them all (chapter 7, 7.6).
     method: str
     #: The capability bound's grammar: E3-MAX is fitted at this arity under the same
     #: configuration and takes the raw maximum of its curve.
     capability_arity: int
+    #: The conventional constants of the rules that have one. They are not tuned to a corpus.
+    #: Confidence level of the model confidence set (``mcs``).
+    alpha: float = 0.1
+    #: Standard errors ``one_se`` and ``projection`` allow beyond the best candidate.
+    se_multiple: float = 1.0
+    #: Bootstrap draws of ``mcs``, and the seed that fixes them.
+    bootstrap_rounds: int = 500
+    seed: int = 0
+    #: Share of held-out datasets under which every term keeps its sign (``stable_within_delta``).
+    stability_min: float = 0.9
+    #: ``auto``: picks whose smoothed floor is within this of the highest count as equally close to E3-MAX.
+    tolerance: float = 0.0
 
     def __post_init__(self) -> None:
         if self.method not in LENGTH_METHODS:
             raise ConfigError(f"selection.method must be one of {LENGTH_METHODS}, got {self.method!r}")
+        problems = {
+            "alpha must lie in (0, 1)": not 0.0 < self.alpha < 1.0,
+            "se_multiple must be positive": self.se_multiple <= 0.0,
+            "bootstrap_rounds must be at least 50": self.bootstrap_rounds < 50,
+            "stability_min must lie in [0, 1]": not 0.0 <= self.stability_min <= 1.0,
+            "tolerance must be non-negative": self.tolerance < 0.0,
+        }
+        for message, failed in problems.items():
+            if failed:
+                raise ConfigError(f"selection.{message}")
 
 
 @dataclass(frozen=True)

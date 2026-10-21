@@ -29,9 +29,13 @@ Each study fits up to four equations, all under one configuration:
 | **E3-Valid** | both | the smaller, explainable equation with similar performance: the one to read |
 | **E3-MAX** | both, at the capability arity | the best score the configuration reaches: a ceiling, not an equation to read |
 
-E3-Valid's arity and number of terms come from the knee of the **Pareto front** of cost (feature
-slots, `arity * terms`) and score (the worst protocol), so the solution stops where the returns stop
-and is not saturated ([chapter 7](assets/docs/07-generic-targets.md), section 7.6). The score of an
+E3-Valid's arity and number of terms come from a **length rule** you name in the study file
+(`selection.method`). Most rules read the Pareto front of cost (feature slots, `arity * terms`) against
+score (the worst protocol): its knee, its elbow, an L-fit, a bend angle, a log-slope; others use the noise of
+the held-out datasets (one standard error, a paired projection against the best, a model confidence set,
+sign stability) or information criteria (AIC, AICc, BIC, EBIC, MDL). `auto` runs them all and takes the
+pick closest to E3-MAX, then with fewer terms, then the lower arity; `rules.csv` and `report.md` list what
+every rule picked ([chapter 7](assets/docs/07-generic-targets.md), section 7.6). The score of an
 equation is its **worst** R² over the protocols the study declares:
 
 - **IS** — in-sample, the fit itself;
@@ -135,8 +139,14 @@ The mathematics of every rule is in [chapter 7](assets/docs/07-generic-targets.m
 | `selection.delta` | 0.01 | largest smoothed-floor gain over the window that still counts as a plateau |
 | `selection.window` | 4 | lengths after a candidate that must stay within `delta` |
 | `selection.smoothing` | 3 | width of the running median applied to the worst-protocol curve |
-| `selection.method` | plateau_knee | the rule that chooses E3-Valid: `plateau_knee` fits the configured arity; `pareto_knee`, `pareto_elbow`, `pareto_within_delta` and `plateau_pareto` fit every arity up to it and choose the arity too ([chapter 7](assets/docs/07-generic-targets.md), section 7.6) |
+| `selection.method` | plateau_knee | the rule that chooses E3-Valid. `plateau_knee` fits the configured arity; every other rule fits each arity up to it and chooses the arity too; `auto` runs them all and takes the pick closest to the best score, then with fewer terms, then the lower arity (list and definitions: [chapter 7](assets/docs/07-generic-targets.md), section 7.6) |
 | `selection.capability_arity` | 3 | arity used by E3-MAX |
+| `selection.alpha` | 0.1 | confidence level of the model confidence set (`mcs`); a conventional constant, not tuned |
+| `selection.se_multiple` | 1.0 | standard errors `one_se` and `projection` allow beyond the best candidate |
+| `selection.bootstrap_rounds` | 500 | bootstrap draws of `mcs` |
+| `selection.seed` | 0 | seed of those draws |
+| `selection.stability_min` | 0.9 | share of held-out datasets under which every term keeps its sign (`stable_within_delta`) |
+| `selection.tolerance` | 0.0 | `auto`: picks within this of the best smoothed floor count as equally close to E3-MAX |
 
 `ml-meta-perf sweep` fits a grid of `max_abs_zscore`, `penalty` and `max_arity`, applies the
 study's own length rule to every point, keeps the readable ones tied on R², and proposes the best

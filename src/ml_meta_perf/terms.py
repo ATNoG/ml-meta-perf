@@ -33,9 +33,10 @@ prose, with the figures.
 from __future__ import annotations
 
 import itertools
+import math
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, get_args
 
 import numpy as np
 
@@ -191,6 +192,22 @@ class Term:
             else:
                 restored.append(Atom(str(item["feature"]), item["transform"]))  # pyright: ignore[reportArgumentType]
         return cls(payload["operation"], tuple(restored))  # pyright: ignore[reportArgumentType]
+
+
+def description_length(term: Term, n_features: int) -> float:
+    """The nats needed to name a term in the grammar: an operation, then per operand a feature and a transform.
+
+    A uniform code over the grammar's choices, so a ratio of sums, which names four features, costs
+    more than an atom, which names one. It is the structure half of a two-part description length
+    (`lengths.mdl`): the data half is the residual, and each weight costs ``log(n) / 2`` nats.
+    """
+    total = math.log(len(get_args(Operation)))
+    for operand in term.operands:
+        if isinstance(operand, Term):
+            total += description_length(operand, n_features)
+        else:
+            total += math.log(n_features) + math.log(len(TRANSFORMS))
+    return total
 
 
 def simplify(term: Term) -> Term:
