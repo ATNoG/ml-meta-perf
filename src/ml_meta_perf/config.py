@@ -58,6 +58,13 @@ TRANSFORMS = ("none", "log1p")
 #: The equations a study can fit: E1 the dataset features, E2 the model features, E3 both.
 EQUATIONS = ("E1", "E2", "E3")
 
+#: The protocols an equation can be scored under: in-sample, then leave-one-dataset-out, leave-one-model-out
+#: and doubly held-out. The last two hold out a model, so they need a model group (chapter 7, section 7.2).
+PROTOCOLS = ("IS", "LODO", "LOMO", "DHO")
+
+#: The protocols that need a model group: a corpus without one cannot hold a model out.
+MODEL_PROTOCOLS = ("LOMO", "DHO")
+
 
 @dataclass(frozen=True)
 class RowFilter:
@@ -86,7 +93,8 @@ class Schema:
     """
 
     dataset_column: str
-    model_column: str
+    #: ``None`` when the corpus has one grouping factor: no model can be held out.
+    model_column: str | None
     dataset_features: tuple[str, ...]
     model_features: tuple[str, ...]
     target_column: str
@@ -97,12 +105,26 @@ class Schema:
     single_valued: tuple[str, ...] = ()
     drop_missing_response: bool = False
     drop_constant_features: bool = False
+    #: The protocols the equations are scored under; `selection.floor_curve` judges a length on the worst.
+    protocols: tuple[str, ...] = PROTOCOLS
 
     def __post_init__(self) -> None:
         if self.transform not in TRANSFORMS:
             raise ValueError(f"unknown transform {self.transform!r}; expected one of {TRANSFORMS}")
         if self.transform == "log1p" and self.bounds is not None and (self.bounds[0] is None or self.bounds[0] < 0.0):
             raise ValueError("log1p needs a target that cannot be negative: bounds=None, or a low bound of 0 or more")
+
+    @property
+    def group_columns(self) -> tuple[str, ...]:
+        """The columns naming the groups a row belongs to: the dataset, then the model when there is one."""
+        return (self.dataset_column,) if self.model_column is None else (self.dataset_column, self.model_column)
+
+    @property
+    def model_group(self) -> str:
+        """The model column, for the code that cannot run without one (the MCC study's baselines and tables)."""
+        if self.model_column is None:
+            raise ValueError("this study has no model column: nothing here can hold a model out")
+        return self.model_column
 
     @property
     def features(self) -> tuple[str, ...]:
@@ -146,8 +168,9 @@ class CorpusConfig:
     path: str
     #: The column naming the dataset, the first grouping factor (leave-one-dataset-out).
     dataset_column: str
-    #: The column naming the model, the second grouping factor (leave-one-model-out).
-    model_column: str
+    #: The column naming the model, the second grouping factor (leave-one-model-out), or ``None``
+    #: when the corpus has one grouping factor only.
+    model_column: str | None
     #: Keep only the rows where a column has a value: one task type of a mixed corpus.
     row_filter: RowFilter | None = None
     #: Columns the corpus must have; a missing one is reported with its hint (a stale corpus).
@@ -286,6 +309,8 @@ class StudyConfig:
     side_files: SideFilesConfig
     #: Which equations to fit: E1 (dataset features), E2 (model features), E3 (both).
     equations: tuple[str, ...]
+    #: The protocols every equation is scored under, drawn from `PROTOCOLS`; a length is judged on the worst.
+    protocols: tuple[str, ...]
     search: Configuration
     selection: SelectionConfig
     opaque: OpaqueConfig
@@ -306,6 +331,7 @@ class StudyConfig:
             single_valued=self.corpus.single_valued,
             drop_missing_response=self.corpus.drop_missing_response,
             drop_constant_features=self.corpus.drop_constant_features,
+            protocols=self.protocols,
         )
 
 
@@ -315,6 +341,7 @@ def _validated(
     features: FeaturesConfig,
     side_files: SideFilesConfig,
     equations: tuple[str, ...],
+    protocols: tuple[str, ...],
 ) -> None:
     """Reject a study description that cannot describe a corpus, before any file is read."""
     if not corpus.path:
@@ -328,9 +355,13 @@ def _validated(
     ):
         if path is not None and not path:
             raise ConfigError(f"side_files.{kind} is an empty path (use null for none)")
-    identifiers = (corpus.dataset_column, corpus.model_column)
-    if not all(identifiers) or corpus.dataset_column == corpus.model_column:
-        raise ConfigError(f"corpus needs two different, non-empty group columns, got {identifiers}")
+    if not corpus.dataset_column or corpus.model_column == "" or corpus.dataset_column == corpus.model_column:
+        raise ConfigError(
+            "corpus needs a non-empty dataset column and a model column that differs from it "
+            f"(or null), got {(corpus.dataset_column, corpus.model_column)}"
+        )
+    identifiers = tuple(name for name in (corpus.dataset_column, corpus.model_column) if name)
+    _validated_protocols(protocols, has_model_group=corpus.model_column is not None)
     low, high = response.bounds or (None, None)
     if low is not None and high is not None and not low < high:
         raise ConfigError(f"response.bounds must satisfy low < high, got {response.bounds}")
@@ -361,6 +392,17 @@ def _validated(
     for rule in corpus.single_valued:
         if not rule:
             raise ConfigError("corpus.single_valued holds an empty column name")
+
+
+def _validated_protocols(protocols: tuple[str, ...], *, has_model_group: bool) -> None:
+    """The protocols must be known, distinct, include the fit, hold something out, and have their groups."""
+    if any(name not in PROTOCOLS for name in protocols) or len(set(protocols)) != len(protocols):
+        raise ConfigError(f"protocols must be distinct names drawn from {PROTOCOLS}, got {protocols}")
+    if "IS" not in protocols or len(protocols) < 2:
+        raise ConfigError(f"protocols must include IS and at least one held-out protocol, got {protocols}")
+    needing = [name for name in protocols if name in MODEL_PROTOCOLS]
+    if needing and not has_model_group:
+        raise ConfigError(f"protocols {needing} hold a model out, but corpus.model_column is null")
 
 
 def _bounds(raw: Any) -> Bounds | None:
@@ -406,13 +448,15 @@ def parse_config(payload: dict[str, Any]) -> StudyConfig:
     )
     side_files = SideFilesConfig(**payload["side_files"])
     equations = tuple(str(name) for name in payload["equations"])
-    _validated(corpus, response, features, side_files, equations)
+    protocols = tuple(str(name) for name in payload["protocols"])
+    _validated(corpus, response, features, side_files, equations, protocols)
     return StudyConfig(
         corpus=corpus,
         response=response,
         features=features,
         side_files=side_files,
         equations=equations,
+        protocols=protocols,
         search=Configuration(**payload["search"]),
         selection=SelectionConfig(**payload["selection"]),
         opaque=OpaqueConfig(**payload["opaque"]),
@@ -441,14 +485,15 @@ def study_of(arguments: Any) -> StudyConfig:
     A flag can make the description unusable (a log scale on MCC, say), and a file's own checks
     ran only on the file; they run again here, so the command line gets the same `ConfigError`.
     """
-    equations = tuple(arguments.equations)
-    _validated(arguments.corpus, arguments.response, arguments.features, arguments.side_files, equations)
+    equations, protocols = tuple(arguments.equations), tuple(arguments.protocols)
+    _validated(arguments.corpus, arguments.response, arguments.features, arguments.side_files, equations, protocols)
     return StudyConfig(
         corpus=arguments.corpus,
         response=arguments.response,
         features=arguments.features,
         side_files=arguments.side_files,
         equations=equations,
+        protocols=protocols,
         search=arguments.search,
         selection=arguments.selection,
         opaque=arguments.opaque,

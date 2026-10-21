@@ -71,6 +71,30 @@ $\mathcal{T}_{g,h}$ excludes both the dataset and the model of the held-out cell
 The number of predictions the clip moved is reported with every protocol
 (`clipped_predictions`); for an unbounded target it is zero by construction.
 
+## 7.2a Which protocols a study is scored under
+
+An equation of length $k$ is scored under each protocol $\pi \in \Pi$, giving $R^2_\pi(k)$, and
+a length is judged on the **worst** of them (chapter 3):
+
+$$\text{floor}(k) = \min_{\pi \in \Pi} R^2_\pi(k).$$
+
+The protocols differ in the rows they hold out of the refit: IS holds out none; LODO the rows
+of one dataset, $d_i = g$; LOMO the rows of one model, $m_i = h$; DHO the rows of a dataset *or*
+a model, $d_i = g \lor m_i = h$, and predicts the cell $(g, h)$. LOMO and DHO need $c_m$, so
+a study without a model column that lists either is rejected when the file is read. $\Pi$ must
+contain IS and at least one held-out protocol, otherwise the floor would be the in-sample fit.
+The MCC study uses all four; the FlexFL studies use $\{\text{IS}, \text{LODO}\}$, because their
+model factor is the training mode of one network family and a held-out mode answers no question
+the study asks.
+
+Dropping a protocol only drops its term from the minimum, so $\text{floor}_{\Pi'}(k) \ge
+\text{floor}_{\Pi}(k)$ for $\Pi' \subset \Pi$ (`tests/test_protocols.py`).
+
+A fold can hold out the only rows where a feature differs from its constant. The feature is then
+constant in training, its standardised column is identically zero, the ridge weight is exactly
+zero, and the held-out prediction cannot move with a value the fold never saw. No fold is skipped
+and none is extrapolated through that feature; the test pins the zero weight.
+
 ## 7.3 Discrete and binary features are not independent features here
 
 A feature that takes only the values 0 and 1 (an indicator, such as "the run was
@@ -107,17 +131,19 @@ configuration (the second), $\mathbf{u}_i \in \mathbb{R}^{p}$ are the features o
 $\mathbf{v}_i \in \mathbb{R}^{q}$ are the features of the model, and $y_i$ is the target. A study
 description is the tuple
 
-$$\mathcal{S} = \big(c_d,\; c_m,\; F_d,\; F_m,\; c_y,\; B\big),$$
+$$\mathcal{S} = \big(c_d,\; c_m,\; F_d,\; F_m,\; c_y,\; B,\; \Pi\big),$$
 
-with $c_d, c_m$ the columns that hold the two group labels, $F_d, F_m$ the feature columns of
-each kind, $c_y$ the target column and $B$ the bounds of section 7.1. The three equations of
+with $c_d, c_m$ the columns that hold the two group labels ($c_m$ may be absent), $F_d, F_m$ the
+feature columns of each kind, $c_y$ the target column, $B$ the bounds of section 7.1 and
+$\Pi \subseteq \{\text{IS}, \text{LODO}, \text{LOMO}, \text{DHO}\}$ the protocols of
+section 7.2a. The three equations of
 the MCC study differ only in which features they may use:
 
 $$\text{E1: } F_d, \qquad \text{E2: } F_m, \qquad \text{E3: } F_d \cup F_m .$$
 
-A study with a single grouping factor (one NN family trained in several ways, as in FlexFL) has
-no $c_m$; it fits E3 over its features and its protocols are the ones defined by the groups it
-has (section 5).
+A study with a single grouping factor (one NN family trained in several ways, as in FlexFL) may
+leave $c_m$ out (`null`); it fits E3 over its features and its protocols are the ones the groups it
+has can define (section 7.2a).
 
 $\mathcal{S}$ is read from three sections of `config/study.json`, and the facts that are not columns of the corpus come from a fourth:
 
@@ -127,6 +153,7 @@ $\mathcal{S}$ is read from three sections of `config/study.json`, and the facts 
 | $F_d,\ F_m$ | `features.dataset`, `features.model` |
 | $c_y$ | `response.column` |
 | $B$ | `response.bounds` (`null` for $B = \varnothing$) |
+| $\Pi$ | `protocols` |
 
 Static facts about the corpus that are not columns of it sit in the `side_files` section, each a
 JSON file beside the CSV: a taxonomy $\varphi : M \to \Phi$ giving the learner family of every

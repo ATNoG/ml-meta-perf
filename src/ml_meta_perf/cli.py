@@ -239,6 +239,7 @@ def build_parser() -> ArgumentParser:
         "--side_files", type=SideFilesConfig, help="static facts about the corpus (taxonomy, ordinals, glossary)"
     )
     parser.add_argument("--equations", type=tuple[str, ...], help="which equations to fit: E1, E2, E3")
+    parser.add_argument("--protocols", type=tuple[str, ...], help="the protocols to score under: IS, LODO, LOMO, DHO")
     parser.add_argument("--search", type=Configuration, help="search hyperparameters shared by E1, E2 and E3")
     parser.add_argument("--selection", type=SelectionConfig, help="the equation-length rule")
     parser.add_argument("--opaque", type=OpaqueConfig, help="the opaque regressors' sizes")

@@ -571,7 +571,7 @@ def single_prediction(
 
     lines = [
         f"dataset  : {frame[default_schema().dataset_column][row]}",
-        f"model    : {frame[default_schema().model_column][row]}",
+        f"model    : {frame[default_schema().model_group][row]}",
         f"actual   : {truth[row]:+.4f}",
         f"predicted: {predicted[row]:+.4f}",
         "",

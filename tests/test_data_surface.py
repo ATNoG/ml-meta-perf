@@ -74,7 +74,7 @@ class TestTheShippedStudyFile(unittest.TestCase):
         self.assertIsNone(self.schema.row_filter)
 
     def test_the_groups(self) -> None:
-        self.assertEqual((self.schema.dataset_column, self.schema.model_column), ("Dataset", "Model"))
+        self.assertEqual((self.schema.dataset_column, self.schema.model_group), ("Dataset", "Model"))
 
     def test_twelve_dataset_features_and_six_model_features(self) -> None:
         self.assertEqual((len(self.schema.dataset_features), len(self.schema.model_features)), (12, 6))
@@ -87,7 +87,7 @@ class TestTheShippedStudyFile(unittest.TestCase):
         columns = pl.read_csv(resolve_path(load_config().corpus.path)).columns
         expected = [
             self.schema.dataset_column,
-            self.schema.model_column,
+            self.schema.model_group,
             *self.schema.features,
             self.schema.target_column,
         ]
@@ -97,7 +97,7 @@ class TestTheShippedStudyFile(unittest.TestCase):
         frame = data.load()
         self.assertEqual(frame.height, 484)
         self.assertEqual(frame[self.schema.dataset_column].n_unique(), 20)
-        self.assertEqual(frame[self.schema.model_column].n_unique(), 25)
+        self.assertEqual(frame[self.schema.model_group].n_unique(), 25)
 
 
 if __name__ == "__main__":

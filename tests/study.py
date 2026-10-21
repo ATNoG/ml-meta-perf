@@ -13,7 +13,7 @@ from ml_meta_perf.config import RowFilter, Schema, StudyConfig, default_schema, 
 
 SCHEMA = default_schema()
 DATASET_COLUMN = SCHEMA.dataset_column
-MODEL_COLUMN = SCHEMA.model_column
+MODEL_COLUMN = SCHEMA.model_group
 TARGET_COLUMN = SCHEMA.target_column
 DATASET_FEATURES = SCHEMA.dataset_features
 MODEL_FEATURES = SCHEMA.model_features

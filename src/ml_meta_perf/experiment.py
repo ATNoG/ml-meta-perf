@@ -198,7 +198,6 @@ def fit_path(
     columns = columns_as_arrays(frame, dataset_features + model_features)
     truth = target(frame, schema)
     datasets = groups(frame, schema.dataset_column)
-    models = groups(frame, schema.model_column)
 
     library = build_library(
         dataset_features,
@@ -220,15 +219,22 @@ def fit_path(
     )
     # Fixed form: the terms are chosen once, here, and only the weights are refit in each
     # fold. See `validate.cross_validate_fixed_form` for why that is the reported protocol.
-    paths = {
-        label: cross_validate_fixed_form(library, columns, truth, labels, result.equations, penalty=config.penalty)
-        for label, labels in (("loo_dataset", datasets), ("loo_model", models))
-    }
+    paths: dict[str, dict[int, CrossValidation]] = {}
+    models = groups(frame, schema.model_column) if schema.model_column else datasets
+    if "LODO" in schema.protocols:
+        paths["loo_dataset"] = cross_validate_fixed_form(
+            library, columns, truth, datasets, result.equations, penalty=config.penalty
+        )
+    if "LOMO" in schema.protocols:
+        paths["loo_model"] = cross_validate_fixed_form(
+            library, columns, truth, models, result.equations, penalty=config.penalty
+        )
     # DHO at **every** length, not just the selected one: every selection rule reads the
     # complete curve, and E3-MAX selects on this protocol through `selection.floor_curve`.
-    paths["loo_cell"] = cross_validate_doubly_held_out(
-        library, columns, truth, datasets, models, result.equations, penalty=config.penalty
-    )
+    if "DHO" in schema.protocols:
+        paths["loo_cell"] = cross_validate_doubly_held_out(
+            library, columns, truth, datasets, models, result.equations, penalty=config.penalty
+        )
     in_sample = {k: score(truth, eq.predict(columns)) for k, eq in result.equations.items()}
     curve = _curve(tuple(sorted(result.equations)), in_sample, paths, truth)
     return FittedPath(library, columns, truth, datasets, result.equations, paths, curve, config, schema)
@@ -529,7 +535,7 @@ def baselines(frame: pl.DataFrame) -> pl.DataFrame:
     """
     truth = target(frame)
     datasets = groups(frame, default_schema().dataset_column)
-    models = groups(frame, default_schema().model_column)
+    models = groups(frame, default_schema().model_group)
 
     rows: list[dict[str, object]] = []
     for centre in ("mean", "median"):
@@ -573,7 +579,7 @@ def leakage_demonstration(
     protocols = {
         "random 10-fold (leaky)": ("random", random_kfold_groups(truth.shape[0])),
         "leave-one-dataset-out": ("loo_dataset", groups(frame, default_schema().dataset_column)),
-        "leave-one-model-out": ("loo_model", groups(frame, default_schema().model_column)),
+        "leave-one-model-out": ("loo_model", groups(frame, default_schema().model_group)),
     }
     library: Library | None = None
     rows: list[dict[str, object]] = []
@@ -655,7 +661,7 @@ def identity_ceiling(frame: pl.DataFrame, e3: EquationReport) -> pl.DataFrame:
     """
     columns = columns_as_arrays(frame, default_schema().features)
     truth = target(frame)
-    datasets, models = groups(frame, default_schema().dataset_column), groups(frame, default_schema().model_column)
+    datasets, models = groups(frame, default_schema().dataset_column), groups(frame, default_schema().model_group)
     path = e3.paths.get("loo_dataset")
     size = len(e3.equation.terms)
     if path is None or size not in path:
@@ -717,7 +723,7 @@ def interaction_reached(frame: pl.DataFrame, e3: EquationReport) -> pl.DataFrame
     """
     columns = columns_as_arrays(frame, default_schema().features)
     truth = target(frame)
-    datasets, models = groups(frame, default_schema().dataset_column), groups(frame, default_schema().model_column)
+    datasets, models = groups(frame, default_schema().dataset_column), groups(frame, default_schema().model_group)
     size = len(e3.equation.terms)
     predictions = {"in-sample": e3.equation.predict(columns)}
     path = e3.paths.get("loo_dataset")
@@ -751,7 +757,7 @@ def comparison(
     columns = columns_as_arrays(frame, default_schema().features)
     truth = target(frame)
     datasets = groups(frame, default_schema().dataset_column)
-    models = groups(frame, default_schema().model_column)
+    models = groups(frame, default_schema().model_group)
 
     dataset_ceiling = np.zeros_like(truth)
     for label in np.unique(datasets):
@@ -915,7 +921,7 @@ def doubly_held_out_predictions(frame: pl.DataFrame, n_terms: int, config: Confi
     columns = columns_as_arrays(frame, default_schema().features)
     truth = target(frame)
     datasets = groups(frame, default_schema().dataset_column)
-    models = groups(frame, default_schema().model_column)
+    models = groups(frame, default_schema().model_group)
     library = build_library(
         default_schema().dataset_features,
         default_schema().model_features,
@@ -1032,7 +1038,7 @@ def ranking_baselines(
     """
     truth = target(frame)
     datasets = groups(frame, default_schema().dataset_column)
-    models = groups(frame, default_schema().model_column)
+    models = groups(frame, default_schema().model_group)
 
     candidates: dict[str, np.ndarray] = {}
     for label, protocol in (
@@ -1104,7 +1110,7 @@ def decision_baselines(
     columns = columns_as_arrays(frame, default_schema().features)
     truth = target(frame)
     datasets = groups(frame, default_schema().dataset_column)
-    models = groups(frame, default_schema().model_column)
+    models = groups(frame, default_schema().model_group)
 
     candidates: dict[str, np.ndarray] = {}
     if e3 is not None:
@@ -1242,7 +1248,7 @@ def run(
         effects=term_effects(e3.equation, columns, default_schema().dataset_features, default_schema().model_features),
         shares=group_shares(e3.equation, columns, default_schema().dataset_features, default_schema().model_features),
         decomposition=variance_decomposition(
-            target(frame), groups(frame, default_schema().dataset_column), groups(frame, default_schema().model_column)
+            target(frame), groups(frame, default_schema().dataset_column), groups(frame, default_schema().model_group)
         ),
         correlations=correlation_analysis(frame, config_e3),
         reach=reach,
@@ -1256,7 +1262,7 @@ def run(
         decision_baselines=decision_baselines(frame, config_e3, e3.paths.get("loo_dataset"), e3, opaque_run),
         length_choice=length_comparison(frame, e3, config_e3),
         oracles=oracle_ladder(
-            target(frame), groups(frame, default_schema().dataset_column), groups(frame, default_schema().model_column)
+            target(frame), groups(frame, default_schema().dataset_column), groups(frame, default_schema().model_group)
         ),
         interaction=interaction_reached(frame, e3),
         identity=identity_ceiling(frame, e3),

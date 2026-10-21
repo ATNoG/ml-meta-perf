@@ -74,16 +74,15 @@ FlexFL CSV without the column fails with a stale-corpus error; re-assemble it wi
 `scripts/assemble_meta_dataset.py`. In a corpus where every run shares one cap it is constant
 and removed before the term library is built.
 
-**LOMO and DHO do not apply to FlexFL, and their numbers must not be read.** FlexFL fits one
+**LOMO and DHO do not apply to FlexFL, so the study files do not run them.** FlexFL fits one
 learner family (neural networks); `fl_algo` is how the run was trained (centralised or
 decentralised, synchronous or asynchronous), not a model. The four `fl_algo_*` indicators are
 a one-hot encoding of the very group that LOMO holds out. In each fold the held-out algorithm's
 indicator is zero on every training row, so its ridge weight is exactly zero and the held-out
-runs are predicted as "none of the trained algorithms": the score measures how the other terms
-extrapolate with that mode's own effect removed, not transfer to a new learner. DHO inherits
-this. The fit still computes them today; a later release lets the study file declare which protocols it
-runs, and FlexFL will declare IS and LODO only. The values are not comparable
-with the MCC study's LOMO in any case, which has model descriptors shared across models.
+runs would be predicted as "none of the trained algorithms": the score would measure how the other
+terms extrapolate with that mode's own effect removed, not transfer to a new learner. DHO inherits
+this. Every file in `config/flexfl/` therefore declares `"protocols": ["IS", "LODO"]`, and the
+length of an equation is judged on the worse of those two (chapter 7, section 7.2a).
 
 **A cost is floored at zero and never capped in cross-validation.** The prediction of a held-out
 dataset is clipped at the bounds the study file gives and nowhere else, so a dataset costlier than

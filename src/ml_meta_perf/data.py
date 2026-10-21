@@ -200,7 +200,7 @@ def load(path: str | Path | None = None, schema: Schema | None = None) -> pl.Dat
         raise SchemaError(f"meta-dataset not found: {resolved}")
 
     frame = pl.read_csv(resolved)
-    expected = (schema.dataset_column, schema.model_column, *schema.features, schema.target_column)
+    expected = (*schema.group_columns, *schema.features, schema.target_column)
     missing = [column for column in expected if column not in frame.columns]
     for requirement in schema.required:
         if requirement.column not in frame.columns:
@@ -263,7 +263,7 @@ def _without_empty_response(frame: pl.DataFrame, schema: Schema, source: Path) -
         breakdown = "; ".join(
             f"by {column}: "
             + ", ".join(f"{name} {count}" for name, count in empty.group_by(column).len().sort(column).iter_rows())
-            for column in (schema.dataset_column, schema.model_column)
+            for column in schema.group_columns
         )
         message = f"dropped {dropped} of {frame.height} rows with an empty {schema.target_column} from {source}"
         print(f"{message} ({breakdown})", file=sys.stderr)
@@ -344,7 +344,7 @@ def corpus_summary(frame: pl.DataFrame, schema: Schema | None = None) -> pl.Data
     """
     schema = schema or default_schema()
     datasets = int(frame[schema.dataset_column].n_unique())
-    models = int(frame[schema.model_column].n_unique())
+    models = int(frame[schema.model_group].n_unique())
     return pl.DataFrame(
         [
             {"quantity": "rows", "count": frame.height},
@@ -392,7 +392,7 @@ def missing_cells(frame: pl.DataFrame, schema: Schema | None = None) -> pl.DataF
     pattern instead of being told about it.
     """
     schema = schema or default_schema()
-    models = int(frame[schema.model_column].n_unique())
+    models = int(frame[schema.model_group].n_unique())
     counts = (
         frame.group_by(schema.dataset_column)
         .agg(pl.len().alias("models_present"), pl.col("nr_inst").first().alias("nr_inst"))

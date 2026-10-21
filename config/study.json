@@ -46,6 +46,12 @@
     "E2",
     "E3"
   ],
+  "protocols": [
+    "IS",
+    "LODO",
+    "LOMO",
+    "DHO"
+  ],
   "search": {
     "max_abs_zscore": 3.5,
     "penalty": 0.1,

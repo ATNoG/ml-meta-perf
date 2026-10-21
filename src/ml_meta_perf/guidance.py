@@ -183,11 +183,11 @@ def _mean_ranking(table: pl.DataFrame) -> dict[str, float]:
 
 def _family_means(frame: pl.DataFrame) -> pl.DataFrame:
     return (
-        frame.with_columns(pl.col(default_schema().model_column).replace(model_family()).alias("family"))
+        frame.with_columns(pl.col(default_schema().model_group).replace(model_family()).alias("family"))
         .group_by("family")
         .agg(
             pl.col(default_schema().target_column).mean().alias("mcc"),
-            pl.col(default_schema().model_column).n_unique().alias("models"),
+            pl.col(default_schema().model_group).n_unique().alias("models"),
             pl.len().alias("n"),
         )
         .sort("mcc", descending=True)
@@ -196,7 +196,7 @@ def _family_means(frame: pl.DataFrame) -> pl.DataFrame:
 
 def _model_means(frame: pl.DataFrame) -> pl.DataFrame:
     return (
-        frame.group_by(default_schema().model_column)
+        frame.group_by(default_schema().model_group)
         .agg(pl.col(default_schema().target_column).mean().alias("mcc"), pl.len().alias("n"))
         .sort("mcc", descending=True)
     )
@@ -214,9 +214,9 @@ def gather(frame: pl.DataFrame, report: Report) -> Evidence:
     from ml_meta_perf.stats import spearman
     from ml_meta_perf.validate import baseline_group_mean, ranking_report
 
-    n_models = frame[default_schema().model_column].n_unique()
+    n_models = frame[default_schema().model_group].n_unique()
     counts = (
-        frame.select(default_schema().dataset_column, default_schema().model_column)
+        frame.select(default_schema().dataset_column, default_schema().model_group)
         .unique()
         .group_by(default_schema().dataset_column)
         .len()
@@ -227,8 +227,8 @@ def gather(frame: pl.DataFrame, report: Report) -> Evidence:
     # silently computed over an empty subset.
     subset = frame.filter(pl.col(default_schema().dataset_column).is_in(complete)) if complete else frame
 
-    every = _model_means(frame).sort(default_schema().model_column)
-    restricted = _model_means(subset).sort(default_schema().model_column)
+    every = _model_means(frame).sort(default_schema().model_group)
+    restricted = _model_means(subset).sort(default_schema().model_group)
     agreement = (
         spearman(every["mcc"].to_numpy(), restricted["mcc"].to_numpy())
         if complete and every.height == restricted.height
@@ -237,7 +237,7 @@ def gather(frame: pl.DataFrame, report: Report) -> Evidence:
 
     truth = frame[default_schema().target_column].to_numpy().astype(np.float64)
     datasets = frame[default_schema().dataset_column].to_numpy().astype(str)
-    models = frame[default_schema().model_column].to_numpy().astype(str)
+    models = frame[default_schema().model_group].to_numpy().astype(str)
     baseline = ranking_report(truth, baseline_group_mean(truth, datasets, models), datasets)
 
     selection = report.selection
@@ -251,7 +251,7 @@ def gather(frame: pl.DataFrame, report: Report) -> Evidence:
         # Distinct pairs, not rows: a meta-dataset with a repeated (dataset, model) cell
         # would otherwise report a negative number of missing ones.
         missing_cells=n_models * frame[default_schema().dataset_column].n_unique()
-        - frame.select(default_schema().dataset_column, default_schema().model_column).unique().height,
+        - frame.select(default_schema().dataset_column, default_schema().model_group).unique().height,
         total_cells=n_models * frame[default_schema().dataset_column].n_unique(),
         decomposition=report.decomposition,
         comparison=report.comparison,
@@ -466,7 +466,7 @@ def _pretrained_tabular_baseline(evidence: Evidence) -> Verdict:
     foundation = evidence.family("tabular foundation")
     best_tree = evidence.complete_family_means.filter(pl.col("family").is_in(list(tree_families())))
     top = float(np.max(best_tree["mcc"].to_numpy())) if best_tree.height else float("nan")
-    order = evidence.complete_model_means[default_schema().model_column].to_list()
+    order = evidence.complete_model_means[default_schema().model_group].to_list()
     ranks = {name: index + 1 for index, name in enumerate(order)}
     placings = sorted(ranks.get(name, 0) for name in ("TabICL", "TabPFN") if name in ranks)
     return Verdict(

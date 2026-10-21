@@ -196,7 +196,7 @@ def evaluate(frame: pl.DataFrame, *, models: tuple[tuple[str, Builder], ...] | N
     truth = target(frame)
     datasets, model_labels = (
         groups(frame, default_schema().dataset_column),
-        groups(frame, default_schema().model_column),
+        groups(frame, default_schema().model_group),
     )
     splits = {"loo_dataset": datasets, "loo_model": model_labels}
 

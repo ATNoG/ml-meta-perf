@@ -92,8 +92,8 @@ class TestStudyDescription(unittest.TestCase):
     def test_every_way_the_description_can_be_unusable_is_named(self) -> None:
         cases = {
             "empty path": ("corpus", "path", "", "corpus.path is empty"),
-            "same group column": ("corpus", "model_column", "Dataset", "two different"),
-            "empty group column": ("corpus", "dataset_column", "", "two different"),
+            "same group column": ("corpus", "model_column", "Dataset", "differs from it"),
+            "empty group column": ("corpus", "dataset_column", "", "non-empty dataset column"),
             "inverted bounds": ("response", "bounds", [1.0, -1.0], "low < high"),
             "equal bounds": ("response", "bounds", [0.5, 0.5], "low < high"),
             "no dataset features": ("features", "dataset", [], "features.dataset is empty"),
@@ -112,6 +112,44 @@ class TestStudyDescription(unittest.TestCase):
             payload[section][key] = value
             with self.subTest(name), self.assertRaisesRegex(ConfigError, message):
                 parse_config(payload)
+
+    def test_every_way_the_protocols_can_be_unusable_is_named(self) -> None:
+        cases = {
+            "unknown": (["IS", "LODO", "KFOLD"], "distinct names"),
+            "repeated": (["IS", "LODO", "LODO"], "distinct names"),
+            "no fit": (["LODO", "LOMO"], "include IS"),
+            "nothing held out": (["IS"], "at least one held-out"),
+        }
+        for name, (protocols, message) in cases.items():
+            payload = json.loads(json.dumps(self.payload))
+            payload["protocols"] = protocols
+            with self.subTest(name), self.assertRaisesRegex(ConfigError, message):
+                parse_config(payload)
+
+    def test_a_protocol_that_holds_a_model_out_needs_a_model_column(self) -> None:
+        for protocols in (["IS", "LODO", "LOMO"], ["IS", "DHO"]):
+            payload = json.loads(json.dumps(self.payload))
+            payload["corpus"]["model_column"] = None
+            payload["protocols"] = protocols
+            with self.subTest(protocols), self.assertRaisesRegex(ConfigError, "corpus.model_column is null"):
+                parse_config(payload)
+
+    def test_a_corpus_without_a_model_column_runs_the_dataset_protocols(self) -> None:
+        self.payload["corpus"]["model_column"] = None
+        self.payload["protocols"] = ["IS", "LODO"]
+        study = parse_config(self.payload)
+        self.assertEqual((study.corpus.model_column, study.schema().protocols), (None, ("IS", "LODO")))
+        self.assertEqual(study.schema().group_columns, ("Dataset",))
+        with self.assertRaisesRegex(ValueError, "no model column"):
+            _ = study.schema().model_group
+
+    def test_the_mcc_study_is_scored_under_all_four_protocols(self) -> None:
+        self.assertEqual(load_config().protocols, ("IS", "LODO", "LOMO", "DHO"))
+
+    def test_the_flexfl_studies_are_scored_without_a_held_out_model(self) -> None:
+        for path in sorted((Path(__file__).resolve().parents[1] / "config" / "flexfl").glob("*.json")):
+            with self.subTest(path.name):
+                self.assertEqual(load_config(path).protocols, ("IS", "LODO"))
 
     def test_a_study_may_have_no_side_files(self) -> None:
         self.payload["side_files"] = {"taxonomy": None, "ordinals": None, "glossary": None}

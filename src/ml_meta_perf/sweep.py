@@ -69,7 +69,7 @@ from ml_meta_perf.data import (
     load,
     target,
 )
-from ml_meta_perf.selection import floor_curve, plateau_start, smoothed
+from ml_meta_perf.selection import JUDGED_PROTOCOLS, floor_curve, plateau_start, smoothed
 from ml_meta_perf.validate import decision_report, ranking_report
 
 #: The go/no-go threshold the decision metrics are reported at, as in chapter 5.
@@ -127,7 +127,7 @@ def evaluate(
     size, how = plateau_start(curve, delta=selection.delta, window=selection.window, smoothing=selection.smoothing)
     position = list(curve["n_terms"]).index(size)
     at = curve.row(position, named=True)
-    if is_mcc:
+    if is_mcc and "loo_cell" in fitted.paths:
         tasks = _task_metrics(truth, fitted.paths["loo_cell"][size].predictions, datasets)
     else:
         tasks = {name: float("nan") for name in TASK_METRICS}
@@ -139,7 +139,7 @@ def evaluate(
         "reached_by": how,
         "smoothed_floor": float(smoothed(floor_curve(curve), selection.smoothing)[position]),
         "floor": float(floor_curve(curve)[position]),
-        **{name: float(at[name]) for name in ("r2_in_sample", "r2_loo_dataset", "r2_loo_model", "r2_loo_cell")},
+        **{name: float(at[name]) if name in at else float("nan") for name in JUDGED_PROTOCOLS},
         **tasks,
         "terms": "; ".join(term.name for term in fitted.equations[size].terms),
     }
@@ -200,6 +200,7 @@ def build_parser() -> ArgumentParser:
         "--side_files", type=SideFilesConfig, help="static facts about the corpus (taxonomy, ordinals, glossary)"
     )
     parser.add_argument("--equations", type=tuple[str, ...], help="which equations to fit: E1, E2, E3")
+    parser.add_argument("--protocols", type=tuple[str, ...], help="the protocols to score under: IS, LODO, LOMO, DHO")
     parser.add_argument("--search", type=Configuration, help="the base configuration the grid varies")
     parser.add_argument("--selection", type=SelectionConfig, help="the length rule applied to every point")
     parser.add_argument("--opaque", type=OpaqueConfig, help="carried into the proposal unchanged")
