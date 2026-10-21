@@ -18,7 +18,8 @@ argmax, because adjacent lengths differ by 0.03 to 0.05 for reasons that belong 
 * ``pareto_knee`` -- the Pareto front of (complexity, smoothed floor) over every arity, and the
   knee of that front by Kneedle (the user's `kneeliverse` library).
 * ``pareto_plateau`` -- the same front, multi-Kneedle proposing knees, and the first knee after
-  which the front gains at most ``delta`` over the next ``window`` front points.
+  which the front gains at most ``delta`` over the next ``window`` front points. Measured and
+  rejected (unstable on short fronts), so a study file cannot name it.
 * ``pareto_within_delta`` -- the cheapest front point within ``delta`` of the front's best floor.
 * ``plateau_pareto`` -- the plateau rule at every arity, then the cheapest pick within ``delta`` of the best.
 * ``pareto_elbow`` -- the front's point farthest from the chord joining its ends, in the unit
@@ -204,15 +205,17 @@ def pareto_elbow(table: pl.DataFrame, **ignored: float) -> Pick:
     return _pick(front.row(int(np.argmax(distance)), named=True))
 
 
-#: The rules by name; ``floor_argmax`` is the reference, not a candidate for the published equation.
+#: The rules a study file may name (`config.LENGTH_METHODS` lists the same names).
 LENGTH_RULES: dict[str, Callable[..., Pick]] = {
     "plateau_knee": plateau_knee,
     "pareto_knee": pareto_knee,
-    "pareto_plateau": pareto_plateau,
     "pareto_elbow": pareto_elbow,
     "pareto_within_delta": pareto_within_delta,
     "plateau_pareto": plateau_pareto,
 }
+
+#: Every rule that was measured, including ``pareto_plateau``, which is unstable on short fronts and not selectable.
+MEASURED_RULES: dict[str, Callable[..., Pick]] = {**LENGTH_RULES, "pareto_plateau": pareto_plateau}
 
 #: What a rule is scored against.
 REFERENCE_RULE = floor_argmax

@@ -297,6 +297,7 @@ is in the code. The mathematics of the description is in [chapter 7](assets/docs
 | `selection.delta` | 0.01 | largest smoothed-floor gain over the window that still counts as a plateau |
 | `selection.window` | 4 | lengths after a candidate that must stay within `delta` |
 | `selection.smoothing` | 3 | width of the running median applied to the worst-protocol curve |
+| `selection.method` | plateau_knee | the rule that chooses E3-Valid's length (and, for the Pareto rules `pareto_knee`, `pareto_elbow`, `pareto_within_delta`, `plateau_pareto`, its arity too; [chapter 7](assets/docs/07-generic-targets.md), section 7.6); the MCC study keeps `plateau_knee`, the FlexFL studies use `pareto_knee` |
 | `selection.capability_arity` | 3 | arity used by E3-MAX; matches the primary grammar in this configuration |
 | `opaque.forest_trees` | 100 | random forest size |
 | `opaque.forest_max_features` | 0.33 | share of features considered at each forest split |

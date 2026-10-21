@@ -57,8 +57,14 @@ folder gets a `-log1p` suffix. A transform that does not apply is refused when t
 
 ## What is fitted
 
-A FlexFL study runs E3 only (`equations` is `["E3"]`), over every FlexFL dataset and model feature, under
-its own tuned configuration and the study's length rule. There is no E1, E2 or E3-MAX,
+A FlexFL study fits the all-features equation (`equations` is `["E3", "E3-MAX"]`) over every FlexFL
+dataset and model feature, under its own tuned configuration, and publishes two variants of it.
+**E3-Valid** is the smaller, explainable equation that performs similarly: the study's length rule
+(`selection.method`, `pareto_knee`) reads the Pareto front of cost (arity times terms) and the
+worst-protocol score over arities 1 to `search.max_arity`, and takes its knee, so both the arity and
+the number of terms come from it (chapter 7, section 7.6). **E3-MAX** is the best score the
+configuration reaches: the raw maximum of the floor at `selection.capability_arity`; it bounds what
+the additive form can do and is written to `e3-max/`. There is no E1 or E2,
 and none of the MCC study's baselines, practices, figures or chapters. Features constant in the
 loaded frame are removed before the term library is built.
 The MCC study's flags `--phase`, `--no-figures`, `--no-report` and `--no-tables` have no meaning when only E3 is fitted;
@@ -97,8 +103,8 @@ are read as group offsets.
 ## Commands
 
 ```bash
-# one E3 fit; writes equation.json, equation.txt, curve.csv, term_effects.csv and
-# group_shares.csv under results/flexfl/<slug>/
+# E3-Valid and E3-MAX; writes equation.json, equation.txt, curve.csv, term_effects.csv and
+# group_shares.csv under results/flexfl/<slug>/, and the E3-MAX equation under .../e3-max/
 ml-meta-perf --config config/flexfl/total_time_s.json --data meta_dataset.csv
 
 # the same target on the log scale

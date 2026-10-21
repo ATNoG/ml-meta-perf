@@ -6,7 +6,7 @@ import numpy as np
 import polars as pl
 
 from ml_meta_perf.lengths import (
-    LENGTH_RULES,
+    MEASURED_RULES,
     Pick,
     candidate_table,
     floor_argmax,
@@ -114,7 +114,7 @@ class TestRuleContracts(unittest.TestCase):
     def test_every_rule_returns_a_candidate_of_the_table(self) -> None:
         for frame in self.tables():
             members = {(r["arity"], r["n_terms"]) for r in frame.iter_rows(named=True)}
-            for name, rule in LENGTH_RULES.items():
+            for name, rule in MEASURED_RULES.items():
                 with self.subTest(rule=name, rows=frame.height):
                     pick = rule(frame, **PARAMS)
                     self.assertIn((pick.arity, pick.n_terms), members)
@@ -124,7 +124,7 @@ class TestRuleContracts(unittest.TestCase):
             ceiling = floor_argmax(frame).complexity
             for name in ("pareto_knee", "pareto_plateau", "pareto_elbow"):
                 with self.subTest(rule=name):
-                    self.assertLessEqual(LENGTH_RULES[name](frame, **PARAMS).complexity, ceiling)
+                    self.assertLessEqual(MEASURED_RULES[name](frame, **PARAMS).complexity, ceiling)
 
     def test_the_plateau_rule_at_one_arity_is_the_study_rule(self) -> None:
         rng = np.random.default_rng(4)

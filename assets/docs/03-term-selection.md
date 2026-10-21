@@ -308,6 +308,7 @@ Every hyperparameter below is read from `config/study.json`; E1, E2 and E3 share
 | selection.delta | 0.01 |
 | selection.window | 4 |
 | selection.smoothing | 3 |
+| selection.method | plateau_knee |
 | selection.capability_arity | 3 |
 
 ## Why a subset rather than every term

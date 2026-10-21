@@ -30,7 +30,8 @@ from jsonargparse import ActionConfigFile, ArgumentParser, Namespace  # pyright:
 
 from ml_meta_perf.config import (
     DEFAULT_CONFIG_PATH,
-    EQUATIONS,
+    E3_MAX,
+    SINGLE_EQUATIONS,
     ConfigError,
     Configuration,
     CorpusConfig,
@@ -289,7 +290,8 @@ def _run_fit_cli(arguments: Namespace) -> int:
         print(f"ignored when the study fits only E3: {', '.join(ignored)}", file=sys.stderr)
     started = time.perf_counter()
     corpus = arguments.data or resolve_path(arguments.corpus.path)
-    report = run_flexfl(corpus, schema, arguments.search, arguments.selection)
+    with_maximum = E3_MAX in study_of(arguments).equations
+    report = run_flexfl(corpus, schema, arguments.search, arguments.selection, with_maximum=with_maximum)
     elapsed = time.perf_counter() - started
     if not arguments.quiet:
         _section(f"E3: {schema.label}")
@@ -298,6 +300,11 @@ def _run_fit_cli(arguments: Namespace) -> int:
         for label, scores in report.equation.cross_validated.items():
             print(f"{PROTOCOL_LABELS.get(label, label)}: R2={scores['r2']:.3f}, MAE={scores['mae']:.3f}")
         _show(report.shares)
+        if report.maximum is not None:
+            _section(f"E3-MAX: {schema.label}")
+            print(report.maximum.equation)
+            for label, scores in report.maximum.cross_validated.items():
+                print(f"{PROTOCOL_LABELS.get(label, label)}: R2={scores['r2']:.3f}, MAE={scores['mae']:.3f}")
     if arguments.output:
         destination = Path(arguments.output) / "flexfl" / schema.slug
         destination.mkdir(parents=True, exist_ok=True)
@@ -306,6 +313,12 @@ def _run_fit_cli(arguments: Namespace) -> int:
         report.equation.curve.write_csv(destination / "curve.csv")
         report.effects.write_csv(destination / "term_effects.csv")
         report.shares.write_csv(destination / "group_shares.csv")
+        if report.maximum is not None:
+            ceiling = destination / "e3-max"
+            ceiling.mkdir(exist_ok=True)
+            report.maximum.equation.save(ceiling / "equation.json")
+            (ceiling / "equation.txt").write_text(f"{report.maximum.equation}\n", encoding="utf-8")
+            report.maximum.curve.write_csv(ceiling / "curve.csv")
         print(f"\nequation written to {destination}")
     print(f"\ncompleted in {elapsed:.1f}s")
     return 0
@@ -342,12 +355,8 @@ def main(argv: list[str] | None = None) -> int:
         equations = study_of(arguments).equations
     except ConfigError as error:
         parser.error(str(error))
-    if equations == ("E3",):
+    if equations in SINGLE_EQUATIONS:
         return _run_fit_cli(arguments)
-    if equations != EQUATIONS:
-        parser.error(
-            f"equations must be {list(EQUATIONS)} (the MCC study) or ['E3'] (one equation), got {list(equations)}"
-        )
     phases = phases_of(arguments)
 
     config: Configuration = arguments.search

@@ -297,7 +297,7 @@ class TestDocumentedDefaults(unittest.TestCase):
         cls.documented = {
             match.group(1): match.group(2)
             for match in re.finditer(
-                r"^\| `((?:search|selection|opaque)\.\w+)` \| ([\d.]+) \|", readme.read_text(), re.MULTILINE
+                r"^\| `((?:search|selection|opaque)\.\w+)` \| ([\w.]+) \|", readme.read_text(), re.MULTILINE
             )
         }
         cls.study = load_config()
@@ -314,7 +314,11 @@ class TestDocumentedDefaults(unittest.TestCase):
         for key, value in self.documented.items():
             section, name = key.split(".")
             with self.subTest(key=key):
-                self.assertEqual(float(value), float(getattr(getattr(self.study, section), name)))
+                actual = getattr(getattr(self.study, section), name)
+                self.assertEqual(
+                    value if isinstance(actual, str) else float(value),
+                    actual if isinstance(actual, str) else float(actual),
+                )
 
 
 class TestDecisionQualityFallback(unittest.TestCase):

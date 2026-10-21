@@ -38,6 +38,7 @@ from ml_meta_perf.data import (
     target,
 )
 from ml_meta_perf.identity import correct_out_of_fold
+from ml_meta_perf.lengths import LENGTH_RULES, candidate_table
 from ml_meta_perf.model import Equation
 from ml_meta_perf.opaque import Builder as OpaqueBuilder
 from ml_meta_perf.opaque import OpaqueRun
@@ -317,7 +318,27 @@ def run_equation(
     cross-validated curve.
     """
     fitted = fit_path(frame, dataset_features, model_features, config, name, schema=schema)
-    return finalise(fitted, select_length(fitted.curve, selection))
+    if selection.method == "plateau_knee":
+        return finalise(fitted, select_length(fitted.curve, selection))
+    # The Pareto rules choose the arity too: every grammar up to the configured one is fitted, and
+    # the rule reads their curves as one table of (arity, n_terms) candidates (`ml_meta_perf.lengths`).
+    by_arity = {
+        arity: fitted
+        if arity == config.max_arity
+        else fit_path(
+            frame, dataset_features, model_features, dataclasses.replace(config, max_arity=arity), name, schema=schema
+        )
+        for arity in range(1, config.max_arity + 1)
+    }
+    table = candidate_table({arity: path.curve for arity, path in by_arity.items()}, selection.smoothing)
+    pick = LENGTH_RULES[selection.method](
+        table,
+        delta=selection.delta,
+        window=selection.window,
+        smoothing=selection.smoothing,
+        fixed_arity=config.max_arity,
+    )
+    return finalise(by_arity[pick.arity], pick.n_terms)
 
 
 @dataclass(frozen=True)
@@ -328,6 +349,8 @@ class FlexFLReport:
     equation: EquationReport
     effects: pl.DataFrame
     shares: pl.DataFrame
+    #: E3-MAX, when the study asks for it (``equations`` lists it): the best score at the capability arity.
+    maximum: EquationReport | None = None
 
 
 def run_flexfl(
@@ -336,11 +359,14 @@ def run_flexfl(
     config: Configuration | None = None,
     selection: SelectionConfig | None = None,
     name: str = "E3",
+    *,
+    with_maximum: bool = False,
 ) -> FlexFLReport:
-    """Load a FlexFL meta-dataset and run the single E3 fit, both feature groups at once.
+    """Load a meta-dataset and run the single-equation study: E3-Valid, both feature groups at once.
 
-    One grammar, ``config.max_arity``, and the study's length rule; no E1, E2 or E3-MAX, and
-    none of the MCC study's baselines, practices or figures.
+    The grammar is ``config.max_arity`` (every smaller arity too under a Pareto rule) and the
+    study's length rule; none of the MCC study's E1, E2, baselines, practices or figures. With
+    ``with_maximum``, E3-MAX is fitted beside it: the best score at the capability arity.
     A ``log_target`` schema fits and scores ``log1p`` of the target.
     """
     config, selection = _resolve(config, selection)
@@ -359,7 +385,8 @@ def run_flexfl(
     columns = columns_as_arrays(frame, schema.features)
     effects = term_effects(report.equation, columns, schema.dataset_features, schema.model_features)
     shares = group_shares(report.equation, columns, schema.dataset_features, schema.model_features)
-    return FlexFLReport(schema, report, effects, shares)
+    maximum = run_capability(frame, config, selection, schema=schema) if with_maximum else None
+    return FlexFLReport(schema, report, effects, shares, maximum)
 
 
 def run_e1(
@@ -411,7 +438,11 @@ def run_e3(
 
 
 def run_capability(
-    frame: pl.DataFrame, config: Configuration | None = None, selection: SelectionConfig | None = None
+    frame: pl.DataFrame,
+    config: Configuration | None = None,
+    selection: SelectionConfig | None = None,
+    *,
+    schema: Schema | None = None,
 ) -> EquationReport:
     """E3-MAX: E3's configuration at the configured capability arity, at the raw maximum of its floor.
 
@@ -422,7 +453,8 @@ def run_capability(
     """
     config, selection = _resolve(config, selection)
     wider = dataclasses.replace(config, max_arity=selection.capability_arity)
-    fitted = fit_path(frame, default_schema().dataset_features, default_schema().model_features, wider, "E3-MAX")
+    schema = schema or default_schema()
+    fitted = fit_path(frame, schema.dataset_features, schema.model_features, wider, schema.tag("E3-MAX"), schema=schema)
     return finalise(fitted, floor_argmax(fitted.curve))
 
 

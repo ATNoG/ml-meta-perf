@@ -67,6 +67,7 @@
     "delta": 0.01,
     "window": 4,
     "smoothing": 3,
+    "method": "plateau_knee",
     "capability_arity": 3
   },
   "opaque": {

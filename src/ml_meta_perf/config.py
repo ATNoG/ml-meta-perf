@@ -58,6 +58,15 @@ TRANSFORMS = ("none", "log1p")
 #: The equations a study can fit: E1 the dataset features, E2 the model features, E3 both.
 EQUATIONS = ("E1", "E2", "E3")
 
+#: E3-MAX, the best score the configuration can reach: a variant of E3, fitted beside it by a study of one equation.
+E3_MAX = "E3-MAX"
+
+#: The equation lists a study of ONE all-features equation may ask for: E3-Valid alone, or with E3-MAX.
+SINGLE_EQUATIONS = (("E3",), ("E3", E3_MAX))
+
+#: The rules choosing an equation's arity and length (`lengths.LENGTH_RULES`), repeated so the file is checked on read.
+LENGTH_METHODS = ("plateau_knee", "pareto_knee", "pareto_elbow", "pareto_within_delta", "plateau_pareto")
+
 #: What a study may forbid for a feature: `terms.EXCLUDABLE`, repeated so the file is checked before any term is built.
 EXCLUDABLE = ("log", "sqrt", "inv", "sq")
 
@@ -272,9 +281,16 @@ class SelectionConfig:
     delta: float
     window: int
     smoothing: int
+    #: The rule choosing E3-Valid's arity and length, from `LENGTH_METHODS`. ``plateau_knee`` fits the
+    #: configured arity only; the Pareto rules fit every arity up to it and choose among them (chapter 7, 7.6).
+    method: str
     #: The capability bound's grammar: E3-MAX is fitted at this arity under the same
     #: configuration and takes the raw maximum of its curve.
     capability_arity: int
+
+    def __post_init__(self) -> None:
+        if self.method not in LENGTH_METHODS:
+            raise ConfigError(f"selection.method must be one of {LENGTH_METHODS}, got {self.method!r}")
 
 
 @dataclass(frozen=True)
@@ -369,8 +385,11 @@ def _validated(
     """Reject a study description that cannot describe a corpus, before any file is read."""
     if not corpus.path:
         raise ConfigError("corpus.path is empty")
-    if not equations or any(name not in EQUATIONS for name in equations) or len(set(equations)) != len(equations):
-        raise ConfigError(f"equations must be a non-empty list without repeats drawn from {EQUATIONS}, got {equations}")
+    if equations not in (EQUATIONS, *SINGLE_EQUATIONS):
+        raise ConfigError(
+            f"equations must be {list(EQUATIONS)} (the three-equation study) or one of "
+            f"{[list(single) for single in SINGLE_EQUATIONS]}, got {list(equations)}"
+        )
     for kind, path in (
         ("taxonomy", side_files.taxonomy),
         ("ordinals", side_files.ordinals),

@@ -225,10 +225,6 @@ def main(argv: list[str] | None = None) -> int:
         study = study_of(arguments)
     except ConfigError as error:
         parser.error(str(error))
-    if study.equations not in (EQUATIONS, ("E3",)):
-        parser.error(
-            f"equations must be {list(EQUATIONS)} (the MCC study) or ['E3'] (one equation), got {list(study.equations)}"
-        )
     own = study.equations == EQUATIONS
     schema = study.schema()
     points = grid(study)

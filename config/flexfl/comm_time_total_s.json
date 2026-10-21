@@ -75,7 +75,8 @@
     "glossary": null
   },
   "equations": [
-    "E3"
+    "E3",
+    "E3-MAX"
   ],
   "protocols": [
     "IS",
@@ -96,6 +97,7 @@
     "delta": 0.01,
     "window": 4,
     "smoothing": 3,
+    "method": "pareto_knee",
     "capability_arity": 3
   },
   "opaque": {

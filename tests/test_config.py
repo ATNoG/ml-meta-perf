@@ -234,8 +234,13 @@ class TestStudyDescription(unittest.TestCase):
             self.payload["equations"] = bad
             with self.subTest(bad), self.assertRaisesRegex(ConfigError, "equations must be"):
                 parse_config(self.payload)
-        self.payload["equations"] = ["E3"]
-        self.assertEqual(parse_config(self.payload).equations, ("E3",))
+        for good in (["E3"], ["E3", "E3-MAX"]):
+            self.payload["equations"] = good
+            self.assertEqual(parse_config(self.payload).equations, tuple(good))
+        for odd in (["E1", "E2"], ["E3-MAX"], ["E3-MAX", "E3"]):
+            self.payload["equations"] = odd
+            with self.subTest(odd), self.assertRaisesRegex(ConfigError, "equations must be"):
+                parse_config(self.payload)
 
     def test_a_study_without_equations_is_an_error(self) -> None:
         del self.payload["equations"]

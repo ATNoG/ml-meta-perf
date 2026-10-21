@@ -115,7 +115,7 @@ E1 = Configuration(max_abs_zscore=3.0, penalty=1.0, pool_size=60, max_terms=6, b
 E2 = Configuration(max_abs_zscore=3.0, penalty=5.0, pool_size=60, max_terms=6, beam_width=6, max_arity=2)
 E3 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=60, max_terms=6, beam_width=6, max_arity=3)
 #: The length rule at the suite's scale: a six-term horizon leaves room for a two-length window.
-SELECTION = SelectionConfig(delta=0.01, window=2, smoothing=3, capability_arity=3)
+SELECTION = SelectionConfig(delta=0.01, window=2, smoothing=3, method="plateau_knee", capability_arity=3)
 
 _FRAME: list[pl.DataFrame] = []
 _PATH: list[Path] = []

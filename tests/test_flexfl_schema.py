@@ -56,6 +56,8 @@ TINY_FLAGS = [
     "1",
     "--search.max_arity",
     "1",
+    "--selection.capability_arity",
+    "1",
 ]
 TASK_METRICS = ("dho_ap", "dho_mrr", "dho_hit_at_1", "dho_regret", "dho_accuracy", "dho_mcc")
 ALGORITHMS = {"CentralizedSync", "CentralizedAsync", "DecentralizedSync", "DecentralizedAsync"}
@@ -142,7 +144,7 @@ class FlexFLStudyFiles(unittest.TestCase):
     def test_each_file_parses_and_fits_the_one_equation(self) -> None:
         for name in FILES:
             with self.subTest(name):
-                self.assertEqual(self.study(name).equations, ("E3",))
+                self.assertEqual(self.study(name).equations, ("E3", "E3-MAX"))
 
     def test_the_target_decides_the_bounds_and_the_empty_row_policy(self) -> None:
         for name, (bounds, drops) in FILES.items():
@@ -193,7 +195,7 @@ class FlexFLStudyFiles(unittest.TestCase):
                 (proposed.corpus, proposed.response, proposed.features),
                 (original.corpus, original.response, original.features),
             )
-            self.assertEqual(proposed.equations, ("E3",))
+            self.assertEqual(proposed.equations, ("E3", "E3-MAX"))
 
 
 class FlexFLSchemaTests(unittest.TestCase):
