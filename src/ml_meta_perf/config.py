@@ -1,8 +1,8 @@
 """The study's hyperparameters, read from ``config/study.json``.
 
 **Every tuned value lives in that one file**, and nowhere in the code: the search settings all
-three equations share, the rule that chooses an equation's length, the opaque regressors'
-sizes, and the grid the configuration sweep explores. The dataclasses below are its schema and
+equations share, the rule that chooses an equation's length, and the grid the configuration
+sweep explores. The dataclasses below are its schema and
 carry no defaults for anything that was tuned, so a value can only come from the file (or from
 a command-line override of it) and cannot drift between a constant and a chapter.
 
@@ -156,7 +156,7 @@ class Schema:
 
     @property
     def model_group(self) -> str:
-        """The model column, for the code that cannot run without one (the MCC study's baselines and tables)."""
+        """The model column, for code that cannot run without one (the model baselines, the model protocols)."""
         if self.model_column is None:
             raise ValueError("this study has no model column: nothing here can hold a model out")
         return self.model_column

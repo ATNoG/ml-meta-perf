@@ -134,6 +134,11 @@ class TestInit(Corpus):
         response = json.loads(self.study.read_text())["response"]
         self.assertEqual((response["bounds"], response["transform"]), ([0.0, None], "log1p"))
 
+    def test_an_unknown_transform_is_refused(self) -> None:
+        code, _, err = self.init("--transform", "sqrt")
+        self.assertEqual(code, 2)
+        self.assertIn("transform must be one of", err)
+
     def test_a_bounds_argument_that_is_not_a_pair_is_refused(self) -> None:
         code, _, err = self.init("--bounds", "[1, 2, 3]")
         self.assertEqual(code, 2)
@@ -254,6 +259,20 @@ class TestParser(unittest.TestCase):
         code, out, _ = run(["--version"])
         self.assertEqual(code, 0)
         self.assertIn("ml-meta-perf", out)
+
+
+class TestWindowsOutput(unittest.TestCase):
+    def test_a_legacy_windows_console_is_switched_to_utf8_and_other_platforms_are_left_alone(self) -> None:
+        from unittest import mock
+
+        stream = mock.Mock()
+        with mock.patch.object(cli.sys, "platform", "win32"), mock.patch.object(cli.sys, "stdout", stream):
+            cli._configure_windows_output()  # pyright: ignore[reportPrivateUsage]
+        stream.reconfigure.assert_called_once_with(encoding="utf-8", errors="replace")
+        other = mock.Mock()
+        with mock.patch.object(cli.sys, "platform", "linux"), mock.patch.object(cli.sys, "stdout", other):
+            cli._configure_windows_output()  # pyright: ignore[reportPrivateUsage]
+        other.reconfigure.assert_not_called()
 
 
 class TestHelpers(unittest.TestCase):

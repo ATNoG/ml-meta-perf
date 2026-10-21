@@ -237,8 +237,8 @@ def run_equation(
     """Fit one equation and validate it. The three equations differ **only** in the
     features they may draw on, and this is the single code path that says so.
 
-    Every one of them is fitted on all 484 rows and scored on all 484 rows, under all four
-    protocols, and has its length chosen by the same rule. That uniformity is the point: the
+    Every one of them is fitted on all observed rows and scored on all of them, under the
+    protocols the schema declares, and has its length chosen by the same rule. That uniformity is the point: the
     gaps between E1, E2 and E3 are only evidence about what each half of the meta-data is
     worth if nothing else differs between them -- not the fitting scale, not the protocol,
     not the denominator of the R2, not the way the length was picked.

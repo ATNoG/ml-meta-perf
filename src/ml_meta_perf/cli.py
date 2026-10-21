@@ -159,8 +159,7 @@ def main(argv: list[str] | None = None) -> int:
             return run_init(arguments)
         return run_fit(arguments)
     except (ConfigError, SchemaError, OverwriteError) as error:
-        parser.error(str(error))
-        return 2
+        parser.error(str(error))  # exits with status 2
 
 
 if __name__ == "__main__":

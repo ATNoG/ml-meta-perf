@@ -13,10 +13,9 @@ labelled by the features they use -- dataset-only, model-only, or mixed -- so th
 between "how hard is this data" and "how capable is this model" can be read off the
 fitted equation rather than assumed.
 
-Study chapter: [6. Best practices against the equation][study-chapter] -- the rationale, in
-prose, with the figures.
+Study chapter: [7. Other targets][study-chapter] -- what a study is made of.
 
-[study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/06-practices.md
+[study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/07-generic-targets.md
 """
 
 from __future__ import annotations

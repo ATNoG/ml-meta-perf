@@ -1,30 +1,29 @@
-"""Choose the shared configuration: ``ml-meta-perf-search``.
+"""Choose the shared configuration: ``ml-meta-perf sweep`` (also ``ml-meta-perf-search``).
 
-The study fits E1, E2 and E3 under **one** hyperparameter configuration (``config/study.json``),
+A study fits its equations under **one** hyperparameter configuration (the study file),
 chosen by E3-Valid's own criterion. This sweep makes that choice reproducible:
 
 1. every point of the grid in the file's ``sweep`` section -- stability cap x ridge penalty x
    arity, with the pool, beam and horizon of its ``search`` section -- is fitted once with
    `experiment.fit_path` (E3, every feature) and cross-validated at every length;
-2. each point's length is chosen by the study's own rule, `selection.plateau_start`;
+2. each point's length is chosen by `selection.plateau_start`;
 3. points at or below ``readable_terms`` whose smoothed worst-protocol R2 is within ``band`` of
    the best such point are **indistinguishable on R2**, because adjacent configurations differ
    by less than adjacent lengths do;
 4. among those, the point whose doubly-held-out (DHO) predictions rank the models best --
-   mean average precision over the twenty datasets -- is proposed; ties go to fewer terms,
+   mean average precision over the datasets -- is proposed; ties go to fewer terms,
    lower arity and then the heavier penalty.
 
 The DHO task metrics break the tie because they are what the equation is *for* -- ranking
 models for a dataset nobody has run -- and they separate configurations that R2 cannot: at the
 same floor, ranking AP ranges from 0.70 to 0.85.
 
-A FlexFL target (``--target``, with ``--data``) runs the same grid on that corpus's E3. Its
-targets are per-run costs and scores with no go/no-go threshold, so the DHO task metrics are
-left empty and the band is broken by the remaining ties alone: fewer terms, lower arity, then
-the heavier penalty.
+A target that is not a performance score in [-1, 1] under DHO (a cost, a count) has no go/no-go
+threshold, so the DHO task metrics are left empty and the band is broken by the remaining ties
+alone: fewer terms, lower arity, then the heavier penalty.
 
 Nothing is changed in place. The run writes every curve, one row per configuration, and a
-``proposed_study.json``; adopting it is a reviewed edit to ``config/study.json``.
+``proposed_study.json``; adopting it is a reviewed edit to the study file.
 
 The search is small enough for a workstation: one fit per configuration, no re-selection
 inside folds, one BLAS thread per worker.
@@ -200,8 +199,7 @@ def run(arguments: Namespace, parser: ArgumentParser) -> int:
     try:
         study = study_of(arguments)
     except ConfigError as error:
-        parser.error(str(error))
-        return 2
+        parser.error(str(error))  # exits with status 2
     schema = study.schema()
     own = has_task_metrics(schema)
     points = grid(study)

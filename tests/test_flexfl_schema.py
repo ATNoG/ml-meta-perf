@@ -59,6 +59,8 @@ TINY_FLAGS = [
     "--selection.capability_arity",
     "1",
 ]
+#: One equation is enough to check what a command writes where a test fits the same study twice.
+ONE = ["--equations", '["E3"]']
 TASK_METRICS = ("dho_ap", "dho_mrr", "dho_hit_at_1", "dho_regret", "dho_accuracy", "dho_mcc")
 ALGORITHMS = {"CentralizedSync", "CentralizedAsync", "DecentralizedSync", "DecentralizedAsync"}
 DROPPED = {
@@ -648,8 +650,8 @@ class FlexFLSchemaTests(unittest.TestCase):
     def test_study_cli_writes_log_target_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory)
-            self.assertEqual(cli.main(cli_argv(out, "comm_bytes_total", None, False, "--quiet")), 0)
-            self.assertEqual(cli.main(cli_argv(out, "comm_bytes_total", None, True, "--quiet")), 0)
+            self.assertEqual(cli.main(cli_argv(out, "comm_bytes_total", None, False, "--quiet", *ONE)), 0)
+            self.assertEqual(cli.main(cli_argv(out, "comm_bytes_total", None, True, "--quiet", *ONE)), 0)
             folder = study_folder(out, "comm_bytes_total-log1p")
             for name in (
                 "e3/equation.json",

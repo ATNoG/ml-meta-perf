@@ -65,8 +65,8 @@ jobs:
           # pdoc emits two levels: `ml_meta_perf.html` at the root and
           # `ml_meta_perf/<submodule>.html` below it. A single copy leaves every
           # submodule page with a broken logo, so the assets go in both. The
-          # assets tree also carries the study chapters each module docstring
-          # links to, and the figures those chapters embed.
+          # assets tree also carries the method chapters each module docstring
+          # links to.
           cp -r assets docs_build/assets
           cp -r assets docs_build/ml_meta_perf/assets
           touch docs_build/.nojekyll
