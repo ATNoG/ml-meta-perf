@@ -110,14 +110,14 @@ def _pick(row: Mapping[str, object]) -> Pick:
     return Pick(int(row["arity"]), int(row["n_terms"]))  # pyright: ignore[reportArgumentType]
 
 
-def floor_argmax(table: pl.DataFrame, **ignored: float) -> Pick:
+def floor_argmax(table: pl.DataFrame, **_extra: float) -> Pick:
     """The best raw floor; ties go to the lower complexity. The reference every rule is scored against."""
     best = table.filter(pl.col("floor") == pl.col("floor").max()).sort(["complexity", "n_terms"])
     return _pick(best.row(0, named=True))
 
 
 def plateau_knee(
-    table: pl.DataFrame, *, delta: float, window: int, smoothing: int, fixed_arity: int, **ignored: float
+    table: pl.DataFrame, *, delta: float, window: int, smoothing: int, fixed_arity: int, **_extra: float
 ) -> Pick:
     """`selection.plateau_start` at one arity: today's rule, the baseline."""
     column = table.filter(pl.col("arity") == fixed_arity).sort("n_terms")
@@ -132,7 +132,7 @@ def _front_points(front: pl.DataFrame) -> np.ndarray:
     return np.column_stack([front["complexity"].to_numpy(), front["smooth"].to_numpy()]).astype(np.float64)
 
 
-def pareto_knee(table: pl.DataFrame, **ignored: float) -> Pick:
+def pareto_knee(table: pl.DataFrame, **_extra: float) -> Pick:
     """The Kneedle knee of the Pareto front; the front's end when it has no knee."""
     front = pareto_front(table)
     if front.height > KNEE_MIN_POINTS:
@@ -142,7 +142,7 @@ def pareto_knee(table: pl.DataFrame, **ignored: float) -> Pick:
     return _pick(front.row(front.height - 1, named=True))
 
 
-def pareto_plateau(table: pl.DataFrame, *, delta: float, window: int, **ignored: float) -> Pick:
+def pareto_plateau(table: pl.DataFrame, *, delta: float, window: int, **_extra: float) -> Pick:
     """The first multi-Kneedle knee of the front after which the front gains at most ``delta`` over ``window`` points.
 
     The end of the front always qualifies (nothing follows it), so the rule always returns, like
@@ -162,14 +162,14 @@ def pareto_plateau(table: pl.DataFrame, *, delta: float, window: int, **ignored:
     return _pick(front.row(last, named=True))  # unreachable: the last point is always a candidate
 
 
-def pareto_within_delta(table: pl.DataFrame, *, delta: float, **ignored: float) -> Pick:
+def pareto_within_delta(table: pl.DataFrame, *, delta: float, **_extra: float) -> Pick:
     """The cheapest front point whose smoothed floor is within ``delta`` of the front's best."""
     front = pareto_front(table)
     near = front.filter(pl.col("smooth") >= pl.col("smooth").max() - delta)
     return _pick(near.row(0, named=True))
 
 
-def plateau_pareto(table: pl.DataFrame, *, delta: float, window: int, smoothing: int, **ignored: float) -> Pick:
+def plateau_pareto(table: pl.DataFrame, *, delta: float, window: int, smoothing: int, **_extra: float) -> Pick:
     """The study's plateau rule at every arity, then the cheapest of those picks within ``delta`` of the best.
 
     Each arity's length is the validated `selection.plateau_start`; the arities are then compared on
@@ -189,7 +189,7 @@ def plateau_pareto(table: pl.DataFrame, *, delta: float, window: int, smoothing:
     return _pick(near.row(0, named=True))
 
 
-def pareto_elbow(table: pl.DataFrame, **ignored: float) -> Pick:
+def pareto_elbow(table: pl.DataFrame, **_extra: float) -> Pick:
     """The front's point farthest from the chord joining its two ends, both axes rescaled to ``[0, 1]``."""
     front = pareto_front(table)
     if front.height < 3:
@@ -216,6 +216,3 @@ LENGTH_RULES: dict[str, Callable[..., Pick]] = {
 
 #: Every rule that was measured, including ``pareto_plateau``, which is unstable on short fronts and not selectable.
 MEASURED_RULES: dict[str, Callable[..., Pick]] = {**LENGTH_RULES, "pareto_plateau": pareto_plateau}
-
-#: What a rule is scored against.
-REFERENCE_RULE = floor_argmax

@@ -1,58 +1,30 @@
-"""The end-to-end study.
+"""Fitting one equation: the wiring is correct and the equations are readable.
 
-These run against the real meta-dataset but with deliberately small configurations:
-the point is that the wiring is correct and the reported relationships hold, not to
-reproduce the published numbers inside a commit hook.
+These run on a slice of the shipped corpus with deliberately small configurations: the point is that
+the pieces fit together, not to reproduce published numbers inside a commit hook.
 """
 
 import dataclasses
 import re
 import unittest
 from pathlib import Path
-from unittest import mock
-
-import numpy as np
-import polars as pl
 
 from ml_meta_perf.config import load_config
-from ml_meta_perf.data import (
-    load,
-)
-from ml_meta_perf.experiment import (
-    baselines,
-    comparison,
-    correlation_analysis,
-    decision_quality,
-    leakage_demonstration,
-    model_selection,
-    run_e1,
-    run_e2,
-    run_e3,
-)
+from ml_meta_perf.experiment import run_equation
+from ml_meta_perf.terms import simplify
 from tests import corpus
-from tests.study import DATASET_COLUMN, DATASET_FEATURES, MODEL_FEATURES
-
-
-def scored(table, prefix: str) -> float:
-    """R2 of the comparison row whose label starts with ``prefix``.
-
-    By prefix because the labels carry their term count, which moves with the configuration
-    -- and these tests deliberately run a fast three-term one.
-    """
-    matched = table.filter(pl.col("equation").str.starts_with(prefix))
-    return float(matched["r2"][0])
+from tests.study import DATASET_FEATURES, MODEL_FEATURES
 
 
 class TestEquationReports(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.frame = corpus.sample()
-        cls.e1 = run_e1(cls.frame, corpus.E1)
-        cls.e3 = run_e3(cls.frame, corpus.E3)
+        cls.e1 = run_equation(cls.frame, DATASET_FEATURES, (), corpus.E1, corpus.SELECTION, "E1")
+        cls.e3 = run_equation(cls.frame, DATASET_FEATURES, MODEL_FEATURES, corpus.E3, corpus.SELECTION, "E3")
 
     def test_e1_reports_a_readable_equation(self) -> None:
-        # A count, not a number: pruning decides the length and the search horizon bounds it,
-        # so asserting the horizon exactly was asserting that pruning never fires.
+        # A count, not a number: pruning decides the length and the search horizon bounds it.
         self.assertGreater(self.e1.equation.n_terms, 0)
         self.assertLessEqual(self.e1.equation.n_terms, corpus.E1.max_terms)
         for weight in self.e1.equation.weights:
@@ -60,12 +32,10 @@ class TestEquationReports(unittest.TestCase):
             self.assertLess(abs(weight), 1e6)
 
     def test_e1_only_uses_dataset_features(self) -> None:
-
         used = {feature for term in self.e1.equation.terms for feature in term.features}
         self.assertFalse(used & set(MODEL_FEATURES))
 
-    def test_e2_uses_at_least_one_model_feature(self) -> None:
-
+    def test_e3_uses_at_least_one_model_feature(self) -> None:
         used = {feature for term in self.e3.equation.terms for feature in term.features}
         self.assertTrue(used & set(MODEL_FEATURES))
 
@@ -81,12 +51,8 @@ class TestEquationReports(unittest.TestCase):
         self.assertEqual(set(self.e3.cross_validated), {"loo_dataset", "loo_model", "loo_cell"})
 
     def test_cross_validated_scores_are_finite_and_bounded(self) -> None:
-        # Deliberately *not* asserting cross-validated <= in-sample (IS). Cross-validated
-        # predictions come from 20 different fold-equations, and that ensemble can beat a
-        # single equation when each one is heavily constrained -- which is exactly the
-        # FAST configuration used here (3 terms from a 40-term pool). At the real
-        # configuration the ordering holds at every length, but it is not an invariant of
-        # the method and asserting it was wrong.
+        # Deliberately *not* asserting cross-validated <= in-sample (IS): the fold equations can
+        # beat a single heavily constrained one, and the ordering is not an invariant of the method.
         for scores in self.e3.cross_validated.values():
             self.assertTrue(-10.0 < scores["r2"] <= 1.0)
 
@@ -96,189 +62,17 @@ class TestEquationReports(unittest.TestCase):
         self.assertIn("frequency", self.e3.stability.columns)
 
     def test_published_equations_are_already_simplified(self) -> None:
-        # A published term that ``simplify`` can still shorten is a defect: the whole
-        # claim is that the equation can be read, and ``([a] / [b]) * [b]`` says ``a`` in
-        # six symbols. ``prune`` applies it, and this is the check that it stuck.
-        from ml_meta_perf.terms import simplify
-
+        # A term that `simplify` can still shorten is a defect: `([a] / [b]) * [b]` says `a` in six symbols.
         for equation in (self.e1.equation, self.e3.equation):
             for term in equation.terms:
                 self.assertEqual(simplify(term), term, f"{term.name} is still reducible")
 
     def test_published_equations_carry_no_duplicate_terms(self) -> None:
-        # Two terms that simplify to the same expression are collinear, so the weights
-        # they get are arbitrary and the pair reads as two pieces of evidence when it is
-        # one.
+        # Two terms that simplify to the same expression are collinear: the pair reads as two
+        # pieces of evidence when it is one.
         for equation in (self.e1.equation, self.e3.equation):
             names = [term.name for term in equation.terms]
             self.assertEqual(len(names), len(set(names)))
-
-
-class TestStudyTables(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.frame = corpus.sample()
-        cls.e1 = run_e1(cls.frame, corpus.E1)
-        cls.e3 = run_e3(cls.frame, corpus.E3)
-
-    def test_e1_cannot_exceed_the_dataset_mean_ceiling(self) -> None:
-        table = comparison(self.frame, self.e1, self.e3)
-        self.assertLessEqual(scored(table, "E1, dataset only"), scored(table, "E1 reference") + 1e-9)
-
-    def test_group_equations_stay_under_their_own_ceilings(self) -> None:
-        """E1 and E2 cannot pass the ceiling their group identity sets.
-
-        This replaces an assertion that E3 also stays under the additive mean-based reference. That is not
-        an invariant and the published equation violates it: the reference bounds a predictor
-        that is a per-dataset value *plus* a per-model value, and E3's mixed terms multiply a
-        dataset feature by a model one, so they represent interactions the reference cannot. E3
-        scores above it, and that is the study's headline rather than a bug. The test only
-        passed because the fast configuration used here fits a weaker E3.
-        """
-        table = comparison(self.frame, self.e1, self.e3)
-        self.assertLessEqual(scored(table, "E1, dataset only"), scored(table, "E1 reference") + 1e-9)
-
-    def test_baselines_table_is_complete(self) -> None:
-        """Four trivial predictors at two centres each, plus the additive reference."""
-        table = baselines(self.frame)
-        self.assertEqual(table.height, 9)
-        self.assertIn("r2", table.columns)
-        names = set(table["baseline"].to_list())
-        for centre in ("mean", "median"):
-            self.assertIn(f"per-model {centre} (loo-dataset)", names)
-            self.assertIn(f"per-dataset {centre} (loo-model)", names)
-
-    def test_e2_equation_uses_no_dataset_feature(self) -> None:
-        report = run_e2(self.frame, corpus.E3)
-        used = {feature for term in report.equation.terms for feature in term.features}
-        self.assertTrue(used)
-        self.assertFalse(used & set(DATASET_FEATURES))
-
-    def test_model_selection_reports_every_dataset(self) -> None:
-        table = model_selection(self.frame, self.e3, corpus.E3)
-        self.assertEqual(table.height, self.frame[DATASET_COLUMN].n_unique())
-        self.assertTrue((table["regret"] >= 0.0).all())
-
-    def test_correlation_analysis_reports_both_correlations(self) -> None:
-        table = correlation_analysis(self.frame, corpus.E3, top=10)
-        self.assertEqual(table.height, 10)
-        for column in ("term", "pearson", "spearman", "within_pearson", "monotone_gap"):
-            self.assertIn(column, table.columns)
-
-    def test_correlation_analysis_is_ranked_by_within_group_strength(self) -> None:
-        strengths = correlation_analysis(self.frame, corpus.E3, top=10)["strength"].to_numpy()
-        self.assertTrue((np.diff(strengths) <= 1e-12).all())
-
-
-class TestWhatTheCorpusSays(unittest.TestCase):
-    """The handful of assertions that are claims about the meta-dataset rather than about a
-    function, and therefore read the real one.
-
-    Everything else in this file runs on `tests.corpus`, an eight-by-ten slice, because a
-    function either builds its table correctly or it does not and 78 rows show that as well
-    as 484 do. A *finding* is different: "dataset features explain more than model features"
-    is false on the slice -- it inverts, 0.106 against 0.362 -- and a test that asserted it
-    there would be asserting nothing about the study.
-
-    The configuration is still the cheap one. These are directional claims with large gaps,
-    and reproducing the tuned search to check the direction of a gap would be reproducing the
-    study, which is what the end-to-end CI step is for.
-    """
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.frame = load()
-        cls.e1 = run_e1(cls.frame, corpus.E1)
-        cls.e3 = run_e3(cls.frame, corpus.E3)
-
-    def test_e2_beats_e1_on_the_common_scale(self) -> None:
-        # The central claim of the study: model features carry information that dataset
-        # features cannot express, because E1 can only predict a per-dataset constant.
-        table = comparison(self.frame, self.e1, self.e3)
-        self.assertGreater(scored(table, "E3-Valid, dataset + model"), scored(table, "E1, dataset only"))
-
-    def test_the_median_baseline_is_the_harder_one_on_absolute_error(self) -> None:
-        """Why both centres are reported rather than just the mean.
-
-        MAE is minimised by the median, so a mean baseline is not minimising the metric it is
-        being compared on. On this corpus the per-dataset median is the tighter opponent for
-        MAE and SMAPE, and the mean is the tighter one for R2 -- each metric read against the
-        baseline that is hardest to beat on it.
-        """
-        rows = {row["baseline"]: row for row in baselines(self.frame).to_dicts()}
-        mean, median = rows["per-dataset mean (loo-model)"], rows["per-dataset median (loo-model)"]
-        self.assertLess(median["mae"], mean["mae"])
-        self.assertLess(median["smape"], mean["smape"])
-        self.assertGreater(mean["r2"], median["r2"])
-
-    def test_per_model_mean_beats_the_global_mean(self) -> None:
-        table = baselines(self.frame)
-        scores = dict(zip(table["baseline"].to_list(), table["r2"].to_list(), strict=True))
-        self.assertGreater(scores["per-model mean (loo-dataset)"], scores["global mean (loo-dataset)"])
-
-    def test_random_folds_look_better_than_grouped_ones(self) -> None:
-        # The leakage this project exists to warn about: a random split scores the same
-        # equation far higher because dataset identity is visible on both sides.
-        table = leakage_demonstration(self.frame, 3, corpus.E3)
-        scores = dict(zip(table["protocol"].to_list(), table["r2"].to_list(), strict=True))
-        self.assertGreater(scores["random 10-fold (leaky)"], scores["leave-one-dataset-out"])
-
-    def test_dataset_features_explain_more_than_model_features(self) -> None:
-        # The direct test of "model choice outweighs the data": on this meta-dataset it
-        # does not. Dataset identity explains more variance, and the dataset-only
-        # equation gets far closer to its own ceiling than the model-only one does.
-        table = comparison(self.frame, self.e1, self.e3)
-        self.assertGreater(scored(table, "E1, dataset only"), scored(table, "E2, model only"))
-        self.assertGreater(scored(table, "E1 reference"), scored(table, "E2 reference"))
-
-
-class TestOnlyTheValidEquationIsEvaluated(unittest.TestCase):
-    """C3: only the equation selected as E3-Valid is evaluated as a predictor.
-
-    E3-MAX bounds how far the additive form reaches. It is reported, and it must never appear
-    as a candidate in a comparison -- a bound that competes is being put forward as the
-    study's recommendation, which is precisely what it is not.
-    """
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.report = corpus.report()
-
-    def test_no_comparison_carries_the_capability_bound_as_a_predictor(self) -> None:
-        for table in (self.report.ranking_baselines, self.report.decision_baselines):
-            for predictor in table["predictor"].to_list():
-                with self.subTest(predictor=predictor):
-                    self.assertNotIn("capability", predictor.lower())
-
-    def _row(self, role: str) -> dict[str, object]:
-        """The selection-summary row for one role: E3-Valid or E3-MAX."""
-        rows = [row for row in self.report.grammars.to_dicts() if row["role"] == role]
-        self.assertEqual(len(rows), 1, f"exactly one row should hold {role}")
-        return rows[0]
-
-    def test_the_published_equation_is_the_one_the_rule_chose(self) -> None:
-        chosen = self._row("E3-Valid")
-        self.assertEqual(self.report.e3.arity, chosen["arity"])
-        self.assertEqual(self.report.e3.n_terms, chosen["n_terms"])
-        self.assertEqual(chosen["rule"], "first plateau knee")
-
-    def test_the_bound_is_the_raw_floor_maximum_under_the_wider_grammar(self) -> None:
-        chosen = self._row("E3-MAX")
-        self.assertEqual(self.report.e3_capability.arity, corpus.SELECTION.capability_arity)
-        self.assertEqual(self.report.e3_capability.n_terms, chosen["n_terms"])
-        self.assertEqual(chosen["rule"], "raw floor maximum")
-
-    def test_every_refit_uses_the_configured_grammar(self) -> None:
-        """The C3 defect, pinned. Several tables rebuild the library from a `Configuration`
-        and refit; they must all use the grammar the published equation was searched under,
-        which is the configuration's, and only E3-MAX may use the wider one."""
-        from ml_meta_perf.experiment import run
-
-        narrow = dataclasses.replace(corpus.E3, max_arity=2)
-        report = run(str(corpus.sample_path()), config=narrow, selection=corpus.SELECTION, opaque_models=corpus.DOUBLES)
-        self.assertEqual(report.e3.arity, 2)
-        self.assertLessEqual(max(len(term.features) for term in report.e3.equation.terms), 2)
-        self.assertEqual(report.e3_capability.arity, corpus.SELECTION.capability_arity)
 
 
 class TestDocumentedDefaults(unittest.TestCase):
@@ -297,7 +91,7 @@ class TestDocumentedDefaults(unittest.TestCase):
         cls.documented = {
             match.group(1): match.group(2)
             for match in re.finditer(
-                r"^\| `((?:search|selection|opaque)\.\w+)` \| ([\w.]+) \|", readme.read_text(), re.MULTILINE
+                r"^\| `((?:search|selection)\.\w+)` \| ([\w.]+) \|", readme.read_text(), re.MULTILINE
             )
         }
         cls.study = load_config()
@@ -305,7 +99,7 @@ class TestDocumentedDefaults(unittest.TestCase):
     def test_every_hyperparameter_is_documented(self) -> None:
         expected = {
             f"{section}.{field.name}"
-            for section in ("search", "selection", "opaque")
+            for section in ("search", "selection")
             for field in dataclasses.fields(getattr(self.study, section))
         }
         self.assertEqual(sorted(expected - set(self.documented)), [], "README omits a hyperparameter")
@@ -321,18 +115,38 @@ class TestDocumentedDefaults(unittest.TestCase):
                 )
 
 
-class TestDecisionQualityFallback(unittest.TestCase):
-    """When the doubly-held-out fit cannot be built the decision is scored on the LODO path."""
+class TestReportedProtocol(unittest.TestCase):
+    """Every reported cross-validated number comes from the fixed form: the terms are chosen once.
 
-    def test_the_known_path_is_used_when_there_is_no_doubly_held_out_fit(self) -> None:
+    Re-selecting the terms inside each fold answers a question about the search rather than about the
+    equation, and the two differ by up to 0.3 R2, so a silent swap would be invisible.
+    """
+
+    def test_run_equation_reports_the_fixed_form(self) -> None:
+        from ml_meta_perf.data import columns_as_arrays, groups, target
+        from ml_meta_perf.terms import build_library
+        from ml_meta_perf.validate import cross_validate_fixed_form
+
         frame = corpus.sample()
-        tiny = dataclasses.replace(load_config().search, max_terms=2, pool_size=20, beam_width=1, max_arity=1)
-        with mock.patch("ml_meta_perf.experiment.doubly_held_out_predictions", return_value=None) as spy:
-            table = decision_quality(frame, 2, tiny)
-        spy.assert_called_once()
-        self.assertGreater(table.height, 0)
-        self.assertIn("accuracy", table.columns)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        small = dataclasses.replace(corpus.E3, max_terms=3, pool_size=30, beam_width=1, max_arity=2)
+        report = run_equation(frame, DATASET_FEATURES, MODEL_FEATURES, small, corpus.SELECTION, "E3")
+        columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
+        library = build_library(
+            DATASET_FEATURES,
+            MODEL_FEATURES,
+            columns,
+            max_arity=small.max_arity,
+            max_abs_zscore=small.max_abs_zscore,
+        )
+        size = len(report.equation.terms)
+        direct = cross_validate_fixed_form(
+            library,
+            columns,
+            target(frame),
+            groups(frame, "Dataset"),
+            {size: report.equation},
+            penalty=corpus.E3.penalty,
+        )
+        self.assertAlmostEqual(
+            report.cross_validated["loo_dataset"]["r2"], direct[size].scores(target(frame)).r2, places=6
+        )

@@ -1,45 +1,23 @@
-"""ml-meta-perf -- interpretable linear meta-models for classifier performance.
+"""ml-meta-perf -- interpretable additive equations for the performance of a model on a dataset.
 
-Fits equations of the form ``MCC = w1*t1 + w2*t2 + ...`` where each term is a simple
-expression over dataset and model meta-features, and reports what they are actually
-worth under in-sample (IS), leave-one-dataset-out (LODO), leave-one-model-out (LOMO),
-and doubly held-out (DHO) evaluation.
+Fits equations of the form ``y = w0 + w1*t1 + ... + wk*tk`` where each term is a simple
+expression over dataset and model meta-features, and reports what they are actually worth
+under in-sample (IS), leave-one-dataset-out (LODO), leave-one-model-out (LOMO) and doubly
+held-out (DHO) evaluation. A study is described by a file (``config/study.json``); the
+command line is ``ml-meta-perf fit | sweep | init``.
 """
 
-from ml_meta_perf.analysis import redundancy_groups, screen
-from ml_meta_perf.attribution import group_shares, term_effects, variance_decomposition
+from ml_meta_perf.attribution import group_shares, term_effects
 from ml_meta_perf.config import (
     Configuration,
-    OpaqueConfig,
     Schema,
     SelectionConfig,
     StudyConfig,
     default_schema,
     load_config,
 )
-from ml_meta_perf.data import (
-    aggregate_by_dataset,
-    columns_as_arrays,
-    groups,
-    load,
-    model_family,
-    model_ordinals,
-    target,
-)
-from ml_meta_perf.guidance import CATALOGUE, Practice, Verdict, assess
-from ml_meta_perf.identity import ModelEffects, correct_out_of_fold, fit_effects
+from ml_meta_perf.data import columns_as_arrays, groups, load, target
 from ml_meta_perf.model import Equation
-from ml_meta_perf.practices import best_practices, concordance, concordance_summary, feature_practices
-from ml_meta_perf.report import (
-    coverage,
-    feature_usage,
-    marginal_versus_conditional,
-    operation_usage,
-    term_groups,
-    term_importance,
-    term_sentences,
-    unstable_majors,
-)
 from ml_meta_perf.search import SearchResult, prune, pruning_threshold, search
 from ml_meta_perf.selection import (
     floor_argmax,
@@ -49,57 +27,35 @@ from ml_meta_perf.selection import (
     protocol_spread,
     smoothed,
 )
+from ml_meta_perf.study import StudyReport, run_study
 from ml_meta_perf.terms import Atom, Library, Term, build_library, ratio_of_sums_terms, simplify
 from ml_meta_perf.validate import (
     CrossValidation,
     Scores,
-    additive_mean_reference,
-    baseline_group_centre,
-    baseline_group_mean,
     cross_validate_fixed_form,
-    decision_report,
     fold_selections,
-    ranking_report,
 )
 
 __version__ = "0.1.0"
 
 __all__ = [
-    "CATALOGUE",
     "Atom",
     "Configuration",
     "CrossValidation",
     "Equation",
     "Library",
-    "ModelEffects",
-    "OpaqueConfig",
-    "Practice",
     "Schema",
     "Scores",
     "SearchResult",
     "SelectionConfig",
     "StudyConfig",
+    "StudyReport",
     "Term",
-    "Verdict",
     "__version__",
-    "additive_mean_reference",
-    "aggregate_by_dataset",
-    "assess",
-    "baseline_group_centre",
-    "baseline_group_mean",
-    "best_practices",
     "build_library",
     "columns_as_arrays",
-    "concordance",
-    "concordance_summary",
-    "correct_out_of_fold",
-    "coverage",
     "cross_validate_fixed_form",
-    "decision_report",
     "default_schema",
-    "feature_practices",
-    "feature_usage",
-    "fit_effects",
     "floor_argmax",
     "floor_curve",
     "fold_selections",
@@ -108,26 +64,15 @@ __all__ = [
     "knee_lengths",
     "load",
     "load_config",
-    "marginal_versus_conditional",
-    "model_family",
-    "model_ordinals",
-    "operation_usage",
     "plateau_knee",
     "protocol_spread",
     "prune",
     "pruning_threshold",
-    "ranking_report",
     "ratio_of_sums_terms",
-    "redundancy_groups",
-    "screen",
+    "run_study",
     "search",
     "simplify",
     "smoothed",
     "target",
     "term_effects",
-    "term_groups",
-    "term_importance",
-    "term_sentences",
-    "unstable_majors",
-    "variance_decomposition",
 ]

@@ -20,7 +20,6 @@ from ml_meta_perf.config import RowFilter, default_configuration, load_config, p
 from ml_meta_perf.data import (
     Schema,
     SchemaError,
-    aggregate_by_dataset,
     columns_as_arrays,
     drop_constant_features,
     groups,
@@ -71,7 +70,6 @@ DROPPED = {
     "n_classes",
     FLEXFL_EPOCH_CAP_COLUMN,
 }
-N_MODEL_FEATURES = len(FLEXFL_MODEL_FEATURES)
 DECOMPOSITION_TARGETS = ("compute_time_total_s", "compute_time_max_s", "comm_time_total_s", "validation_time_s")
 
 
@@ -101,6 +99,7 @@ def cli_argv(
 ) -> list[str]:
     """The study command for a FlexFL target on the fixture, quiet unless told otherwise."""
     return [
+        "fit",
         *flexfl_argv(target, task_type, log_target),
         "--data",
         str(FIXTURE),
@@ -111,10 +110,16 @@ def cli_argv(
     ]
 
 
+def study_folder(output: Path, slug: str) -> Path:
+    """Where a fit on the fixture wrote ``slug``: ``<output>/<csv stem>/<slug>``."""
+    return output / FIXTURE.stem / slug
+
+
 def swept(output: Path) -> pl.DataFrame:
     """The candidates of a finished sweep, after checking it proposed a configuration."""
-    proposed = json.loads((output / "proposed_study.json").read_text())
-    candidates = pl.read_csv(output / "candidates.csv")
+    (proposal,) = output.glob("*/*/sweep/proposed_study.json")
+    proposed = json.loads(proposal.read_text())
+    candidates = pl.read_csv(proposal.parent / "candidates.csv")
     assert proposed["search"]["penalty"] in candidates["penalty"].to_list()
     assert parse_config(proposed).search.penalty == proposed["search"]["penalty"]  # a complete, parseable study file
     return candidates
@@ -190,7 +195,8 @@ class FlexFLStudyFiles(unittest.TestCase):
             out = Path(directory)
             with redirect_stdout(io.StringIO()):
                 self.assertEqual(sweep.main(search_argv(out, "total_time_s")), 0)
-            proposed = parse_config(json.loads((out / "proposed_study.json").read_text()))
+            (proposal,) = out.glob("*/*/sweep/proposed_study.json")
+            proposed = parse_config(json.loads(proposal.read_text()))
             original = self.study("total_time_s")
             self.assertEqual(
                 (proposed.corpus, proposed.response, proposed.features),
@@ -490,17 +496,34 @@ class FlexFLSchemaTests(unittest.TestCase):
                         load(path, schema)
                     self.assertEqual((stdout.getvalue(), stderr.getvalue()), ("", ""))
 
-    def test_decomposition_target_cli_outputs(self) -> None:
-        for name in DECOMPOSITION_TARGETS:
-            with self.subTest(target=name), tempfile.TemporaryDirectory() as directory:
-                out = Path(directory)
-                self.assertEqual(cli.main(cli_argv(out, name, None, True, "--quiet")), 0)
-                equation = out / "flexfl" / f"{name}-log1p" / "equation.txt"
-                self.assertTrue(equation.read_text().startswith(f"log1p({name}) = "))
-                search_out = out / "search"
-                with redirect_stdout(io.StringIO()):
-                    self.assertEqual(sweep.main(search_argv(search_out, name, None, True)), 0)
-                self.assertEqual(swept(search_out).height, 1)
+    def check_decomposition_target(self, name: str) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            self.assertEqual(cli.main(cli_argv(out, name, None, True, "--quiet")), 0)
+            equation = study_folder(out, f"{name}-log1p") / "e3" / "equation.txt"
+            self.assertTrue(equation.read_text().startswith(f"log1p({name}) = "))
+            search_out = out / "search"
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(sweep.main(search_argv(search_out, name, None, True)), 0)
+            self.assertEqual(swept(search_out).height, 1)
+
+    def test_compute_time_total_cli_outputs(self) -> None:
+        self.check_decomposition_target("compute_time_total_s")
+
+    def test_compute_time_max_cli_outputs(self) -> None:
+        self.check_decomposition_target("compute_time_max_s")
+
+    def test_comm_time_total_cli_outputs(self) -> None:
+        self.check_decomposition_target("comm_time_total_s")
+
+    def test_validation_time_cli_outputs(self) -> None:
+        self.check_decomposition_target("validation_time_s")
+
+    def test_the_decomposition_targets_are_the_four_checked_above(self) -> None:
+        self.assertEqual(
+            DECOMPOSITION_TARGETS,
+            ("compute_time_total_s", "compute_time_max_s", "comm_time_total_s", "validation_time_s"),
+        )
 
     def test_the_study_files_are_the_catalogue_of_targets(self) -> None:
         """A target is a study file; a column nobody chose to model has none."""
@@ -611,7 +634,7 @@ class FlexFLSchemaTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory)
             for entry, argv in (
-                (cli.main, ["--response.transform", "log1p"]),
+                (cli.main, ["fit", "--response.transform", "log1p"]),
                 (cli.main, cli_argv(out, "performance", "classification", True)),
                 (sweep.main, ["--response.transform", "log1p", "--output", str(out)]),
                 (sweep.main, search_argv(out, "performance", "classification", True)),
@@ -627,13 +650,24 @@ class FlexFLSchemaTests(unittest.TestCase):
             out = Path(directory)
             self.assertEqual(cli.main(cli_argv(out, "comm_bytes_total", None, False, "--quiet")), 0)
             self.assertEqual(cli.main(cli_argv(out, "comm_bytes_total", None, True, "--quiet")), 0)
-            folder = out / "flexfl" / "comm_bytes_total-log1p"
-            for name in ("equation.json", "equation.txt", "curve.csv", "term_effects.csv", "group_shares.csv"):
+            folder = study_folder(out, "comm_bytes_total-log1p")
+            for name in (
+                "e3/equation.json",
+                "e3/equation.txt",
+                "e3/curve.csv",
+                "term_effects.csv",
+                "group_shares.csv",
+                "scores.csv",
+                "report.md",
+                "manifest.json",
+            ):
                 self.assertTrue((folder / name).is_file(), name)
-            self.assertTrue((folder / "equation.txt").read_text().startswith("log1p(comm_bytes_total) = "))
-            self.assertEqual(Equation.load(folder / "equation.json").bounds, (0.0, None))
+            self.assertTrue((folder / "e3" / "equation.txt").read_text().startswith("log1p(comm_bytes_total) = "))
+            self.assertEqual(Equation.load(folder / "e3" / "equation.json").bounds, (0.0, None))
             self.assertTrue(
-                (out / "flexfl" / "comm_bytes_total" / "equation.txt").read_text().startswith("comm_bytes_total = ")
+                (study_folder(out, "comm_bytes_total") / "e3" / "equation.txt")
+                .read_text()
+                .startswith("comm_bytes_total = ")
             )
 
     def test_search_cli_runs_a_log_target(self) -> None:
@@ -684,16 +718,6 @@ class FlexFLSchemaTests(unittest.TestCase):
     def test_groups_by_fl_algo(self) -> None:
         frame = load(FIXTURE, flexfl_schema("comm_bytes_total"))
         self.assertEqual(set(groups(frame, "fl_algo")), ALGORITHMS)
-
-    def test_aggregate_by_dataset_uses_the_schema(self) -> None:
-        schema = flexfl_schema("comm_bytes_total")
-        frame = load(FIXTURE, schema)
-        aggregate = aggregate_by_dataset(frame, schema)
-        self.assertEqual(aggregate.height, 6)
-        self.assertIn("dataset", aggregate.columns)
-        actual = aggregate.filter(pl.col("dataset") == "clf_a")["comm_bytes_total"][0]
-        expected = frame.filter(pl.col("dataset") == "clf_a")["comm_bytes_total"].mean()
-        self.assertAlmostEqual(actual, expected)
 
     def test_schema_factory(self) -> None:
         with self.assertRaises(ValueError):
@@ -764,25 +788,6 @@ class FlexFLSchemaTests(unittest.TestCase):
         for protocol, path in report.paths.items():
             self.assertEqual(path[report.n_terms].clipped, 0, protocol)
 
-    def test_a_flexfl_run_warns_about_the_flags_it_ignores(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            errors = io.StringIO()
-            with redirect_stderr(errors), redirect_stdout(io.StringIO()):
-                code = cli.main(
-                    cli_argv(
-                        Path(directory),
-                        "comm_bytes_total",
-                        None,
-                        False,
-                        "--phase",
-                        "equations",
-                        "--no-figures",
-                        "--quiet",
-                    )
-                )
-            self.assertEqual(code, 0)
-            self.assertIn("ignored when the study fits only E3: --phase, --no-figures", errors.getvalue())
-
     def test_a_flexfl_run_prints_the_equation_and_its_scores(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             shown = io.StringIO()
@@ -791,17 +796,11 @@ class FlexFLSchemaTests(unittest.TestCase):
             self.assertEqual(code, 0)
             text = shown.getvalue()
             self.assertIn("log1p(comm_bytes_total) = ", text)
-            self.assertIn("IS:", text)
-            self.assertIn("R2=", text)
-            written = (Path(directory) / "flexfl" / "comm_bytes_total-log1p" / "equation.txt").read_text()
+            self.assertIn("IS", text)
+            self.assertIn("LODO", text)
+            self.assertIn("r2", text)
+            written = (study_folder(Path(directory), "comm_bytes_total-log1p") / "e3" / "equation.txt").read_text()
             self.assertTrue(written.startswith("log1p(comm_bytes_total) = "))
-
-    def test_a_flexfl_run_is_silent_when_nothing_is_ignored(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            errors = io.StringIO()
-            with redirect_stderr(errors), redirect_stdout(io.StringIO()):
-                cli.main(cli_argv(Path(directory), "comm_bytes_total", None, False, "--quiet"))
-            self.assertNotIn("ignored", errors.getvalue())
 
     def test_a_task_type_filter_needs_the_is_classification_column(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -852,17 +851,18 @@ class FlexFLSchemaTests(unittest.TestCase):
             for variable in sweep.THREAD_VARIABLES:
                 self.assertEqual(os.environ[variable], "1")
 
-    def test_a_sweep_writes_to_a_folder_of_its_own_target(self) -> None:
-        self.assertEqual(sweep.default_output(SCHEMA), "results/sweep")
-        own = flexfl_schema("total_time_s")
-        self.assertEqual(sweep.default_output(own, study=False), "results/sweep_total_time_s")
+    def test_a_sweep_writes_beside_the_result_folder_of_its_own_target(self) -> None:
+        corpus = Path("data") / "runs.csv"
         self.assertEqual(
-            sweep.default_output(flexfl_schema("total_time_s", log_target=True), study=False),
-            "results/sweep_total_time_s-log1p",
+            sweep.sweep_directory("out", corpus, flexfl_schema("total_time_s")), Path("out/runs/total_time_s/sweep")
+        )
+        self.assertEqual(
+            sweep.sweep_directory("out", corpus, flexfl_schema("total_time_s", log_target=True)),
+            Path("out/runs/total_time_s-log1p/sweep"),
         )
         self.assertNotEqual(
-            sweep.default_output(flexfl_schema("performance", "classification"), study=False),
-            sweep.default_output(flexfl_schema("performance", "regression"), study=False),
+            sweep.sweep_directory("out", corpus, flexfl_schema("performance", "classification")),
+            sweep.sweep_directory("out", corpus, flexfl_schema("performance", "regression")),
         )
 
     def test_the_sweep_summary_omits_a_missing_ranking_metric(self) -> None:
@@ -870,7 +870,7 @@ class FlexFLSchemaTests(unittest.TestCase):
         self.assertEqual(sweep._task_summary({"dho_ap": 0.8}), ", DHO AP 0.8000")
 
     def test_study_cli_argument_errors(self) -> None:
-        for argv in (["--equations", '["E1"]'], ["--equations", '["E4"]'], ["--equations", "[]"]):
+        for argv in (["fit", "--equations", '["E1"]'], ["fit", "--equations", '["E4"]'], ["fit", "--equations", "[]"]):
             with self.subTest(argv=argv), self.assertRaises(SystemExit) as error, redirect_stderr(io.StringIO()):
                 cli.main(argv)
             self.assertEqual(error.exception.code, 2)
@@ -880,13 +880,20 @@ class FlexFLSchemaTests(unittest.TestCase):
             out = Path(directory)
             code = cli.main(cli_argv(out, "comm_bytes_total", None, False, "--quiet"))
             self.assertEqual(code, 0)
-            folder = out / "flexfl" / "comm_bytes_total"
-            for name in ("equation.json", "equation.txt", "curve.csv", "term_effects.csv", "group_shares.csv"):
+            folder = study_folder(out, "comm_bytes_total")
+            for name in (
+                "e3/equation.json",
+                "e3/equation.txt",
+                "e3/curve.csv",
+                "e3-max/equation.json",
+                "term_effects.csv",
+                "group_shares.csv",
+                "scores.csv",
+            ):
                 self.assertTrue((folder / name).is_file(), name)
-            self.assertEqual(Equation.load(folder / "equation.json").bounds, (0.0, None))
-            self.assertTrue((folder / "equation.txt").read_text().startswith("comm_bytes_total = "))
-            self.assertFalse((out / "e1.json").exists())
-            self.assertFalse((out / "e3.json").exists())
+            self.assertEqual(Equation.load(folder / "e3" / "equation.json").bounds, (0.0, None))
+            self.assertTrue((folder / "e3" / "equation.txt").read_text().startswith("comm_bytes_total = "))
+            self.assertFalse((folder / "e1").exists())
 
     def test_search_cli_argument_errors(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -905,7 +912,7 @@ class FlexFLSchemaTests(unittest.TestCase):
             for column in TASK_METRICS:
                 self.assertTrue(table[column].is_null().all() or table[column].is_nan().all(), column)
             self.assertTrue(np.isfinite(table["smoothed_floor"].to_numpy()).all())
-            self.assertTrue((out / "curves.csv").is_file())
+            self.assertTrue(next(out.glob("*/*/sweep/curves.csv")).is_file())
 
     def test_search_cli_runs_performance(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -977,9 +984,9 @@ class FlexFLSchemaTests(unittest.TestCase):
             out = Path(directory)
             code = cli.main(cli_argv(out, "n_epochs", None, False, "--quiet"))
             self.assertEqual(code, 0)
-            folder = out / "flexfl" / "n_epochs"
-            self.assertTrue((folder / "equation.txt").read_text().startswith("n_epochs = "))
-            self.assertEqual(Equation.load(folder / "equation.json").bounds, (0.0, None))
+            folder = study_folder(out, "n_epochs")
+            self.assertTrue((folder / "e3" / "equation.txt").read_text().startswith("n_epochs = "))
+            self.assertEqual(Equation.load(folder / "e3" / "equation.json").bounds, (0.0, None))
             search_out = out / "search"
             stdout = io.StringIO()
             with redirect_stdout(stdout):
@@ -992,7 +999,9 @@ class FlexFLSchemaTests(unittest.TestCase):
             out = Path(directory)
             self.assertEqual(cli.main(cli_argv(out, "n_epochs", None, True, "--quiet")), 0)
             self.assertTrue(
-                (out / "flexfl" / "n_epochs-log1p" / "equation.txt").read_text().startswith("log1p(n_epochs) = ")
+                (study_folder(out, "n_epochs-log1p") / "e3" / "equation.txt")
+                .read_text()
+                .startswith("log1p(n_epochs) = ")
             )
             stderr = io.StringIO()
             with self.assertRaises(SystemExit) as error, redirect_stderr(stderr):

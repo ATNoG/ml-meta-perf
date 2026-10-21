@@ -69,11 +69,6 @@
       "worker_rate_cv"
     ]
   },
-  "side_files": {
-    "taxonomy": null,
-    "ordinals": null,
-    "glossary": null
-  },
   "equations": [
     "E3",
     "E3-MAX"
@@ -99,13 +94,6 @@
     "smoothing": 3,
     "method": "pareto_knee",
     "capability_arity": 3
-  },
-  "opaque": {
-    "forest_trees": 100,
-    "forest_max_features": 0.33,
-    "boosting_stages": 50,
-    "boosting_learning_rate": 0.1,
-    "boosting_max_depth": 3
   },
   "sweep": {
     "zscores": [

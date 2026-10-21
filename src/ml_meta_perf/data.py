@@ -1,97 +1,33 @@
 """Loading and shaping of the meta-dataset.
 
-The meta-dataset has one row per (dataset, model) pair. Two groups of columns matter
-and they behave very differently, which is why they are named separately here:
+The meta-dataset has one row per (dataset, model) pair, or per run of one dataset when the study has
+a single grouping factor. Two groups of columns matter and they behave differently, which is why they
+are named separately: dataset features are constant across every row of a given dataset, so on their
+own they can only ever predict a per-dataset constant; model features vary with the model (or the
+configuration) and may also vary with the dataset. That split, the group columns, the target and the
+range it can take are the ``corpus``, ``response`` and ``features`` sections of the study file
+(`ml_meta_perf.config.StudyConfig.schema`), not constants here.
 
-* dataset features are constant across every row of a given dataset, so on their own
-  they can only ever predict a per-dataset constant;
-* model features vary with the model, and one of them -- ``Processing Units Number`` --
-  also varies with the dataset, since it is a function of the dataset's shape. The
-  meta-dataset pipeline is the source of this schema; this module loads the generated
-  corpus and keeps the package-level column contract explicit.
+**Why a study may list more features than its equations use.** Designing a corpus needs
+*identification*: the features must name every dataset and every learner, because two rows that share
+a feature vector can never be told apart by an equation over those features. Fitting an equation needs
+*compression*. A wide feature set is right at the first stage and a short equation at the second.
 
-That asymmetry is the whole point of the two-equation comparison, so the split is part of the
-study description -- the ``features.dataset`` and ``features.model`` lists of ``config/study.json``
-(`ml_meta_perf.config.default_schema`) -- and not something each caller re-derives.
+Study chapter: [7. Other targets][study-chapter] -- what a study is made of.
 
-**Why there are eighteen features when the equation uses fewer.**
-
-The two numbers answer different questions, asked at different stages, and reading the
-second as a criticism of the first is the most natural mistake to make about this study.
-
-*Designing the corpus* comes first, before any equation exists and before anyone knows
-which terms will be worth having. The requirement there is **identification**: the
-features must name every dataset and every learner the corpus contains, because two rows
-sharing a feature vector are two rows no equation over those features can ever tell
-apart, and a difference between them is then unexplainable rather than merely
-unexplained. The right move at that stage is a wide feature set chosen for coverage. This
-corpus meets the requirement exactly -- the twelve dataset features give twenty distinct
-vectors for twenty datasets, and the six model features separate all twenty-five learners
-on every dataset, with zero ambiguous rows of 484. ``tests/test_model_features.py`` pins
-both.
-
-Two caveats belong with that claim rather than after it. The model side is **joint**, not
-standalone: five of the six are constant per model and separate only 19 of the 25 on their
-own -- ``FT-Transformer``/``TabNet``/``TabTransformer``, ``LightGBM_RF``/``XGBoost``,
-``DNN``/``MLP``, ``TabICL``/``TabPFN`` and ``BernoulliNB``/``GaussianNB`` collide -- and it
-is ``Processing Units Number``, which varies with the dataset, that breaks those ties. So
-the six identify a learner *on a given dataset*. And identification was bought with
-redundancy: descriptor columns can be strongly correlated, and
-``log(inst_to_attr) + log(nr_attr)`` **is** ``log(nr_inst)`` to 2e-15, because
-``inst_to_attr`` is defined as their ratio.
-
-*Fitting the equation* comes second, and its criterion is not coverage but **compression**.
-An equation is a statement about families of datasets and families of learners, not about
-individuals, so it is expected to need fewer features as it gets better -- and the
-redundancy above is part of what it is compressing away. E3 searches all eighteen and keeps
-fewer (``tests/test_model_features.py`` pins that it does). That is the mechanism working,
-not a shortfall in the corpus, and an equation that used all eighteen would be one that had
-failed to generalise.
-
-So a column may earn its place at either stage: a descriptor that adds little to a fit can
-still be what keeps two learners distinguishable. **Do not read absence from the equation as
-evidence against a feature**, and do not read presence as robust either -- which features an
-equation keeps is a property of one configuration and one length. The search, not the
-configuration, decides which features an equation uses: every equation is offered every
-feature it is allowed.
-
-**``nr_inst`` describes the source dataset, not the training set.** The pipeline tunes each
-model on a stratified sample capped at 100,000 rows and then evaluates on the available source
-data (one dataset is capped at 1,000,000), and ten of the twenty datasets exceed 100,000 rows --
-up to seven million. Nothing in the CSV records the size a model was trained on, so ``nr_inst``
-and ``inst_to_attr`` are properties of the corpus a dataset was drawn from, and no statement
-about "more training data" can be tested against them.
-
-Study chapter: [1. The dataset][study-chapter] -- the rationale, in
-prose, with the figures.
-
-[study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/01-dataset.md
+[study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/07-generic-targets.md
 """
 
 from __future__ import annotations
 
 import dataclasses
-import json
 import sys
-from functools import cache
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import polars as pl
 
 from ml_meta_perf.config import RowFilter, Schema, default_schema, load_config
-
-if TYPE_CHECKING:
-    pass
-
-# The MCC study's columns and features are not constants here: they are the ``corpus`` and
-# ``features`` sections of ``config/study.json`` (`ml_meta_perf.config.default_schema`).
-
-
-# The learner taxonomy, the ordinals behind the model-descriptor columns and the feature glossary
-# are not constants here either: they are the files named by ``side_files`` in ``config/study.json``,
-# read by `model_family`, `model_ordinals`, `feature_glossary` and friends below.
 
 
 def resolve_path(path: str | Path) -> Path:
@@ -113,70 +49,6 @@ def resolve_path(path: str | Path) -> Path:
 
 class SchemaError(ValueError):
     """The CSV does not carry the columns the meta-model needs, or a value is out of domain for its transform."""
-
-
-@cache
-def _read_json(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def _side_file(kind: str) -> Any:
-    """The parsed side file ``config/study.json`` names under ``side_files.<kind>``."""
-    path = getattr(load_config().side_files, kind)
-    if path is None:
-        raise SchemaError(f"this study has no {kind} file: side_files.{kind} is null in the study file")
-    resolved = resolve_path(path)
-    if not resolved.is_file():
-        raise SchemaError(f"{kind} file not found: {resolved}")
-    return _read_json(resolved)
-
-
-def _mapping(value: object, what: str, values: type) -> dict[str, Any]:
-    """``value`` as a dict of strings to ``values``, or a SchemaError saying which file part is malformed."""
-    if not isinstance(value, dict) or not all(
-        isinstance(key, str) and isinstance(item, values) for key, item in value.items()
-    ):
-        raise SchemaError(f"malformed {what}: expected a mapping from names to {values.__name__}")
-    return dict(value)
-
-
-def model_family() -> dict[str, str]:
-    """The learner family of every model, from the taxonomy file (``side_files.taxonomy``)."""
-    return _mapping(_side_file("taxonomy").get("family"), "taxonomy.family", str)
-
-
-def _family_group(name: str) -> tuple[str, ...]:
-    groups_ = _side_file("taxonomy").get("groups")
-    members = groups_.get(name) if isinstance(groups_, dict) else None
-    if not isinstance(members, list) or not all(isinstance(item, str) for item in members):
-        raise SchemaError(f"malformed taxonomy.groups.{name}: expected a list of family names")
-    return tuple(members)
-
-
-def tree_families() -> tuple[str, ...]:
-    """The families the tabular-ML literature groups together as tree-based."""
-    return _family_group("tree")
-
-
-def neural_families() -> tuple[str, ...]:
-    """The families that are neural networks, split by whether the architecture targets tabular data."""
-    return _family_group("neural")
-
-
-def model_ordinals() -> dict[str, dict[str, int]]:
-    """The assigned ordinal behind each model-descriptor column, keyed by column then by family or model."""
-    columns = _side_file("ordinals").get("columns")
-    if not isinstance(columns, dict):
-        raise SchemaError("malformed ordinals: expected a 'columns' mapping")
-    return {
-        column: _mapping(entry.get("values") if isinstance(entry, dict) else None, f"ordinals.{column}", int)
-        for column, entry in columns.items()
-    }
-
-
-def feature_glossary() -> dict[str, str]:
-    """A plain-language meaning for each feature column, from the glossary file."""
-    return _mapping(_side_file("glossary"), "glossary", str)
 
 
 def load(path: str | Path | None = None, schema: Schema | None = None) -> pl.DataFrame:
@@ -272,33 +144,6 @@ def _without_empty_response(frame: pl.DataFrame, schema: Schema, source: Path) -
     return kept
 
 
-def aggregate_by_dataset(frame: pl.DataFrame, schema: Schema | None = None) -> pl.DataFrame:
-    """Collapse to one row per schema dataset: its features plus its mean target.
-
-    **E1 is no longer fitted against this**, and the reason is worth recording. Least
-    squares on a predictor that is constant within a group lands on that group's mean
-    either way, so aggregating first looked free. It was not: it put E1's R2 on a
-    20-point denominator, which cannot be compared with E3's 484-row one, and the 0.506
-    it produced read as *better* transfer than E3's 0.466 when on the common scale it is
-    0.217. All three equations are now fitted on all 484 rows.
-
-    Kept because the aggregated view is still the right one for describing the corpus --
-    20 datasets, one row each -- and because chapter 6 quotes the comparison.
-    """
-    schema = schema or default_schema()
-    return (
-        frame.group_by(schema.dataset_column)
-        .agg(
-            [pl.col(column).first() for column in schema.dataset_features]
-            + [
-                pl.col(schema.target_column).mean().alias(schema.target_column),
-                pl.len().alias("n_models"),
-            ]
-        )
-        .sort(schema.dataset_column)
-    )
-
-
 def columns_as_arrays(frame: pl.DataFrame, features: tuple[str, ...]) -> dict[str, np.ndarray]:
     """Extract the named columns as a mapping of float arrays, the form terms consume."""
     return {name: frame[name].to_numpy().astype(np.float64) for name in features}
@@ -357,74 +202,4 @@ def drop_constant_features(frame: pl.DataFrame, schema: Schema) -> Schema:
         schema,
         dataset_features=tuple(name for name in schema.dataset_features if name not in constant),
         model_features=tuple(name for name in schema.model_features if name not in constant),
-    )
-
-
-def corpus_summary(frame: pl.DataFrame, schema: Schema | None = None) -> pl.DataFrame:
-    """The shape of the corpus: how many rows, groups, features, and how many cells absent.
-
-    Every fact a chapter would otherwise state about the size of the meta-dataset, computed
-    from the file rather than transcribed from it. Counts only -- the distribution of the
-    target is `target_summary`, kept separate so each table can print at its own precision
-    and neither has to render a count as ``484.0000``.
-    """
-    schema = schema or default_schema()
-    datasets = int(frame[schema.dataset_column].n_unique())
-    models = int(frame[schema.model_group].n_unique())
-    return pl.DataFrame(
-        [
-            {"quantity": "rows", "count": frame.height},
-            {"quantity": "datasets", "count": datasets},
-            {"quantity": "models", "count": models},
-            {"quantity": "cells absent from the dataset-by-model grid", "count": datasets * models - frame.height},
-            {"quantity": "dataset features", "count": len(schema.dataset_features)},
-            {"quantity": "model features", "count": len(schema.model_features)},
-        ],
-        schema={"quantity": pl.String, "count": pl.Int64},
-    )
-
-
-def target_summary(frame: pl.DataFrame, schema: Schema | None = None) -> pl.DataFrame:
-    """How MCC is distributed across the corpus, including how much of it is pinned.
-
-    The counts at exactly 0 and exactly 1 are here because they are the reason MAE and not
-    SMAPE is the reported error, and a reader checking that argument should be able to see
-    the counts it rests on. Their frequencies depend on the corpus; the negative
-    row is reported separately.
-
-    Not included, because it cannot be: the variation across the five seeds from which each
-    row's maximum was selected. That lives upstream, in the corpus builder, and chapter 1
-    cites it as an external audit rather than pretending this file can recompute it.
-    """
-    schema = schema or default_schema()
-    values = target(frame, schema)
-    pinned = [("at exactly 1", values == 1.0), ("at exactly 0", values == 0.0), ("below 0", values < 0.0)]
-    rows: list[dict[str, object]] = [
-        {"quantity": "mean", "MCC": float(values.mean()), "rows": frame.height},
-        {"quantity": "standard deviation", "MCC": float(values.std()), "rows": frame.height},
-        {"quantity": "minimum", "MCC": float(values.min()), "rows": int((values == values.min()).sum())},
-        {"quantity": "maximum", "MCC": float(values.max()), "rows": int((values == values.max()).sum())},
-    ]
-    rows += [{"quantity": label, "MCC": float("nan"), "rows": int(mask.sum())} for label, mask in pinned]
-    return pl.DataFrame(rows, schema={"quantity": pl.String, "MCC": pl.Float64, "rows": pl.Int64})
-
-
-def missing_cells(frame: pl.DataFrame, schema: Schema | None = None) -> pl.DataFrame:
-    """Which datasets are short of models, and how large those datasets are.
-
-    The absent cells are **not** missing at random, and the table says so on its face
-    rather than in a sentence beside it: the datasets with models missing are the smallest
-    ones in the corpus. Reported per dataset with its instance count, so a reader can see the
-    pattern instead of being told about it.
-    """
-    schema = schema or default_schema()
-    models = int(frame[schema.model_group].n_unique())
-    counts = (
-        frame.group_by(schema.dataset_column)
-        .agg(pl.len().alias("models_present"), pl.col("nr_inst").first().alias("nr_inst"))
-        .filter(pl.col("models_present") < models)
-        .sort("nr_inst")
-    )
-    return counts.with_columns((models - pl.col("models_present")).alias("models_absent")).select(
-        pl.col(schema.dataset_column).alias("dataset"), "nr_inst", "models_absent"
     )

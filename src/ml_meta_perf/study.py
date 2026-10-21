@@ -38,6 +38,8 @@ class StudyReport:
     shares: pl.DataFrame = field(default_factory=pl.DataFrame)
     #: Every equation's scores under every protocol, on the fitted scale and on the target's own.
     scores: pl.DataFrame = field(default_factory=pl.DataFrame)
+    #: Counts and ranges read off the loaded corpus: rows, datasets, models, the target's minimum and maximum.
+    facts: dict[str, float | int] = field(default_factory=dict)
 
     @property
     def valid(self) -> EquationReport:
@@ -119,7 +121,15 @@ def run_schema(
     scores = pl.concat(
         [original_scale_scores(report, frame, schema, VARIANT_NAMES[name]) for name, report in fitted.items()]
     )
-    return StudyReport(schema, fitted, effects, shares, scores)
+    facts: dict[str, float | int] = {
+        "rows": frame.height,
+        "datasets": int(frame[schema.dataset_column].n_unique()),
+        "target_min": float(frame[schema.target_column].min()),  # pyright: ignore[reportArgumentType]
+        "target_max": float(frame[schema.target_column].max()),  # pyright: ignore[reportArgumentType]
+    }
+    if schema.model_column is not None:
+        facts["models"] = int(frame[schema.model_column].n_unique())
+    return StudyReport(schema, fitted, effects, shares, scores, facts)
 
 
 def run_study(study: StudyConfig, path: str | Path | None = None) -> StudyReport:

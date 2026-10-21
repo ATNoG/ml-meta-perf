@@ -240,23 +240,6 @@ class FeaturesConfig:
     model: tuple[str, ...]
 
 
-@dataclass(frozen=True)
-class SideFilesConfig:
-    """Static facts about the corpus that are not columns of it, each in a file of its own.
-
-    ``None`` says the study has none: a corpus without a learner taxonomy simply cannot be
-    checked against guidance written in terms of learner families. Paths resolve like
-    ``corpus.path``.
-    """
-
-    #: Learner family of every model, and the groups of families (JSON).
-    taxonomy: str | None
-    #: The assigned ordinal behind each model-descriptor column, with its provenance (JSON).
-    ordinals: str | None
-    #: A plain-language meaning for each feature column (JSON).
-    glossary: str | None
-
-
 class ConfigError(ValueError):
     """The study file is well formed JSON but does not describe a usable study."""
 
@@ -322,22 +305,6 @@ class GrammarConfig:
 
 
 @dataclass(frozen=True)
-class OpaqueConfig:
-    """The opaque regressors the equation is compared against (`ml_meta_perf.opaque`).
-
-    Chosen on a grid scored under all four protocols: tuning on the held-out protocols can only
-    favour the opaque side, which is the conservative direction for this study's claim.
-    """
-
-    forest_trees: int
-    #: Share of the features considered at each split.
-    forest_max_features: float
-    boosting_stages: int
-    boosting_learning_rate: float
-    boosting_max_depth: int
-
-
-@dataclass(frozen=True)
 class SweepConfig:
     """The grid `ml_meta_perf.sweep` explores, and how it chooses among close candidates."""
 
@@ -360,7 +327,6 @@ class StudyConfig:
     corpus: CorpusConfig
     response: ResponseConfig
     features: FeaturesConfig
-    side_files: SideFilesConfig
     #: Which equations to fit: E1 (dataset features), E2 (model features), E3 (both).
     equations: tuple[str, ...]
     #: The protocols every equation is scored under, drawn from `PROTOCOLS`; a length is judged on the worst.
@@ -368,7 +334,6 @@ class StudyConfig:
     grammar: GrammarConfig
     search: Configuration
     selection: SelectionConfig
-    opaque: OpaqueConfig
     sweep: SweepConfig
 
     def schema(self) -> Schema:
@@ -395,7 +360,6 @@ def _validated(
     corpus: CorpusConfig,
     response: ResponseConfig,
     features: FeaturesConfig,
-    side_files: SideFilesConfig,
     equations: tuple[str, ...],
     protocols: tuple[str, ...],
     grammar: GrammarConfig,
@@ -407,13 +371,6 @@ def _validated(
         raise ConfigError(
             f"equations must be one of {[list(names) for names in ALLOWED_EQUATIONS]}, got {list(equations)}"
         )
-    for kind, path in (
-        ("taxonomy", side_files.taxonomy),
-        ("ordinals", side_files.ordinals),
-        ("glossary", side_files.glossary),
-    ):
-        if path is not None and not path:
-            raise ConfigError(f"side_files.{kind} is an empty path (use null for none)")
     if not corpus.dataset_column or corpus.model_column == "" or corpus.dataset_column == corpus.model_column:
         raise ConfigError(
             "corpus needs a non-empty dataset column and a model column that differs from it "
@@ -512,24 +469,21 @@ def parse_config(payload: dict[str, Any]) -> StudyConfig:
         dataset=tuple(str(name) for name in payload["features"]["dataset"]),
         model=tuple(str(name) for name in payload["features"]["model"]),
     )
-    side_files = SideFilesConfig(**payload["side_files"])
     equations = tuple(str(name) for name in payload["equations"])
     protocols = tuple(str(name) for name in payload["protocols"])
     grammar = GrammarConfig(
         exclude={str(k): tuple(str(o) for o in v) for k, v in payload["grammar"]["exclude"].items()}
     )
-    _validated(corpus, response, features, side_files, equations, protocols, grammar)
+    _validated(corpus, response, features, equations, protocols, grammar)
     return StudyConfig(
         corpus=corpus,
         response=response,
         features=features,
-        side_files=side_files,
         equations=equations,
         protocols=protocols,
         grammar=grammar,
         search=Configuration(**payload["search"]),
         selection=SelectionConfig(**payload["selection"]),
-        opaque=OpaqueConfig(**payload["opaque"]),
         sweep=SweepConfig(
             zscores=tuple(float(value) for value in sweep["zscores"]),
             penalties=tuple(float(value) for value in sweep["penalties"]),
@@ -560,7 +514,6 @@ def study_of(arguments: Any) -> StudyConfig:
         arguments.corpus,
         arguments.response,
         arguments.features,
-        arguments.side_files,
         equations,
         protocols,
         arguments.grammar,
@@ -569,13 +522,11 @@ def study_of(arguments: Any) -> StudyConfig:
         corpus=arguments.corpus,
         response=arguments.response,
         features=arguments.features,
-        side_files=arguments.side_files,
         equations=equations,
         protocols=protocols,
         grammar=arguments.grammar,
         search=arguments.search,
         selection=arguments.selection,
-        opaque=arguments.opaque,
         sweep=arguments.sweep,
     )
 

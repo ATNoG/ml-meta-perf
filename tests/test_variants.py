@@ -126,11 +126,11 @@ class TestCommandLine(unittest.TestCase):
             study["search"] |= {"max_terms": 3, "pool_size": 40, "beam_width": 1, "max_arity": 2}
             study["selection"] |= {"capability_arity": 2}
             (root / "study.json").write_text(json.dumps(study))
-            code = cli.main(["--config", str(root / "study.json"), "--output", str(root / "out"), "--quiet"])
+            code = cli.main(["fit", "--config", str(root / "study.json"), "--output", str(root / "out"), "--quiet"])
             self.assertEqual(code, 0)
-            folder = root / "out" / "flexfl" / "y"
+            folder = root / "out" / "corpus" / "y"
             for name in ("equation.json", "equation.txt", "curve.csv"):
-                self.assertTrue((folder / name).is_file(), name)
+                self.assertTrue((folder / "e3" / name).is_file(), name)
                 self.assertTrue((folder / "e3-max" / name).is_file(), name)
 
 

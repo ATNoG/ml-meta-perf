@@ -18,22 +18,13 @@ from ml_meta_perf.data import resolve_path
 PUBLIC_NAMES = frozenset(
     {
         "SchemaError",
-        "aggregate_by_dataset",
         "columns_as_arrays",
-        "corpus_summary",
         "drop_constant_features",
         "from_fit_scale",
         "groups",
-        "feature_glossary",
         "load",
-        "model_family",
-        "model_ordinals",
-        "neural_families",
-        "tree_families",
         "resolve_path",
-        "missing_cells",
         "target",
-        "target_summary",
         "to_fit_scale",
     }
 )

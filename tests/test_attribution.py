@@ -13,11 +13,9 @@ from ml_meta_perf.attribution import (
     contributions,
     group_shares,
     term_effects,
-    variance_decomposition,
 )
 from ml_meta_perf.model import LOWERS, RAISES, Equation
 from ml_meta_perf.terms import Atom, Term
-from tests.study import DATASET_COLUMN, MODEL_COLUMN
 
 DATASET = ("d1", "d2")
 MODEL = ("m1", "m2")
@@ -124,36 +122,6 @@ class TestGroupShares(unittest.TestCase):
         table = group_shares(only_dataset, columns(), DATASET, MODEL)
         shares = dict(zip(table["group"].to_list(), table["share"].to_list(), strict=True))
         self.assertAlmostEqual(shares[DATASET_ONLY], 1.0, places=6)
-
-
-class TestVarianceDecomposition(unittest.TestCase):
-    def test_perfectly_separated_groups_explain_everything(self) -> None:
-        target = np.array([0.1, 0.1, 0.9, 0.9])
-        datasets = np.array(["a", "a", "b", "b"])
-        models = np.array(["x", "y", "x", "y"])
-        table = variance_decomposition(target, datasets, models)
-        scores = dict(zip(table["knowing only"].to_list(), table["variance_explained"].to_list(), strict=True))
-        self.assertAlmostEqual(scores["dataset identity"], 1.0)
-        self.assertAlmostEqual(scores["model identity"], 0.0)
-
-    def test_counts_the_groups(self) -> None:
-        table = variance_decomposition(np.array([0.1, 0.2, 0.3]), np.array(["a", "b", "c"]), np.array(["x", "x", "y"]))
-        counts = dict(zip(table["knowing only"].to_list(), table["n_groups"].to_list(), strict=True))
-        self.assertEqual(counts["dataset identity"], 3)
-        self.assertEqual(counts["model identity"], 2)
-
-    def test_constant_target_is_zero_not_nan(self) -> None:
-        table = variance_decomposition(np.ones(4), np.array(["a", "a", "b", "b"]), np.array(["x", "y", "x", "y"]))
-        self.assertTrue(np.all(np.isfinite(table["variance_explained"].to_numpy())))
-
-    def test_real_data_puts_dataset_above_model(self) -> None:
-        # The empirical answer to "does model choice matter more than the data".
-        from ml_meta_perf.data import groups, load, target
-
-        frame = load()
-        table = variance_decomposition(target(frame), groups(frame, DATASET_COLUMN), groups(frame, MODEL_COLUMN))
-        scores = dict(zip(table["knowing only"].to_list(), table["variance_explained"].to_list(), strict=True))
-        self.assertGreater(scores["dataset identity"], scores["model identity"])
 
 
 if __name__ == "__main__":

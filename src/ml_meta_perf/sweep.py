@@ -44,20 +44,13 @@ from typing import Any
 
 import numpy as np
 import polars as pl
-from jsonargparse import ActionConfigFile, ArgumentParser  # pyright: ignore[reportPrivateImportUsage]
+from jsonargparse import ArgumentParser, Namespace  # pyright: ignore[reportPrivateImportUsage]
 
+from ml_meta_perf.arguments import study_parser
 from ml_meta_perf.config import (
-    DEFAULT_CONFIG_PATH,
-    EQUATIONS,
     ConfigError,
     Configuration,
-    CorpusConfig,
-    FeaturesConfig,
-    GrammarConfig,
-    OpaqueConfig,
-    ResponseConfig,
     SelectionConfig,
-    SideFilesConfig,
     StudyConfig,
     SweepConfig,
     default_schema,
@@ -68,6 +61,7 @@ from ml_meta_perf.data import (
     drop_constant_features,
     groups,
     load,
+    resolve_path,
     target,
 )
 from ml_meta_perf.selection import JUDGED_PROTOCOLS, floor_curve, plateau_start, smoothed
@@ -84,6 +78,15 @@ def grid(study: StudyConfig) -> list[Configuration]:
         dataclasses.replace(study.search, max_abs_zscore=zscore, penalty=penalty, max_arity=arity)
         for zscore, penalty, arity in itertools.product(study.sweep.zscores, study.sweep.penalties, study.sweep.arities)
     ]
+
+
+def has_task_metrics(schema: Schema) -> bool:
+    """Whether the DHO ranking and go/no-go metrics apply: a score in [-1, 1] scored under DHO.
+
+    They rank the models within each dataset and call a model good above ``DECISION_THRESHOLD``,
+    which only means something for a bounded performance score such as MCC. A cost has no threshold.
+    """
+    return "DHO" in schema.protocols and schema.bounds == (-1.0, 1.0)
 
 
 TASK_METRICS = ("dho_ap", "dho_mrr", "dho_hit_at_1", "dho_regret", "dho_accuracy", "dho_mcc")
@@ -112,13 +115,13 @@ def evaluate(
 ) -> tuple[dict[str, Any], pl.DataFrame]:
     """One configuration: its curve, its chosen length, and that length's DHO task metrics.
 
-    ``with_tasks`` says whether the target has go/no-go task metrics to score (MCC does, a cost does
-    not); by default it is whether the schema is the one ``config/study.json`` describes.
+    ``with_tasks`` says whether the target has go/no-go task metrics to score (a performance score in
+    [-1, 1] does, a cost does not); by default it is `has_task_metrics` of the schema.
     """
     from ml_meta_perf.experiment import fit_path
 
     schema = schema or default_schema()
-    is_mcc = (schema == default_schema()) if with_tasks is None else with_tasks
+    is_mcc = has_task_metrics(schema) if with_tasks is None else with_tasks
     frame = load(data, schema)
     if schema.drop_constant_features:
         schema = drop_constant_features(frame, schema)
@@ -179,56 +182,31 @@ def _task_summary(chosen: dict[str, Any]) -> str:
     return "" if np.isnan(value) else f", DHO AP {value:.4f}"
 
 
-def default_output(schema: Schema, study: bool = True) -> str:
-    """Where a sweep writes unless told otherwise: one folder per target, so runs never overwrite each other.
-
-    ``study`` is whether the schema is the study file's own, which keeps the plain ``results/sweep``.
-    """
-    return "results/sweep" if study else f"results/sweep_{schema.slug}"
+def sweep_directory(root: str | Path, corpus: Path, schema: Schema) -> Path:
+    """``<root>/<csv stem>/<target>[-tags]/sweep``: beside the result folder of the same study."""
+    return Path(root) / corpus.stem / schema.slug / "sweep"
 
 
 def build_parser() -> ArgumentParser:
-    parser = ArgumentParser(
-        prog="ml-meta-perf-search",
-        description="Sweep the shared hyperparameters and propose config/study.json.",
-        default_config_files=[str(DEFAULT_CONFIG_PATH)],
-    )
-    parser.add_argument("--config", action=ActionConfigFile, help="study configuration JSON")
-    parser.add_argument("--corpus", type=CorpusConfig, help="the corpus CSV and its group columns")
-    parser.add_argument("--response", type=ResponseConfig, help="the target column and its bounds")
-    parser.add_argument("--features", type=FeaturesConfig, help="the dataset and model feature columns")
+    parser = study_parser("ml-meta-perf sweep", "Sweep the shared hyperparameters and propose a study file.")
     parser.add_argument(
-        "--side_files", type=SideFilesConfig, help="static facts about the corpus (taxonomy, ordinals, glossary)"
-    )
-    parser.add_argument("--equations", type=tuple[str, ...], help="which equations to fit: E1, E2, E3")
-    parser.add_argument("--protocols", type=tuple[str, ...], help="the protocols to score under: IS, LODO, LOMO, DHO")
-    parser.add_argument("--grammar", type=GrammarConfig, help="operations a feature may not take part in")
-    parser.add_argument("--search", type=Configuration, help="the base configuration the grid varies")
-    parser.add_argument("--selection", type=SelectionConfig, help="the length rule applied to every point")
-    parser.add_argument("--opaque", type=OpaqueConfig, help="carried into the proposal unchanged")
-    parser.add_argument("--sweep", type=SweepConfig, help="the grid and the choice among close candidates")
-    parser.add_argument("--data", type=str | None, default=None, help="meta-dataset CSV")
-    parser.add_argument(
-        "--output",
-        type=str | None,
-        default=None,
-        help="sweep output directory (default: results/sweep, or results/sweep_<slug> for a FlexFL target)",
+        "--output", type=str, default="out", help="output directory; the sweep goes under <csv stem>/<target>/sweep"
     )
     parser.add_argument("--jobs", type=int, default=0, help="parallel workers; 0 uses every CPU")
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
-    arguments = parser.instantiate(parser.parse_args(argv))
+def run(arguments: Namespace, parser: ArgumentParser) -> int:
     try:
         study = study_of(arguments)
     except ConfigError as error:
         parser.error(str(error))
-    own = study.equations == EQUATIONS
+        return 2
     schema = study.schema()
+    own = has_task_metrics(schema)
     points = grid(study)
-    output = Path(arguments.output or default_output(schema, own))
+    corpus = Path(arguments.data) if arguments.data else resolve_path(study.corpus.path)
+    output = sweep_directory(arguments.output, corpus, schema)
     output.mkdir(parents=True, exist_ok=True)
     jobs = arguments.jobs or os.cpu_count() or 1
     print(f"{len(points)} configurations on {jobs} workers", flush=True)
@@ -236,7 +214,7 @@ def main(argv: list[str] | None = None) -> int:
     arguments_per_point = (
         points,
         itertools.repeat(study.selection),
-        itertools.repeat(arguments.data),
+        itertools.repeat(str(corpus)),
         itertools.repeat(schema),
         itertools.repeat(own),
     )
@@ -272,6 +250,13 @@ def main(argv: list[str] | None = None) -> int:
         f"written to {output} in {elapsed:.0f} s"
     )
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """``ml-meta-perf-search``: the sweep as a command of its own (``ml-meta-perf sweep`` is the same)."""
+    parser = build_parser()
+    arguments: Namespace = parser.instantiate_classes(parser.parse_args(argv))  # pyright: ignore[reportAssignmentType]
+    return run(arguments, parser)
 
 
 if __name__ == "__main__":

@@ -165,7 +165,7 @@ A study with a single grouping factor (one NN family trained in several ways, as
 leave $c_m$ out (`null`); it fits E3 over its features and its protocols are the ones the groups it
 has can define (section 7.2a).
 
-$\mathcal{S}$ is read from three sections of `config/study.json`, and the facts that are not columns of the corpus come from a fourth:
+$\mathcal{S}$ is read from the sections of `config/study.json`:
 
 | symbol | section and key |
 |---|---|
@@ -176,16 +176,7 @@ $\mathcal{S}$ is read from three sections of `config/study.json`, and the facts 
 | $\Pi$ | `protocols` |
 | $X$ | `grammar.exclude` |
 
-Static facts about the corpus that are not columns of it sit in the `side_files` section, each a
-JSON file beside the CSV: a taxonomy $\varphi : M \to \Phi$ giving the learner family of every
-model $m \in M$ (and the families grouped as tree-based or neural), the assigned ordinal
-$o_k : M \text{ or } \Phi \to \mathbb{N}$ behind each model-descriptor column $k$ with its
-provenance, and a glossary mapping each feature to its meaning. A study without one says `null`,
-and anything that needs it fails with a message naming the missing file instead of guessing.
-Totality is checked: $\varphi$ is defined on every model that occurs in the corpus, the glossary
-on every feature, and the tree and neural groups are disjoint (`tests/test_data.py`).
-
-`StudyConfig.schema()` turns the first three into the `Schema` object the loader and the fit consume, and
+`StudyConfig.schema()` turns them into the `Schema` object the loader and the fit consume, and
 `default_schema()` returns the one `config/study.json` describes. The file is checked when it is
 read, before any data is: the two group columns must differ, the bounds must satisfy $a < b$,
 each feature list must be non-empty, no column may be listed twice or play two roles

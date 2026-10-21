@@ -1,6 +1,6 @@
 # FlexFL targets
 
-Both commands also fit FlexFL's per-run meta-dataset, one row per federated learning (FL) run,
+`ml-meta-perf fit` and `ml-meta-perf sweep` also work on FlexFL's per-run meta-dataset, one row per federated learning (FL) run,
 assembled by FlexFL's `scripts/assemble_meta_dataset.py`. The abbreviations used below are
 coefficient of determination (**R²**), mean absolute error (**MAE**), leave-one-dataset-out
 (**LODO**), leave-one-model-out (**LOMO**) and doubly held out (**DHO**).
@@ -65,11 +65,9 @@ worst-protocol score over arities 1 to `search.max_arity`, and takes its knee, s
 the number of terms come from it (chapter 7, section 7.6). **E3-MAX** is the best score the
 configuration reaches: the raw maximum of the floor at `selection.capability_arity`; it bounds what
 the additive form can do and is written to `e3-max/`. There is no E1 or E2,
-and none of the MCC study's baselines, practices, figures or chapters. Features constant in the
+Features constant in the
 loaded frame are removed before the term library is built.
-The MCC study's flags `--phase`, `--no-figures`, `--no-report` and `--no-tables` have no meaning when only E3 is fitted;
-giving one prints a warning on stderr and is otherwise ignored. The saved `equation.json` carries
-the equation's `target` label and its `bounds`.
+The saved `equation.json` carries the equation's `target` label and its `bounds`.
 
 A target open on one side (every cost) prunes terms whose contribution spans less than 0.002 times
 the target's 1st-to-99th percentile spread divided by 2; a target bounded on both sides scales 0.002
@@ -103,20 +101,20 @@ are read as group offsets.
 ## Commands
 
 ```bash
-# E3-Valid and E3-MAX; writes equation.json, equation.txt, curve.csv, term_effects.csv,
-# group_shares.csv and scores.csv (fit scale and the target's own scale) under results/flexfl/<slug>/, and the E3-MAX equation under .../e3-max/
-ml-meta-perf --config config/flexfl/total_time_s.json --data meta_dataset.csv
+# E3-Valid and E3-MAX: <output>/<csv stem>/<target>/{e3,e3-max}/, scores.csv (fit scale and the
+# target's own scale), term_effects.csv, group_shares.csv, report.md and manifest.json
+ml-meta-perf fit --config config/flexfl/total_time_s.json --data meta_dataset.csv
 
 # the same target on the log scale
-ml-meta-perf --config config/flexfl/total_time_s.json --response.transform log1p --data meta_dataset.csv
+ml-meta-perf fit --config config/flexfl/total_time_s.json --response.transform log1p --data meta_dataset.csv
 
 # tune its hyperparameters; writes a complete proposed study file for review
-ml-meta-perf-search --config config/flexfl/total_time_s.json --data meta_dataset.csv
+ml-meta-perf sweep --config config/flexfl/total_time_s.json --data meta_dataset.csv
 ```
 
-The sweep fits the same grid as for MCC and writes to `results/sweep_<slug>/` unless `--output`
-says otherwise, so it never overwrites the MCC proposal. Its `proposed_study.json` is the study
-file with the tuned values, ready to replace the one it came from. FlexFL targets have no
-go/no-go threshold and no model ranking to score, so the DHO task-metric columns of
-`candidates.csv` are empty, and among the configurations tied on R² at a readable length the
-proposal goes to fewer terms, then lower arity, then the heavier penalty.
+The sweep fits a grid of `max_abs_zscore`, `penalty` and `max_arity`, and writes to
+`<output>/<csv stem>/<target>/sweep/`, beside the result folder of the same study. Its
+`proposed_study.json` is the study file with the tuned values, ready to replace the one it came
+from. FlexFL targets have no go/no-go threshold and no model ranking to score, so the DHO
+task-metric columns of `candidates.csv` are empty, and among the configurations tied on R² at a
+readable length the proposal goes to fewer terms, then lower arity, then the heavier penalty.

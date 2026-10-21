@@ -1,62 +1,37 @@
-"""The one entry point that runs every phase of the study: ``python -m ml_meta_perf``.
+"""The command line: ``ml-meta-perf fit | sweep | init``.
 
-Given a meta-dataset it screens the term library, fits E1, E2, E3-Valid and E3-MAX,
-cross-validates them under the retained grouped protocols, extracts the
-practices, writes the figures and generates the written report -- in one command, from
-one set of parameters, so a result can be reproduced by repeating the command line rather
-than by rerunning a notebook in the right order.
+* ``fit`` reads a study file, fits the equations it lists on its corpus, scores them under the
+  protocols it names and writes the result folder (`ml_meta_perf.output`).
+* ``sweep`` searches the shared hyperparameters and proposes a study file (`ml_meta_perf.sweep`).
+* ``init`` writes a study file for a CSV (`ml_meta_perf.skeleton`).
 
-Every hyperparameter comes from ``config/study.json`` -- the command line holds no tuned
-default of its own -- so a bare ``python -m ml_meta_perf`` reproduces the reported run. The
-file is read with `jsonargparse`: ``--config other.json`` replaces it, any field can be
-overridden as a dotted flag (``--search.penalty 3``, ``--selection.delta 0.02``), and
-``--print_config`` shows the effective configuration.
+Every hyperparameter comes from the study file -- the command line holds no tuned default of its
+own -- so a bare ``ml-meta-perf fit`` reproduces ``config/study.json``. The file is read with
+`jsonargparse`: ``--config other.json`` replaces it, any field can be overridden as a dotted flag
+(``--search.penalty 3``) and ``--print_config`` shows the effective study.
 
-Study chapter: [4. The equation][study-chapter] -- the rationale, in
-prose, with the figures.
+Study chapter: [7. Other targets][study-chapter] -- what a study is made of.
 
-[study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/04-equation.md
+[study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/07-generic-targets.md
 """
 
 from __future__ import annotations
 
+import json
 import sys
 import time
 from pathlib import Path
 
-import numpy as np
 import polars as pl
-from jsonargparse import ActionConfigFile, ArgumentParser, Namespace  # pyright: ignore[reportPrivateImportUsage]
+from jsonargparse import ArgumentParser, Namespace  # pyright: ignore[reportPrivateImportUsage]
 
-from ml_meta_perf.config import (
-    DEFAULT_CONFIG_PATH,
-    SINGLE_EQUATIONS,
-    ConfigError,
-    Configuration,
-    CorpusConfig,
-    FeaturesConfig,
-    GrammarConfig,
-    OpaqueConfig,
-    ResponseConfig,
-    SelectionConfig,
-    SideFilesConfig,
-    SweepConfig,
-    default_schema,
-    study_of,
-)
-from ml_meta_perf.data import (
-    columns_as_arrays,
-    load,
-    resolve_path,
-    target,
-)
-from ml_meta_perf.experiment import PROTOCOL_NAMES, Report, run
-from ml_meta_perf.practices import render as render_practices
-from ml_meta_perf.report import term_importance, write_into_chapters
-from ml_meta_perf.study import run_study
-
-#: What ``--phase`` accepts. ``all`` is the default and is what the study runs.
-PHASES = ("screen", "equations", "validation", "practices", "figures", "report")
+from ml_meta_perf import __version__, sweep
+from ml_meta_perf.arguments import study_parser
+from ml_meta_perf.config import ConfigError, study_of
+from ml_meta_perf.data import SchemaError, resolve_path
+from ml_meta_perf.output import OverwriteError, study_directory, write_study
+from ml_meta_perf.skeleton import skeleton
+from ml_meta_perf.study import StudyReport, run_study
 
 
 def _section(title: str) -> None:
@@ -73,348 +48,119 @@ def _configure_windows_output() -> None:
     if sys.platform != "win32":
         return
     reconfigure = getattr(sys.stdout, "reconfigure", None)
-    if callable(reconfigure):
+    if reconfigure is not None:
         reconfigure(encoding="utf-8", errors="replace")
 
 
-def render(
-    report: Report,
-    phases: frozenset[str] = frozenset(PHASES),
-    columns: dict[str, np.ndarray] | None = None,
-) -> None:
-    """Print the full study to stdout, restricted to the requested phases.
-
-    ``columns`` is the feature matrix the report was fitted on. It is passed in rather
-    than reloaded because reloading would use the default meta-dataset, which is the
-    wrong one whenever ``--data`` was given.
-    """
-    if columns is None:
-        columns = columns_as_arrays(load(), default_schema().features)
-
-    if "screen" in phases:
-        _section("Correlation screening -- linear vs monotone association with MCC")
-        _show(report.correlations)
-
-    if "equations" in phases:
-        print(
-            "Evaluation protocols: in-sample (IS), leave-one-dataset-out (LODO), "
-            "leave-one-model-out (LOMO), and doubly held out (DHO)."
-        )
-        _section("E1 -- dataset features only (fitted on all rows)")
-        print(report.e1.equation)
-        print(f"\nIS: {report.e1.in_sample}")
-        for label, scores in report.e1.cross_validated.items():
-            print(f"{PROTOCOL_NAMES.get(label, label)}: {scores}")
-        print("\naccuracy vs number of terms:")
-        _show(report.e1.curve)
-
-        _section("E2 -- model features only (the control for 'model choice dominates')")
-        print(report.e2.equation)
-        print(f"\nIS: {report.e2.in_sample}")
-        for label, scores in report.e2.cross_validated.items():
-            print(f"{PROTOCOL_NAMES.get(label, label)}: {scores}")
-
-        _section("E3 -- dataset + model features (fitted on all rows)")
-        print(report.e3.equation)
-        print(f"\nIS: {report.e3.in_sample}")
-        for label, scores in report.e3.cross_validated.items():
-            print(f"{PROTOCOL_NAMES.get(label, label)}: {scores}")
-        print("\naccuracy vs number of terms:")
-        _show(report.e3.curve)
-        if report.e3.stability is not None:
-            print("\nterm stability across LODO folds:")
-            _show(report.e3.stability.head(20))
-
-    if "practices" in phases:
-        _section("Where the signal lives")
-        print("variance of MCC explained by identity alone (no equation involved):")
-        _show(report.decomposition)
-        print("\nshare of E3's output variance, by which features its terms use:")
-        _show(report.shares)
-
-        _section("Term importance -- ranked by standardised weight, major terms flagged")
-        _show(
-            term_importance(
-                report.e3.equation,
-                columns,
-                default_schema().dataset_features,
-                default_schema().model_features,
-                report.e3.stability,
-            )
-        )
-
-        _section("Extracted practices")
-        print(render_practices(report.practices))
-        print("\nevidence:")
-        _show(report.practices.select("feature", "n_terms", "direction", "effect", "stability", "confidence"))
-
-        _section("What each term is worth (MCC units)")
-        _show(report.effects)
-
-    if "validation" in phases:
-        _section("E3-Valid and E3-MAX selection")
-        _show(report.grammars)
-
-        _section("E1 vs E2 vs E3 on the common scale (all rows)")
-        _show(report.comparison)
-
-        _section("Oracle ladder -- what each interaction component would be worth")
-        _show(report.oracles)
-        _section("How much of the leading interaction the equation reaches")
-        _show(report.interaction)
-
-        _section("Baselines")
-        _show(report.baselines)
-
-        _section("Validation protocol matters (same equation, different splits)")
-        _show(report.leakage)
-
-        _section("Go/no-go decision quality on held-out datasets")
-        _show(report.decision)
-
-        _section("Model selection on held-out datasets")
-        _show(report.selection)
-        print(
-            f"\nmean spearman = {report.selection['spearman'].mean():.3f}   "
-            f"mean top-1 regret = {report.selection['regret'].mean():.3f}"
-        )
+def fit_parser() -> ArgumentParser:
+    parser = study_parser("ml-meta-perf fit", "Fit the equations a study file lists and write the result folder.")
+    parser.add_argument(
+        "--output", type=str, default="out", help="root of the result folders (<root>/<csv stem>/<target>)"
+    )
+    parser.add_argument("--force", action="store_true", help="replace a result folder made from a different corpus")
+    parser.add_argument("--quiet", action="store_true", help="write files without printing the study")
+    return parser
 
 
-def _save_tables(report: Report, folder: Path) -> list[Path]:
-    """Every table the study produced, as CSV, for a paper's tables and plots."""
-    tables: dict[str, pl.DataFrame] = {
-        "correlations": report.correlations,
-        "reach": report.reach,
-        "ceiling": report.ceiling,
-        "curve_e1": report.e1.curve,
-        "curve_e2": report.e2.curve,
-        "curve_e3": report.e3.curve,
-        "comparison": report.comparison,
-        "baselines": report.baselines,
-        "ranking_baselines": report.ranking_baselines,
-        "decision_baselines": report.decision_baselines,
-        "leakage": report.leakage,
-        "oracles": report.oracles,
-        "interaction": report.interaction,
-        "decision": report.decision,
-        "selection": report.selection,
-        "decomposition": report.decomposition,
-        "shares": report.shares,
-        "term_effects": report.effects,
-        "feature_practices": report.feature_practices,
-        "practices": report.practices,
-        "length_choice": report.length_choice,
-        "grammars": report.grammars,
-        "optimism": report.optimism,
-    }
-    if report.e3.stability is not None:
-        tables["stability"] = report.e3.stability
-    written: list[Path] = []
-    for name, frame in tables.items():
-        path = folder / f"{name}.csv"
-        frame.write_csv(path)
-        written.append(path)
-    return written
+def init_parser() -> ArgumentParser:
+    parser = ArgumentParser(prog="ml-meta-perf init", description="Write a study file for a corpus CSV.")
+    parser.add_argument("corpus", type=str, help="the corpus CSV")
+    parser.add_argument("--dataset", type=str, required=True, help="column naming the dataset (first grouping factor)")
+    parser.add_argument("--response", type=str, required=True, help="the target column")
+    parser.add_argument("--model", type=str | None, default=None, help="column naming the model, when there is one")
+    parser.add_argument(
+        "--bounds", type=str | None, default=None, help='the range the target can take, e.g. "[0, null]"'
+    )
+    parser.add_argument("--transform", type=str, default="none", help="the scale to fit on: none, log1p or log")
+    parser.add_argument("--output", type=str, default="study.json", help="the study file to write")
+    parser.add_argument("--force", action="store_true", help="overwrite an existing study file")
+    return parser
 
 
 def build_parser() -> ArgumentParser:
     parser = ArgumentParser(
         prog="ml-meta-perf",
         description=(
-            "Fit interpretable equations predicting MCC from dataset and model meta-features, "
-            "validate them under leave-one-group-out, and write the figures and the report."
+            "Interpretable additive equations for a performance measure, fitted from dataset and model "
+            "meta-features and validated by leave-one-group-out."
         ),
-        default_config_files=[str(DEFAULT_CONFIG_PATH)],
     )
-    parser.add_argument(
-        "--config",
-        action=ActionConfigFile,
-        help=f"study configuration JSON (default: {DEFAULT_CONFIG_PATH.name} in config/)",
-    )
-    # The hyperparameters. Their values live only in the configuration file; each field can be
-    # overridden as a dotted flag, e.g. `--search.penalty 3`.
-    parser.add_argument("--corpus", type=CorpusConfig, help="the corpus CSV and its group columns")
-    parser.add_argument("--response", type=ResponseConfig, help="the target column and its bounds")
-    parser.add_argument("--features", type=FeaturesConfig, help="the dataset and model feature columns")
-    parser.add_argument(
-        "--side_files", type=SideFilesConfig, help="static facts about the corpus (taxonomy, ordinals, glossary)"
-    )
-    parser.add_argument("--equations", type=tuple[str, ...], help="which equations to fit: E1, E2, E3")
-    parser.add_argument("--protocols", type=tuple[str, ...], help="the protocols to score under: IS, LODO, LOMO, DHO")
-    parser.add_argument("--grammar", type=GrammarConfig, help="operations a feature may not take part in")
-    parser.add_argument("--search", type=Configuration, help="search hyperparameters shared by E1, E2 and E3")
-    parser.add_argument("--selection", type=SelectionConfig, help="the equation-length rule")
-    parser.add_argument("--opaque", type=OpaqueConfig, help="the opaque regressors' sizes")
-    parser.add_argument("--sweep", type=SweepConfig, help="the grid `ml-meta-perf-search` explores (unused here)")
-
-    parser.add_argument(
-        "--data", type=str | None, default=None, help="meta-dataset CSV (default: dataset/meta_dataset.csv)"
-    )
-    parser.add_argument("--output", type=str, default="results", help="directory for the equations and CSV tables")
-    parser.add_argument("--figures", type=str, default="assets/figures", help="directory for the generated figures")
-    # The generated results go *into* the chapters that discuss them, between markers, rather
-    # than into a report of their own. Everything outside the markers is hand-written and never
-    # touched; everything inside is rewritten on every run, so a chapter cannot carry a stale table.
-    parser.add_argument(
-        "--docs", type=str, default="assets/docs", help="chapters whose generated sections are rewritten"
-    )
-    parser.add_argument("--readme", type=str, default="README.md", help="README whose generated headline is rewritten")
-    parser.add_argument("--no-figures", action="store_true", help="skip figure generation")
-    parser.add_argument("--no-report", action="store_true", help="skip rewriting the generated chapter sections")
-    parser.add_argument("--no-tables", action="store_true", help="skip the CSV tables")
-    parser.add_argument("--quiet", action="store_true", help="write files without printing the study")
-    parser.add_argument(
-        "--phase",
-        type=str | None,
-        default=None,
-        help=f"comma-separated phases to run (default: all): {', '.join(PHASES)}",
-    )
+    parser.add_argument("--version", action="version", version=f"ml-meta-perf {__version__}")
+    commands = parser.add_subcommands(required=True)
+    commands.add_subcommand("fit", fit_parser(), help="fit and validate the equations of a study")
+    commands.add_subcommand("sweep", sweep.build_parser(), help="search the shared hyperparameters")
+    commands.add_subcommand("init", init_parser(), help="write a study file for a corpus CSV")
     return parser
 
 
-def _run_fit_cli(arguments: Namespace) -> int:
-    """Fit the one E3 equation of a study that asks for it, and write its outputs."""
-    schema = study_of(arguments).schema()
-    ignored = [
-        flag
-        for flag, given in (
-            ("--phase", arguments.phase is not None),
-            ("--no-figures", arguments.no_figures),
-            ("--no-report", arguments.no_report),
-            ("--no-tables", arguments.no_tables),
-        )
-        if given
-    ]
-    if ignored:
-        print(f"ignored when the study fits only E3: {', '.join(ignored)}", file=sys.stderr)
+def _print_report(report: StudyReport) -> None:
+    schema = report.schema
+    for name, equation in report.equations.items():
+        _section(f"{name}: {schema.label}  ({equation.n_terms} terms, arity {equation.arity})")
+        print(equation.equation)
+    scale = "original" if schema.log_target else "fit"
+    _section(f"scores ({'on ' + schema.target_column + ' itself' if schema.log_target else 'on the target'})")
+    _show(report.scores.filter(pl.col("scale") == scale).drop("scale"))
+    if not report.shares.is_empty():
+        _section("which features carry E3-Valid")
+        _show(report.shares)
+
+
+def run_fit(arguments: Namespace) -> int:
+    study = study_of(arguments)
+    corpus = Path(arguments.data) if arguments.data else resolve_path(study.corpus.path)
     started = time.perf_counter()
-    corpus = arguments.data or resolve_path(arguments.corpus.path)
-    report = run_study(study_of(arguments), corpus)
+    report = run_study(study, corpus)
     elapsed = time.perf_counter() - started
     if not arguments.quiet:
-        _section(f"E3: {schema.label}")
-        print(report.valid.equation)
-        print(f"\nIS: {report.valid.in_sample}")
-        for label, scores in report.valid.cross_validated.items():
-            print(f"{PROTOCOL_NAMES.get(label, label)}: R2={scores['r2']:.3f}, MAE={scores['mae']:.3f}")
-        _show(report.shares)
-        if schema.log_target:
-            _section(f"scores on {schema.target_column} itself (back-transformed)")
-            _show(report.scores.filter(pl.col("scale") == "original").drop("scale"))
-        if report.maximum is not None:
-            _section(f"E3-MAX: {schema.label}")
-            print(report.maximum.equation)
-            for label, scores in report.maximum.cross_validated.items():
-                print(f"{PROTOCOL_NAMES.get(label, label)}: R2={scores['r2']:.3f}, MAE={scores['mae']:.3f}")
-    if arguments.output:
-        destination = Path(arguments.output) / "flexfl" / schema.slug
-        destination.mkdir(parents=True, exist_ok=True)
-        report.valid.equation.save(destination / "equation.json")
-        (destination / "equation.txt").write_text(f"{report.valid.equation}\n", encoding="utf-8")
-        report.valid.curve.write_csv(destination / "curve.csv")
-        report.effects.write_csv(destination / "term_effects.csv")
-        report.shares.write_csv(destination / "group_shares.csv")
-        report.scores.write_csv(destination / "scores.csv")
-        if report.maximum is not None:
-            ceiling = destination / "e3-max"
-            ceiling.mkdir(exist_ok=True)
-            report.maximum.equation.save(ceiling / "equation.json")
-            (ceiling / "equation.txt").write_text(f"{report.maximum.equation}\n", encoding="utf-8")
-            report.maximum.curve.write_csv(ceiling / "curve.csv")
-        print(f"\nequation written to {destination}")
-    print(f"\ncompleted in {elapsed:.1f}s")
+        _print_report(report)
+    destination = study_directory(arguments.output, corpus, report)
+    written = write_study(report, study, corpus, destination, force=arguments.force)
+    print(f"\n{len(written)} files written to {destination}")
+    print(f"completed in {elapsed:.1f}s")
     return 0
 
 
-def phases_of(arguments: Namespace) -> frozenset[str]:
-    """The phases to run; every phase when none, or ``all``, was asked for."""
-    requested = [name.strip() for name in (arguments.phase or "").split(",") if name.strip()]
-    if not requested or "all" in requested:
-        return frozenset(PHASES)
-    unknown = sorted(set(requested) - set(PHASES))
-    if unknown:
-        raise SystemExit(f"ml-meta-perf: unknown phase(s): {', '.join(unknown)}")
-    return frozenset(requested)
-
-
-def _shown(path: Path) -> str:
-    """The path as written into the chapters: relative to the working directory when inside it.
-
-    An absolute path would put the machine that ran the study into a tracked file, and rewrite
-    the line on every other machine.
-    """
-    try:
-        return path.resolve().relative_to(Path.cwd()).as_posix()
-    except ValueError:
-        return str(path)
+def run_init(arguments: Namespace) -> int:
+    output = Path(arguments.output)
+    if output.exists() and not arguments.force:
+        raise ConfigError(f"{output} exists; pass --force to overwrite it")
+    bounds = None if arguments.bounds is None else json.loads(arguments.bounds)
+    if bounds is not None and not (isinstance(bounds, list) and len(bounds) == 2):
+        raise ConfigError(f"--bounds must be a [low, high] pair, got {arguments.bounds}")
+    study, left_out = skeleton(
+        Path(arguments.corpus),
+        dataset_column=arguments.dataset,
+        response=arguments.response,
+        model_column=arguments.model,
+        bounds=None if bounds is None else (bounds[0], bounds[1]),
+        transform=arguments.transform,
+    )
+    output.write_text(json.dumps(study, indent=2) + "\n", encoding="utf-8")
+    features: dict[str, list[str]] = study["features"]  # pyright: ignore[reportAssignmentType]
+    print(f"wrote {output}: {len(features['dataset'])} dataset features, {len(features['model'])} model features")
+    for reason, names in left_out.items():
+        if names:
+            print(f"left out ({reason}): {', '.join(names)}")
+    print("edit the features, the bounds and the protocols, then run: ml-meta-perf fit --config", output)
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     _configure_windows_output()
     parser = build_parser()
-    arguments = parser.instantiate(parser.parse_args(argv))
+    parsed: Namespace = parser.instantiate_classes(parser.parse_args(argv))  # pyright: ignore[reportAssignmentType]
+    command = str(parsed["subcommand"])
+    arguments = parsed[command]
     try:
-        equations = study_of(arguments).equations
-    except ConfigError as error:
+        if command == "sweep":
+            return sweep.run(arguments, parser)
+        if command == "init":
+            return run_init(arguments)
+        return run_fit(arguments)
+    except (ConfigError, SchemaError, OverwriteError) as error:
         parser.error(str(error))
-    if equations in SINGLE_EQUATIONS:
-        return _run_fit_cli(arguments)
-    phases = phases_of(arguments)
-
-    config: Configuration = arguments.search
-    started = time.perf_counter()
-    report = run(
-        arguments.data or resolve_path(arguments.corpus.path),
-        config=config,
-        selection=arguments.selection,
-        opaque=arguments.opaque,
-    )
-    elapsed = time.perf_counter() - started
-
-    corpus = arguments.data or resolve_path(arguments.corpus.path)
-    frame = load(corpus)
-    columns = columns_as_arrays(frame, default_schema().features)
-    source = arguments.data or _shown(corpus)
-
-    if not arguments.quiet:
-        render(report, phases, columns)
-
-    if arguments.output:
-        destination = Path(arguments.output)
-        destination.mkdir(parents=True, exist_ok=True)
-        report.e1.equation.save(destination / "e1.json")
-        report.e3.equation.save(destination / "e3.json")
-        report.e2.equation.save(destination / "e2.json")
-        print(f"\nequations written to {destination}")
-
-        if not arguments.no_tables:
-            written = _save_tables(report, destination)
-            print(f"{len(written)} tables written to {destination}")
-
-    if arguments.docs and not arguments.no_report and "report" in phases:
-        pages = write_into_chapters(
-            report,
-            columns,
-            target(frame),
-            default_schema().dataset_features,
-            default_schema().model_features,
-            arguments.docs,
-            frame=frame,
-            config=config,
-            selection=arguments.selection,
-            source=source,
-            readme=arguments.readme,
-        )
-        print(f"{len(pages)} pages regenerated ({arguments.docs}, {arguments.readme})")
-
-    if arguments.figures and not arguments.no_figures and "figures" in phases:
-        from ml_meta_perf.figures import generate
-
-        written = generate(report, arguments.figures, arguments.data)
-        print(f"{len(written)} figures written to {arguments.figures}")
-
-    print(f"\ncompleted in {elapsed:.1f}s")
-    return 0
+        return 2
 
 
 if __name__ == "__main__":

@@ -124,33 +124,3 @@ def group_shares(
             }
         )
     return pl.DataFrame(rows)
-
-
-def variance_decomposition(
-    target: np.ndarray,
-    datasets: np.ndarray,
-    models: np.ndarray,
-) -> pl.DataFrame:
-    """How much of MCC is explained by dataset identity alone, and by model identity alone.
-
-    This is measured on the target itself, independent of any equation, and is the honest
-    answer to "does the choice of model matter more than the choice of data". Each row is
-    the variance explained by knowing *only* that group label -- an upper bound on what
-    any equation over that group's features could reach.
-    """
-    total = float(((target - target.mean()) ** 2).sum())
-    rows: list[dict[str, object]] = []
-    for name, labels in (("dataset identity", datasets), ("model identity", models)):
-        prediction = np.zeros_like(target)
-        for label in np.unique(labels):
-            mask = labels == label
-            prediction[mask] = target[mask].mean()
-        residual = float(((target - prediction) ** 2).sum())
-        rows.append(
-            {
-                "knowing only": name,
-                "n_groups": int(np.unique(labels).shape[0]),
-                "variance_explained": 1.0 - residual / total if total > 1e-15 else 0.0,
-            }
-        )
-    return pl.DataFrame(rows)

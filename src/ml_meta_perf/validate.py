@@ -34,9 +34,9 @@ import polars as pl
 
 from ml_meta_perf.config import Bounds
 from ml_meta_perf.fit import Standardizer
-from ml_meta_perf.model import MCC_LOWER, MCC_UPPER, Equation
+from ml_meta_perf.model import Equation
 from ml_meta_perf.search import Selector, guided_screen
-from ml_meta_perf.stats import mae, pearson, r2_score, rmse, smape, spearman
+from ml_meta_perf.stats import mae, r2_score, rmse, smape, spearman
 from ml_meta_perf.terms import Library
 
 #: A fold scoring a negative R2 while its MAE stays under this is a near-constant target, not
@@ -50,11 +50,6 @@ def leave_one_group_out(groups: np.ndarray) -> Iterator[tuple[str, np.ndarray, n
     for label in np.unique(groups):
         test = groups == label
         yield str(label), ~test, test
-
-
-def random_kfold_groups(size: int, folds: int = 10, seed: int = 42) -> np.ndarray:
-    """Fold labels for a random split -- used only to demonstrate the leakage it causes."""
-    return np.random.default_rng(seed).integers(0, folds, size=size).astype(str)
 
 
 @dataclass(frozen=True)
@@ -179,6 +174,14 @@ class CrossValidation:
             .with_columns((pl.col("folds") / total).alias("frequency"))
             .sort("folds", descending=True)
         )
+
+
+def library_rows(library: Library, mask: np.ndarray) -> Library:
+    """A library restricted to a row subset, without re-evaluating any term."""
+    clone = object.__new__(Library)
+    clone.terms = library.terms
+    clone.matrix = library.matrix[mask]
+    return clone
 
 
 def fold_selections(
@@ -397,167 +400,6 @@ def _clip_to_training(prediction: np.ndarray, training_target: np.ndarray, bound
     if low is None or high is None:
         return np.clip(prediction, low, high)
     return np.clip(prediction, float(training_target.min()), float(training_target.max()))
-
-
-def library_rows(library: Library, mask: np.ndarray) -> Library:
-    """A library restricted to a row subset, without re-evaluating any term."""
-    clone = object.__new__(Library)
-    clone.terms = library.terms
-    clone.matrix = library.matrix[mask]
-    return clone
-
-
-def baseline_group_centre(
-    target: np.ndarray,
-    outer: np.ndarray,
-    inner: np.ndarray | None = None,
-    *,
-    centre: str = "mean",
-    bounds: Bounds | None = (MCC_LOWER, MCC_UPPER),
-) -> np.ndarray:
-    """Predict a training-fold centre, optionally conditioned on a second grouping.
-
-    With ``inner`` set to the model column under a LODO split, this is
-    "what does this model usually score", the baseline any meta-model has to beat to be
-    worth writing down.
-
-    ``centre`` picks the summary. **Which one is the fair comparison depends on the metric
-    being reported, and using the mean for all of them understates the baseline.** The mean
-    minimises squared error, so it is the right opponent for R2 and RMSE. The *median*
-    minimises absolute error, so an MAE quoted against a mean baseline is quoted against a
-    baseline that is not even trying -- and SMAPE, being an absolute-error ratio, behaves the
-    same way. Both are reported so each metric is read against the baseline that is hardest
-    to beat on it.
-
-    The leave-one-group-out loop is not decoration: with 17-25 rows per group, including the
-    row being predicted inflates the per-model mean's R2 by 0.082. A naive group centre
-    computed over all rows is not this function.
-    """
-    summarise = np.median if centre == "median" else np.mean
-    predictions = np.zeros_like(target)
-    for _, train, test in leave_one_group_out(outer):
-        fallback = float(summarise(target[train]))
-        if inner is None:
-            predictions[test] = fallback
-            continue
-        for label in np.unique(inner[test]):
-            selected = test & (inner == label)
-            source = train & (inner == label)
-            predictions[selected] = float(summarise(target[source])) if source.any() else fallback
-    return predictions if bounds is None else np.clip(predictions, *bounds)
-
-
-def baseline_group_mean(
-    target: np.ndarray,
-    outer: np.ndarray,
-    inner: np.ndarray | None = None,
-    *,
-    bounds: Bounds | None = (MCC_LOWER, MCC_UPPER),
-) -> np.ndarray:
-    """`baseline_group_centre` at the mean. Kept as the name the rest of the study uses."""
-    return baseline_group_centre(target, outer, inner, centre="mean", bounds=bounds)
-
-
-def additive_mean_reference(
-    target: np.ndarray,
-    first: np.ndarray,
-    second: np.ndarray,
-    *,
-    bounds: Bounds | None = (MCC_LOWER, MCC_UPPER),
-) -> np.ndarray:
-    """Dataset and model target means combined into a descriptive IS reference.
-
-    The calculation adds each observed dataset mean and model mean, subtracts the global
-    mean, and clips the result to the MCC range. It uses target identities and is therefore
-    not a deployable predictor. With an incomplete dataset-by-model grid it is also not the
-    jointly fitted least-squares optimum or a ceiling for additive equations.
-    """
-    grand = float(target.mean())
-    prediction = np.full_like(target, grand)
-    for group in (first, second):
-        for label in np.unique(group):
-            mask = group == label
-            prediction[mask] += float(target[mask].mean()) - grand
-    return prediction if bounds is None else np.clip(prediction, *bounds)
-
-
-def interaction_oracle(
-    target: np.ndarray,
-    first: np.ndarray,
-    second: np.ndarray,
-    rank: int,
-    *,
-    bounds: Bounds | None = (MCC_LOWER, MCC_UPPER),
-) -> np.ndarray:
-    """The additive mean-based reference plus the best rank-``rank`` approximation of what it misses.
-
-    ``additive_mean_reference`` describes how much MCC follows dataset and model means.
-    The obvious next question is what the leftover looks like, and the leftover is not
-    noise: it is a (dataset x model) matrix of interactions, and interaction matrices are
-    usually dominated by a few components.
-
-    So the residual is decomposed by SVD and its leading components added back. This is
-    the AMMI model -- additive main effects, multiplicative interaction -- long used for
-    genotype-by-environment trials, which is structurally the same problem: a grid of
-    subjects crossed with conditions where some pairings suit each other.
-
-    The result is a *ladder* rather than a single ceiling. ``rank=0`` is the additive
-    mean-based reference; each further component is one more pattern of "this kind of model suits this
-    kind of dataset". At full rank it reproduces every observed cell and R2 is 1, which is
-    why the interesting question is how fast the ladder climbs, not where it ends.
-
-    Like ``additive_mean_reference`` this is fitted with the true values and predicts nothing.
-    Unobserved cells (24 of the 500 here) contribute zero residual, so they neither
-    distort the decomposition nor are counted in any score.
-    """
-    rows = np.unique(first)
-    columns = np.unique(second)
-    row_index = {label: position for position, label in enumerate(rows)}
-    column_index = {label: position for position, label in enumerate(columns)}
-
-    grid = np.full((rows.shape[0], columns.shape[0]), np.nan)
-    for value, row, column in zip(target, first, second, strict=True):
-        grid[row_index[row], column_index[column]] = value
-    observed = ~np.isnan(grid)
-
-    grand = float(np.nanmean(grid))
-    row_effect = np.nanmean(grid, axis=1) - grand
-    column_effect = np.nanmean(grid, axis=0) - grand
-    additive = grand + row_effect[:, None] + column_effect[None, :]
-
-    if rank > 0:
-        residual = np.where(observed, grid - additive, 0.0)
-        left, values, right = np.linalg.svd(residual, full_matrices=False)
-        additive = additive + (left[:, :rank] * values[:rank]) @ right[:rank]
-
-    prediction = np.array(
-        [additive[row_index[row], column_index[column]] for row, column in zip(first, second, strict=True)]
-    )
-    return prediction if bounds is None else np.clip(prediction, *bounds)
-
-
-def oracle_ladder(
-    target: np.ndarray,
-    first: np.ndarray,
-    second: np.ndarray,
-    ranks: tuple[int, ...] = (0, 1, 2, 3, 4, 6, 8),
-    *,
-    bounds: Bounds | None = (MCC_LOWER, MCC_UPPER),
-) -> pl.DataFrame:
-    """How much each additional interaction component would be worth."""
-    rows: list[dict[str, object]] = []
-    previous: float | None = None
-    for rank in ranks:
-        value = r2_score(target, interaction_oracle(target, first, second, rank, bounds=bounds))
-        rows.append(
-            {
-                "interaction_rank": rank,
-                "r2": value,
-                "gain": value - previous if previous is not None else float("nan"),
-            }
-        )
-        previous = value
-    return pl.DataFrame(rows)
 
 
 #: A model is a right answer for the ranking if its MCC is within this of its dataset's best.
@@ -820,62 +662,3 @@ def paired_comparison(
         low=float(np.percentile(means, 2.5)),
         high=float(np.percentile(means, 97.5)),
     )
-
-
-def interaction_capture(
-    target: np.ndarray,
-    prediction: np.ndarray,
-    first: np.ndarray,
-    second: np.ndarray,
-    rank: int = 1,
-) -> dict[str, float]:
-    """How much of the leading interaction pattern the equation actually reaches.
-
-    `interaction_oracle` measures what a rank-``k`` interaction would be *worth* if
-    someone could predict it. It says nothing about whether the fitted equation gets any
-    of it, and chapter 5 originally answered that by comparing two R2 values -- which
-    cannot distinguish an equation that misses the pattern from one that finds it and is
-    inaccurate elsewhere.
-
-    This compares the two interaction *structures* directly. Both the truth and the
-    prediction are laid on the (dataset x model) grid and stripped of their own additive
-    part, leaving each side's interaction residual; the truth's is then reduced to its
-    leading ``rank`` components. ``alignment`` is the squared correlation between the two
-    over observed cells: 1.0 means the equation's interactions lie exactly along the
-    pattern the oracle found, 0.0 means they are unrelated to it.
-
-    Only observed cells count. The 24 absent ones contribute to neither side.
-    """
-    rows, columns = np.unique(first), np.unique(second)
-    row_index = {label: position for position, label in enumerate(rows)}
-    column_index = {label: position for position, label in enumerate(columns)}
-
-    def grid_of(values: np.ndarray) -> np.ndarray:
-        grid = np.full((rows.shape[0], columns.shape[0]), np.nan)
-        for value, row, column in zip(values, first, second, strict=True):
-            grid[row_index[row], column_index[column]] = value
-        return grid
-
-    def interaction(grid: np.ndarray) -> np.ndarray:
-        grand = float(np.nanmean(grid))
-        row_effect = np.nanmean(grid, axis=1) - grand
-        column_effect = np.nanmean(grid, axis=0) - grand
-        return grid - (grand + row_effect[:, None] + column_effect[None, :])
-
-    truth_grid = grid_of(target)
-    observed = ~np.isnan(truth_grid)
-    truth_interaction = np.where(observed, interaction(truth_grid), 0.0)
-    model_interaction = np.where(observed, interaction(grid_of(prediction)), 0.0)
-
-    left, values, right = np.linalg.svd(truth_interaction, full_matrices=False)
-    leading = (left[:, :rank] * values[:rank]) @ right[:rank]
-
-    wanted, reached = leading[observed], model_interaction[observed]
-    total = float((truth_interaction[observed] ** 2).sum())
-    return {
-        "alignment": float(pearson(wanted, reached) ** 2),
-        "leading_share": float((wanted**2).sum() / total) if total > 0.0 else float("nan"),
-        "interaction_share": total / float(((truth_grid[observed] - np.nanmean(truth_grid)) ** 2).sum())
-        if total > 0.0
-        else float("nan"),
-    }

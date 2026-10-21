@@ -16,7 +16,6 @@ from ml_meta_perf.config import (
     load_config,
     parse_config,
 )
-from ml_meta_perf.data import resolve_path
 
 
 class TestStudyConfiguration(unittest.TestCase):
@@ -79,7 +78,7 @@ class TestStudyDescription(unittest.TestCase):
         self.assertIsNone(study.schema().bounds)
 
     def test_a_missing_section_is_an_error(self) -> None:
-        for section in ("corpus", "response", "features", "side_files"):
+        for section in ("corpus", "response", "features"):
             payload = {key: value for key, value in self.payload.items() if key != section}
             with self.assertRaises(KeyError, msg=section):
                 parse_config(payload)
@@ -103,9 +102,6 @@ class TestStudyDescription(unittest.TestCase):
             "feature is the response": ("features", "model", ["MCC"], "response"),
             "feature is a group": ("features", "dataset", ["Dataset"], "group"),
             "response is a group": ("response", "column", "Model", "also a group column"),
-            "empty taxonomy path": ("side_files", "taxonomy", "", "side_files.taxonomy is an empty path"),
-            "empty ordinals path": ("side_files", "ordinals", "", "side_files.ordinals is an empty path"),
-            "empty glossary path": ("side_files", "glossary", "", "side_files.glossary is an empty path"),
         }
         for name, (section, key, value, message) in cases.items():
             payload = json.loads(json.dumps(self.payload))
@@ -177,27 +173,9 @@ class TestStudyDescription(unittest.TestCase):
             with self.subTest(path.name):
                 self.assertEqual(load_config(path).grammar.exclude, {})
 
-    def test_a_study_may_have_no_side_files(self) -> None:
-        self.payload["side_files"] = {"taxonomy": None, "ordinals": None, "glossary": None}
-        study = parse_config(self.payload)
-        self.assertEqual(
-            (study.side_files.taxonomy, study.side_files.ordinals, study.side_files.glossary), (None, None, None)
-        )
-
-    def test_the_shipped_side_files_exist(self) -> None:
-        side = load_config().side_files
-        for path in (side.taxonomy, side.ordinals, side.glossary):
-            assert path is not None
-            self.assertTrue(resolve_path(path).is_file(), path)
-
-    def test_an_unknown_side_file_kind_is_an_error(self) -> None:
-        self.payload["side_files"]["codebook"] = "x.json"
-        with self.assertRaises(TypeError):
-            parse_config(self.payload)
-
-    def test_the_shipped_study_fits_the_three_equations_on_an_untransformed_target(self) -> None:
+    def test_the_shipped_study_fits_the_three_equations_and_the_ceiling_on_an_untransformed_target(self) -> None:
         study = load_config()
-        self.assertEqual(study.equations, ("E1", "E2", "E3"))
+        self.assertEqual(study.equations, ("E1", "E2", "E3", "E3-MAX"))
         self.assertEqual(study.response.transform, "none")
         self.assertIsNone(study.corpus.row_filter)
         self.assertEqual((study.corpus.require, study.corpus.single_valued), ((), ()))

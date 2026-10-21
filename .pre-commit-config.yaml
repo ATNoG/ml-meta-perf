@@ -36,9 +36,6 @@ repos:
           - vulture==2.16
           - numpy==2.5.3
           - polars==1.44.2
-          - matplotlib==3.11.2
-          - scikit-learn==1.9.1
-          - joblib==1.6.0
           - jsonargparse==4.52.0
           - kneeliverse==1.2.0
         files: '(\.py$|^pyproject\.toml$)'

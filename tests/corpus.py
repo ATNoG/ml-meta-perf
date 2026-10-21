@@ -1,27 +1,15 @@
-"""What the test suite shares: a slice of the corpus, and the two fits worth paying for once.
+"""What the test suite shares: a slice of the corpus.
 
-A unit test asks whether *this project's functions* do what they say. That question does not
-need 484 rows: it needs a frame with the same schema and the same shape of structure -- more
-than one dataset, more than one model, a missing cell -- and every extra row after that is
-paid for by every test that fits anything.
+A unit test asks whether *this project's functions* do what they say. That question does not need
+484 rows: it needs a frame with the same schema and the same shape of structure -- more than one
+dataset, more than one model, a missing cell -- and every extra row is paid for by every test that
+fits anything. So the suite fits on a **derived slice of the shipped corpus**: eight datasets by ten
+models, two cells missing on purpose (`KPI-KQI` was never run on the neural models), so the doubly
+held out protocol cannot pass by assuming a rectangle. Derived rather than a checked-in second CSV,
+because a copy would go stale the first time a column moved and nothing would say so.
 
-So the suite fits on a **derived slice of the shipped corpus**: eight datasets by ten models,
-78 of the 484 rows. Derived rather than a checked-in second CSV, because a copy of the corpus
-would go stale the first time a column moved and nothing would say so; taking a slice of the
-real one at import time cannot. It is a slice rather than a synthetic frame for the same
-reason -- the features carry the real correlations, so a term library built over it is the
-real library, and a test that passes here is not passing on numbers invented to make it pass.
-
-**Two of the eighty cells are missing on purpose.** `KPI-KQI` is one of the two datasets the
-eight neural models were never run on, and `MLP` and `XGBoost` are two of those eight, so the
-slice is ragged exactly the way the corpus is. A grid with no holes would let the doubly
-held out (DHO) protocol pass while assuming a rectangle.
-
-**What does not belong here.** This corpus cannot answer whether the study's findings hold --
-eight datasets is not the corpus the paper reports, and a finding measured on a slice is not
-the finding. A test asserting something about the study loads the real corpus, and it fits
-only what its claim is about: `run_e3(load(), DEFAULT)` is 4.6 s and a whole `run` is
-twelve, so a claim about the published equation should never reach for the second.
+This slice cannot answer whether the study's findings hold; tests of a finding fit what their claim
+is about on the real corpus, or on the planted corpora of `tests/synthetic.py`.
 """
 
 from __future__ import annotations
@@ -32,15 +20,12 @@ from pathlib import Path
 
 import numpy as np
 import polars as pl
-from sklearn.dummy import DummyRegressor
 
 from ml_meta_perf.config import Configuration, SelectionConfig
 from ml_meta_perf.data import (
     columns_as_arrays,
     load,
 )
-from ml_meta_perf.experiment import EquationReport, Report
-from ml_meta_perf.opaque import Builder
 from tests.study import DATASET_COLUMN, DATASET_FEATURES, MODEL_COLUMN, MODEL_FEATURES
 
 #: Eight of the twenty datasets, spread across the alphabetical order rather than taken from
@@ -74,34 +59,6 @@ MODELS = (
 )
 
 
-class Stub:
-    """An estimator that fits and predicts and does nothing else.
-
-    scikit-learn's regressors are not this project's to test; the folds around them are. A
-    double exercises every one of those -- that the DHO split removes both groups,
-    that predictions are clipped to the training range, that the table is scored from the
-    predictions that are kept -- and costs nothing. The real ensembles are what makes
-    `opaque.evaluate` the most expensive function in the package.
-    """
-
-    offset: float = 0.0
-
-    def fit(self, design: np.ndarray, truth: np.ndarray, /) -> Stub:
-        self.offset = float(truth.mean())
-        return self
-
-    def predict(self, design: np.ndarray, /) -> np.ndarray:
-        # A hair of dependence on the design, so a test can tell this apart from a constant.
-        return design[:, 0] * 1e-5 + self.offset
-
-
-#: The doubles, in the shape `opaque.evaluate` takes: one that varies with the data and one
-#: constant, so a table built from them has more than one row to be wrong about.
-DOUBLES: tuple[tuple[str, Builder], ...] = (
-    ("stub (varying)", lambda _threads=-1: Stub()),
-    ("stub (constant)", lambda _threads=-1: DummyRegressor(strategy="mean")),
-)
-
 #: The configurations the unit suite fits under. Short and cheap, and **not** the tuned ones:
 #: a test that reproduced the published search would be reproducing the study rather than
 #: checking it. Six terms, because three is short enough that several tables come out
@@ -112,15 +69,12 @@ DOUBLES: tuple[tuple[str, Builder], ...] = (
 #: preset, E2 from somewhere else, and the opaque ensembles from a third place; what a call
 #: site was actually asking for could not be read off it.
 E1 = Configuration(max_abs_zscore=3.0, penalty=1.0, pool_size=60, max_terms=6, beam_width=6, max_arity=3)
-E2 = Configuration(max_abs_zscore=3.0, penalty=5.0, pool_size=60, max_terms=6, beam_width=6, max_arity=2)
 E3 = Configuration(max_abs_zscore=3.0, penalty=20.0, pool_size=60, max_terms=6, beam_width=6, max_arity=3)
 #: The length rule at the suite's scale: a six-term horizon leaves room for a two-length window.
 SELECTION = SelectionConfig(delta=0.01, window=2, smoothing=3, method="plateau_knee", capability_arity=3)
 
 _FRAME: list[pl.DataFrame] = []
 _PATH: list[Path] = []
-_REPORT: list[Report] = []
-_PUBLISHED: list[EquationReport] = []
 
 
 def sample() -> pl.DataFrame:
@@ -149,49 +103,3 @@ def sample_path() -> Path:
 def columns() -> dict[str, np.ndarray]:
     """The slice's feature arrays, in the order every caller in the package asks for them."""
     return columns_as_arrays(sample(), DATASET_FEATURES + MODEL_FEATURES)
-
-
-def published() -> EquationReport:
-    """E3 as the study publishes it: the real corpus, the tuned configuration, fitted once.
-
-    The exception to everything above, and the reason it is here rather than in whichever
-    module wanted it first. Five modules assert something about the published equation -- that
-    it repeats no feature combination, that it uses fewer features than the corpus carries,
-    that no opaque model transfers as well, that the identity correction leaves its reported
-    row alone -- and each of them was calling `run_e3(load())` for itself, at 4.6 s a call,
-    seven times across a suite that otherwise ran in seconds.
-
-    It carries the cross-validated scores and the fold paths, so a caller needing a protocol
-    does not have to refit to get one.
-    """
-    if not _PUBLISHED:
-        from ml_meta_perf.experiment import run_e3
-
-        _PUBLISHED.append(run_e3(load()))
-    return _PUBLISHED[0]
-
-
-def report() -> Report:
-    """One `experiment.run` over the slice, shared by every test that needs a whole report.
-
-    Built once per process because it is the only expensive thing left in the unit suite, and
-    shared rather than rebuilt so that the tests which read it are all reading the same
-    object -- two fixtures that fit separately can disagree, and then a failure is about the
-    fixtures rather than about the code.
-
-    Fitted at the configurations above and over the doubles: the numbers in it are not the
-    study's and no test here should read them as such. What it is for is shape -- that every table has the columns the
-    figures and the chapters ask for, and that they line up with each other.
-    """
-    if not _REPORT:
-        from ml_meta_perf.experiment import run
-
-        _REPORT.append(
-            run(
-                str(sample_path()),
-                config=E3,
-                selection=SELECTION,
-                opaque_models=DOUBLES,
-            )
-        )
-    return _REPORT[0]

@@ -8,7 +8,7 @@ version = "0.1.0"
 authors = [
     {name = "Mário Antunes", email = "mario.antunes@av.it.pt"}
 ]
-description = "Interpretable linear meta-models that predict the MCC of a classifier from dataset and model meta-features"
+description = "Interpretable additive equations that predict the performance of a model on a dataset from meta-features"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -21,26 +21,10 @@ classifiers = [
 dependencies = [
     "polars>=1.20.0",
     "numpy>=2.0.0",
-    "matplotlib>=3.9.0",
-    # The opaque-regressor comparison, and the strongest ranking and threshold baselines.
-    # It brings scipy with it, which this project refused for a long time on size grounds --
-    # `ml_meta_perf.stats` exists because four statistics were not worth the dependency, and
-    # that reasoning still holds for those four. What changed the answer is that the
-    # comparison the chapters lean on hardest ("a forest reaches R² 0.9 in-sample (IS) and
-    # transfers at 0.082 under leave-one-dataset-out (LODO)") was measured once during
-    # exploration and could not be reproduced
-    # by anyone reading the study. An unreproducible headline is a worse cost than a large
-    # wheel, so it is a base dependency rather than an extra: an extra would leave the same
-    # numbers unreproducible for anyone who did not know to ask for it.
-    "scikit-learn>=1.5.0",
-    # `opaque` threads one estimator refit per observed pair under DHO. It used to
-    # arrive with the `search` extra, which meant a base-only install type-checked with an
-    # unresolved import; it is a base dependency now because the study itself runs it.
-    "joblib>=1.4.0",
     # Reads `config/study.json` -- the one file holding every tuned hyperparameter -- into the
     # typed configuration dataclasses, and lets a command line override any field of it.
     "jsonargparse>=4.40.0",
-    # Knee detection (Kneedle, multi-knee) for the equation-length rule, `selection.plateau_knee`.
+    # Knee detection (Kneedle, multi-knee) for the equation-length rules in `selection` and `lengths`.
     "kneeliverse>=1.2.0",
 ]
 
@@ -55,32 +39,16 @@ dev = [
     "pre-commit==4.6.2",
 ]
 # The exact runtime of the reference reproduction (Python 3.12). The ranges in `dependencies`
-# are what the package supports; these pins are what the published numbers and figures were
-# produced with, including the transitive packages that can move a result.
+# are what the package supports; these pins are what the reference results were produced with,
+# including the transitive packages that can move a result.
 reproducibility = [
-    "cloudpickle==3.1.2",
-    "contourpy==1.4.0",
-    "cycler==0.12.1",
-    "fonttools==4.66.0",
     "jsonargparse==4.52.0",
-    "joblib==1.6.0",
-    "kiwisolver==1.5.1",
     "kneeliverse==1.2.0",
-    "matplotlib==3.11.2",
-    "narwhals==2.26.0",
     "numpy==2.5.3",
-    "packaging==26.3",
-    "pillow==12.3.0",
     "polars==1.44.2",
     "polars-runtime-32==1.44.2",
-    "pyparsing==3.3.3",
-    "python-dateutil==2.9.0.post0",
     "pyUTSAlgorithms==0.2.1",
     "PyYAML==6.0.3",
-    "scikit-learn==1.9.1",
-    "scipy==1.18.1",
-    "six==1.17.0",
-    "threadpoolctl==3.7.0",
 ]
 # Regenerating `dataset/meta_dataset.csv` from the raw datasets (`meta_dataset_pipeline/`).
 # Consuming the corpus needs none of this.
@@ -102,12 +70,9 @@ meta-dataset = [
 ]
 
 [project.scripts]
-# The pipeline entry point. `ml-meta-perf --help` documents every input; the study is
-# the default with no arguments.
+# One command with three subcommands: `fit`, `sweep` and `init`; `ml-meta-perf --help` documents them.
 ml-meta-perf = "ml_meta_perf.cli:main"
-# The configuration sweep is separate from the study's ordinary entry point: a bare
-# `ml-meta-perf` run reproduces the configuration in `config/study.json`, while this command
-# fits every point of its grid and proposes a replacement file.
+# The configuration sweep as a command of its own (the same as `ml-meta-perf sweep`).
 ml-meta-perf-search = "ml_meta_perf.sweep:main"
 
 [project.urls]

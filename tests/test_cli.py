@@ -1,272 +1,272 @@
-"""The command line: the flags, and what each one causes to be written.
+"""``ml-meta-perf fit | sweep | init``: the commands, the result folder and the refusals."""
 
-**The engine is mocked here.** `main` does three separable things -- fold the flags onto a
-configuration, run the study, and write what came back into files -- and only the first and
-third are the command line's. Letting a CLI test run the study meant every one of them paid
-for a fit and a set of cross-validation folds to find out whether `--no-tables` skips the
-tables, which is not a question about fitting; three of these tests were 13, 13 and 25 seconds
-for that reason. With `cli.run` patched they assert something sharper as well as faster: that
-the flags reach the engine as the right arguments, which no end-to-end run can check because
-an end-to-end run only sees what came out the far side.
-
-The report handed back by the mock is the shared one from `tests.corpus`, fitted on the sample
-slice, and `--data` points at the same slice so that the frame `main` reloads for the figures
-and the chapters matches the report it was given.
-"""
-
-from __future__ import annotations
-
+import contextlib
 import io
 import json
 import tempfile
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from unittest import mock
 
-from jsonargparse import Namespace
+import polars as pl
 
-from ml_meta_perf.cli import PHASES, _configure_windows_output, _shown, build_parser, main, phases_of, render
-from ml_meta_perf.config import DEFAULT_CONFIG_PATH, load_config
-from ml_meta_perf.model import Equation
-from ml_meta_perf.report import BEGIN, END
-from tests import corpus
+from ml_meta_perf import cli
+from ml_meta_perf.config import parse_config
+from ml_meta_perf.output import file_sha256, markdown_table, study_sha256
+from tests.synthetic import planted
 
-
-def parse(*flags: str) -> Namespace:
-    """The instantiated command line, exactly as `main` sees it."""
-    parser = build_parser()
-    return parser.instantiate(parser.parse_args(list(flags)))
-
-
-class TestFlags(unittest.TestCase):
-    """Parsing and folding, with nothing else involved."""
-
-    def test_a_bare_run_is_the_study_configuration_file(self) -> None:
-        arguments, study = parse(), load_config()
-        self.assertEqual(arguments.search, study.search)
-        self.assertEqual(arguments.selection, study.selection)
-        self.assertEqual(arguments.opaque, study.opaque)
-
-    def test_a_dotted_flag_overrides_one_field_of_the_file(self) -> None:
-        arguments = parse("--search.penalty", "3", "--selection.delta", "0.02")
-        self.assertEqual(arguments.search.penalty, 3.0)
-        self.assertEqual(arguments.selection.delta, 0.02)
-        self.assertEqual(
-            arguments.search.pool_size, load_config().search.pool_size, "an unmentioned knob keeps its value"
-        )
-
-    def test_another_configuration_file_replaces_the_default_one(self) -> None:
-        payload = json.loads(DEFAULT_CONFIG_PATH.read_text(encoding="utf-8"))
-        payload["search"]["max_terms"] = 12
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "other.json"
-            path.write_text(json.dumps(payload), encoding="utf-8")
-            self.assertEqual(parse("--config", str(path)).search.max_terms, 12)
-
-    def test_the_problem_description_is_the_study_file_and_each_field_overrides(self) -> None:
-        arguments, study = parse(), load_config()
-        self.assertEqual(arguments.corpus, study.corpus)
-        self.assertEqual(arguments.response, study.response)
-        self.assertEqual(arguments.features, study.features)
-        self.assertEqual(arguments.side_files, study.side_files)
-        self.assertEqual(tuple(arguments.equations), study.equations)
-        changed = parse("--response.transform", "log1p", "--response.bounds", "null", "--equations", '["E3"]')
-        self.assertEqual((changed.response.transform, changed.response.bounds), ("log1p", None))
-        self.assertEqual(tuple(changed.equations), ("E3",))
-
-    def test_the_published_length_is_not_a_flag(self) -> None:
-        """The selected length is derived from the curve rather than set by a flag."""
-        with self.assertRaises(SystemExit), redirect_stderr(io.StringIO()):
-            parse("--terms", "12")
-
-    def test_an_unknown_phase_is_refused(self) -> None:
-        with self.assertRaises(SystemExit):
-            phases_of(parse("--phase", "screen,nonsense"))
-
-    def test_phases_are_comma_separated_and_default_to_all(self) -> None:
-        self.assertEqual(phases_of(parse("--phase", "screen, figures")), {"screen", "figures"})
-        self.assertEqual(phases_of(parse()), set(PHASES))
-
-    def test_windows_output_is_reconfigured_for_unicode_tables(self) -> None:
-        stream = mock.Mock()
-        with mock.patch("ml_meta_perf.cli.sys.platform", "win32"), mock.patch("ml_meta_perf.cli.sys.stdout", stream):
-            _configure_windows_output()
-        stream.reconfigure.assert_called_once_with(encoding="utf-8", errors="replace")
+#: One equation under two protocols: enough to exercise the writing, and fast enough to run it twice.
+QUICK = ["--equations", '["E3"]', "--protocols", '["IS", "LODO"]']
+SMALL = [
+    "--search.max_terms",
+    "3",
+    "--search.pool_size",
+    "40",
+    "--search.beam_width",
+    "1",
+    "--search.max_arity",
+    "2",
+    "--selection.capability_arity",
+    "2",
+    "--selection.window",
+    "1",
+]
 
 
-class CliTestCase(unittest.TestCase):
-    """`main` with the engine replaced, over a temporary output directory.
+def run(argv: list[str]) -> tuple[int, str, str]:
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        try:
+            code = cli.main(argv)
+        except SystemExit as exit_:
+            code = int(exit_.code or 0)
+    return code, out.getvalue(), err.getvalue()
 
-    `self.engine` is the patched `cli.run`; asserting on its call is how these tests check
-    that a flag arrived, rather than inferring it from a number in a file.
-    """
+
+class Corpus(unittest.TestCase):
+    """A planted corpus on disk, and the study file ``init`` writes for it."""
 
     def setUp(self) -> None:
-        self.directory = Path(tempfile.mkdtemp(prefix="ml-meta-perf-cli-"))
-        self.docs = self.directory / "docs"
-        self.docs.mkdir()
-        patcher = mock.patch("ml_meta_perf.cli.run", return_value=corpus.report())
-        self.engine = patcher.start()
-        self.addCleanup(patcher.stop)
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        self.csv = self.root / "runs.csv"
+        planted(3, noise=0.1, seed=1).frame.write_csv(self.csv)
+        self.study = self.root / "study.json"
 
-    def tearDown(self) -> None:
-        import shutil
+    def init(self, *more: str) -> tuple[int, str, str]:
+        return run(
+            [
+                "init",
+                str(self.csv),
+                "--dataset",
+                "d",
+                "--model",
+                "m",
+                "--response",
+                "y",
+                "--output",
+                str(self.study),
+                *more,
+            ]
+        )
 
-        shutil.rmtree(self.directory, ignore_errors=True)
+    def fit(self, *more: str) -> tuple[int, str, str]:
+        return run(["fit", "--config", str(self.study), "--output", str(self.root / "out"), "--quiet", *SMALL, *more])
 
-    def run_main(self, *flags: str) -> str:
-        """`main` over the sample slice, returning what it printed. Asserts it exited 0."""
-        buffer = io.StringIO()
-        with redirect_stdout(buffer):
-            code = main(
-                [
-                    "--data",
-                    str(corpus.sample_path()),
-                    "--output",
-                    str(self.directory),
-                    "--docs",
-                    str(self.docs),
-                    "--readme",
-                    str(self.directory / "README.md"),
-                    "--no-figures",
-                    *flags,
-                ]
-            )
+
+class TestInit(Corpus):
+    def test_it_writes_a_study_file_that_parses(self) -> None:
+        code, out, _ = self.init()
         self.assertEqual(code, 0)
-        return buffer.getvalue()
+        study = parse_config(json.loads(self.study.read_text()))
+        self.assertEqual(
+            (study.corpus.dataset_column, study.corpus.model_column, study.response.column), ("d", "m", "y")
+        )
+        self.assertIn("wrote", out)
 
-    def chapter(self, name: str = "05-evaluation.md", prose: str = "Prose that must survive.") -> Path:
-        path = self.docs / name
-        path.write_text(f"# 5. Evaluation\n\n{prose}\n")
-        return path
+    def test_a_column_constant_within_each_dataset_is_a_dataset_feature_and_the_rest_are_model_features(self) -> None:
+        self.init()
+        features = json.loads(self.study.read_text())["features"]
+        self.assertEqual(sorted(features["dataset"]), ["depth", "rate", "size", "width"])
+        self.assertEqual(sorted(features["model"]), ["batch", "epochs", "lr"])
 
+    def test_the_protocols_and_equations_follow_the_groups_it_was_given(self) -> None:
+        self.init()
+        study = json.loads(self.study.read_text())
+        self.assertEqual(
+            (study["protocols"], study["equations"]), (["IS", "LODO", "LOMO", "DHO"], ["E1", "E2", "E3", "E3-MAX"])
+        )
 
-class TestWhatTheFlagsReachTheEngineAs(CliTestCase):
-    def test_the_default_run_is_the_study_configuration(self) -> None:
-        self.run_main("--quiet", "--no-report", "--no-tables")
-        self.engine.assert_called_once()
-        arguments, keywords = self.engine.call_args
-        study = load_config()
-        self.assertEqual(arguments[0], str(corpus.sample_path()))
-        self.assertEqual(keywords["config"], study.search)
-        self.assertEqual(keywords["selection"], study.selection)
-        self.assertEqual(keywords["opaque"], study.opaque)
+    def test_without_a_model_column_only_the_dataset_protocols_and_one_equation_are_offered(self) -> None:
+        pl.read_csv(self.csv).with_columns(run=pl.int_range(pl.len())).write_csv(self.csv)
+        code, _, _ = run(["init", str(self.csv), "--dataset", "d", "--response", "y", "--output", str(self.study)])
+        self.assertEqual(code, 0)
+        study = json.loads(self.study.read_text())
+        self.assertEqual(
+            (study["protocols"], study["equations"], study["corpus"]["model_column"]),
+            (["IS", "LODO"], ["E3", "E3-MAX"], None),
+        )
+        self.assertIn("run", study["features"]["model"])
 
-    def test_an_override_reaches_the_engine(self) -> None:
-        self.run_main("--quiet", "--no-report", "--no-tables", "--search.penalty", "3")
-        self.assertEqual(self.engine.call_args.kwargs["config"].penalty, 3.0)
+    def test_constant_and_non_numeric_columns_are_left_out_and_said_so(self) -> None:
+        pl.read_csv(self.csv).with_columns(flat=pl.lit(1.0), tag=pl.lit("a")).write_csv(self.csv)
+        _, out, _ = self.init()
+        self.assertIn("left out (constant): flat", out)
+        self.assertIn("left out (not numeric): tag", out)
+        features = json.loads(self.study.read_text())["features"]
+        self.assertNotIn("flat", features["dataset"] + features["model"])
 
-    def test_there_is_no_preset_that_sets_knobs_the_flags_do_not(self) -> None:
-        """`--quick` was three flags that already existed plus two that did not: it also chose
-        E2's configuration and the opaque ensemble sizes, which is how it came to advertise
-        "seconds" while paying 226 s for the comparison. Every knob is a flag or a parameter
-        now, so a cheap run says at its call site which parts of it are cheap."""
-        parser = build_parser()
-        with self.assertRaises(SystemExit), redirect_stderr(io.StringIO()):
-            parser.parse_args(["--quick"])
+    def test_it_refuses_to_overwrite_a_study_file_without_force(self) -> None:
+        self.init()
+        code, _, err = self.init()
+        self.assertEqual(code, 2)
+        self.assertIn("exists", err)
+        self.assertEqual(self.init("--force")[0], 0)
 
+    def test_a_missing_column_is_named_with_the_columns_there_are(self) -> None:
+        code, _, err = run(["init", str(self.csv), "--dataset", "nope", "--response", "y", "--output", str(self.study)])
+        self.assertEqual(code, 2)
+        self.assertIn("nope", err)
+        self.assertIn("size", err)
 
-class TestWhatIsWritten(CliTestCase):
-    def test_the_three_equations_are_saved(self) -> None:
-        self.run_main("--quiet", "--no-report", "--no-tables")
-        for name in ("e1.json", "e2.json", "e3.json"):
-            path = self.directory / name
-            with self.subTest(name=name):
-                self.assertTrue(path.is_file())
-                self.assertGreater(Equation.load(path).n_terms, 0)
+    def test_bounds_and_transform_reach_the_file(self) -> None:
+        self.init("--bounds", "[0, null]", "--transform", "log1p")
+        response = json.loads(self.study.read_text())["response"]
+        self.assertEqual((response["bounds"], response["transform"]), ([0.0, None], "log1p"))
 
-    def test_the_tables_are_written_as_csv(self) -> None:
-        printed = self.run_main("--quiet", "--no-report")
-        written = sorted(path.name for path in self.directory.glob("*.csv"))
-        self.assertIn("curve_e3.csv", written)
-        self.assertIn("grammars.csv", written)
-        self.assertIn(f"{len(written)} tables written", printed)
+    def test_a_bounds_argument_that_is_not_a_pair_is_refused(self) -> None:
+        code, _, err = self.init("--bounds", "[1, 2, 3]")
+        self.assertEqual(code, 2)
+        self.assertIn("pair", err)
 
-    def test_no_tables_writes_the_equations_and_nothing_else(self) -> None:
-        self.run_main("--quiet", "--no-report", "--no-tables")
-        self.assertEqual(list(self.directory.glob("*.csv")), [])
-        self.assertTrue((self.directory / "e3.json").is_file())
-
-    def test_generated_sections_go_into_the_chapter_around_the_prose(self) -> None:
-        chapter = self.chapter()
-        self.run_main("--quiet", "--no-tables")
-        written = chapter.read_text()
-        self.assertIn("Prose that must survive.", written)
-        self.assertIn(BEGIN, written)
-        self.assertIn(END, written)
-
-    def test_regenerating_a_chapter_replaces_the_block_rather_than_appending(self) -> None:
-        chapter = self.chapter()
-        for _ in range(2):
-            self.run_main("--quiet", "--no-tables")
-        written = chapter.read_text()
-        self.assertEqual(written.count(BEGIN), 1)
-        self.assertEqual(written.count(END), 1)
-        self.assertEqual(written.count("Prose that must survive."), 1)
-
-    def test_no_report_leaves_the_chapter_untouched(self) -> None:
-        chapter = self.chapter()
-        before = chapter.read_text()
-        self.run_main("--quiet", "--no-tables", "--no-report")
-        self.assertEqual(chapter.read_text(), before)
-
-    def test_a_chapter_is_not_rewritten_when_its_phase_was_not_requested(self) -> None:
-        """`--phase` gates the writing as well as the printing: a partial run that rewrote the
-        chapters would leave them describing a study that was never finished."""
-        chapter = self.chapter()
-        before = chapter.read_text()
-        self.run_main("--quiet", "--no-tables", "--phase", "screen")
-        self.assertEqual(chapter.read_text(), before)
+    def test_a_transform_the_target_cannot_take_is_refused(self) -> None:
+        code, _, err = self.init("--transform", "log", "--bounds", "[0, null]")
+        self.assertEqual(code, 2)
+        self.assertIn("always positive", err)
 
 
-class TestWhatIsPrinted(CliTestCase):
-    def test_quiet_writes_the_files_without_the_study(self) -> None:
-        printed = self.run_main("--quiet", "--no-report", "--no-tables")
-        self.assertNotIn("Correlation screening", printed)
-        self.assertIn("equations written to", printed)
+class TestFit(Corpus):
+    def setUp(self) -> None:
+        super().setUp()
+        self.init()
+        self.folder = self.root / "out" / "runs" / "y"
 
-    def test_phase_selection_limits_what_is_printed(self) -> None:
-        printed = self.run_main("--no-report", "--no-tables", "--phase", "screen")
-        self.assertIn("Correlation screening", printed)
-        self.assertNotIn("Oracle ladder", printed)
+    def test_it_writes_the_result_folder_named_by_the_csv_and_the_target(self) -> None:
+        code, out, _ = self.fit()
+        self.assertEqual(code, 0)
+        self.assertIn("files written to", out)
+        for name in ("scores.csv", "term_effects.csv", "group_shares.csv", "report.md", "manifest.json"):
+            self.assertTrue((self.folder / name).is_file(), name)
+        for variant in ("e1", "e2", "e3", "e3-max"):
+            for name in ("equation.json", "equation.txt", "curve.csv"):
+                self.assertTrue((self.folder / variant / name).is_file(), f"{variant}/{name}")
 
-    def test_render_reads_the_study_corpus_when_it_is_given_no_columns(self) -> None:
-        """``columns`` is optional; without it the corpus ``config/study.json`` names is loaded."""
-        buffer = io.StringIO()
-        with redirect_stdout(buffer):
-            render(corpus.report(), frozenset({"screen"}))
-        self.assertIn("Correlation screening", buffer.getvalue())
+    def test_the_manifest_records_the_corpus_and_the_study(self) -> None:
+        self.fit()
+        manifest = json.loads((self.folder / "manifest.json").read_text())
+        self.assertEqual(manifest["corpus"]["sha256"], file_sha256(self.csv))
+        self.assertEqual(manifest["corpus"]["rows"], 112)
+        self.assertEqual(manifest["corpus"]["path"], str(self.csv.resolve()))
+        self.assertEqual(manifest["equations"], ["E1", "E2", "E3", "E3-MAX"])
 
-    def test_render_prints_every_section(self) -> None:
-        buffer = io.StringIO()
-        with redirect_stdout(buffer):
-            render(corpus.report(), columns=corpus.columns())
-        printed = buffer.getvalue()
-        for expected in (
-            "Correlation screening",
-            "E1 --",
-            "E2 --",
-            "E3 --",
-            "Where the signal lives",
-            "Extracted practices",
-            "Baselines",
-            "Model selection",
+    def test_the_study_hash_changes_when_a_flag_changes_the_study(self) -> None:
+        self.fit(*QUICK)
+        first = json.loads((self.folder / "manifest.json").read_text())["study_sha256"]
+        self.fit(*QUICK, "--search.penalty", "7.0")
+        self.assertNotEqual(json.loads((self.folder / "manifest.json").read_text())["study_sha256"], first)
+
+    def test_the_report_is_made_of_the_numbers_of_the_run(self) -> None:
+        self.fit()
+        text = (self.folder / "report.md").read_text()
+        self.assertTrue(text.startswith("# y"))
+        self.assertIn("112 rows, 14 datasets, 8 models", text)
+        for heading in (
+            "## Equations",
+            "### E3-Valid",
+            "### E3-MAX",
+            "## Scores",
+            "## What the terms of E3-Valid are worth",
         ):
-            with self.subTest(section=expected):
-                self.assertIn(expected, printed)
+            self.assertIn(heading, text)
+        scores = pl.read_csv(self.folder / "scores.csv")
+        row = scores.filter(
+            (pl.col("variant") == "E3-Valid") & (pl.col("protocol") == "LODO") & (pl.col("scale") == "fit")
+        ).row(0, named=True)
+        self.assertIn(f"{row['r2']:.4g}", text)
+
+    def test_a_second_run_on_the_same_corpus_replaces_the_folder(self) -> None:
+        self.assertEqual(self.fit(*QUICK)[0], 0)
+        self.assertEqual(self.fit(*QUICK)[0], 0)
+
+    def test_a_different_corpus_content_is_not_overwritten_without_force(self) -> None:
+        self.fit(*QUICK)
+        planted(3, noise=0.1, seed=2).frame.write_csv(self.csv)
+        code, _, err = self.fit(*QUICK)
+        self.assertEqual(code, 2)
+        self.assertIn("different corpus", err)
+        self.assertEqual(self.fit(*QUICK, "--force")[0], 0)
+        self.assertEqual(
+            json.loads((self.folder / "manifest.json").read_text())["corpus"]["sha256"], file_sha256(self.csv)
+        )
+
+    def test_a_flag_that_makes_the_study_unusable_exits_two(self) -> None:
+        code, _, err = self.fit("--equations", '["E1"]')
+        self.assertEqual(code, 2)
+        self.assertIn("equations must be", err)
+
+    def test_data_overrides_the_corpus_path(self) -> None:
+        other = self.root / "other.csv"
+        planted(3, noise=0.1, seed=1).frame.write_csv(other)
+        self.assertEqual(self.fit(*QUICK, "--data", str(other))[0], 0)
+        self.assertTrue((self.root / "out" / "other" / "y" / "manifest.json").is_file())
+
+    def test_a_log_scale_adds_the_scores_on_the_target_itself(self) -> None:
+        self.init("--force", "--bounds", "[0, null]", "--transform", "log1p")
+        pl.read_csv(self.csv).with_columns((pl.col("y") - pl.col("y").min() + 1.0).alias("y")).write_csv(self.csv)
+        self.assertEqual(self.fit()[0], 0)
+        text = (self.root / "out" / "runs" / "y-log1p" / "report.md").read_text()
+        self.assertIn("Scores (on the target itself)", text)
+        self.assertIn("## Scores on the fitted scale", text)
 
 
-class TestTheSourceShownInTheChapters(unittest.TestCase):
-    """The chapters are tracked files: the line naming the corpus must not name a machine."""
+class TestSweep(Corpus):
+    def test_the_sweep_subcommand_writes_beside_the_result_folder(self) -> None:
+        self.init()
+        code, out, _ = run(
+            ["sweep", "--config", str(self.study), "--output", str(self.root / "out"), "--jobs", "1", *SMALL,
+             "--sweep.zscores", "[3.0]", "--sweep.penalties", "[1.0]", "--sweep.arities", "[1]"]
+        )  # fmt: skip
+        self.assertEqual(code, 0)
+        self.assertIn("proposed for y", out)
+        self.assertTrue((self.root / "out" / "runs" / "y" / "sweep" / "proposed_study.json").is_file())
 
-    def test_a_path_inside_the_working_directory_is_shown_relative(self) -> None:
-        self.assertEqual(_shown(Path.cwd() / "dataset" / "meta_dataset.csv"), "dataset/meta_dataset.csv")
 
-    def test_a_path_outside_the_working_directory_is_shown_whole(self) -> None:
-        with tempfile.TemporaryDirectory() as folder:
-            outside = Path(folder) / "corpus.csv"
-            self.assertEqual(_shown(outside), str(outside))
+class TestParser(unittest.TestCase):
+    def test_a_command_is_required(self) -> None:
+        code, _, err = run([])
+        self.assertEqual(code, 2)
+        self.assertIn("fit", err)
+
+    def test_an_unknown_command_is_refused(self) -> None:
+        self.assertEqual(run(["plot"])[0], 2)
+
+    def test_the_version_is_printed(self) -> None:
+        code, out, _ = run(["--version"])
+        self.assertEqual(code, 0)
+        self.assertIn("ml-meta-perf", out)
+
+
+class TestHelpers(unittest.TestCase):
+    def test_a_markdown_table_has_a_header_a_rule_and_a_row_per_row(self) -> None:
+        table = markdown_table(pl.DataFrame({"a": [1, 2], "b": [0.123456, float("nan")]})).split("\n")
+        self.assertEqual(table[:2], ["| a | b |", "|---|---|"])
+        self.assertEqual(table[2:], ["| 1 | 0.1235 |", "| 2 |  |"])
+
+    def test_the_study_hash_depends_on_the_study_only(self) -> None:
+        from ml_meta_perf.config import load_config
+
+        study = load_config()
+        self.assertEqual(study_sha256(study), study_sha256(load_config()))
 
 
 if __name__ == "__main__":

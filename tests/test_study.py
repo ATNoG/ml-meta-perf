@@ -6,7 +6,7 @@ import unittest
 import numpy as np
 
 from ml_meta_perf.config import E3_MAX, load_config
-from ml_meta_perf.experiment import EquationReport, run_capability, run_e1, run_e2, run_e3
+from ml_meta_perf.experiment import EquationReport, run_capability, run_equation
 from ml_meta_perf.study import VARIANT_NAMES, run_study
 from tests import corpus
 
@@ -40,12 +40,12 @@ class TestRunStudy(unittest.TestCase):
         self.assertEqual(self.report.maximum, self.report.equations[E3_MAX])
 
     def test_the_equations_equal_the_ones_the_per_equation_functions_fit(self) -> None:
-        # E1, E2 and E3 share one configuration (the suite's E3 here), as the study does.
         config, selection = STUDY.search, STUDY.selection
+        features = STUDY.features
         direct = {
-            "E1": run_e1(self.frame, config, selection),
-            "E2": run_e2(self.frame, config, selection),
-            "E3": run_e3(self.frame, config, selection),
+            "E1": run_equation(self.frame, features.dataset, (), config, selection, "E1"),
+            "E2": run_equation(self.frame, (), features.model, config, selection, "E2"),
+            "E3": run_equation(self.frame, features.dataset, features.model, config, selection, "E3"),
             E3_MAX: run_capability(self.frame, config, selection),
         }
         for name, expected in direct.items():

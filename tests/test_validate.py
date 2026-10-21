@@ -1,45 +1,25 @@
 """Validation protocols, baselines and the leakage they are designed to avoid."""
 
-import itertools
 import unittest
 from dataclasses import replace
-from unittest import mock
 
 import numpy as np
-import polars as pl
 
-from ml_meta_perf.analysis import (
-    _min_norm_lstsq,  # pyright: ignore[reportPrivateUsage]
-    feature_reach,
-    grammar_ceiling,
-    redundancy_groups,
-    saturated_fit,
-    screen,
-)
 from ml_meta_perf.search import search
-from ml_meta_perf.stats import mae, r2_score
 from ml_meta_perf.terms import build_library
 from ml_meta_perf.validate import (
     CrossValidation,
-    additive_mean_reference,
-    baseline_group_centre,
-    baseline_group_mean,
     cross_validate_doubly_held_out,
     cross_validate_fixed_form,
     decision_report,
     fold_selections,
-    interaction_oracle,
     leave_one_group_out,
-    oracle_ladder,
     paired_comparison,
-    random_kfold_groups,
     ranking_report,
     score,
     sign_test,
     term_stability,
 )
-from tests import corpus
-from tests.study import DATASET_COLUMN, DATASET_FEATURES, MODEL_FEATURES
 
 
 def grid(n_groups: int = 6, per_group: int = 5, seed: int = 4):
@@ -62,13 +42,6 @@ def grid(n_groups: int = 6, per_group: int = 5, seed: int = 4):
     return columns, target, outer_labels, inner_labels
 
 
-def unbounded_grid(n_groups: int = 6, per_group: int = 5, seed: int = 4):
-    """The same grid, with an additive target far outside the MCC range."""
-    columns, _, outer, inner = grid(n_groups, per_group, seed)
-    target = 200.0 + 30.0 * columns["f1"] + 10.0 * columns["g1"]
-    return columns, target, outer, inner
-
-
 class TestSplitters(unittest.TestCase):
     def test_leave_one_group_out_covers_every_row_once(self) -> None:
         labels = np.array(["a", "a", "b", "c", "c", "c"])
@@ -83,14 +56,6 @@ class TestSplitters(unittest.TestCase):
     def test_one_fold_per_distinct_group(self) -> None:
         labels = np.array(["a", "a", "b", "c"])
         self.assertEqual(len(list(leave_one_group_out(labels))), 3)
-
-    def test_random_folds_have_the_right_shape(self) -> None:
-        folds = random_kfold_groups(50, folds=5, seed=1)
-        self.assertEqual(folds.shape, (50,))
-        self.assertLessEqual(len(set(folds.tolist())), 5)
-
-    def test_random_folds_are_reproducible(self) -> None:
-        np.testing.assert_array_equal(random_kfold_groups(30, seed=9), random_kfold_groups(30, seed=9))
 
 
 class TestScores(unittest.TestCase):
@@ -244,130 +209,6 @@ class TestFoldSelections(unittest.TestCase):
         self.assertEqual(rows["never selected"]["frequency"], 0.0)
 
 
-class TestBaselines(unittest.TestCase):
-    def setUp(self) -> None:
-        _, self.target, self.outer, self.inner = grid()
-
-    def test_global_mean_is_constant_within_a_fold(self) -> None:
-        predictions = baseline_group_mean(self.target, self.outer)
-        for label in np.unique(self.outer):
-            self.assertEqual(len(set(np.round(predictions[self.outer == label], 12))), 1)
-
-    def test_conditioning_on_the_inner_group_helps(self) -> None:
-        plain = baseline_group_mean(self.target, self.outer)
-        conditioned = baseline_group_mean(self.target, self.outer, self.inner)
-        self.assertLess(float(np.abs(self.target - conditioned).mean()), float(np.abs(self.target - plain).mean()))
-
-    def test_additive_mean_reference_beats_either_group_alone(self) -> None:
-        reference = additive_mean_reference(self.target, self.outer, self.inner)
-        self.assertGreater(
-            float(np.corrcoef(reference, self.target)[0, 1]),
-            float(np.corrcoef(baseline_group_mean(self.target, self.outer), self.target)[0, 1]),
-        )
-
-    def test_an_unbounded_group_mean_is_the_training_mean_itself(self) -> None:
-        _, target, outer, _ = unbounded_grid()
-        predictions = baseline_group_mean(target, outer, bounds=None)
-        expected = np.zeros_like(target)
-        for _, train, test in leave_one_group_out(outer):
-            expected[test] = float(target[train].mean())
-        self.assertGreater(float(predictions.min()), 1.0)
-        np.testing.assert_allclose(predictions, expected)
-
-    def test_an_unbounded_group_median_is_the_training_median_itself(self) -> None:
-        _, target, outer, _ = unbounded_grid()
-        predictions = baseline_group_centre(target, outer, centre="median", bounds=None)
-        expected = np.zeros_like(target)
-        for _, train, test in leave_one_group_out(outer):
-            expected[test] = float(np.median(target[train]))
-        self.assertGreater(float(predictions.min()), 1.0)
-        np.testing.assert_allclose(predictions, expected)
-
-    def test_an_unbounded_additive_reference_reproduces_an_additive_target(self) -> None:
-        _, target, outer, inner = unbounded_grid()
-        reference = additive_mean_reference(target, outer, inner, bounds=None)
-        self.assertGreater(float(reference.min()), 1.0)
-        np.testing.assert_allclose(reference, target, rtol=1e-9)
-
-    def test_baselines_stay_inside_the_mcc_range(self) -> None:
-        for predictions in (
-            baseline_group_mean(self.target, self.outer),
-            additive_mean_reference(self.target, self.outer, self.inner),
-        ):
-            self.assertGreaterEqual(predictions.min(), -1.0)
-            self.assertLessEqual(predictions.max(), 1.0)
-
-
-class TestInteractionOracle(unittest.TestCase):
-    def setUp(self) -> None:
-        _, self.target, self.outer, self.inner = grid()
-
-    def test_rank_zero_equals_the_additive_mean_reference(self) -> None:
-        np.testing.assert_allclose(
-            interaction_oracle(self.target, self.outer, self.inner, 0),
-            additive_mean_reference(self.target, self.outer, self.inner),
-            atol=1e-9,
-        )
-
-    def test_more_components_never_fit_worse(self) -> None:
-        from ml_meta_perf.stats import r2_score
-
-        scores = [
-            r2_score(self.target, interaction_oracle(self.target, self.outer, self.inner, rank)) for rank in range(5)
-        ]
-        for earlier, later in itertools.pairwise(scores):
-            self.assertGreaterEqual(later, earlier - 1e-9)
-
-    def test_full_rank_reproduces_every_cell(self) -> None:
-        from ml_meta_perf.stats import r2_score
-
-        full = min(np.unique(self.outer).shape[0], np.unique(self.inner).shape[0])
-        value = r2_score(self.target, interaction_oracle(self.target, self.outer, self.inner, full))
-        self.assertGreater(value, 0.999)
-
-    def test_an_unbounded_oracle_reproduces_an_additive_target(self) -> None:
-        _, target, outer, inner = unbounded_grid()
-        prediction = interaction_oracle(target, outer, inner, 2, bounds=None)
-        self.assertGreater(float(prediction.min()), 1.0)
-        np.testing.assert_allclose(prediction, target, rtol=1e-9)
-
-    def test_stays_inside_the_mcc_range(self) -> None:
-        prediction = interaction_oracle(self.target, self.outer, self.inner, 2)
-        self.assertGreaterEqual(prediction.min(), -1.0)
-        self.assertLessEqual(prediction.max(), 1.0)
-
-    def test_handles_missing_cells(self) -> None:
-        # 24 of the 500 dataset-by-model cells are absent in the real meta-dataset.
-        mask = np.ones(self.target.shape[0], dtype=bool)
-        mask[3] = False
-        prediction = interaction_oracle(self.target[mask], self.outer[mask], self.inner[mask], 2)
-        self.assertTrue(np.all(np.isfinite(prediction)))
-
-
-class TestOracleLadder(unittest.TestCase):
-    def setUp(self) -> None:
-        _, self.target, self.outer, self.inner = grid()
-
-    def test_one_row_per_rank(self) -> None:
-        table = oracle_ladder(self.target, self.outer, self.inner, ranks=(0, 1, 2))
-        self.assertEqual(table["interaction_rank"].to_list(), [0, 1, 2])
-
-    def test_gain_is_undefined_for_the_first_rung(self) -> None:
-        table = oracle_ladder(self.target, self.outer, self.inner, ranks=(0, 1))
-        self.assertNotEqual(table["gain"][0], table["gain"][0])  # NaN
-
-    def test_bounds_reach_the_oracle_behind_the_ladder(self) -> None:
-        _, target, outer, inner = unbounded_grid()
-        unbounded = oracle_ladder(target, outer, inner, ranks=(0, 1), bounds=None)["r2"].to_numpy()
-        clipped = oracle_ladder(target, outer, inner, ranks=(0, 1))["r2"].to_numpy()
-        np.testing.assert_allclose(unbounded, np.ones(2), atol=1e-9)
-        np.testing.assert_allclose(clipped, np.full(2, r2_score(target, np.ones_like(target))))
-
-    def test_r2_is_non_decreasing(self) -> None:
-        scores = oracle_ladder(self.target, self.outer, self.inner, ranks=(0, 1, 2, 3))["r2"].to_numpy()
-        self.assertTrue((np.diff(scores) >= -1e-9).all())
-
-
 class TestDecisionReport(unittest.TestCase):
     """The go/no-go decision the equation supports."""
 
@@ -412,38 +253,6 @@ class TestRanking(unittest.TestCase):
         target = np.array([0.1, 0.9])
         report = ranking_report(target, np.array([1.0, 0.0]), np.array(["a", "a"]))
         self.assertAlmostEqual(float(report["regret"][0]), 0.8)
-
-
-class TestAnalysis(unittest.TestCase):
-    def setUp(self) -> None:
-        self.columns, self.target, self.outer, self.inner = grid()
-        self.library = build_library(("f1", "f2"), ("g1", "g2"), self.columns)
-
-    def test_screen_returns_one_row_per_term(self) -> None:
-        table = screen(self.library, self.target)
-        self.assertEqual(table.height, len(self.library))
-        self.assertIn("pearson", table.columns)
-        self.assertIn("spearman", table.columns)
-
-    def test_screen_is_sorted_by_strength(self) -> None:
-        strengths = screen(self.library, self.target)["strength"].to_numpy()
-        self.assertTrue(np.all(np.diff(strengths) <= 1e-12))
-
-    def test_within_group_columns_appear_when_groups_are_given(self) -> None:
-        table = screen(self.library, self.target, self.outer)
-        self.assertIn("within_pearson", table.columns)
-
-    def test_within_group_screening_demotes_a_pure_group_feature(self) -> None:
-        # f1 is constant inside a dataset, so once the group mean is removed it has no
-        # variance left to correlate with -- which is the whole point of the column.
-        table = screen(self.library, self.target, self.outer)
-        row = table.filter(pl.col("term") == "f1")
-        self.assertLess(abs(float(row["within_pearson"][0])), 1e-9)
-
-    def test_redundancy_groups_cluster_duplicates(self) -> None:
-        clusters = redundancy_groups(self.library, threshold=0.999)
-        for cluster in clusters:
-            self.assertGreater(len(cluster), 1)
 
 
 class TestPairedComparison(unittest.TestCase):
@@ -514,182 +323,3 @@ class TestSignTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
-class TestGroupCentreBaselines(unittest.TestCase):
-    """Both centres, because the metrics disagree about which baseline is honest."""
-
-    def setUp(self) -> None:
-        rng = np.random.default_rng(11)
-        self.outer = np.repeat([f"d{i}" for i in range(6)], 8)
-        self.inner = np.tile([f"m{i}" for i in range(8)], 6)
-        self.truth = rng.uniform(0.0, 1.0, size=48)
-
-    def test_median_beats_mean_on_absolute_error(self) -> None:
-        """The reason the median rows exist: MAE is minimised by the median.
-
-        A skewed target makes the gap visible. Reporting the equation's MAE only against a
-        mean baseline compares it with a predictor not minimising the metric being reported.
-        """
-        skewed = np.concatenate([np.full(40, 0.9), np.linspace(0.0, 0.2, 8)])
-        mean = baseline_group_centre(skewed, self.outer, self.inner, centre="mean")
-        median = baseline_group_centre(skewed, self.outer, self.inner, centre="median")
-        self.assertLess(mae(skewed, median), mae(skewed, mean))
-
-    def test_mean_beats_median_on_squared_error(self) -> None:
-        """And the converse, which is why both are kept rather than one replacing the other."""
-        mean = baseline_group_centre(self.truth, self.outer, centre="mean")
-        median = baseline_group_centre(self.truth, self.outer, centre="median")
-        self.assertGreater(r2_score(self.truth, mean), r2_score(self.truth, median))
-
-    def test_the_mean_wrapper_is_the_centre_at_mean(self) -> None:
-        np.testing.assert_allclose(
-            baseline_group_mean(self.truth, self.outer, self.inner),
-            baseline_group_centre(self.truth, self.outer, self.inner, centre="mean"),
-        )
-
-    def test_no_row_sees_its_own_value(self) -> None:
-        """The leave-one-group-out loop is what keeps the baseline honest."""
-        for centre in ("mean", "median"):
-            prediction = baseline_group_centre(self.truth, self.outer, centre=centre)
-            for label in np.unique(self.outer):
-                mask = self.outer == label
-                expected = np.mean if centre == "mean" else np.median
-                self.assertAlmostEqual(float(prediction[mask][0]), float(expected(self.truth[~mask])))
-
-
-class TestGrammarReach(unittest.TestCase):
-    """The heuristic ceiling the vocabulary implies, before any search runs."""
-
-    def setUp(self) -> None:
-        from ml_meta_perf.config import default_configuration
-        from ml_meta_perf.data import columns_as_arrays, load
-        from ml_meta_perf.data import target as load_target
-
-        DEFAULT = default_configuration()
-
-        frame = load()
-        self.features = DATASET_FEATURES + MODEL_FEATURES
-        columns = columns_as_arrays(frame, self.features)
-        self.truth = load_target(frame)
-        self.library = build_library(
-            DATASET_FEATURES,
-            MODEL_FEATURES,
-            columns,
-            max_arity=DEFAULT.max_arity,
-            max_abs_zscore=DEFAULT.max_abs_zscore,
-        )
-
-    def test_a_feature_is_never_worse_after_the_grammar_than_before(self) -> None:
-        """`gain` measures what the transforms unlock, so it cannot be negative.
-
-        When the raw column is admissible, the best single-feature term is at worst the raw
-        one. A raw column rejected by the grammar's z-score guard has an undefined raw score
-        and is compared only through its admissible transforms.
-        """
-        table = feature_reach(self.library, self.truth, self.features)
-        self.assertTrue((table["gain"].to_numpy() >= -1e-12).all())
-        finite_raw = table.filter(pl.col("r2_raw").is_finite())
-        self.assertTrue((finite_raw["r2_best"].to_numpy() >= finite_raw["r2_raw"].to_numpy() - 1e-12).all())
-
-    def test_only_single_feature_terms_are_credited(self) -> None:
-        """A product would otherwise be counted twice, once under each of its features."""
-        table = feature_reach(self.library, self.truth, self.features)
-        by_name = {term.name: term for term in self.library.terms}
-        for row in table.to_dicts():
-            if row["best_term"]:
-                self.assertEqual(set(by_name[row["best_term"]].features), {row["feature"]})
-
-    def test_the_ladder_is_monotone(self) -> None:
-        """Each rung is a superset of the one before it, so R2 cannot fall."""
-        ladder = grammar_ceiling(self.library, self.truth, self.features)
-        self.assertLessEqual(ladder["r2_raw_additive"], ladder["r2_best_per_feature"] + 1e-9)
-        self.assertLessEqual(ladder["r2_best_per_feature"], ladder["r2_all_single_feature"] + 1e-9)
-
-    def test_it_is_a_heuristic_and_not_a_bound(self) -> None:
-        """The published equation passes it, which is the reading the report gives.
-
-        `r2_all_single_feature` bounds a sum of per-feature functions. E3's cross-feature
-        terms are not that, so exceeding it is expected -- and is the independent route to
-        the same conclusion the additive mean-based reference reaches.
-        """
-        ladder = grammar_ceiling(self.library, self.truth, self.features)
-        fitted = float(corpus.published().in_sample["r2"])
-        self.assertGreater(fitted, ladder["r2_all_single_feature"])
-
-
-class TestMinNormLeastSquares(unittest.TestCase):
-    """The saturated fit must not depend on one LAPACK build's SVD converging."""
-
-    def setUp(self) -> None:
-        rng = np.random.default_rng(0)
-        base = rng.normal(size=(60, 8))
-        self.design = np.column_stack([base, base[:, :4] + base[:, 4:]])  # rank 8 of 12
-        self.target = rng.normal(size=60)
-
-    def test_the_fallback_agrees_with_lstsq_on_a_rank_deficient_design(self) -> None:
-        from unittest import mock
-
-        expected = np.linalg.lstsq(self.design, self.target, rcond=None)[0]
-        with mock.patch("numpy.linalg.lstsq", side_effect=np.linalg.LinAlgError("SVD did not converge")):
-            fallback = _min_norm_lstsq(self.design, self.target)
-        np.testing.assert_allclose(fallback, expected, atol=1e-8)
-        np.testing.assert_allclose(_min_norm_lstsq(self.design, self.target), expected, atol=1e-8)
-
-
-class TestSaturatedFit(unittest.TestCase):
-    """The control for the selection stage: what every term at once actually does.
-
-    Chapter 3 opens on this comparison, and it opened on a stale copy of it for months. The
-    tests pin the two properties the argument rests on rather than the values themselves.
-    """
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        from ml_meta_perf.config import default_configuration
-        from ml_meta_perf.data import columns_as_arrays, groups, load
-        from ml_meta_perf.data import target as load_target
-
-        DEFAULT = default_configuration()
-
-        frame = load()
-        columns = columns_as_arrays(frame, DATASET_FEATURES + MODEL_FEATURES)
-        cls.library = build_library(
-            DATASET_FEATURES,
-            MODEL_FEATURES,
-            columns,
-            max_arity=DEFAULT.max_arity,
-            max_abs_zscore=DEFAULT.max_abs_zscore,
-        )
-        cls.result = saturated_fit(cls.library, load_target(frame), groups(frame, DATASET_COLUMN))
-
-    def test_counts_the_whole_library(self) -> None:
-        self.assertEqual(int(self.result["terms"]), len(self.library))
-
-    def test_it_fits_better_than_it_transfers(self) -> None:
-        """The finding: an unconstrained fit over a design this wide describes and does not
-        generalise. If this ever inverted, the selection stage would need justifying again."""
-        self.assertGreater(self.result["r2_in_sample"], 0.5)
-        self.assertLess(self.result["r2_loo_dataset_clipped"], 0.0)
-
-    def test_the_clip_is_what_stops_it_running_away(self) -> None:
-        """Both bounds are reported because the gap between them is the point."""
-        self.assertLess(self.result["r2_loo_dataset_unclipped"], self.result["r2_loo_dataset_clipped"])
-
-    def test_it_transfers_worse_than_the_published_equation(self) -> None:
-        published = float(corpus.published().cross_validated["loo_dataset"]["r2"])
-        self.assertGreater(published, self.result["r2_loo_dataset_clipped"])
-
-
-class TestSaturatedFitSolver(unittest.TestCase):
-    """The saturated design is rank-deficient, which numpy's SVD solver cannot always converge on."""
-
-    def setUp(self) -> None:
-        self.columns, self.target, self.outer, _ = grid()
-        self.library = build_library(("f1", "f2"), ("g1", "g2"), self.columns)
-
-    def test_does_not_depend_on_numpys_svd_driver(self) -> None:
-        failure = np.linalg.LinAlgError("SVD did not converge in Linear Least Squares")
-        with mock.patch("ml_meta_perf.analysis.np.linalg.lstsq", side_effect=failure):
-            result = saturated_fit(self.library, self.target, self.outer)
-        self.assertTrue(all(np.isfinite(value) for value in result.values()))

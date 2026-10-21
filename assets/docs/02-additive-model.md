@@ -1,5 +1,9 @@
 # 2. The additive model
 
+> The measurements quoted in this chapter were made on the MCC corpus of the paper (release `v1.0.0` of the
+> repository). They are not regenerated: the numbers of a study are in the `report.md` and the CSV files that
+> `ml-meta-perf fit` writes next to its equations.
+
 *Implemented in `ml_meta_perf.terms` and `ml_meta_perf.model`.*
 
 The abbreviations used in this chapter are Matthews Correlation Coefficient (**MCC**),
@@ -92,8 +96,7 @@ The arity belongs to the **one configuration** shared by E1, E2 and E3
 
 **E3-MAX** uses `selection.capability_arity` and the raw maximum of its worst-protocol
 curve. In the current configuration that arity is also 3: E3-Valid and E3-MAX compare
-length-selection rules under the same grammar. Their scores and form stability are
-generated in [chapter 4](04-equation.md).
+length-selection rules under the same grammar. Their scores and form stability are in the `report.md` of a study.
 
 Arity 4 remains available through `--search.max_arity 4`, outside the readability-limited
 sweep. No current arity-4 performance claim is made here.
@@ -234,6 +237,4 @@ weight vectors are retained on the fitted object.
 ### The additive form
 
 The equation is additive in its selected terms; mixed terms can represent some
-interactions between dataset and model descriptors. The identity and interaction
-references in [chapter 4](04-equation.md) assess what those terms recover on this corpus.
-They do not establish a universal upper bound on alternative symbolic forms.
+interactions between dataset and model descriptors. They do not establish a universal upper bound on alternative symbolic forms.
