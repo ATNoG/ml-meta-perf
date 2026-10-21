@@ -65,6 +65,10 @@ E3_MAX = "E3-MAX"
 #: The equation lists a study of ONE all-features equation may ask for: E3-Valid alone, or with E3-MAX.
 SINGLE_EQUATIONS = (("E3",), ("E3", E3_MAX))
 
+#: Every equation list a study file may carry: one equation (E3-Valid, with E3-MAX or not), or the three of
+#: the dataset/model comparison (E1 dataset features, E2 model features, E3 both), with E3-MAX or not.
+ALLOWED_EQUATIONS = (*SINGLE_EQUATIONS, EQUATIONS, (*EQUATIONS, E3_MAX))
+
 #: The rules choosing an equation's arity and length (`lengths.LENGTH_RULES`), repeated so the file is checked on read.
 LENGTH_METHODS = ("plateau_knee", "pareto_knee", "pareto_elbow", "pareto_within_delta", "plateau_pareto")
 
@@ -399,10 +403,9 @@ def _validated(
     """Reject a study description that cannot describe a corpus, before any file is read."""
     if not corpus.path:
         raise ConfigError("corpus.path is empty")
-    if equations not in (EQUATIONS, *SINGLE_EQUATIONS):
+    if equations not in ALLOWED_EQUATIONS:
         raise ConfigError(
-            f"equations must be {list(EQUATIONS)} (the three-equation study) or one of "
-            f"{[list(single) for single in SINGLE_EQUATIONS]}, got {list(equations)}"
+            f"equations must be one of {[list(names) for names in ALLOWED_EQUATIONS]}, got {list(equations)}"
         )
     for kind, path in (
         ("taxonomy", side_files.taxonomy),

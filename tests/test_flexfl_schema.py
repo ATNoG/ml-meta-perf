@@ -29,6 +29,7 @@ from ml_meta_perf.data import (
 )
 from ml_meta_perf.model import Equation
 from ml_meta_perf.search import MIN_CONTRIBUTION, pruning_threshold, search
+from ml_meta_perf.study import run_schema
 from ml_meta_perf.terms import build_library
 from ml_meta_perf.validate import score
 from tests.study import (
@@ -550,7 +551,7 @@ class FlexFLSchemaTests(unittest.TestCase):
         )
         for schema in schemas:
             with self.subTest(schema=schema), mock.patch.object(experiment, "prune", wraps=experiment.prune) as spy:
-                experiment.run_flexfl(FIXTURE, schema, TINY)
+                run_schema(FIXTURE, schema, TINY)
                 actual = spy.call_args.kwargs["min_contribution"]
                 truth = target(load(FIXTURE, schema), schema)
                 expected = pruning_threshold(schema.fit_bounds, truth)
@@ -580,14 +581,14 @@ class FlexFLSchemaTests(unittest.TestCase):
 
     def test_run_flexfl_on_a_log_target(self) -> None:
         schema = flexfl_schema("comm_bytes_total", log_target=True)
-        result = experiment.run_flexfl(FIXTURE, schema, TINY)
-        self.assertEqual(result.equation.equation.bounds, (0.0, None))
-        self.assertTrue(result.equation.equation.name.startswith("E3_log1p_k"))
+        result = run_schema(FIXTURE, schema, TINY)
+        self.assertEqual(result.valid.equation.bounds, (0.0, None))
+        self.assertTrue(result.valid.equation.name.startswith("E3_log1p_k"))
         frame = load(FIXTURE, schema)
         columns = columns_as_arrays(frame, result.schema.features)
-        prediction = result.equation.equation.predict(columns)
+        prediction = result.valid.equation.predict(columns)
         self.assertAlmostEqual(
-            result.equation.in_sample["r2"],
+            result.valid.in_sample["r2"],
             score(np.log1p(frame["comm_bytes_total"].to_numpy()), prediction).r2,
             delta=1e-12,
         )
@@ -598,9 +599,9 @@ class FlexFLSchemaTests(unittest.TestCase):
 
     def test_run_flexfl_on_a_log_target_with_task_type(self) -> None:
         schema = flexfl_schema("total_time_s", "classification", log_target=True)
-        result = experiment.run_flexfl(FIXTURE, schema, TINY)
-        self.assertEqual(result.equation.equation.bounds, (0.0, None))
-        self.assertTrue(result.equation.equation.name.startswith("E3_log1p_k"))
+        result = run_schema(FIXTURE, schema, TINY)
+        self.assertEqual(result.valid.equation.bounds, (0.0, None))
+        self.assertTrue(result.valid.equation.name.startswith("E3_log1p_k"))
         for row in result.effects.iter_rows(named=True):
             expected = "raises" if row["beta"] > 0 else "lowers"
             self.assertEqual(row["direction"], f"{expected} log1p(total_time_s)")
@@ -731,10 +732,10 @@ class FlexFLSchemaTests(unittest.TestCase):
         self.assertTrue(np.all((bounded >= -1.0) & (bounded <= 1.0)))
 
     def test_run_flexfl_on_a_cost_target(self) -> None:
-        result = experiment.run_flexfl(FIXTURE, flexfl_schema("comm_bytes_total"), TINY)
-        self.assertEqual(result.equation.equation.bounds, (0.0, None))
+        result = run_schema(FIXTURE, flexfl_schema("comm_bytes_total"), TINY)
+        self.assertEqual(result.valid.equation.bounds, (0.0, None))
         self.assertNotIn("alpha", result.schema.features)
-        for term in result.equation.equation.terms:
+        for term in result.valid.equation.terms:
             self.assertTrue(set(term.features).isdisjoint(DROPPED))
         self.assertGreater(result.effects.height, 0)
         for row in result.effects.iter_rows(named=True):
@@ -745,21 +746,21 @@ class FlexFLSchemaTests(unittest.TestCase):
 
     def test_a_cost_bounded_below_by_zero_carries_that_bound_on_the_fitted_scale(self) -> None:
         plain = dataclasses.replace(flexfl_schema("comm_bytes_total"), bounds=(0.0, None))
-        report = experiment.run_flexfl(FIXTURE, plain, TINY).equation
+        report = run_schema(FIXTURE, plain, TINY).valid
         self.assertEqual(report.equation.bounds, (0.0, None))
         self.assertTrue(np.all(report.equation.predict(columns_as_arrays(load(FIXTURE, plain), plain.features)) >= 0.0))
         logged = dataclasses.replace(plain, transform="log1p")
-        self.assertEqual(experiment.run_flexfl(FIXTURE, logged, TINY).equation.equation.bounds, (0.0, None))
+        self.assertEqual(run_schema(FIXTURE, logged, TINY).valid.equation.bounds, (0.0, None))
 
     def test_the_equation_prints_the_schema_label(self) -> None:
-        plain = experiment.run_flexfl(FIXTURE, flexfl_schema("comm_bytes_total"), TINY).equation.equation
-        logged = experiment.run_flexfl(FIXTURE, flexfl_schema("comm_bytes_total", log_target=True), TINY).equation
+        plain = run_schema(FIXTURE, flexfl_schema("comm_bytes_total"), TINY).valid.equation
+        logged = run_schema(FIXTURE, flexfl_schema("comm_bytes_total", log_target=True), TINY).valid
         self.assertTrue(str(plain).startswith("comm_bytes_total = "))
         self.assertTrue(str(logged.equation).startswith("log1p(comm_bytes_total) = "))
         self.assertEqual(logged.equation.target, "log1p(comm_bytes_total)")
 
     def test_cross_validation_of_an_unbounded_target_is_never_clipped(self) -> None:
-        report = experiment.run_flexfl(FIXTURE, flexfl_schema("comm_bytes_total"), TINY).equation
+        report = run_schema(FIXTURE, flexfl_schema("comm_bytes_total"), TINY).valid
         for protocol, path in report.paths.items():
             self.assertEqual(path[report.n_terms].clipped, 0, protocol)
 
@@ -961,11 +962,11 @@ class FlexFLSchemaTests(unittest.TestCase):
     def test_run_flexfl_on_n_epochs(self) -> None:
         schema = flexfl_schema("n_epochs")
         with mock.patch.object(experiment, "prune", wraps=experiment.prune) as spy:
-            result = experiment.run_flexfl(FIXTURE, schema, TINY)
+            result = run_schema(FIXTURE, schema, TINY)
         truth = target(load(FIXTURE, schema), schema)
         self.assertEqual(spy.call_args.kwargs["min_contribution"], pruning_threshold(schema.fit_bounds, truth))
-        self.assertEqual(result.equation.equation.bounds, (0.0, None))
-        self.assertNotIn("log1p", result.equation.equation.name)
+        self.assertEqual(result.valid.equation.bounds, (0.0, None))
+        self.assertNotIn("log1p", result.valid.equation.name)
         self.assertGreater(result.effects.height, 0)
         for row in result.effects.iter_rows(named=True):
             expected = "raises" if row["beta"] > 0 else "lowers"

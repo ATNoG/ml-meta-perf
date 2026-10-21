@@ -30,7 +30,6 @@ from jsonargparse import ActionConfigFile, ArgumentParser, Namespace  # pyright:
 
 from ml_meta_perf.config import (
     DEFAULT_CONFIG_PATH,
-    E3_MAX,
     SINGLE_EQUATIONS,
     ConfigError,
     Configuration,
@@ -51,9 +50,10 @@ from ml_meta_perf.data import (
     resolve_path,
     target,
 )
-from ml_meta_perf.experiment import PROTOCOL_NAMES, Report, run, run_flexfl
+from ml_meta_perf.experiment import PROTOCOL_NAMES, Report, run
 from ml_meta_perf.practices import render as render_practices
 from ml_meta_perf.report import term_importance, write_into_chapters
+from ml_meta_perf.study import run_study
 
 #: What ``--phase`` accepts. ``all`` is the default and is what the study runs.
 PHASES = ("screen", "equations", "validation", "practices", "figures", "report")
@@ -289,14 +289,13 @@ def _run_fit_cli(arguments: Namespace) -> int:
         print(f"ignored when the study fits only E3: {', '.join(ignored)}", file=sys.stderr)
     started = time.perf_counter()
     corpus = arguments.data or resolve_path(arguments.corpus.path)
-    with_maximum = E3_MAX in study_of(arguments).equations
-    report = run_flexfl(corpus, schema, arguments.search, arguments.selection, with_maximum=with_maximum)
+    report = run_study(study_of(arguments), corpus)
     elapsed = time.perf_counter() - started
     if not arguments.quiet:
         _section(f"E3: {schema.label}")
-        print(report.equation.equation)
-        print(f"\nIS: {report.equation.in_sample}")
-        for label, scores in report.equation.cross_validated.items():
+        print(report.valid.equation)
+        print(f"\nIS: {report.valid.in_sample}")
+        for label, scores in report.valid.cross_validated.items():
             print(f"{PROTOCOL_NAMES.get(label, label)}: R2={scores['r2']:.3f}, MAE={scores['mae']:.3f}")
         _show(report.shares)
         if schema.log_target:
@@ -310,9 +309,9 @@ def _run_fit_cli(arguments: Namespace) -> int:
     if arguments.output:
         destination = Path(arguments.output) / "flexfl" / schema.slug
         destination.mkdir(parents=True, exist_ok=True)
-        report.equation.equation.save(destination / "equation.json")
-        (destination / "equation.txt").write_text(f"{report.equation.equation}\n", encoding="utf-8")
-        report.equation.curve.write_csv(destination / "curve.csv")
+        report.valid.equation.save(destination / "equation.json")
+        (destination / "equation.txt").write_text(f"{report.valid.equation}\n", encoding="utf-8")
+        report.valid.curve.write_csv(destination / "curve.csv")
         report.effects.write_csv(destination / "term_effects.csv")
         report.shares.write_csv(destination / "group_shares.csv")
         report.scores.write_csv(destination / "scores.csv")

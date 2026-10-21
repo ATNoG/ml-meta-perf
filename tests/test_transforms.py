@@ -9,7 +9,8 @@ import polars as pl
 
 from ml_meta_perf.config import DEFAULT_CONFIG_PATH, ConfigError, Schema, default_configuration, parse_config
 from ml_meta_perf.data import SchemaError, from_fit_scale, target, to_fit_scale
-from ml_meta_perf.experiment import finalise, fit_path, original_scale_scores
+from ml_meta_perf.experiment import finalise, fit_path
+from ml_meta_perf.study import original_scale_scores
 from ml_meta_perf.validate import score
 from tests.synthetic import DATASET_FEATURES, MODEL_FEATURES, cost_shaped
 
