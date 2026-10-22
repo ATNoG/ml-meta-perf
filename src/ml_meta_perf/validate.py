@@ -1,24 +1,23 @@
-"""Validation protocols, baselines, and the term-count sweep.
+"""Validation protocols, ranking and decision diagnostics, and paired group comparisons.
 
-Four protocols are reported, and they answer different questions.
+Four protocols are reported, and they answer different questions:
 
-* In-sample (IS) fits and scores the equation on all observed rows.
-* Leave-one-dataset-out (LODO) holds out all rows of one dataset. It answers "what MCC will
-  these models reach on a dataset nobody has run yet", which is the meta-learning use
-  case, and it is the harder number because dataset features are constant within a
-  fold and so the held-out dataset is genuinely unseen.
-* Leave-one-model-out (LOMO) holds out all rows of one model. It answers "what will a new
-  model reach on datasets we know".
-* Doubly held out (DHO) removes every row sharing either the test dataset or the test
-  model before fitting the coefficients for an observed pair.
+* In-sample (**IS**) fits and scores the equation on all observed rows $\\mathcal{D}$.
+* Leave-one-dataset-out (**LODO**) holds out all rows $\\mathcal{H}_g = \\{i : d_i = g\\}$ of one dataset $g$
+  and refits weights on $\\mathcal{T}_g = \\{i : d_i \\ne g\\}$. It answers what the models will reach on a
+  dataset nobody has run yet, and dataset features are constant within a fold so the held-out dataset is
+  genuinely unseen.
+* Leave-one-model-out (**LOMO**) holds out all rows $\\mathcal{H}_h = \\{i : m_i = h\\}$ of one model $h$.
+  It answers what a new model will reach on known datasets.
+* Doubly held out (**DHO**) removes every row sharing either the test dataset or the test model,
+  $\\mathcal{T}_{g,h} = \\{i : d_i \\ne g \\land m_i \\ne h\\}$, before fitting the coefficients for an observed
+  cell $(g, h)$.
 
-A random k-fold split is deliberately *not* offered as a headline protocol. With
-dataset features constant across a dataset's rows, a random split puts the same dataset
-on both sides of the fold and can therefore leak group identity. ``random_kfold_groups``
-exists only to measure that diagnostic on the current corpus, not as a reported protocol.
+A random $k$-fold split is deliberately *not* offered as a protocol: with dataset features constant
+across a dataset's rows, a random split puts the same dataset on both sides of the fold and leaks
+group identity.
 
-Study chapter: [5. Evaluation][study-chapter] -- the rationale, in
-prose, with the figures.
+Study chapter: [5. Evaluation][study-chapter] -- the rationale, in prose.
 
 [study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/05-evaluation.md
 """
@@ -64,6 +63,7 @@ class Scores:
     n: int
 
     def as_dict(self) -> dict[str, float | int]:
+        """Return the six regression metrics as a plain dictionary."""
         return {
             "r2": self.r2,
             "mae": self.mae,
@@ -75,6 +75,7 @@ class Scores:
 
 
 def score(truth: np.ndarray, prediction: np.ndarray) -> Scores:
+    """Compute $(R^2, \\mathrm{MAE}, \\mathrm{RMSE}, \\mathrm{SMAPE}, \\rho_s, n)$ on ``truth`` and ``prediction``."""
     return Scores(
         r2=r2_score(truth, prediction),
         mae=mae(truth, prediction),
@@ -92,9 +93,8 @@ class CrossValidation:
     predictions: np.ndarray
     per_fold: dict[str, Scores] = field(default_factory=dict)
     selected: list[list[str]] = field(default_factory=list)
-    #: The equation each fold fitted, keyed by the label it held out. Kept so that a
-    #: correction fitted on a fold's training rows -- `ml_meta_perf.identity` fits one -- can
-    #: reuse the search this path already paid for instead of repeating it.
+    #: The equation each fold fitted, keyed by the label it held out, so downstream diagnostics
+    #: (`experiment._sign_stability`) can inspect the fold-specific weights without refitting.
     equations: dict[str, Equation] = field(default_factory=dict)
     #: How many out-of-fold predictions `_clip_to_training` moved. Not a diagnostic detail:
     #: the count is reported for each equation and protocol, since clipping can affect
@@ -102,6 +102,7 @@ class CrossValidation:
     clipped: int = 0
 
     def scores(self, truth: np.ndarray) -> Scores:
+        """Score the pooled out-of-fold predictions against ``truth``."""
         return score(truth, self.predictions)
 
     def dispersion(self) -> dict[str, float]:
@@ -293,9 +294,8 @@ def cross_validate_fixed_form(
             outcome.per_fold[label] = score(target[test], outcome.predictions[test])
             outcome.selected.append([term.name for term in equation.terms])
             # The same terms every fold, carrying that fold's weights, with the standardisation
-            # folded back in exactly as `fit.to_equation` does. Recorded so a downstream
-            # correction -- `identity.correct_out_of_fold` fits one -- can reuse the fold's own
-            # equation instead of the all-data one.
+            # folded back in exactly as `fit.to_equation` does, so `experiment._sign_stability`
+            # can compare each fold's weight signs against the all-data equation.
             raw = weights / standardizer.scale
             outcome.equations[label] = Equation(
                 intercept=offset - float(raw @ standardizer.mean),
@@ -375,23 +375,31 @@ def cross_validate_doubly_held_out(
 
 
 def _clip_to_training(prediction: np.ndarray, training_target: np.ndarray, bounds: Bounds | None) -> np.ndarray:
-    """Bound a fold's predictions by the target range that fold was trained on.
+    """Bound a fold's predictions by the target range that fold was trained on:
+
+    $$\\hat{y}_i^{\\text{cv}} = \\begin{cases}
+    \\hat{y}_{\\text{raw},i} & \\text{if } B = \\varnothing, \\\\
+    \\operatorname{clip}_B(\\hat{y}_{\\text{raw},i}) & \\text{if } B \\text{ is open on one side}, \\\\
+    \\operatorname{clip}_{[m_g,\\, M_g]}(\\hat{y}_{\\text{raw},i}) & \\text{if } B = [a, b] \\text{ is bounded},
+    \\end{cases}$$
+
+    where $m_g = \\min_{j \\in \\mathcal{T}_g} y_j$ and $M_g = \\max_{j \\in \\mathcal{T}_g} y_j$.
 
     **Only for a target bounded on both sides.** ``bounds=None`` declares the target unbounded (a
     cost, a time, a count) and the predictions are returned as fitted: clamping them to the
-    training range would forbid exactly the extrapolation a held-out group needs -- the costliest
+    training range would forbid the extrapolation a held-out group needs -- the costliest
     dataset, held out, could never be predicted above the second costliest. A target bounded on
     one side only (a time, which cannot be negative but has no ceiling) is clipped at that bound
-    and nowhere else, for the same reason. For a target bounded on both sides the rule below
-    applies unchanged.
+    and nowhere else, for the same reason. For a target bounded on both sides the training-range
+    clip applies unchanged.
 
-    `model.predict` already clips to ``[MCC_LOWER, MCC_UPPER]``, the range MCC can take in
-    principle. That is the right bound for the equation as published and too loose here: this
-    corpus has exactly one negative row (-0.29), so a floor at -1.0 leaves a held-out fold free
+    `model.predict` already clips to $[a, b]$, the range a bounded target can take in
+    principle. That is the right bound for the equation as published and too loose in CV: the MCC
+    corpus has one negative row ($-0.29$), so a floor at $-1.0$ leaves a held-out fold free
     to be predicted at a value nothing in training ever took.
 
-    The training fold's own observed range uses no held-out information -- it is exactly what
-    the fitted equation was shown. This bounds extrapolation during coefficient refitting;
+    The training fold's own observed range $[m_g, M_g]$ uses no held-out information -- it is
+    what the fitted equation was shown. This bounds extrapolation during coefficient refitting;
     it does not remove optimism from global form selection.
     """
     if bounds is None:
@@ -409,11 +417,14 @@ RELEVANCE_TOLERANCE = 0.01
 
 
 def average_precision(labels: np.ndarray, scores: np.ndarray) -> float:
-    """Area under the precision-recall curve, by the step-wise sum.
+    """Area under the precision-recall curve, by the step-wise sum:
 
-    ``sum (R_n - R_{n-1}) * P_n`` over the ranking, the definition that does not interpolate
-    and so cannot flatter a short list. Returns NaN when no label is positive, which is a
-    real state here: at a threshold of 0.9 some datasets have no model above it.
+    $$\\mathrm{AP} = \\sum_{r=1}^{m} (R_r - R_{r-1})\\, P_r
+    = \\frac{1}{|\\mathcal{R}|} \\sum_{r : y_{(r)} \\in \\mathcal{R}} P_r,$$
+
+    where $(r)$ orders items by descending score and
+    $P_r = \\frac{1}{r} \\sum_{j=1}^{r} \\mathbb{I}[y_{(j)} \\in \\mathcal{R}]$.
+    Does not interpolate, so it cannot flatter a short list. Returns NaN when no label is positive.
     """
     if not labels.any():
         return float("nan")
@@ -499,6 +510,7 @@ def decision_report(
 def _grouped_average_precision(
     target: np.ndarray, prediction: np.ndarray, groups: np.ndarray | None, threshold: float
 ) -> float:
+    """Mean of `average_precision` at ``threshold`` across groups that have at least one positive observation."""
     if groups is None:
         return float("nan")
     scores = [
@@ -594,6 +606,7 @@ class PairedResult:
         return self.low > 0.0 or self.high < 0.0
 
     def as_dict(self) -> dict[str, float | int]:
+        """Return the paired sign-test and bootstrap confidence interval summary as a dictionary."""
         return {
             "mean": self.mean,
             "wins": self.wins,
@@ -606,12 +619,14 @@ class PairedResult:
 
 
 def sign_test(differences: np.ndarray) -> tuple[int, int, float]:
-    """Wins, comparisons that differ, and the exact two-sided binomial p-value.
+    """Wins $W = \\sum_g \\mathbb{I}[d_g > 0]$, non-tied $n = \\sum_g \\mathbb{I}[d_g \\ne 0]$, and $p$-value:
+
+    $$p = \\min\\!\\left(1,\\; 2^{1-n} \\sum_{k=0}^{\\min(W,\\, n-W)} \\binom{n}{k}\\right).$$
 
     Exact rather than normal-approximate because the sample is twenty groups, where the
-    approximation is poor exactly when the answer matters. Summing binomial coefficients
+    approximation is poor when the answer matters. Summing binomial coefficients
     directly is also why this needs no scipy: ``math.comb`` is in the standard library and
-    twenty choose ten is not a large number.
+    $\\binom{20}{10}$ is not a large number.
 
     Ties are dropped rather than split, which is the conservative convention: a fold where
     two predictors score identically is evidence for neither.

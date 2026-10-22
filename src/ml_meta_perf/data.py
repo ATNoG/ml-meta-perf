@@ -157,7 +157,14 @@ def target(frame: pl.DataFrame, schema: Schema | None = None) -> np.ndarray:
 
 
 def to_fit_scale(values: np.ndarray, schema: Schema) -> np.ndarray:
-    """``values`` on the fitted scale: unchanged, ``log(1 + y)`` for ``log1p`` or ``log(y)`` for ``log``."""
+    """Map target values $y$ to the fitting scale $z = g(y)$:
+
+    $$g(y) = \\begin{cases}
+    y & \\text{if transform} = \\text{none}, \\\\
+    \\log(1 + y) & \\text{if transform} = \\text{log1p}\\ (y \\ge 0), \\\\
+    \\log(y) & \\text{if transform} = \\text{log}\\ (y > 0).
+    \\end{cases}$$
+    """
     if schema.transform == "none":
         return values
     if not np.all(np.isfinite(values)):
@@ -174,9 +181,15 @@ def to_fit_scale(values: np.ndarray, schema: Schema) -> np.ndarray:
 
 
 def from_fit_scale(values: np.ndarray, schema: Schema) -> np.ndarray:
-    """The inverse of `to_fit_scale`: predictions on the fitted scale back on the target's own scale.
+    """The inverse $g^{-1}(\\hat{z})$ of `to_fit_scale`, mapping fitted-scale predictions back to $y$:
 
-    ``exp`` of a mean on the log scale is the geometric mean, which sits below the arithmetic mean
+    $$g^{-1}(\\hat{z}) = \\begin{cases}
+    \\hat{z} & \\text{if transform} = \\text{none}, \\\\
+    \\exp(\\hat{z}) - 1 & \\text{if transform} = \\text{log1p}, \\\\
+    \\exp(\\hat{z}) & \\text{if transform} = \\text{log}.
+    \\end{cases}$$
+
+    $\\exp$ of a mean on the log scale is the geometric mean, which sits below the arithmetic mean
     of a skewed cost (retransformation bias, chapter 7 section 7.5); no smearing correction is applied.
     """
     if schema.transform == "log1p":

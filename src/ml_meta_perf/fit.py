@@ -12,14 +12,16 @@ fold, and until 2026-09-09 the function that performed a search was called `fit`
 blurred the one distinction the results rest on. Chapter 3 calls the other half "term
 selection" and always has.
 
-*Gram-matrix arithmetic.* Every refit is a k-by-k solve against a precomputed Gram matrix
-rather than a least-squares call against the full design, which is what makes an exhaustive
-sweep inside 20 cross-validation folds tractable. `ridge_solve` states that arithmetic in one
-place; `search.Selector` indexes submatrices out of a Gram it holds, for speed, and
-`tests/test_search.py` checks the two agree.
+*Gram-matrix arithmetic.* Every refit is a $k \\times k$ solve against a precomputed Gram matrix
+$G = Z^\\top Z$ rather than a least-squares call against the full design, which is what makes an
+exhaustive sweep inside 20 cross-validation folds tractable:
 
-Study chapter: [3. Term generation and selection][study-chapter] -- the rationale, in
-prose, with the figures.
+$$(G + \\lambda I)\\,w = b, \\qquad G = Z^\\top Z, \\quad b = Z^\\top (y - \\bar{y}).$$
+
+`ridge_solve` states that arithmetic in one place; `search.Selector` indexes submatrices out of a
+Gram it holds, for speed, and `tests/test_search.py` checks the two agree.
+
+Study chapter: [3. Term generation and selection][study-chapter] -- the rationale, in prose.
 
 [study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/03-term-selection.md
 """
@@ -40,17 +42,19 @@ RIDGE_DEFAULT = 10.0
 
 @dataclass(frozen=True)
 class Standardizer:
-    """Column means and scales, learned on training rows only."""
+    """Column means $\\mu_j$ and scales $\\sigma_j$, learned on training rows only."""
 
     mean: np.ndarray
     scale: np.ndarray
 
     @classmethod
     def fit(cls, matrix: np.ndarray) -> Standardizer:
+        """Estimate column means $\\mu_j$ and population scales $\\sigma_j$ (clamped to $1$ below $10^{-12}$)."""
         scale = matrix.std(axis=0)
         return cls(matrix.mean(axis=0), np.where(scale < 1e-12, 1.0, scale))
 
     def apply(self, matrix: np.ndarray) -> np.ndarray:
+        """Standardise ``matrix`` column-wise: $Z_{\\cdot,j} = (X_{\\cdot,j} - \\mu_j) / \\sigma_j$."""
         return (matrix - self.mean) / self.scale
 
 
@@ -60,8 +64,10 @@ class Subset:
 
     indices: tuple[int, ...]
     weights: np.ndarray
-    #: The **penalised** objective this subset reached, ``||y - Xw||^2 + lambda*||w||^2``,
-    #: not a residual sum of squares. It is only ever compared -- the beam sorts on it and
+    #: The **penalised** objective this subset reached,
+    #: $J(w) = \\|(y - \\bar{y}) - Z w\\|_2^2 + \\lambda \\|w\\|_2^2$
+    #: $= \\|y - \\bar{y}\\|_2^2 - w^\\top b - \\lambda w^\\top w$,
+    #: not an unpenalised residual sum of squares. It is only ever compared -- the beam sorts on it and
     #: the refinement pass tests it against an incumbent -- so its scale does not matter,
     #: but two things follow from the name. Ridge shrinkage can drive it slightly negative
     #: on a near-perfect fit, which is harmless for ordering and would not be for anything
@@ -72,11 +78,11 @@ class Subset:
 
 
 def ridge_solve(gram: np.ndarray, rhs: np.ndarray, penalty: float) -> np.ndarray:
-    """Solve ``(G + penalty*I) w = rhs`` for a centred, standardised design.
+    """Solve $(G + \\lambda I)\\,w = b$ for a standardised design ($G = Z^\\top Z$, $b = Z^\\top (y - \\bar{y})$).
 
     Centring both sides removes the intercept from the system, so no penalty is ever
     applied to it -- shrinking an intercept toward zero would bias every prediction
-    toward MCC = 0, which is not a value this data goes anywhere near.
+    toward $0$ rather than the training mean $\\bar{y}$.
 
     This is the **reference form**, written to be read. `Selector._evaluate` does not call
     it: it adds the penalty to the full Gram diagonal once at construction and indexes the
@@ -103,7 +109,11 @@ def to_equation(
     bounds: Bounds | None = (MCC_LOWER, MCC_UPPER),
     target: str = "MCC",
 ) -> Equation:
-    """Fold the standardisation back into the weights so the equation reads in raw units."""
+    """Fold the standardisation $(\\mu_i, \\sigma_i)$ back into the weights so the equation reads in raw units:
+
+    $$w_i^{\\text{raw}} = \\frac{w_i}{\\sigma_i}, \\qquad
+    w_0^{\\text{raw}} = \\bar{y} - \\sum_{i=1}^{k} w_i^{\\text{raw}} \\mu_i.$$
+    """
     order = list(subset.indices)
     raw = subset.weights / standardizer.scale[order]
     intercept = offset - float(raw @ standardizer.mean[order])

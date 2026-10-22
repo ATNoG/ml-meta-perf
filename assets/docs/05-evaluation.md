@@ -70,13 +70,9 @@ Dataset meta-features are **constant across a dataset's observed rows**. A rando
 therefore puts the same dataset on both sides of the fold and does not test transfer to an
 unseen dataset.
 
-On the MCC corpus of the paper the same equation scored far higher under a random split than under
+On the MCC corpus of the paper (`v1.0.0` tag) the same equation scored far higher under a random split than under
 leave-one-dataset-out. The gap changes with the corpus and the form, and a small gap would not make random
 splitting a test of transfer to unseen datasets.
-
-A gap of that kind is a diagnostic worth keeping even when it reads zero.
-`ml_meta_perf.validate.random_kfold_groups` exists **only** to produce this comparison; it is
-never used to score a result.
 
 This is the same concern as subject-wise splitting in clinical machine learning, and the
 same recommendation made by community reporting standards (Walsh et al., 2021).
@@ -107,8 +103,7 @@ Two things about it are worth saying in prose, because they are not visible in t
 
 **The hardest trivial predictor is a different one for R² than for MAE and SMAPE.** MAE is
 minimised by the median and R² by the mean, so a comparison that reports only mean baselines
-is not reading each metric against the predictor that is hardest to beat on it. Both centres
-are reported, which is what the `at both centres` sub-table below is for.
+is not reading each metric against the predictor that is hardest to beat on it.
 
 ### A caveat on R²
 
@@ -162,10 +157,8 @@ minimises absolute error. An MAE quoted against a mean baseline is quoted agains
 that is not minimising the metric it is being judged on.
 
 Each metric must be compared with the relevant baseline under the same protocol, with both centres
-reported and no assumption that one wins on every measure.
-
-These centers are computed from the fitting groups only by
-`validate.baseline_group_centre`; the evaluated observation is excluded.
+considered and no assumption that one wins on every measure. These centres are computed from the
+fitting groups only; the evaluated observation is excluded.
 
 Every per-model baseline also has a limit no metric shows: it is **empty under
 LOMO**. A held-out model has no training row, so "how well does this model
@@ -188,16 +181,10 @@ information availability.
 
 ## Term stability
 
-Exact-term frequencies across 20 LODO reselection searches accompany the coefficients.
-Terms that never reappear receive frequency zero. This measures expression recurrence,
-rather than coefficient-sign stability or independent discovery performance.
-
-## Flexible regression references
-
-RidgeCV, random forest, and gradient boosting use all 18 raw descriptors with the same
-outer partitions and prediction bounds. Their representations and prior selection budgets
-differ from those of the globally selected equation. Forest and boosting settings are
-retained study-development choices, without fresh tuning on the revised corpus.
+Exact-term frequencies across LODO reselection searches (`validate.term_stability`) accompany the
+fitted equation. Terms that never reappear receive frequency zero. This measures expression
+recurrence, rather than coefficient-sign stability (`experiment._sign_stability`) or independent
+discovery performance.
 
 Read regression, ranking, and threshold outcomes separately: a higher MAP need not imply
 higher Hit@1 or lower regret. These conditional comparisons do not establish independent

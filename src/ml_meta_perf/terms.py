@@ -24,8 +24,7 @@ it contributes a level to every row, while inside a product it zeroes the term e
 the rows where it is off, which is a per-group slope rather than a relationship. Prefer a
 continuous descriptor that grades the same distinction.
 
-Study chapter: [2. The additive model][study-chapter] -- the rationale, in
-prose, with the figures.
+Study chapter: [2. The additive model][study-chapter] -- the rationale, in prose.
 
 [study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/02-additive-model.md
 """
@@ -82,9 +81,11 @@ class Atom:
 
     @property
     def name(self) -> str:
+        """Canonical string representation of the atom ($f$, $\\log(f)$, $\\sqrt{f}$, $1/f$, or $f^2$)."""
         return _TRANSFORM_FORMAT[self.transform].format(self.feature)
 
     def evaluate(self, columns: dict[str, np.ndarray]) -> np.ndarray:
+        """Evaluate the elementary transform on ``columns[self.feature]``."""
         values = columns[self.feature]
         match self.transform:
             case "id":
@@ -99,7 +100,7 @@ class Atom:
                 return values * values
 
     def is_defined_on(self, columns: dict[str, np.ndarray]) -> bool:
-        """Whether the transform is real-valued and finite over these columns."""
+        """Whether the transform is finite over these columns ($f > 0$ for $\\log, \\sqrt{\\cdot}, 1/f$)."""
         values = columns.get(self.feature)
         if values is None:
             return False
@@ -124,6 +125,7 @@ class Term:
 
     @property
     def name(self) -> str:
+        """Canonical bracketed string representation of the term."""
         parts = [operand.name for operand in self.operands]
         match self.operation:
             case "atom":
@@ -139,6 +141,7 @@ class Term:
 
     @property
     def features(self) -> tuple[str, ...]:
+        """Tuple of raw feature names referenced by the operands, in left-to-right order."""
         collected: list[str] = []
         for operand in self.operands:
             if isinstance(operand, Term):
@@ -154,6 +157,7 @@ class Term:
         return 1 + max(nested, default=0)
 
     def evaluate(self, columns: dict[str, np.ndarray]) -> np.ndarray:
+        """Evaluate the term vector over ``columns``, guarding denominators away from zero (`_guard`)."""
         values = [operand.evaluate(columns) for operand in self.operands]
         match self.operation:
             case "atom":
@@ -168,6 +172,7 @@ class Term:
                 return (values[0] + values[1]) / _guard(values[2] + values[3])
 
     def to_dict(self) -> dict[str, object]:
+        """Serialise the term and its operands into a JSON-compatible dictionary."""
         return {
             "operation": self.operation,
             "operands": [
@@ -180,6 +185,7 @@ class Term:
 
     @classmethod
     def from_dict(cls, payload: dict[str, object]) -> Term:
+        """Reconstruct a `Term` from a dictionary produced by `to_dict`."""
         operands = payload["operands"]
         if not isinstance(operands, list):
             raise ValueError("term payload has no operand list")
@@ -195,11 +201,14 @@ class Term:
 
 
 def description_length(term: Term, n_features: int) -> float:
-    """The nats needed to name a term in the grammar: an operation, then per operand a feature and a transform.
+    """The nats $\\ell(t)$ needed to name a term in the grammar:
 
-    A uniform code over the grammar's choices, so a ratio of sums, which names four features, costs
-    more than an atom, which names one. It is the structure half of a two-part description length
-    (`lengths.mdl`): the data half is the residual, and each weight costs ``log(n) / 2`` nats.
+    $$\\ell(t) = \\ln |\\mathcal{O}| + \\sum_{u \\in \\text{atoms}(t)} (\\ln F + \\ln |\\mathcal{T}|),$$
+
+    where $|\\mathcal{O}| = 5$ operations, $F = n_{\\text{features}}$ and $|\\mathcal{T}| = 5$ transforms.
+    A uniform code over the grammar's choices, so a ratio of sums (four atoms) costs more than a
+    single atom. It is the structure half of a two-part description length (`lengths.mdl`): the data
+    half is the residual, and each weight costs $\\frac{1}{2}\\ln n$ nats.
     """
     total = math.log(len(get_args(Operation)))
     for operand in term.operands:
@@ -255,11 +264,12 @@ def is_trivial(term: Term) -> bool:
 
 
 def _as_term(operand: Atom | Term) -> Term:
+    """Wrap an `Atom` as a unary `Term`, or return an existing `Term` unchanged."""
     return operand if isinstance(operand, Term) else Term("atom", (operand,))
 
 
 def _guard(denominator: np.ndarray) -> np.ndarray:
-    """Keep a denominator away from zero without changing its sign.
+    """Keep a denominator away from zero: $\\operatorname{sgn}(d)\\,(|d| + \\epsilon)$ with $\\epsilon = 10^{-9}$.
 
     A backstop only. Terms whose denominator can actually approach zero are never
     generated (see ``denominator_atom``), so in a library built by ``build_library``
@@ -269,6 +279,7 @@ def _guard(denominator: np.ndarray) -> np.ndarray:
 
 
 def _forbids(exclude: Exclusions | None, feature: str, operation: str) -> bool:
+    """Whether ``exclude`` forbids ``operation`` on ``feature`` ($\\text{operation} \\in X(\\text{feature})$)."""
     return exclude is not None and operation in exclude.get(feature, ())
 
 
@@ -300,8 +311,11 @@ def denominator_atom(feature: str, columns: dict[str, np.ndarray], exclude: Excl
       so it is only eligible when the feature stays clear of 1;
     * ``f`` itself -- eligible when the feature stays clear of 0.
 
-    Eligibility is a bound on **dynamic range**, ``max|d| / min|d| <=
-    MAX_DENOMINATOR_RANGE``, not merely ``min|d| > 0``. That is the criterion that
+    Eligibility is a bound on **dynamic range**,
+
+    $$\\frac{\\max_r |d_r|}{\\min_r |d_r|} \\le \\text{MAX\\_DENOMINATOR\\_RANGE} = 20,$$
+
+    not merely $\\min_r |d_r| > 0$. That is the criterion that
     matches the failure: a divisor spanning three orders of magnitude makes the ratio
     span three orders of magnitude too, so one row holds nearly all of the term's
     variance and its fitted weight describes that row. Requiring only a non-zero
@@ -468,14 +482,14 @@ def is_admissible(values: np.ndarray, max_abs_zscore: float = MAX_ABS_ZSCORE) ->
     -1.5e9 against an intercept of +1.5e9 -- algebraically fine, arithmetically fine,
     and completely unreadable, which defeats the purpose of the exercise.
 
-    *Driven by one row.* A term is rejected when a single row sits more than
-    ``max_abs_zscore`` standard deviations from the mean, because its fitted weight
-    would describe that row rather than a relationship.
+    *Driven by one row.* A term is rejected when its maximum absolute z-score exceeds
+    ``max_abs_zscore`` ($z_{\\max} = \\max_r |v_r - \\bar{v}| / \\sigma_v > z_{\\text{cap}}$) or when
+    its spread is negligible relative to its mean ($\\sigma_v < 10^{-6}(1 + |\\bar{v}|)$), because its
+    fitted weight would describe a single row rather than a relationship.
 
     The cap is sample-size dependent and has to be chosen with that in mind: a single
-    outlier among ``n`` rows can reach a z-score of at most about ``sqrt(n)``, so a cap
-    of 8 constrains the 484-row fit but would be inert on the 20-row aggregated fit,
-    which is why the two configurations do not share a value.
+    outlier among $n$ rows can reach a z-score of at most about $\\sqrt{n}$, so a cap
+    of 8 constrains the 484-row fit but would be inert on a 20-row fit.
     """
     if not np.all(np.isfinite(values)):
         return False
@@ -565,6 +579,7 @@ class Library:
 
     @property
     def names(self) -> list[str]:
+        """List of canonical term names in library order."""
         return [term.name for term in self.terms]
 
     @property

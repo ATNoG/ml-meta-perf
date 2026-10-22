@@ -1,10 +1,16 @@
 """ml-meta-perf -- interpretable additive equations for the performance of a model on a dataset.
 
-Fits equations of the form ``y = w0 + w1*t1 + ... + wk*tk`` where each term is a simple
-expression over dataset and model meta-features, and reports what they are actually worth
-under in-sample (IS), leave-one-dataset-out (LODO), leave-one-model-out (LOMO) and doubly
-held-out (DHO) evaluation. A study is described by a file (``config/mcc.json``); the
-command line is ``ml-meta-perf fit | sweep | init``.
+Fits sparse additive equations of the form
+
+$$\\hat{y}(\\mathbf{f}) = \\operatorname{clip}_B\\!\\left(w_0 + \\sum_{i=1}^{k} w_i \\, t_i(\\mathbf{f})\\right)$$
+
+where each term $t_i$ is a symbolic expression over one to three dataset and model
+meta-features (`ml_meta_perf.terms`), the weights $w_i$ are solved in closed form by ridge
+regression (`ml_meta_perf.fit`), and predictions are evaluated under in-sample (IS),
+leave-one-dataset-out (LODO), leave-one-model-out (LOMO) and doubly held-out (DHO)
+cross-validation (`ml_meta_perf.validate`). Everything about a problem lives in a study JSON
+file (such as ``config/mcc.json`` or ``config/flexfl/*.json``); the command line is
+``ml-meta-perf fit | sweep | init``.
 """
 
 from ml_meta_perf.attribution import group_shares, term_effects

@@ -58,15 +58,16 @@ class Pick:
 
     @property
     def complexity(self) -> int:
+        """Feature slots $c(a, n) = a \\, n$ spent by this candidate."""
         return complexity(self.arity, self.n_terms)
 
 
 def candidate_table(
     curves: Mapping[int, pl.DataFrame], smoothing: int, details: Mapping[int, pl.DataFrame] | None = None
 ) -> pl.DataFrame:
-    """One row per ``(arity, n_terms)``: its complexity, its raw floor, and its floor smoothed along the length.
+    """One row per $(a, n)$: its complexity $c(a, n) = a \\, n$, its raw floor, and its floor smoothed along $n$.
 
-    ``curves`` maps each arity to the cross-validated curve of that grammar (`experiment.fit_path`).
+    ``curves`` maps each arity $a$ to the cross-validated curve of that grammar (`experiment.fit_path`).
     Smoothing is a running median along the length *within* an arity, the only direction in which
     neighbours are comparable equations. ``details`` maps each arity to the per-length columns the
     resampling and information rules read (`experiment.candidate_details`); a rule that needs one
@@ -93,10 +94,11 @@ def candidate_table(
 
 
 def pareto_front(table: pl.DataFrame) -> pl.DataFrame:
-    """The candidates no cheaper candidate matches: strictly better smoothed floor than every cheaper one.
+    """The Pareto front $\\mathcal{P} = \\{(a, n) : s(a, n) > s(a', n')\\ \\forall\\, c(a', n') < c(a, n)\\}$.
 
-    Sorted by complexity. Candidates of equal complexity keep the better smoothed floor, then the
-    one with fewer terms (the lower arity), so the front is a function of the table alone.
+    Sorted by complexity $c(a, n) = a \\, n$. Candidates of equal complexity keep the better smoothed
+    floor $s(a, n)$, then the one with fewer terms (the lower arity), so the front is a function of
+    the table alone.
     """
     ordered = table.sort(["complexity", "smooth", "n_terms"], descending=[False, True, False])
     keep: list[int] = []
@@ -113,11 +115,12 @@ def pareto_front(table: pl.DataFrame) -> pl.DataFrame:
 
 
 def _pick(row: Mapping[str, object]) -> Pick:
+    """Convert a candidate table row into a typed `Pick`."""
     return Pick(int(row["arity"]), int(row["n_terms"]))  # pyright: ignore[reportArgumentType]
 
 
 def floor_argmax(table: pl.DataFrame, **_extra: float) -> Pick:
-    """The best raw floor; ties go to the lower complexity. The reference every rule is scored against."""
+    """The best raw floor $\\arg\\max_{(a,n)} \\operatorname{floor}(a, n)$; ties go to the lower complexity."""
     best = table.filter(pl.col("floor") == pl.col("floor").max()).sort(["complexity", "n_terms"])
     return _pick(best.row(0, named=True))
 
@@ -125,7 +128,7 @@ def floor_argmax(table: pl.DataFrame, **_extra: float) -> Pick:
 def plateau_knee(
     table: pl.DataFrame, *, delta: float, window: int, smoothing: int, fixed_arity: int, **_extra: float
 ) -> Pick:
-    """`selection.plateau_start` at one arity: today's rule, the baseline."""
+    """`selection.plateau_start` at one fixed arity $a = \\text{fixed\\_arity}$: today's rule, the baseline."""
     column = table.filter(pl.col("arity") == fixed_arity).sort("n_terms")
     if column.is_empty():
         raise ValueError(f"the table has no candidates at arity {fixed_arity}")
@@ -135,11 +138,12 @@ def plateau_knee(
 
 
 def _front_points(front: pl.DataFrame) -> np.ndarray:
+    """Extract the 2D coordinate matrix $(c_i, s_i) \\in \\mathbb{R}^{|\\mathcal{P}| \\times 2}$ of the Pareto front."""
     return np.column_stack([front["complexity"].to_numpy(), front["smooth"].to_numpy()]).astype(np.float64)
 
 
 def pareto_knee(table: pl.DataFrame, **_extra: float) -> Pick:
-    """The Kneedle knee of the Pareto front; the front's end when it has no knee."""
+    """The Kneedle knee of the Pareto front $\\mathcal{P}$; the front's end when it has no knee."""
     front = pareto_front(table)
     if front.height > KNEE_MIN_POINTS:
         index = kneedle.knee(_front_points(front))
@@ -149,7 +153,7 @@ def pareto_knee(table: pl.DataFrame, **_extra: float) -> Pick:
 
 
 def pareto_plateau(table: pl.DataFrame, *, delta: float, window: int, **_extra: float) -> Pick:
-    """The first multi-Kneedle knee of the front after which the front gains at most ``delta`` over ``window`` points.
+    """The first multi-Kneedle knee of $\\mathcal{P}$ after which the front gains at most $\\delta$ over $w$ points.
 
     The end of the front always qualifies (nothing follows it), so the rule always returns, like
     `selection.plateau_start`.
@@ -169,14 +173,14 @@ def pareto_plateau(table: pl.DataFrame, *, delta: float, window: int, **_extra: 
 
 
 def pareto_within_delta(table: pl.DataFrame, *, delta: float, **_extra: float) -> Pick:
-    """The cheapest front point whose smoothed floor is within ``delta`` of the front's best."""
+    """The cheapest front point $(a, n) \\in \\mathcal{P}$ with $s(a, n) \\ge \\max_{\\mathcal{P}} s - \\delta$."""
     front = pareto_front(table)
     near = front.filter(pl.col("smooth") >= pl.col("smooth").max() - delta)
     return _pick(near.row(0, named=True))
 
 
 def plateau_pareto(table: pl.DataFrame, *, delta: float, window: int, smoothing: int, **_extra: float) -> Pick:
-    """The study's plateau rule at every arity, then the cheapest of those picks within ``delta`` of the best.
+    """The study's plateau rule at every arity $a$, then the cheapest of those picks within $\\delta$ of the best.
 
     Each arity's length is the validated `selection.plateau_start`; the arities are then compared on
     the Pareto front of their picks, so a grammar that buys the same floor with fewer feature slots wins.
@@ -196,7 +200,10 @@ def plateau_pareto(table: pl.DataFrame, *, delta: float, window: int, smoothing:
 
 
 def pareto_elbow(table: pl.DataFrame, **_extra: float) -> Pick:
-    """The front's point farthest from the chord joining its two ends, both axes rescaled to ``[0, 1]``."""
+    """The front point farthest from the chord joining its two ends in the unit square $[0, 1]^2$:
+
+    $$\\arg\\max_{i} \\frac{|(x_e - x_0)(y_i - y_0) - (y_e - y_0)(x_i - x_0)|}{\\sqrt{(x_e - x_0)^2 + (y_e - y_0)^2}}.$$
+    """
     front = pareto_front(table)
     if front.height < 3:
         return _pick(front.row(front.height - 1, named=True))
@@ -217,9 +224,13 @@ def pareto_elbow(table: pl.DataFrame, **_extra: float) -> Pick:
 def l_method(table: pl.DataFrame, **_extra: float) -> Pick:
     """The L-method (Salvador and Chan 2004): two straight lines fitted to the front, split where they fit best.
 
-    For every split of the front the left and the right part are each fitted by least squares, and
-    the split minimising the point-weighted root-mean-square error of the two fits is the knee.
-    Both axes are rescaled to the unit square first, so the choice does not depend on the units.
+    For every split $s \\in \\{1,\\dots,m-3\\}$ of the $m$-point unit-square front, the left and right segments
+    are each fitted by ordinary least squares, and the split minimising the point-weighted RMSE
+
+    $$\\mathrm{RMSE}_{\\text{total}}(s) = \\frac{s+1}{m}\\,\\mathrm{RMSE}(0\\dots s)
+    + \\frac{m-s-1}{m}\\,\\mathrm{RMSE}(s+1\\dots m-1)$$
+
+    is the knee. Both axes are rescaled to $[0, 1]^2$ first, so the choice does not depend on the units.
     """
     front = pareto_front(table)
     if front.height < 4:
@@ -229,6 +240,7 @@ def l_method(table: pl.DataFrame, **_extra: float) -> Pick:
     unit = (points - points.min(axis=0)) / np.where(span > 0.0, span, 1.0)
 
     def rmse(part: np.ndarray) -> float:
+        """Root mean squared error of an ordinary least-squares line fitted to ``part``."""
         x, y = part[:, 0], part[:, 1]  # at least two points, at distinct costs: the front is strictly increasing
         slope, intercept = np.polyfit(x, y, 1)
         return float(np.sqrt(np.mean((y - (slope * x + intercept)) ** 2)))
@@ -242,11 +254,15 @@ def l_method(table: pl.DataFrame, **_extra: float) -> Pick:
 
 
 def bend_angle(table: pl.DataFrame, **_extra: float) -> Pick:
-    """The front point where the front turns the most: the largest angle between its two neighbouring segments.
+    """The front point where the front turns the most: largest turning angle on $[0, 1]^2$.
 
-    The discrete form of curvature on the unit-square front, and the classical definition of a knee of a
-    bi-objective front: a point where moving either way along the front costs a lot in the other objective.
-    The two ends have one neighbour only and are never chosen unless the front has fewer than three points.
+    For adjacent unit-square segment vectors $u_{i-1}, u_i$, the turning angle is
+
+    $$\\theta_i = \\left|\\operatorname{atan2}(u_{i-1} \\times u_i,\\; u_{i-1} \\cdot u_i)\\right|,$$
+
+    the discrete curvature of a bi-objective front: a point where moving either way along the front
+    costs a lot in the other objective. The two ends have one neighbour only and are never chosen
+    unless the front has fewer than three points.
     """
     front = pareto_front(table)
     if front.height < 3:
@@ -262,7 +278,10 @@ def bend_angle(table: pl.DataFrame, **_extra: float) -> Pick:
 def log_slope(table: pl.DataFrame, **_extra: float) -> Pick:
     """The front point that buys the largest relative drop in error per feature slot spent.
 
-    The error is ``1 - smoothed floor``; the score of a front point is ``-(ln e_i - ln e_(i-1)) / (c_i - c_(i-1))``,
+    With error $e_i = \\max(1 - s_i, 10^{-12})$ and cost $c_i$, the score of front point $i \\ge 1$ is
+
+    $$\\operatorname{score}_i = -\\frac{\\ln e_i - \\ln e_{i-1}}{c_i - c_{i-1}},$$
+
     the rule symbolic-regression libraries use to rank the members of a Pareto front by default. The cheapest
     point has no predecessor and is chosen only when the front has one point.
     """
@@ -283,6 +302,7 @@ class MissingColumns(ValueError):
 
 
 def _require(table: pl.DataFrame, rule: str, *columns: str) -> None:
+    """Raise `MissingColumns` if ``table`` is missing any of ``columns`` required by ``rule``."""
     missing = [column for column in columns if column not in table.columns]
     if missing:
         raise MissingColumns(
@@ -291,10 +311,10 @@ def _require(table: pl.DataFrame, rule: str, *columns: str) -> None:
 
 
 def _losses(table: pl.DataFrame, rule: str) -> np.ndarray:
-    """The ``(datasets, candidates)`` matrix of squared error, in units of the total variance.
+    """The $(G, M)$ matrix of normalised dataset squared errors $u_{g,c} = L_{c,g} / \\mathrm{SST}$.
 
-    A column sums to ``1 - floor``, so the datasets are the units whose resampling says how far a
-    floor could move with a different draw of datasets.
+    Column $c$ sums to $\\sum_{g=1}^{G} u_{g,c} = 1 - \\operatorname{floor}_c$, so the datasets are the units
+    whose resampling says how far a floor could move with a different draw of datasets.
     """
     _require(table, rule, "loss", "sst")
     matrix = np.array(table["loss"].to_list(), dtype=np.float64).T
@@ -308,11 +328,12 @@ def _cheapest(table: pl.DataFrame, allowed: np.ndarray) -> Pick:
 
 
 def one_se(table: pl.DataFrame, *, se_multiple: float = 1.0, **_extra: float) -> Pick:
-    """The one-standard-error rule: the cheapest candidate within ``se_multiple`` standard errors of the best.
+    """The one-standard-error rule: the cheapest candidate $c$ within $m$ standard errors of the best $c^\\ast$:
 
-    The best candidate is the one with the lowest total held-out error; its standard error is that of a
-    sum over the held-out datasets, ``sqrt(G) * sd`` of the per-dataset errors. Candidates of equal cost
-    keep the better floor.
+    $$\\sum_{g=1}^{G} u_{g,c} \\le \\sum_{g=1}^{G} u_{g,c^\\ast} + m \\sqrt{G}\\,\\operatorname{sd}_g(u_{g,c^\\ast}),
+    \\qquad c^\\ast = \\arg\\min_c \\sum_{g=1}^{G} u_{g,c}.$$
+
+    Candidates of equal cost keep the better floor.
     """
     losses = _losses(table, "one_se")
     totals = losses.sum(axis=0)
@@ -322,12 +343,13 @@ def one_se(table: pl.DataFrame, *, se_multiple: float = 1.0, **_extra: float) ->
 
 
 def projection(table: pl.DataFrame, *, se_multiple: float = 1.0, **_extra: float) -> Pick:
-    """The cheapest candidate not worse than the reference by more than ``se_multiple`` paired standard errors.
+    """The cheapest candidate $c$ not worse than the reference $c^\\ast$ by more than $m$ paired standard errors:
 
-    The projection-predictive recipe (Piironen and Vehtari): the reference is the richest model, here the
-    candidate with the lowest total held-out error (E3-MAX's choice when the grammars agree), and a candidate
-    is accepted when the difference of its per-dataset errors from the reference's, summed over the datasets,
-    is below ``se_multiple`` times its standard error. Pairing removes the variation the two share.
+    $$\\sum_{g=1}^{G} (u_{g,c} - u_{g,c^\\ast}) \\le m \\sqrt{G}\\,\\operatorname{sd}_g(u_{g,c} - u_{g,c^\\ast}).$$
+
+    The projection-predictive recipe (Piironen and Vehtari): the reference $c^\\ast = \\arg\\min_c \\sum_g u_{g,c}$
+    is the candidate with the lowest total held-out error (E3-MAX's choice when the grammars agree). Pairing
+    removes the dataset-to-dataset variation the two share.
     """
     losses = _losses(table, "projection")
     totals = losses.sum(axis=0)
@@ -340,13 +362,15 @@ def projection(table: pl.DataFrame, *, se_multiple: float = 1.0, **_extra: float
 
 
 def mcs_members(losses: np.ndarray, alpha: float, rounds: int, seed: int) -> np.ndarray:
-    """The model confidence set of Hansen, Lunde and Nason (2011), by a bootstrap over the datasets.
+    """The model confidence set $\\widehat{\\mathcal{M}}_{1-\\alpha}$ of Hansen, Lunde and Nason (2011).
 
-    Starting from every candidate, the equal-predictive-ability hypothesis is tested with the
-    statistic ``T = max_i t_i``, ``t_i`` the studentised mean difference of candidate i from the
-    average of those left; while it is rejected at level ``alpha`` the candidate with the largest
-    ``t_i`` is eliminated. The survivors cannot be told apart from the best. A different draw of
-    datasets decides the test, so the same ``seed`` gives the same set.
+    Starting from every candidate, the equal-predictive-ability hypothesis is tested with the range-of-means
+    statistic $T_{\\max} = \\max_{i \\in \\mathcal{M}} t_i$, where
+    $t_i = \\bar{d}_i / \\widehat{\\mathrm{sd}}(\\bar{d}_i)$
+    is the bootstrap-studentised mean difference
+    $\\bar{d}_i = \\frac{1}{G}\\sum_g (u_{g,i} - \\bar{u}_{g,\\mathcal{M}})$
+    of candidate $i$ from the average of those left; while it is rejected at level $\\alpha$ the candidate with the
+    largest $t_i$ is eliminated. The survivors cannot be told apart from the best.
     """
     groups, count = losses.shape
     draws = np.random.default_rng(seed).integers(0, groups, size=(rounds, groups))
@@ -368,7 +392,7 @@ def mcs_members(losses: np.ndarray, alpha: float, rounds: int, seed: int) -> np.
 def mcs(
     table: pl.DataFrame, *, alpha: float = 0.1, bootstrap_rounds: int = 500, seed: int = 0, **_extra: float
 ) -> Pick:
-    """The cheapest member of the model confidence set at level ``alpha``: no candidate in it is statistically worse."""
+    """The cheapest member of the model confidence set $\\widehat{\\mathcal{M}}_{1-\\alpha}$ at level $\\alpha$."""
     losses = _losses(table, "mcs")
     members = mcs_members(losses, alpha, bootstrap_rounds, seed)
     allowed = np.zeros(losses.shape[1], dtype=bool)
@@ -377,11 +401,11 @@ def mcs(
 
 
 def stable_within_delta(table: pl.DataFrame, *, delta: float, stability_min: float = 0.9, **_extra: float) -> Pick:
-    """The cheapest candidate within ``delta`` of the best floor whose terms keep their sign across the datasets.
+    """The cheapest candidate within $\\delta$ of the best floor whose terms keep their sign across the datasets.
 
     ``sign_stability`` is the share of held-out datasets under which the weakest term of the equation keeps
     the sign it has in the full fit. Candidates that cannot be assessed (no LODO) pass; when none passes the
-    stability filter the rule falls back to the cheapest within ``delta``.
+    stability filter the rule falls back to the cheapest within $\\delta$.
     """
     _require(table, "stable_within_delta", "sign_stability")
     smooth = table["smooth"].to_numpy()
@@ -394,7 +418,7 @@ def stable_within_delta(table: pl.DataFrame, *, delta: float, stability_min: flo
 
 
 def _fit_term(table: pl.DataFrame, rule: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """``n``, the Gaussian log-likelihood term ``n ln(rss / n)`` and the number of weights ``k`` per candidate."""
+    """Return $(n,\\, n \\ln(\\mathrm{RSS} / n),\\, k)$ with $k = j + 1$ weights per candidate."""
     _require(table, rule, "rss", "n_rows", "sst")
     n = table["n_rows"].to_numpy().astype(np.float64)
     rss = np.maximum(table["rss"].to_numpy(), 1e-12 * table["sst"].to_numpy())
@@ -407,13 +431,13 @@ def _lowest(table: pl.DataFrame, criterion: np.ndarray) -> Pick:
 
 
 def aic(table: pl.DataFrame, **_extra: float) -> Pick:
-    """Akaike's criterion ``n ln(rss/n) + 2k``, ``k`` the weights and the intercept (in-sample fit)."""
+    """Akaike's criterion $\\mathrm{AIC} = n \\ln(\\mathrm{RSS}/n) + 2k$, with $k = j + 1$ weights (in-sample fit)."""
     _, fit, k = _fit_term(table, "aic")
     return _lowest(table, fit + 2.0 * k)
 
 
 def aicc(table: pl.DataFrame, **_extra: float) -> Pick:
-    """Akaike's criterion with the small-sample correction ``2k(k+1)/(n-k-1)`` (infinite where ``n <= k+1``)."""
+    """Corrected AIC $\\mathrm{AICc} = \\mathrm{AIC} + \\frac{2k(k+1)}{n - k - 1}$ ($+\\infty$ where $n \\le k+1$)."""
     n, fit, k = _fit_term(table, "aicc")
     room = n - k - 1.0
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -422,16 +446,15 @@ def aicc(table: pl.DataFrame, **_extra: float) -> Pick:
 
 
 def bic(table: pl.DataFrame, **_extra: float) -> Pick:
-    """Schwarz's criterion ``n ln(rss/n) + k ln n``."""
+    """Schwarz's Bayesian criterion $\\mathrm{BIC} = n \\ln(\\mathrm{RSS}/n) + k \\ln n$."""
     n, fit, k = _fit_term(table, "bic")
     return _lowest(table, fit + k * np.log(n))
 
 
 def ebic(table: pl.DataFrame, **_extra: float) -> Pick:
-    """The extended BIC of Chen and Chen (2008): BIC plus ``2 gamma ln C(P, j)`` for ``j`` of ``P`` library terms.
+    """Extended BIC (Chen and Chen 2008): $\\mathrm{EBIC} = \\mathrm{BIC} + 2 \\gamma \\ln \\binom{P}{j}$.
 
-    ``gamma = 1 - ln n / (2 ln P)`` (their recommendation when ``P`` grows with ``n``), kept in ``[0, 1]``.
-    The extra term charges for having searched a large library, which the ordinary BIC does not.
+    $\\gamma = \\operatorname{clip}_{[0,1]}(1 - \\ln n / (2 \\ln P))$ charges for searching $j$ of $P$ terms.
     """
     _require(table, "ebic", "library")
     n, fit, k = _fit_term(table, "ebic")
@@ -443,11 +466,12 @@ def ebic(table: pl.DataFrame, **_extra: float) -> Pick:
 
 
 def mdl(table: pl.DataFrame, **_extra: float) -> Pick:
-    """A two-part description length in nats: the residual, the weights and the terms.
+    """Two-part minimum description length in nats:
 
-    ``n/2 ln(rss/n)`` for the data, ``k/2 ln n`` for the weights (Rissanen), and the sum of
-    `terms.description_length` over the terms for the structure, so a ratio of sums costs more than
-    an atom. The parameter-precision term of the Exhaustive Symbolic Regression code is not included.
+    $$\\mathrm{MDL} = \\frac{n}{2} \\ln\\!\\left(\\frac{\\mathrm{RSS}}{n}\\right)
+    + \\frac{k}{2} \\ln n + \\sum_{i=1}^{j} \\ell(t_i),$$
+
+    where $\\ell(t_i)$ is `terms.description_length`.
     """
     _require(table, "mdl", "code")
     n, fit, k = _fit_term(table, "mdl")
@@ -455,7 +479,7 @@ def mdl(table: pl.DataFrame, **_extra: float) -> Pick:
 
 
 def _log_choices(library: np.ndarray, j: np.ndarray) -> np.ndarray:
-    """``ln C(P, j)`` for arrays of ``P`` and ``j``."""
+    """Compute $\\ln \\binom{P}{j} = \\ln \\Gamma(P+1) - \\ln \\Gamma(j+1) - \\ln \\Gamma(P-j+1)$ elementwise."""
     return np.array(
         [
             math.lgamma(p + 1.0) - math.lgamma(k + 1.0) - math.lgamma(max(p - k, 0.0) + 1.0)
@@ -498,6 +522,7 @@ def all_picks(table: pl.DataFrame, **params: float) -> dict[str, Pick]:
 
 
 def _smooth_of(table: pl.DataFrame, pick: Pick) -> float:
+    """Look up the smoothed floor $s(a, n)$ of ``pick`` in ``table``."""
     row = table.filter((pl.col("arity") == pick.arity) & (pl.col("n_terms") == pick.n_terms))
     return float(row["smooth"][0])
 

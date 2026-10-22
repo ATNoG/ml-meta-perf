@@ -64,7 +64,7 @@ dataset and model feature, under its own tuned configuration, and publishes two 
 worst-protocol score over arities 1 to `search.max_arity`, and takes its knee, so both the arity and
 the number of terms come from it; any other rule, or `auto`, can be named in the file (chapter 7, section 7.6). **E3-MAX** is the best score the
 configuration reaches: the raw maximum of the floor at `selection.capability_arity`; it bounds what
-the additive form can do and is written to `e3-max/`. There is no E1 or E2,
+the additive form can do and is written to `e3-max/`. There is no E1 or E2.
 Features constant in the
 loaded frame are removed before the term library is built.
 The saved `equation.json` carries the equation's `target` label and its `bounds`.

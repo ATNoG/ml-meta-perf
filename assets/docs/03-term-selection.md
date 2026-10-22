@@ -108,9 +108,9 @@ solves, in that order. There is no Python-level hotspot left above 20%.
 
 The solver underneath is whatever LAPACK NumPy was built against — for the wheels used
 here, the OpenBLAS build that NumPy vendors (`numpy.libs/libscipy_openblas64_*.so`, built
-`MAX_THREADS=64`). **That is a bundled shared library, not the installed SciPy package.**
-The project receives SciPy transitively through scikit-learn, while its small internal
-statistics remain implemented in `ml_meta_perf.stats`.
+`MAX_THREADS=64`). **That is a bundled shared library inside the NumPy wheel, not the SciPy
+Python package** (the package itself has no SciPy or scikit-learn dependency; its internal
+statistics live in `ml_meta_perf.stats`).
 
 OpenBLAS threads by default, and on this workload the threads do nothing but spin:
 

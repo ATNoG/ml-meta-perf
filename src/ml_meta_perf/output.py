@@ -37,6 +37,7 @@ class OverwriteError(RuntimeError):
 
 
 def file_sha256(path: Path) -> str:
+    """Compute the hexadecimal SHA-256 digest of ``path`` in 1 MiB blocks."""
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for block in iter(lambda: handle.read(1 << 20), b""):
@@ -51,11 +52,12 @@ def study_sha256(study: StudyConfig) -> str:
 
 
 def study_directory(root: str | Path, corpus: Path, report: StudyReport) -> Path:
-    """``<root>/<csv stem>/<target>[-tags]``."""
+    """Result folder path ``<root>/<csv stem>/<target>[-tags]``."""
     return Path(root) / corpus.stem / report.schema.slug
 
 
 def manifest_of(report: StudyReport, study: StudyConfig, corpus: Path) -> dict[str, object]:
+    """Build the provenance manifest dictionary for ``report`` and ``study`` on ``corpus``."""
     return {
         "version": __version__,
         "corpus": {"path": str(corpus.resolve()), "sha256": file_sha256(corpus), "rows": report.facts["rows"]},
@@ -82,6 +84,7 @@ def check_overwrite(destination: Path, manifest: dict[str, object], *, force: bo
 
 
 def _equation_files(destination: Path, report: EquationReport) -> list[Path]:
+    """Write ``equation.json``, ``equation.txt``, ``curve.csv`` and optional ``rules.csv`` into ``destination``."""
     destination.mkdir(parents=True, exist_ok=True)
     report.equation.save(destination / "equation.json")
     (destination / "equation.txt").write_text(f"{report.equation}\n", encoding="utf-8")
@@ -118,6 +121,7 @@ def write_study(
 
 
 def _cell(value: object) -> str:
+    """Format a table cell: floats to 4 significant digits, ``NaN`` and ``None`` as empty strings."""
     if isinstance(value, float):
         return "" if value != value else f"{value:.4g}"
     return "" if value is None else str(value)

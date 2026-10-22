@@ -1,13 +1,18 @@
-"""The fitted object: an equation of the form ``MCC = w0 + w1*t1 + w2*t2 + ...``.
+"""The fitted object: a sparse additive equation
+
+$$\\hat{y}(\\mathbf{f}) = \\operatorname{clip}_B\\!\\left(w_0 + \\sum_{i=1}^{k} w_i \\, t_i(\\mathbf{f})\\right).$$
 
 Selection runs on standardised terms, because greedy selection compares candidates by
 correlation with the residual and raw scales would make that comparison meaningless.
 What gets published, though, must be evaluable as written, so the weights are folded
-back into raw units before they are stored. Both sets are kept: the raw weights are the
-equation, the standardised weights are how the terms rank against each other.
+back into raw units before they are stored:
 
-Study chapter: [2. The additive model][study-chapter] -- the rationale, in
-prose, with the figures.
+$$w_i = \\frac{\\beta_i}{\\sigma_i}, \\qquad w_0 = \\bar{y} - \\sum_{i=1}^{k} w_i \\, \\mu_i.$$
+
+Both sets are kept: the raw weights $w_i$ are the equation, the standardised weights
+$\\beta_i$ are how the terms rank against each other.
+
+Study chapter: [2. The additive model][study-chapter] -- the rationale, in prose.
 
 [study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/02-additive-model.md
 """
@@ -46,10 +51,11 @@ class Equation:
 
     @property
     def n_terms(self) -> int:
+        """Number of terms $k$ in the equation (excluding the intercept $w_0$)."""
         return len(self.terms)
 
     def evaluate(self, columns: dict[str, np.ndarray]) -> np.ndarray:
-        """Apply the equation as written, without clipping."""
+        """Apply $\\hat{y}_{\\text{raw}}(\\mathbf{f}) = w_0 + \\sum_{i=1}^{k} w_i t_i(\\mathbf{f})$ unclipped."""
         n = len(next(iter(columns.values())))
         total = np.full(n, self.intercept, dtype=np.float64)
         with np.errstate(all="ignore"):
@@ -58,18 +64,18 @@ class Equation:
         return total
 
     def predict(self, columns: dict[str, np.ndarray]) -> np.ndarray:
-        """Apply the equation and clip into ``bounds``, the range the target can take.
+        """Clip into $B$: $\\hat{y}(\\mathbf{f}) = \\operatorname{clip}_B(\\hat{y}_{\\text{raw}}(\\mathbf{f}))$.
 
-        A linear form has no idea that MCC stops at 1.0, and the meta-dataset
-        includes exact values at that bound. Clipping is the domain knowledge imposed on the
-        output, and it is applied identically during cross-validation. An unbounded
-        target sets ``bounds=None`` and is returned as written.
+        A linear form has no idea that a bounded target stops at $b$ (e.g. $1.0$ for MCC),
+        and the meta-dataset includes exact values at that bound. Clipping is the domain
+        knowledge imposed on the output, and it is applied identically during cross-validation.
+        An unbounded target sets ``bounds=None`` ($B = \\varnothing$) and is returned as written.
         """
         values = self.evaluate(columns)
         return values if self.bounds is None else np.clip(values, *self.bounds)
 
     def ranked_terms(self) -> list[tuple[Term, float, float]]:
-        """Terms ordered by standardised weight magnitude: strongest contributor first."""
+        """Terms $(t_i, w_i, \\beta_i)$ ordered by descending standardised weight magnitude $|\\beta_i|$."""
         triples = list(zip(self.terms, self.weights, self.standardized_weights, strict=True))
         return sorted(triples, key=lambda item: abs(item[2]), reverse=True)
 
@@ -83,13 +89,14 @@ class Equation:
         return "\n".join(lines)
 
     def to_latex(self) -> str:
-        """A LaTeX rendering of the equation, for dropping straight into the paper."""
+        """A LaTeX rendering of the equation, for dropping straight into a paper."""
         parts = [f"{self.intercept:+.4g}"]
         for term, weight, _ in self.ranked_terms():
             parts.append(f"{weight:+.4g} \\cdot \\mathrm{{{_escape(term.name)}}}")
         return f"\\mathrm{{{_escape(self.target)}}} = " + " ".join(parts)
 
     def to_dict(self) -> dict[str, object]:
+        """Serialise the equation to a JSON-compatible dictionary."""
         return {
             "name": self.name,
             "intercept": self.intercept,
@@ -102,6 +109,7 @@ class Equation:
 
     @classmethod
     def from_dict(cls, payload: dict[str, object]) -> Equation:
+        """Reconstruct an `Equation` from a dictionary produced by `to_dict`."""
         terms = payload["terms"]
         weights = payload["weights"]
         standardized = payload["standardized_weights"]
@@ -119,14 +127,17 @@ class Equation:
         )
 
     def save(self, path: str | Path) -> None:
+        """Write the equation as formatted JSON to ``path``."""
         Path(path).write_text(json.dumps(self.to_dict(), indent=2) + "\n", encoding="utf-8")
 
     @classmethod
     def load(cls, path: str | Path) -> Equation:
+        """Load an `Equation` from a JSON file written by `save`."""
         return cls.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
 
 
 def _escape(name: str) -> str:
+    """Escape underscores and carets in ``name`` for LaTeX math mode."""
     return name.replace("_", r"\_").replace("^", r"\^{}")
 
 

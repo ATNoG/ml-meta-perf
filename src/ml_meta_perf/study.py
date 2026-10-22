@@ -53,13 +53,18 @@ class StudyReport:
 
 
 def original_scale_scores(report: EquationReport, frame: pl.DataFrame, schema: Schema, variant: str) -> pl.DataFrame:
-    """One row per protocol and scale: the equation's scores on the fitted scale and on the target's own.
+    """One row per protocol and scale: the equation's scores on the fitted scale $z = g(y)$ and on $y$ itself.
 
-    An equation fitted on ``log(y)`` predicts ``log(y)``; its R2 there is a statement about ratios, and
-    the question a user asks is usually about ``y`` itself. Each protocol's held-out predictions are
-    mapped back with `data.from_fit_scale` and scored against the raw target. For an untransformed
-    target the two scales coincide. ``exp`` of a mean on the log scale is the geometric mean, so the
-    back-transformed predictions of a skewed cost sit below its arithmetic mean (chapter 7, 7.5).
+    An equation fitted on $z = \\log(y)$ or $\\log(1+y)$ predicts $\\hat{z}$; its $R^2_z$ is a statement
+    about ratios, whereas the question a user asks is often about $y$ itself. Each protocol's held-out
+    predictions $\\hat{z}_i$ are mapped back with $\\hat{y}_i = g^{-1}(\\hat{z}_i)$ (`data.from_fit_scale`)
+    and scored against the raw target $y_i$:
+
+    $$R^2_y = 1 - \\frac{\\sum_{i=1}^{n} (y_i - \\hat{y}_i)^2}{\\sum_{i=1}^{n} (y_i - \\bar{y})^2}.$$
+
+    For an untransformed target ($g = \\mathrm{id}$) the two scales coincide. Because $\\exp(\\mathbb{E}[\\log y])$
+    is the geometric mean, back-transformed predictions of a skewed cost sit below its arithmetic mean
+    (chapter 7, section 7.5).
     """
     truth_fit = target(frame, schema)
     truth = frame[schema.target_column].to_numpy().astype(np.float64)

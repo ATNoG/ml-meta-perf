@@ -43,8 +43,7 @@ beam, off a Gram matrix and a cache the beam's constructor builds. Splitting it 
 two halves of one constructor in two files to make a naming point, which is worse than the
 naming point is worth.
 
-Study chapter: [3. Term generation and selection][study-chapter] -- the rationale, in
-prose, with the figures.
+Study chapter: [3. Term generation and selection][study-chapter] -- the rationale, in prose.
 
 [study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/03-term-selection.md
 """
@@ -68,10 +67,10 @@ REFINE_ROUNDS_DEFAULT = 2
 
 
 def transform_gap(values: np.ndarray, target: np.ndarray) -> float:
-    """How much more monotone than linear a feature's relation to the target is.
+    """Monotone-vs-linear correlation gap $\\Delta_\\rho(x, y) = |\\rho_s(x, y)| - |\\rho_p(x, y)|$.
 
     Near zero means a plain linear term is adequate. Clearly positive means a transform
-    (log, inverse, power) or a ratio is likely to pay, because the association is there
+    ($\\log$, inverse, power) or a ratio is likely to pay, because the association is there
     but a straight line cannot capture it.
     """
     return abs(spearman(values, target)) - abs(pearson(values, target))
@@ -84,13 +83,16 @@ def guided_screen(
     keep: int,
     linear_gap: float = 0.05,
 ) -> list[int]:
-    """Reduce the library to the terms worth searching over.
+    """Reduce the library to the ``keep`` terms worth searching over.
 
-    Terms are ranked by the stronger of their two correlations, so a term that is
-    strongly monotone but weakly linear survives -- it is exactly the term a linear
-    equation needs a transform for. Terms that are near-duplicates of a stronger term
-    already kept are dropped, since the beam would otherwise spend its width on
-    variations of one idea.
+    Each term $j$ is scored by the stronger of its linear and rank correlations, with a small
+    parsimony discount when the relation is purely monotone ($|\\rho_s| - |\\rho_p| > \\text{linear\\_gap}$):
+
+    $$\\operatorname{strength}_j = \\max(|\\rho_p(x_j, y)|, |\\rho_s(x_j, y)|)
+    - 0.02 \\, \\mathbb{I}[|\\rho_s(x_j, y)| - |\\rho_p(x_j, y)| > \\text{linear\\_gap}].$$
+
+    Terms that are near-duplicates ($|\\rho_p(x_j, x_i)| > 0.995$) of a stronger term already
+    kept are dropped, since the beam would otherwise spend its width on variations of one idea.
     """
     matrix = library.matrix
     # Ranking is the expensive half of a Spearman correlation -- it sorts, then averages
@@ -201,10 +203,11 @@ class Selector:
     def _evaluate(self, indices: tuple[int, ...]) -> Subset:
         """Fit one subset. Memoised, because the refinement pass revisits subsets.
 
-        The residual sum of squares uses an identity rather than a second quadratic form.
-        Since ``(G + lambda I) w = b``, we have ``w'Gw = w'b - lambda w'w``, so
+        The penalised residual sum of squares uses an algebraic identity rather than a second
+        quadratic form. Since $(G + \\lambda I)\\,w = b$, we have $w^\\top G w = w^\\top b - \\lambda w^\\top w$, so
 
-            rss = total - 2 w'b + w'Gw = total - w'b - lambda w'w
+        $$J(w) = \\|y - \\bar{y}\\|_2^2 - 2 w^\\top b + w^\\top G w + \\lambda w^\\top w
+        = \\|y - \\bar{y}\\|_2^2 - w^\\top b - \\lambda w^\\top w,$$
 
         which removes a matrix-vector product from the inner loop. The two are equal to
         floating-point tolerance whenever the solve succeeded, which ``test_fit`` checks
@@ -273,6 +276,7 @@ class Selector:
         return [self._cache[indices] for indices in batch]
 
     def _residual_scores(self, subset: Subset) -> np.ndarray:
+        """Inner products $|Z^\\top ((y - \\bar{y}) - Z_{\\mathcal{I}} w)| = |b - G_{\\cdot, \\mathcal{I}} w|$."""
         order = np.array(subset.indices, dtype=np.intp)
         return np.abs(self.projection - self.gram[:, order] @ subset.weights)
 
@@ -417,6 +421,7 @@ class SearchResult:
     pool_size: int
 
     def best(self, max_terms: int | None = None) -> Equation:
+        """Return the fitted equation at the largest available length $\\le$ ``max_terms``."""
         sizes = [size for size in self.equations if max_terms is None or size <= max_terms]
         return self.equations[max(sizes)]
 
@@ -470,12 +475,18 @@ MIN_CONTRIBUTION = 0.002
 
 
 def pruning_threshold(bounds: Bounds | None, target: np.ndarray) -> float:
-    """The ``min_contribution`` ``prune`` should use for a target with these bounds.
+    """The ``min_contribution`` ``prune`` should use for a target with these bounds:
 
-    A target bounded on both sides scales ``MIN_CONTRIBUTION`` by its span over the MCC span (so MCC
-    and a [0, 2] error keep it as it is). A target open on either side scales it by the target's
+    $$\\tau_{\\text{prune}} = \\begin{cases}
+    \\tau_0 \\, (b - a) / 2 & \\text{if } B = [a, b] \\text{ is bounded on both sides}, \\\\
+    \\tau_0 \\, (P_{99}(y) - P_{1}(y)) / 2 & \\text{otherwise},
+    \\end{cases}$$
+
+    where $\\tau_0 = \\text{MIN\\_CONTRIBUTION} = 0.002$ and $2 = 1 - (-1)$ is the MCC span.
+    A target bounded on both sides scales $\\tau_0$ by its span over the MCC span (so MCC
+    and a $[0, 2]$ error keep it as it is). A target open on either side scales it by the target's
     1st-to-99th percentile spread over the MCC span, so a term has to move the prediction by
-    the same share of the target's spread that ``MIN_CONTRIBUTION`` is of MCC's.
+    the same share of the target's spread that $\\tau_0$ is of MCC's.
     """
     if bounds is not None and bounds[0] is not None and bounds[1] is not None:
         return MIN_CONTRIBUTION * (bounds[1] - bounds[0]) / (MCC_UPPER - MCC_LOWER)

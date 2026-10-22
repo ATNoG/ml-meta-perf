@@ -3,8 +3,7 @@
 scipy would supply all of this, but it is a large dependency for four short functions,
 and the rank machinery here has to be exercised by the test suite regardless.
 
-Study chapter: [5. Evaluation][study-chapter] -- the rationale, in
-prose, with the figures.
+Study chapter: [5. Evaluation][study-chapter] -- the rationale, in prose.
 
 [study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/05-evaluation.md
 """
@@ -15,9 +14,9 @@ import numpy as np
 
 
 def rankdata(values: np.ndarray) -> np.ndarray:
-    """Ranks from 1, with ties receiving their average rank.
+    """Ranks $r_i \\in [1, n]$ from $1$, with ties receiving their average rank.
 
-    Average ranks matter here: MCC piles up at exactly 1.0 (22% of the meta-dataset, 2026-10-19),
+    Average ranks matter here: MCC piles up at $1.0$ (22% of the meta-dataset, 2026-10-19),
     and ordinal ranks would invent an ordering among tied perfect scores.
     """
     order = np.argsort(values, kind="stable")
@@ -41,7 +40,7 @@ def rank_columns(matrix: np.ndarray) -> np.ndarray:
     restatement of it.
 
     Ties are averaged by locating each run of equal values in the sorted order: a run
-    spanning sorted positions ``i..j`` takes rank ``(i + j) / 2 + 1``, which is the mean of
+    spanning 0-indexed sorted positions $i\\dots j$ takes rank $(i + j) / 2 + 1$, which is the mean of
     the consecutive ranks it would otherwise receive.
     """
     rows = matrix.shape[0]
@@ -65,7 +64,7 @@ def rank_columns(matrix: np.ndarray) -> np.ndarray:
 
 
 def pearson(first: np.ndarray, second: np.ndarray) -> float:
-    """Linear correlation, returning 0.0 when either side is constant."""
+    """Pearson correlation $\\rho_p(x, y) = \\tilde{x}^\\top \\tilde{y} / (\\|\\tilde{x}\\|_2 \\|\\tilde{y}\\|_2)$."""
     a = first - first.mean()
     b = second - second.mean()
     scale = float(np.sqrt(float(a @ a) * float(b @ b)))
@@ -73,7 +72,7 @@ def pearson(first: np.ndarray, second: np.ndarray) -> float:
 
 
 def pearson_columns(matrix: np.ndarray, target: np.ndarray) -> np.ndarray:
-    """`pearson` between every column of ``matrix`` and ``target``, in one pass.
+    """`pearson` between every column of ``matrix`` and ``target``, in one vectorised matrix-vector pass.
 
     `ml_meta_perf.search.guided_screen` needs this correlation for every candidate term, twice
     over -- once raw and once on ranks -- in every fold, which is tens of thousands of calls
@@ -89,18 +88,19 @@ def pearson_columns(matrix: np.ndarray, target: np.ndarray) -> np.ndarray:
 
 
 def spearman(first: np.ndarray, second: np.ndarray) -> float:
-    """Rank correlation: monotone association, insensitive to the MCC ceiling."""
+    """Spearman rank correlation $\\rho_s(x, y) = \\rho_p(\\operatorname{rank}(x), \\operatorname{rank}(y))$."""
     if first.shape[0] < 2:
         return 0.0
     return pearson(rankdata(first), rankdata(second))
 
 
 def r2_score(truth: np.ndarray, prediction: np.ndarray) -> float:
-    """Coefficient of determination against the mean of ``truth``.
+    """Coefficient of determination against the mean of ``truth``:
 
-    Note the denominator is always the variance of the *evaluated* rows, so an R2 from
-    the 20 aggregated dataset means is not comparable with one from the 484 raw rows.
-    That is exactly why E1 is reported on both scales.
+    $$R^2 = 1 - \\frac{\\sum_{i=1}^{n} (y_i - \\hat{y}_i)^2}{\\sum_{i=1}^{n} (y_i - \\bar{y})^2},$$
+
+    returning $0.0$ when $\\sum_i (y_i - \\bar{y})^2 \\le 10^{-15}$. Note the denominator is always the
+    variance of the *evaluated* rows.
     """
     residual = float(((truth - prediction) ** 2).sum())
     total = float(((truth - truth.mean()) ** 2).sum())
@@ -108,26 +108,28 @@ def r2_score(truth: np.ndarray, prediction: np.ndarray) -> float:
 
 
 def mae(truth: np.ndarray, prediction: np.ndarray) -> float:
-    """Mean absolute error, in MCC units."""
+    """Mean absolute error $\\mathrm{MAE} = \\frac{1}{n} \\sum_{i=1}^{n} |y_i - \\hat{y}_i|$, in target units."""
     return float(np.abs(truth - prediction).mean())
 
 
 def rmse(truth: np.ndarray, prediction: np.ndarray) -> float:
-    """Root mean squared error, in MCC units."""
+    """Root mean squared error $\\mathrm{RMSE} = \\sqrt{\\frac{1}{n} \\sum_{i=1}^{n} (y_i - \\hat{y}_i)^2}$."""
     return float(np.sqrt(float(((truth - prediction) ** 2).mean())))
 
 
 def smape(truth: np.ndarray, prediction: np.ndarray) -> float:
-    """Symmetric mean absolute percentage error, as a percentage in [0, 200].
+    """Symmetric mean absolute percentage error, as a percentage in $[0, 200]$:
 
-    **Read this one with care on MCC.** SMAPE divides by ``|truth| + |prediction|``, and
-    13 of the 484 rows here have MCC exactly 0 (2026-10-19). Every one of those contributes the full
-    200% unless the prediction is also exactly 0, so the metric is dominated by the rows
+    $$\\mathrm{SMAPE} = \\frac{100}{n} \\sum_{i=1}^{n} \\frac{2\\,|y_i - \\hat{y}_i|}{|y_i| + |\\hat{y}_i|}.$$
+
+    **Read this one with care on targets that pass through zero.** SMAPE divides by $|y_i| + |\\hat{y}_i|$,
+    and 13 of the 484 MCC rows are $0$ (2026-10-19). Every one of those contributes the full
+    $200\\%$ unless the prediction is also $0$, so the metric is dominated by the rows
     the equation is already known to handle worst rather than by its typical error. It is
     reported because it was asked for and because it is scale-free, but MAE is the
     honest headline for a target that legitimately passes through zero.
 
-    Rows where both truth and prediction are zero contribute 0, not a division by zero.
+    Rows where both $y_i$ and $\\hat{y}_i$ are zero contribute $0$, not a division by zero.
     """
     denominator = np.abs(truth) + np.abs(prediction)
     safe = np.where(denominator > 0.0, denominator, 1.0)

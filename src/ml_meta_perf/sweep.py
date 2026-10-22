@@ -171,6 +171,7 @@ def choose(candidates: pl.DataFrame, sweep: SweepConfig) -> dict[str, Any]:
 
 
 def _worker_initialiser() -> None:
+    """Pin BLAS and OpenMP thread counts to 1 inside each worker process."""
     for variable in THREAD_VARIABLES:
         os.environ[variable] = "1"
 
@@ -187,6 +188,7 @@ def sweep_directory(root: str | Path, corpus: Path, schema: Schema) -> Path:
 
 
 def build_parser() -> ArgumentParser:
+    """Build the argument parser for ``ml-meta-perf sweep`` (and ``ml-meta-perf-search``)."""
     parser = study_parser("ml-meta-perf sweep", "Sweep the shared hyperparameters and propose a study file.")
     parser.add_argument(
         "--output", type=str, default="out", help="output directory; the sweep goes under <csv stem>/<target>/sweep"
@@ -196,6 +198,7 @@ def build_parser() -> ArgumentParser:
 
 
 def run(arguments: Namespace, parser: ArgumentParser) -> int:
+    """Run the hyperparameter grid sweep and write ``curves.csv``, ``candidates.csv`` and ``proposed_study.json``."""
     try:
         study = study_of(arguments)
     except ConfigError as error:

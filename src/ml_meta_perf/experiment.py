@@ -8,7 +8,7 @@ E1, E2 and E3 differ **only** in which features they may use, so they share one 
 maximum of its worst-protocol curve (`run_capability`): a capability bound on the additive form,
 not an equation put forward to be read. `ml_meta_perf.study` runs the equations a study lists.
 
-Study chapter: [4. The equation][study-chapter] -- the rationale, in prose.
+Study chapter: [7. Other targets][study-chapter] -- the rationale, in prose.
 
 [study-chapter]: https://github.com/mariolpantunes/ml-meta-perf/blob/main/assets/docs/07-generic-targets.md
 """
@@ -57,9 +57,8 @@ class EquationReport:
     curve: pl.DataFrame
     cross_validated: dict[str, dict[str, float | int]] = field(default_factory=dict)
     stability: pl.DataFrame | None = None
-    #: The full cross-validated path per protocol, kept so later tables can reuse it.
-    #: ``leakage_demonstration`` and ``decision_quality`` ask for the same folds at the
-    #: same settings, and recomputing them was a third of the study's runtime.
+    #: The full cross-validated path per protocol, kept so downstream tables (`study.original_scale_scores`,
+    #: `candidate_details`) can reuse the out-of-fold predictions without refitting.
     paths: dict[str, dict[int, CrossValidation]] = field(default_factory=dict)
     #: What each length rule picked, when the equation was chosen among several arities
     #: (`lengths.rule_table`): the rule that ran, or every rule under ``auto``.
@@ -176,7 +175,7 @@ def fit_path(
 
 
 def _group_losses(fitted: FittedPath, size: int, protocol: str) -> np.ndarray:
-    """Squared error of every dataset's rows under ``protocol`` ("in_sample", or a key of ``paths``)."""
+    """Squared error $L_{k,g} = \\sum_{i \\in \\mathcal{H}_g} (y_i - \\hat{y}_i)^2$ per dataset $g$."""
     if protocol == "in_sample":
         predicted = fitted.equations[size].predict(fitted.columns)
     else:
@@ -186,7 +185,10 @@ def _group_losses(fitted: FittedPath, size: int, protocol: str) -> np.ndarray:
 
 
 def _sign_stability(fitted: FittedPath, size: int) -> float:
-    """The share of held-out datasets under which the weakest term keeps the sign it has in the full fit.
+    """The share of held-out datasets under which the weakest term keeps the sign it has in the full fit:
+
+    $$\\min_{j \\in \\{1,\\dots,k\\}} \\frac{1}{G} \\sum_{g=1}^{G}
+    \\mathbb{I}\\!\\left[\\operatorname{sgn}(w_{j}^{(g)}) = \\operatorname{sgn}(w_{j})\\right].$$
 
     The folds refit the weights of the same form, so a term whose sign flips when one dataset leaves
     is a term the data does not pin down. NaN when the study does not run LODO.
@@ -200,14 +202,14 @@ def _sign_stability(fitted: FittedPath, size: int) -> float:
 
 
 def candidate_details(fitted: FittedPath) -> pl.DataFrame:
-    """What the length rules beyond the curve's shape need, per length of one arity.
+    """What the length rules beyond the curve's shape need, per length $k$ of one arity.
 
-    * ``loss``: the squared error of every dataset under the protocol that binds the floor at that
-      length, so ``1 - sum(loss) / sst`` is exactly the floor and the datasets are the units a rule
-      can resample;
-    * ``rss``, ``n_rows``, ``library`` and ``code``: the in-sample residual, the rows, the size of
-      the term library and the description length of the terms (`terms.description_length`), for
-      the information criteria and the description-length rule;
+    * ``loss``: per-dataset squared error $L_{k,g}$ under the protocol that binds the floor at that
+      length, so $1 - \\sum_g L_{k,g} / \\mathrm{SST} = \\operatorname{floor}(k)$ and the datasets are
+      the units a rule can resample;
+    * ``rss``, ``n_rows``, ``library`` and ``code``: the in-sample residual
+      $\\mathrm{RSS}_k = \\sum_i (y_i - \\hat{y}_i)^2$, the row count $n$, the term library size $P$
+      and the structural description length $\\sum_{j=1}^{k} \\ell(t_j)$ (`terms.description_length`);
     * ``sign_stability``: see `_sign_stability`.
     """
     sst = float(((fitted.truth - fitted.truth.mean()) ** 2).sum())

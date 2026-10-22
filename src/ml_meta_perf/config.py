@@ -40,6 +40,7 @@ CONFIG_RELATIVE_PATH = Path("config") / "mcc.json"
 
 
 def _default_config_path() -> Path:
+    """Resolve ``config/mcc.json`` from the repository checkout or the working directory."""
     checkout = Path(__file__).resolve().parents[2] / CONFIG_RELATIVE_PATH
     working = Path.cwd() / CONFIG_RELATIVE_PATH
     return next((path for path in (checkout, working) if path.is_file()), checkout)
@@ -182,11 +183,12 @@ class Schema:
 
     @property
     def features(self) -> tuple[str, ...]:
+        """All feature columns $F_d \\cup F_m$, dataset features followed by model features."""
         return self.dataset_features + self.model_features
 
     @property
     def fit_bounds(self) -> Bounds | None:
-        """The bounds on the scale the equation is fitted on: ``log1p`` of the target's own bounds."""
+        """The bounds on the fitted scale: $g(B) = [g(a), g(b)]$ for $g \\in \\{\\log(1+\\cdot), \\log\\}$."""
         if self.bounds is None or self.transform == "none":
             return self.bounds
         low, high = self.bounds
@@ -200,6 +202,7 @@ class Schema:
 
     @property
     def slug(self) -> str:
+        """Filesystem-safe folder name ``<target>[-<row_filter.label>][-<transform>]`` for this study."""
         parts = [self.target_column]
         if self.row_filter is not None and self.row_filter.label:
             parts.append(self.row_filter.label)
@@ -209,6 +212,7 @@ class Schema:
 
     @property
     def label(self) -> str:
+        """Left-hand side of the equation: ``transform(target)`` when log-transformed, else ``target``."""
         return f"{self.transform}({self.target_column})" if self.log_target else self.target_column
 
     def tag(self, name: str) -> str:

@@ -35,10 +35,12 @@ from ml_meta_perf.study import StudyReport, run_study
 
 
 def _section(title: str) -> None:
+    """Print a visual banner heading for ``title`` on stdout."""
     print(f"\n{'=' * 78}\n{title}\n{'=' * 78}")
 
 
 def _show(frame: pl.DataFrame) -> None:
+    """Print ``frame`` formatted to three decimal places without truncating study rows."""
     with pl.Config(tbl_rows=60, tbl_cols=20, tbl_width_chars=200, float_precision=3):
         print(frame)
 
@@ -53,6 +55,7 @@ def _configure_windows_output() -> None:
 
 
 def fit_parser() -> ArgumentParser:
+    """Build the argument parser for ``ml-meta-perf fit``."""
     parser = study_parser("ml-meta-perf fit", "Fit the equations a study file lists and write the result folder.")
     parser.add_argument(
         "--output", type=str, default="out", help="root of the result folders (<root>/<csv stem>/<target>)"
@@ -63,6 +66,7 @@ def fit_parser() -> ArgumentParser:
 
 
 def init_parser() -> ArgumentParser:
+    """Build the argument parser for ``ml-meta-perf init``."""
     parser = ArgumentParser(prog="ml-meta-perf init", description="Write a study file for a corpus CSV.")
     parser.add_argument("corpus", type=str, help="the corpus CSV")
     parser.add_argument("--dataset", type=str, required=True, help="column naming the dataset (first grouping factor)")
@@ -78,6 +82,7 @@ def init_parser() -> ArgumentParser:
 
 
 def build_parser() -> ArgumentParser:
+    """Build the top-level ``ml-meta-perf`` parser with ``fit``, ``sweep`` and ``init`` subcommands."""
     parser = ArgumentParser(
         prog="ml-meta-perf",
         description=(
@@ -94,6 +99,7 @@ def build_parser() -> ArgumentParser:
 
 
 def _print_report(report: StudyReport) -> None:
+    """Print the equations, target-scale scores and E3-Valid group shares of ``report`` to stdout."""
     schema = report.schema
     for name, equation in report.equations.items():
         _section(f"{name}: {schema.label}  ({equation.n_terms} terms, arity {equation.arity})")
@@ -107,6 +113,7 @@ def _print_report(report: StudyReport) -> None:
 
 
 def run_fit(arguments: Namespace) -> int:
+    """Execute ``ml-meta-perf fit``: run the study and write its result folder."""
     study = study_of(arguments)
     corpus = Path(arguments.data) if arguments.data else resolve_path(study.corpus.path)
     started = time.perf_counter()
@@ -122,6 +129,7 @@ def run_fit(arguments: Namespace) -> int:
 
 
 def run_init(arguments: Namespace) -> int:
+    """Execute ``ml-meta-perf init``: infer a study skeleton from a corpus CSV and write it to disk."""
     output = Path(arguments.output)
     if output.exists() and not arguments.force:
         raise ConfigError(f"{output} exists; pass --force to overwrite it")
@@ -147,6 +155,7 @@ def run_init(arguments: Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point for ``ml-meta-perf``; returns the process exit code."""
     _configure_windows_output()
     parser = build_parser()
     parsed: Namespace = parser.instantiate_classes(parser.parse_args(argv))  # pyright: ignore[reportAssignmentType]

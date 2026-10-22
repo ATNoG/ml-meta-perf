@@ -48,9 +48,9 @@ KNEE_MIN_POINTS = 3
 
 
 def complexity(arity: int, n_terms: int) -> int:
-    """Feature slots an equation spends: a term of arity ``a`` names ``a`` raw features.
+    """Feature slots an equation spends, $c(a, n) = a \\, n$: a term of arity $a$ names $a$ raw features.
 
-    **Not a count of fitted coefficients** -- those number ``n_terms + 1``. This charges for how
+    **Not a count of fitted coefficients** -- those number $n + 1$. This charges for how
     much of the *grammar* an equation uses, which is what tells the same term count at arity 2
     apart from arity 3.
     """
@@ -58,7 +58,7 @@ def complexity(arity: int, n_terms: int) -> int:
 
 
 def floor_curve(curve: pl.DataFrame) -> np.ndarray:
-    """The **worst** of every protocol present, per length. This is what a length is judged on.
+    """Worst score across protocols: $\\operatorname{floor}(k) = \\min_{\\pi \\in \\Pi} R^2_\\pi(k)$.
 
     The minimum rather than a median, because the weakest protocol is almost always DHO -- the
     cell where neither the dataset nor the model has been seen, which is what the study's
@@ -73,7 +73,9 @@ def floor_curve(curve: pl.DataFrame) -> np.ndarray:
 
 
 def smoothed(values: np.ndarray, width: int) -> np.ndarray:
-    """A centred running median of ``width`` points, shrinking at the ends.
+    """A centred running median of ``width`` points ($w = 2h + 1$), shrinking at the ends:
+
+    $$s_k = \\operatorname{median}\\!\\left\\{v_j : \\max(1, k - h) \\le j \\le \\min(K, k + h)\\right\\}.$$
 
     A median rather than a mean because the noise here is spiky: one held-out dataset outside
     the convex hull of the other nineteen craters a single length, and a mean would spread that
@@ -89,8 +91,8 @@ def smoothed(values: np.ndarray, width: int) -> np.ndarray:
 def knee_lengths(curve: pl.DataFrame, smoothing: int) -> list[int]:
     """The lengths multi-Kneedle proposes on the smoothed floor's Pareto front, ascending.
 
-    The front keeps only lengths that improve on every shorter one, so a knee is always a
-    length worth its terms; the knees are where the front's rate of improvement bends.
+    The front keeps only lengths $k$ that strictly improve on every shorter one ($s_k > \\max_{j < k} s_j$),
+    so a knee is always a length worth its terms; the knees are where the front's rate of improvement bends.
     """
     lengths = curve["n_terms"].to_numpy()
     floor = smoothed(floor_curve(curve), smoothing)
@@ -105,11 +107,14 @@ def knee_lengths(curve: pl.DataFrame, smoothing: int) -> list[int]:
 def plateau_start(curve: pl.DataFrame, *, delta: float, window: int, smoothing: int) -> tuple[int, str]:
     """The equation length and how it was reached: ``"knee"`` or ``"maximum"``.
 
-    Candidates are the lengths `knee_lengths` proposes and the smoothed maximum. The chosen one
-    is the first, in increasing length, whose smoothed floor gains at most ``delta`` over the
-    next ``window`` lengths. The maximum always qualifies -- nothing after it gains -- so the
-    rule always returns; a maximum closer to the horizon than ``window`` is still returned,
-    and `experiment.selection_summary` flags a length that sits at the horizon.
+    Candidates are the lengths `knee_lengths` proposes and the smoothed maximum $k_{\\text{peak}} = \\arg\\max_k s_k$.
+    The chosen one is the first candidate $k$, in increasing length, whose smoothed floor gains at most
+    $\\delta$ over the next $w$ lengths:
+
+    $$\\max_{1 \\le j \\le w} s_{k+j} - s_k \\le \\delta.$$
+
+    The maximum always qualifies -- nothing after it gains -- so the rule always returns; a maximum
+    closer to the horizon than $w$ is still returned.
     """
     if delta < 0.0 or window < 1:
         raise ValueError("delta must be non-negative and the window positive")
@@ -136,7 +141,7 @@ def plateau_knee(curve: pl.DataFrame, *, delta: float, window: int, smoothing: i
 
 
 def protocol_spread(curve: pl.DataFrame) -> np.ndarray:
-    """How far a length falls from its fit to its worst protocol: ``IS - floor``.
+    """How far a length $k$ falls from its fit to its worst protocol: $R^2_{\\text{IS}}(k) - \\operatorname{floor}(k)$.
 
     **Reported, not selected on.** An equation that fits well and transfers badly is a
     different object from one that does both moderately, and the floor alone cannot tell them
@@ -154,11 +159,10 @@ def floor_argmax_index(curve: pl.DataFrame) -> int:
 
 
 def floor_argmax(curve: pl.DataFrame) -> int:
-    """The length maximising the raw floor: **E3-MAX's rule**, a capability bound.
+    """Length maximising the raw floor, $k^\\ast = \\arg\\max_k \\operatorname{floor}(k)$ (**E3-MAX**).
 
     No smoothing and no complexity penalty, because this equation is not put forward to be
     read -- it bounds what the additive form can reach, and a bound should not be discounted
-    for being long. Ties go to the shorter equation. A result at the horizon means the bound
-    is the horizon's, not the data's; `experiment` reports that.
+    for being long. Ties go to the shorter equation.
     """
     return int(curve["n_terms"].to_numpy()[floor_argmax_index(curve)])
